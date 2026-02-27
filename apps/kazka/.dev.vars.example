@@ -1,0 +1,20 @@
+# Cloudflare Workers - zmienne lokalne (kopiuj do .dev.vars)
+# Uwaga: .dev.vars jest w .gitignore
+
+# Opcjonalnie: token Admin API do skryptów (np. add-cta-fields-section-hero.mjs)
+# Shopify Admin → Settings → Apps → Develop apps → Create app → Configure Admin API → write_metaobject_definitions
+# SHOPIFY_ADMIN_ACCESS_TOKEN=shpat_xxx
+
+SESSION_SECRET=your-secret
+BRAND=kazka
+COLLECTION_FILTER=kazka
+PUBLIC_STORE_DOMAIN=epir-art-silver-jewellery.myshopify.com
+PUBLIC_CHECKOUT_DOMAIN=checkout.shopify.com
+PUBLIC_STOREFRONT_API_TOKEN=your-token
+PRIVATE_STOREFRONT_API_TOKEN=your-token
+PUBLIC_STOREFRONT_ID=1000013955
+SHOP_ID=55145660472
+PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID=your-client-id
+
+# Chat worker – dev: localhost, prod: asystent.epirbizuteria.pl
+CHAT_API_URL=http://localhost:8787/api/chat

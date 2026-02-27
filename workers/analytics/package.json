@@ -1,0 +1,17 @@
+{
+  "name": "epir-analityc-worker",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.10.5",
+    "@cloudflare/workers-types": "^4.20241022.0",
+    "vitest": "^3.2.0",
+    "wrangler": "^4.45.0"
+  }
+}

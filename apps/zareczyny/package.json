@@ -1,0 +1,61 @@
+{
+  "name": "zareczyny",
+  "private": true,
+  "sideEffects": false,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:css && remix build",
+    "build:css": "postcss app/styles/tailwind.css -o app/styles/tailwind-build.css --env production",
+    "dev": "npm run build:css && concurrently -g -r npm:dev:wrangler npm:dev:css \"remix watch\"",
+    "dev:css": "postcss app/styles/tailwind.css -o app/styles/tailwind-build.css -w",
+    "dev:wrangler": "cross-env NODE_ENV=development npm run wrangler",
+    "preview": "npm run build && shopify hydrogen preview",
+    "lint": "eslint --no-error-on-unmatched-pattern --ext .js,.ts,.jsx,.tsx .",
+    "typecheck": "tsc --noEmit",
+    "wrangler": "wrangler pages dev ./public",
+    "deploy": "npm run build && wrangler pages deploy public --project-name=zareczyny-hydrogen-pages --branch=main"
+  },
+  "prettier": "@shopify/prettier-config",
+  "dependencies": {
+    "@epir/ui": "*",
+    "@epir/utils": "*",
+    "@headlessui/react": "^1.7.15",
+    "@remix-run/cloudflare": "^2.15.0",
+    "@remix-run/cloudflare-pages": "^2.15.0",
+    "@remix-run/react": "^2.15.0",
+    "@shopify/cli": "3.45.0",
+    "@shopify/cli-hydrogen": "^5.0.1",
+    "@shopify/hydrogen": "^2024.10.0",
+    "clsx": "^1.2.1",
+    "cross-env": "^7.0.3",
+    "graphql": "^16.6.0",
+    "graphql-tag": "^2.12.6",
+    "isbot": "^3.8.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tiny-invariant": "^1.2.0"
+  },
+  "devDependencies": {
+    "@epir/config": "*",
+    "@cloudflare/workers-types": "^4.20230518.0",
+    "@remix-run/dev": "^2.15.0",
+    "@shopify/prettier-config": "^1.1.2",
+    "@types/eslint": "^8.4.10",
+    "@types/react": "^18.2.22",
+    "@types/react-dom": "^18.2.7",
+    "autoprefixer": "^10.4.14",
+    "concurrently": "^8.2.0",
+    "eslint": "^8.20.0",
+    "eslint-plugin-hydrogen": "0.12.2",
+    "postcss": "^8.4.24",
+    "postcss-cli": "^10.1.0",
+    "prettier": "^2.8.4",
+    "tailwindcss": "^3.3.2",
+    "typescript": "^5.2.2",
+    "wrangler": "3.1.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,10 @@
+name = "asystent-klienta"
+
+uid = "5f4dfd59-f8af-0e80-e5b4-cff1370635b3c870f68f"
+
+type = "theme"
+
+# Blocks are auto-discovered from blocks/ directory (assistant.liquid, tracking.liquid)
+
+# Locales included for translations
+locales = ["locales/en.default.json"]

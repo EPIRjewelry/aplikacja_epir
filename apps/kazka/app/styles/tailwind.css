@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes fadeInAnimation {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Demo-store inspired utilities */
+@layer components {
+  .swimlane {
+    @apply grid w-full snap-x snap-mandatory scroll-px-6 grid-flow-col justify-start gap-4 overflow-x-scroll px-6 pb-4;
+  }
+}
+
+@layer utilities {
+  .fadeIn {
+    opacity: 0;
+    animation: fadeInAnimation ease 500ms forwards;
+  }
+
+  .hiddenScroll {
+    scrollbar-width: none;
+  }
+
+  .hiddenScroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .absolute-center {
+    @apply absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2;
+  }
+
+  .card-image {
+    @apply relative flex items-center justify-center overflow-clip rounded;
+  }
+
+  .card-image::before {
+    content: ' ';
+    @apply absolute top-0 left-0 z-10 block h-full w-full rounded shadow-sm;
+  }
+
+  .card-image img {
+    @apply aspect-[inherit] w-full object-cover;
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@epir/config",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "exports": {
+    "./tailwind": "./tailwind.config.cjs",
+    "./postcss": "./postcss.config.cjs",
+    "./eslint": "./eslint.config.cjs",
+    "./tsconfig": "./tsconfig.base.json"
+  },
+  "devDependencies": {
+    "eslint": "^8.20.0",
+    "eslint-plugin-hydrogen": "0.12.2"
+  }
+}

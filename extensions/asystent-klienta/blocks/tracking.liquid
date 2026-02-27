@@ -1,0 +1,14 @@
+{%- comment -%}
+Tracking block for EPIR theme extension.
+This block injects the tracking script asset into storefront pages.
+App embed block (target=body) – Shopify loads javascript automatically when present in schema.
+{%- endcomment -%}
+
+{% schema %}
+{
+  "name": "EPIR Tracking",
+  "target": "body",
+  "javascript": "tracking.js",
+  "settings": []
+}
+{% endschema %}

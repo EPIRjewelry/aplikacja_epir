@@ -1,0 +1,34 @@
+name = "epir-bigquery-batch"
+main = "src/index.ts"
+compatibility_date = "2025-09-30"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[build]
+command = ""
+
+# Cron trigger: codziennie o 2:00 UTC
+[triggers]
+cron = ["0 2 * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jewelry-analytics-db"
+database_id = "6a4f7cbb-3c1c-42c7-9d79-4ef74d421f23"
+
+[[d1_databases]]
+binding = "DB_CHATBOT"
+database_name = "ai-assistant-sessions-db"
+database_id = "475a1cb7-f1b5-47ba-94ed-40fd64c32451"
+
+# Sekrety BigQuery (wymagane do eksportu):
+# wrangler secret put GOOGLE_CLIENT_EMAIL
+# wrangler secret put GOOGLE_PRIVATE_KEY
+# wrangler secret put GOOGLE_PROJECT_ID
+
+[observability]
+enabled = true
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true

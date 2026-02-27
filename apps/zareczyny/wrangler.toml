@@ -1,0 +1,30 @@
+# Zareczyny – EPIR Art Jewellery & Gemstone (pierścionki zaręczynowe)
+# Deploy: wrangler pages deploy public --project-name=zareczyny-hydrogen-pages
+# Używa: wrangler pages deploy public --project-name=zareczyny-hydrogen-pages
+
+name = "zareczyny-hydrogen-pages"
+account_id = "73283c24dc79f92edef30dcdbc98f230"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Dla wrangler pages deploy – katalog ze statyką
+pages_build_output_dir = "public"
+
+[vars]
+BRAND = "zareczyny"
+COLLECTION_FILTER = "pierscionki-zareczynowe"
+NODE_ENV = "production"
+PUBLIC_STORE_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
+PUBLIC_CHECKOUT_DOMAIN = "checkout.shopify.com"
+PUBLIC_STOREFRONT_ID = "1000013955"
+SHOP_ID = "55145660472"
+
+# CHAT_API_URL – URL workera czatu. Domyślnie: https://asystent.epirbizuteria.pl/chat
+# W dev (.dev.vars): CHAT_API_URL=http://localhost:8787/api/chat
+CHAT_API_URL = "https://asystent.epirbizuteria.pl/chat"
+
+# Secrets (Cloudflare Pages -> Settings -> Variables and Secrets -> Secrets):
+# - SESSION_SECRET
+# - PUBLIC_STOREFRONT_API_TOKEN
+# - PRIVATE_STOREFRONT_API_TOKEN
+# - PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID
