@@ -15,8 +15,8 @@ const getStoreFrontClient = async (context: Context) => {
     privateStorefrontToken: context.env.PRIVATE_STOREFRONT_API_TOKEN,
     /* Public Storefront API token for your store */
     publicStorefrontToken: context.env.PUBLIC_STOREFRONT_API_TOKEN,
-    /* Desired Storefront API version to use */
-    // storefrontApiVersion: env.PUBLIC_STOREFRONT_API_VERSION,
+    /* Desired Storefront API version – jawnie, aby uniknąć zmian domyślnych */
+    storefrontApiVersion: context.env.PUBLIC_STOREFRONT_API_VERSION || '2025-10',
     /* Your store domain: "https://{shop}.myshopify.com" */
     storeDomain: `https://${context.env.PUBLIC_STORE_DOMAIN}`,
     /**

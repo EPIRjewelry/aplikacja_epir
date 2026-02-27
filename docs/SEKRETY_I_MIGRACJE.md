@@ -55,22 +55,13 @@ Bez tego `shopify app deploy` nie zadziała. **Client secret** (SHOPIFY_APP_SECR
 - deploy analytics → bigquery-batch → chat
 - shopify app build + deploy
 
-**Czego brakuje:**
-- Migracje D1 – trzeba wykonać ręcznie (jednorazowo)
-- RAG worker – trzeba zdeployować z `epir_asystent` przed chat
-- Hydrogen (Kazka, Zareczyny) – deploy.ps1 **nie** deployuje ich na Cloudflare Pages
+**Obecny stan deploy.ps1:** Obejmuje RAG → analytics → bigquery-batch → chat → shopify app build → shopify app deploy.
 
-**Propozycja:** Dodać na początek deploy.ps1 blok informacyjny (bez zatrzymania), np.:
+**Czego brakuje (jednorazowo):**
+- Migracje D1 – trzeba wykonać ręcznie przed pierwszym deployem
+- Sekrety – ręcznie przed deployem
 
-```powershell
-Write-Host "Uwaga: Przed pierwszym deployem wykonaj:" -ForegroundColor Yellow
-Write-Host "  1. Migracje D1 (workers/chat, workers/bigquery-batch)" -ForegroundColor Gray
-Write-Host "  2. Sekrety (GROQ, SHOPIFY_APP_SECRET, Google)" -ForegroundColor Gray
-Write-Host "  3. RAG worker: cd epir_asystent\workers\rag-worker && wrangler deploy" -ForegroundColor Gray
-Write-Host ""
-```
-
-Oraz opcjonalnie dodać krok deploy Hydrogen do Cloudflare Pages – albo jako osobny skrypt `deploy-hydrogen.ps1`, albo jako parametr `.\deploy.ps1 -IncludeHydrogen`.
+**Hydrogen (Kazka, Zareczyny)** – deploy.ps1 **nie** deployuje ich na Cloudflare Pages; można dodać jako osobny skrypt `deploy-hydrogen.ps1` albo parametr `.\deploy.ps1 -IncludeHydrogen`.
 
 ---
 
@@ -124,5 +115,4 @@ wrangler secret put GOOGLE_PROJECT_ID    # Project ID z GCP
 
 1. **Migracje** (pkt 3)
 2. **Sekrety** (pkt 4)
-3. **RAG worker** – `cd epir_asystent\workers\rag-worker && wrangler deploy`
-4. **deploy.ps1**
+3. **deploy.ps1** (obejmuje RAG, analytics, bigquery-batch, chat, shopify)

@@ -9,9 +9,10 @@
 
 ### Struktura (Faza 0–1)
 - [x] Workspace z `apps/`, `workers/`, `extensions/`, `packages/`
-- [x] **apps/kazka** – Hydrogen (epir-headless)
-- [x] **apps/zareczyny** – Hydrogen (epir-headless)
-- [x] **workers/chat** – chat worker (epir_asystent)
+- [x] **apps/kazka** – Hydrogen
+- [x] **apps/zareczyny** – Hydrogen
+- [x] **workers/chat** – chat worker
+- [x] **workers/rag-worker** – RAG worker (Vectorize, MCP, embeddings)
 - [x] **workers/analytics** – analytics worker
 - [x] **workers/bigquery-batch** – eksport do BigQuery (cron 2:00 UTC)
 - [x] **extensions/asystent-klienta** – Theme App Extension (widget czatu)
@@ -72,14 +73,7 @@ ID baz (już w wrangler.toml):
 
 ### 2.3 RAG worker (krytyczne)
 
-Chat worker ma binding do `epir-rag-worker`. **Musi być zdeployowany z epir_asystent:**
-
-```bash
-cd d:\epir_asystent\workers\rag-worker
-wrangler deploy
-```
-
-Nazwa workera: `epir-rag-worker` (w tym samym koncie Cloudflare co aplikacja_epir).
+Chat worker ma binding do `epir-rag-worker`. RAG jest w `aplikacja_epir/workers/rag-worker`. **Deploy.ps1** deployuje go przed chat workerem.
 
 ### 2.4 Cloudflare Pages – Hydrogen (Kazka, Zareczyny)
 
@@ -103,6 +97,8 @@ wrangler pages deploy public --project-name=zareczyny-hydrogen-pages
 - `PRIVATE_STOREFRONT_API_TOKEN`
 - `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`
 
+**Zmienna opcjonalna:** `PUBLIC_STOREFRONT_API_VERSION` (np. `2025-10`) – jawna wersja Storefront API. Domyślnie w kodzie: `2025-10`.
+
 ### 2.5 DNS i routes
 
 - Domena `epirbizuteria.pl` w Cloudflare
@@ -124,11 +120,9 @@ wrangler pages deploy public --project-name=zareczyny-hydrogen-pages
 ```
 1. D1: utworzenie baz (jeśli brak) + migracje
 2. Sekrety: chat (GROQ, SHOPIFY_APP_SECRET), bigquery-batch (Google)
-3. RAG worker: deploy z epir_asystent
-4. Workers: analytics → bigquery-batch → chat
-5. Hydrogen: build + pages deploy (Kazka, Zareczyny)
-6. Shopify: shopify app deploy
-7. Weryfikacja: asystent.epirbizuteria.pl/chat, pixel, extensions
+3. deploy.ps1: RAG → analytics → bigquery-batch → chat → shopify app build + deploy
+4. Hydrogen: build + pages deploy (Kazka, Zareczyny)
+5. Weryfikacja: asystent.epirbizuteria.pl/chat, pixel, extensions
 ```
 
 ---
@@ -137,7 +131,7 @@ wrangler pages deploy public --project-name=zareczyny-hydrogen-pages
 
 | Poprzednie | Nowe | Uwagi |
 |------------|------|-------|
-| epir-chat-worker (epir-headless) | epir-art-jewellery-worker | Chat worker z epir_asystent |
+| epir-chat-worker (epir-headless) | epir-art-jewellery-worker | Chat worker w aplikacja_epir |
 | epir-ai-worker, ai-worker | – | Usunięte, logika w chat workerze |
 | analytics-worker (streaming BigQuery) | epir-analityc-worker | Tylko D1, batch do BigQuery |
 | Stare extensions | asystent-klienta, my-web-pixel | W shopify.app.toml |
@@ -171,15 +165,11 @@ wrangler d1 migrations apply ai-assistant-sessions-db --remote
 cd d:\aplikacja_epir\workers\bigquery-batch
 wrangler d1 migrations apply jewelry-analytics-db --remote
 
-# 2. RAG worker (z epir_asystent)
-cd d:\epir_asystent\workers\rag-worker
-wrangler deploy
-
-# 3. Główny deploy
+# 2. Główny deploy (obejmuje RAG, analytics, bigquery-batch, chat, shopify)
 cd d:\aplikacja_epir
 .\deploy.ps1
 
-# 4. Hydrogen (ręcznie)
+# 3. Hydrogen (ręcznie)
 cd apps\kazka && npm run build && wrangler pages deploy public --project-name=kazka-hydrogen-pages
 cd ..\zareczyny && npm run build && wrangler pages deploy public --project-name=zareczyny-hydrogen-pages
 ```
@@ -189,5 +179,5 @@ cd ..\zareczyny && npm run build && wrangler pages deploy public --project-name=
 ## 7. Kontakt / dalsze kroki
 
 - **Dokumentacja:** `docs/DEPLOYMENT_EPIR.md`
-- **Plan refaktoryzacji:** `docs/PLAN_REFACTORYZACJI_EPIR.md` (w epir-headless)
+- **Plan refaktoryzacji:** `docs/PLAN_REFACTORYZACJI_EPIR.md`
 - **Opcjonalnie:** Dodać Hydrogen do `deploy.ps1`, aby jeden skrypt robił pełny deploy

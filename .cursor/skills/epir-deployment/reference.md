@@ -66,5 +66,5 @@ Po linku projekt jest powiązany z apką – `shopify app deploy` wie, dokąd wg
 | `Authentication error` | `wrangler login` |
 | `shopify: command not found` | `npm install -g @shopify/cli @shopify/theme` |
 | `No app config found` | `shopify app config link` w katalogu z shopify.app.toml |
-| `RAG_WORKER binding failed` | Deploy epir-rag-worker z epir_asystent przed chat |
+| `RAG_WORKER binding failed` | Deploy epir-rag-worker z aplikacja_epir/workers/rag-worker przed chat; deploy.ps1 robi to automatycznie |
 | `D1 database not found` | Uruchom migracje, sprawdź database_id w wrangler.toml |

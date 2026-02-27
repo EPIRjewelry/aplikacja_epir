@@ -22,7 +22,7 @@ Porównanie zawartości **asystent**, **epir_asystent**, **Landing_pages** z **a
 |---------|--------|----------------|
 | Chat worker (logika AI, SessionDO, streaming) | workers/worker | workers/chat |
 | Analytics (pixel_events, D1) | workers/analytics-worker | workers/analytics |
-| RAG worker | workers/rag-worker | **Binding** – deploy z epir_asystent |
+| RAG worker | workers/rag-worker | ✅ Przeniesiono do aplikacja_epir |
 | Extensions (asystent-klienta, my-web-pixel) | extensions/ | extensions/ |
 
 ### Czego NIE przeniesiono z epir_asystent (celowo)
@@ -98,7 +98,7 @@ Porównanie zawartości **asystent**, **epir_asystent**, **Landing_pages** z **a
 |----------------|--------|--------|
 | Chat (streaming, Groq, Vision) | epir_asystent | ✅ |
 | SessionDO, archiwizacja D1 | epir_asystent | ✅ |
-| RAG (binding) | epir_asystent | ✅ (binding) |
+| RAG (binding) | aplikacja_epir/workers/rag-worker | ✅ |
 | ProfileService, client_profiles | Landing_pages | ✅ |
 | register_client | Landing_pages | ✅ |
 | Proxy /pixel → analytics | Plan | ✅ |

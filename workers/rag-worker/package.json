@@ -1,0 +1,28 @@
+{
+  "name": "epir-rag-worker",
+  "version": "1.0.0",
+  "description": "Reusable RAG Worker for EPIR - handles MCP, Vectorize, and context building",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest"
+  },
+  "keywords": [
+    "cloudflare-workers",
+    "rag",
+    "mcp",
+    "vectorize",
+    "shopify"
+  ],
+  "author": "EPIRjewelry",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.10.5",
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "jsdom": "^27.1.0",
+    "typescript": "^5.3.3",
+    "vitest": "^3.2.0",
+    "wrangler": "^4.46.0"
+  }
+}

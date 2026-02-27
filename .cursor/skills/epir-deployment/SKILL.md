@@ -44,8 +44,8 @@ wrangler secret put GOOGLE_CLIENT_EMAIL
 wrangler secret put GOOGLE_PRIVATE_KEY
 wrangler secret put GOOGLE_PROJECT_ID
 
-# 3. RAG worker (z epir_asystent – PRZED chat workerem)
-cd d:\epir_asystent\workers\rag-worker
+# 3. RAG worker (w aplikacja_epir – deploy.ps1 go deployuje przed chat; ręcznie tylko gdy chcesz zaktualizować sam RAG)
+cd d:\aplikacja_epir\workers\rag-worker
 wrangler deploy
 ```
 
@@ -56,7 +56,7 @@ cd d:\aplikacja_epir
 .\deploy.ps1
 ```
 
-Skrypt wykonuje: npm install → analytics → bigquery-batch → chat → **shopify app build** → **shopify app deploy**.
+Skrypt wykonuje: npm install → **RAG** → analytics → bigquery-batch → chat → **shopify app build** → **shopify app deploy**.
 
 ### Shopify – podłączenie pod apkę w dev (OBOWIĄZKOWE przed deployem)
 
@@ -107,7 +107,7 @@ wrangler pages deploy public --project-name=zareczyny-hydrogen-pages
 | Element | Ścieżka |
 |---------|---------|
 | Główny projekt | `d:\aplikacja_epir` |
-| RAG worker (osobny repo) | `d:\epir_asystent\workers\rag-worker` |
+| RAG worker | `d:\aplikacja_epir\workers\rag-worker` |
 | Dokumentacja | `docs/DEPLOYMENT_EPIR.md`, `docs/PODSUMOWANIE_WDROZENIA.md` |
 
 ## Zachowanie agenta

@@ -19,6 +19,9 @@ PUBLIC_CHECKOUT_DOMAIN = "checkout.shopify.com"
 PUBLIC_STOREFRONT_ID = "1000013955"
 SHOP_ID = "55145660472"
 
+# PUBLIC_STOREFRONT_API_VERSION – Storefront API (np. 2025-10). Fallback w server.ts: 2025-10
+PUBLIC_STOREFRONT_API_VERSION = "2025-10"
+
 # CHAT_API_URL – URL workera czatu. Domyślnie: https://asystent.epirbizuteria.pl/chat
 # W dev (.dev.vars): CHAT_API_URL=http://localhost:8787/api/chat
 CHAT_API_URL = "https://asystent.epirbizuteria.pl/chat"
