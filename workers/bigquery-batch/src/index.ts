@@ -8,6 +8,8 @@
 // Logs prefix: [BIGQUERY_BATCH]
 // ============================================================================
 
+import { base64UrlEncode, str2ab } from './auth';
+
 interface Env {
   DB: D1Database;
   DB_CHATBOT: D1Database;
@@ -24,21 +26,6 @@ const BATCH_SIZE = 100;
 // ============================================================================
 // Google Auth (wzór z epir_asystent/workers/analytics-worker)
 // ============================================================================
-
-const base64UrlEncode = (str: string) =>
-  btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-
-function str2ab(str: string): ArrayBuffer {
-  const pemHeader = '-----BEGIN PRIVATE KEY-----';
-  const pemFooter = '-----END PRIVATE KEY-----';
-  const pemContents = str.substring(pemHeader.length, str.length - pemFooter.length).replace(/\s/g, '');
-  const binaryDerString = atob(pemContents);
-  const binaryDer = new Uint8Array(binaryDerString.length);
-  for (let i = 0; i < binaryDerString.length; i++) {
-    binaryDer[i] = binaryDerString.charCodeAt(i);
-  }
-  return binaryDer.buffer;
-}
 
 async function getGoogleAuthToken(env: Env): Promise<string | null> {
   if (!env.GOOGLE_PRIVATE_KEY || !env.GOOGLE_CLIENT_EMAIL || !env.GOOGLE_PROJECT_ID) return null;
