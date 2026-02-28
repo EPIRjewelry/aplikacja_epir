@@ -665,8 +665,18 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
       }
 
       // Fallback URL/title from custom payload (TAE custom events)
+      // Support multiple field naming conventions for page URL
       if (!pageUrl && typeof data.url === 'string') {
         pageUrl = data.url;
+      }
+      if (!pageUrl && typeof data.pageUrl === 'string') {
+        pageUrl = data.pageUrl;
+      }
+      if (!pageUrl && typeof data.page_url === 'string') {
+        pageUrl = data.page_url;
+      }
+      if (!pageUrl && typeof data.href === 'string') {
+        pageUrl = data.href;
       }
       if (!pageTitle && typeof data.title === 'string') {
         pageTitle = data.title;
@@ -1060,22 +1070,22 @@ async function handlePixelEvents(request: Request, env: Env, limitParam?: string
   const limit = Math.max(1, Math.min(200, parsedLimit));
   await ensurePixelTable(env.DB);
   try {
-    const sql = `SELECT id, event_data, created_at FROM pixel_events ORDER BY id DESC LIMIT ${limit}`;
-  const rows: { results: Array<{ id: number; event_data: string; created_at: string }> } = await env.DB.prepare(sql).all();
+    const sql = `SELECT id, raw_data, created_at FROM pixel_events ORDER BY id DESC LIMIT ${limit}`;
+  const rows: { results: Array<{ id: number; raw_data: string; created_at: string }> } = await env.DB.prepare(sql).all();
     if (!rows?.results || !Array.isArray(rows.results)) {
       console.warn('[pixel] Invalid or missing rows.results from D1 query');
       return new Response(JSON.stringify({ events: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
   const events = rows.results.map((r) => {
-      let parsed: unknown = r.event_data;
+      let parsed: unknown = r.raw_data;
       try {
-        parsed = JSON.parse(r.event_data);
+        parsed = JSON.parse(r.raw_data);
       } catch (e) {
-        console.warn('[pixel] Failed to parse event_data JSON:', e);
+        console.warn('[pixel] Failed to parse raw_data JSON:', e);
       }
       return {
         id: r.id,
-        ...((typeof parsed === 'object' && parsed !== null) ? parsed : { raw: r.event_data }),
+        ...((typeof parsed === 'object' && parsed !== null) ? parsed : { raw: r.raw_data }),
         created_at: r.created_at,
       } as Record<string, unknown>;
     });

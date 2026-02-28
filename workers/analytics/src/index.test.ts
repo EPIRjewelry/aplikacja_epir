@@ -3,26 +3,27 @@ import { env, SELF } from 'cloudflare:test';
 
 describe('Analytics Worker - /pixel endpoint', () => {
     beforeAll(async () => {
-        // Ensure tables are created before tests
+        // Create pixel_events table matching ensurePixelTable schema
         await env.DB.prepare(`
             CREATE TABLE IF NOT EXISTS pixel_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                customer_id TEXT,
-                session_id TEXT,
+                id TEXT PRIMARY KEY,
                 event_type TEXT NOT NULL,
                 event_name TEXT,
-                product_id TEXT,
-                product_handle TEXT,
-                product_type TEXT,
-                product_vendor TEXT,
-                product_title TEXT,
-                variant_id TEXT,
-                cart_id TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                customer_id TEXT,
+                session_id TEXT,
                 page_url TEXT,
                 page_title TEXT,
-                page_type TEXT,
-                event_data TEXT,
-                created_at INTEGER NOT NULL,
+                referrer TEXT,
+                user_agent TEXT,
+                product_id TEXT,
+                product_title TEXT,
+                product_variant_id TEXT,
+                product_price REAL,
+                product_quantity INTEGER,
+                cart_total REAL,
+                raw_data TEXT,
+                updated_at TEXT DEFAULT (datetime('now')),
                 click_x INTEGER,
                 click_y INTEGER,
                 viewport_w INTEGER,
@@ -45,12 +46,11 @@ describe('Analytics Worker - /pixel endpoint', () => {
                 error_message TEXT,
                 extension_id TEXT,
                 mouse_x INTEGER,
-                mouse_y INTEGER,
-                referrer TEXT,
-                user_agent TEXT
+                mouse_y INTEGER
             )
         `).run();
 
+        // Create customer_events table matching ensureCustomerEventsTable schema
         await env.DB.prepare(`
           CREATE TABLE IF NOT EXISTS customer_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -152,8 +152,7 @@ describe('Analytics Worker - /pixel endpoint', () => {
         expect(event).toBeTruthy();
         expect(event?.product_id).toBe('product-123');
         expect(event?.product_title).toBe('Gold Ring');
-        expect(event?.product_type).toBe('Ring');
-        expect(event?.variant_id).toBe('variant-789');
+        expect(event?.product_variant_id).toBe('variant-789');
     });
 
     it('should accept cart_updated event', async () => {
@@ -167,7 +166,10 @@ describe('Analytics Worker - /pixel endpoint', () => {
                     sessionId: 'test-session-456',
                     cart: {
                         id: 'cart-abc-123',
-                        token: 'cart-token-xyz'
+                        token: 'cart-token-xyz',
+                        cost: {
+                            totalAmount: { amount: 129.99 }
+                        }
                     }
                 }
             })
@@ -183,7 +185,8 @@ describe('Analytics Worker - /pixel endpoint', () => {
             .first();
         
         expect(event).toBeTruthy();
-        expect(event?.cart_id).toBe('cart-abc-123');
+        expect(event?.event_type).toBe('cart_updated');
+        expect(event?.cart_total).toBe(129.99);
     });
 
     it('should accept heatmap events with coordinates', async () => {
