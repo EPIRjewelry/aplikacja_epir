@@ -68,7 +68,7 @@ shopify app config link
 ```
 
 CLI zapyta o:
-1. **Aplikację** – wybierz istniejącą (np. "Agent EPIR Art Jewellery") lub utwórz nową. `client_id` w `shopify.app.toml` musi się zgadzać z apką w Partners.
+1. **Aplikację** – wybierz istniejącą (np. "epir_ai") lub utwórz nową. `client_id` w `shopify.app.toml` musi się zgadzać z apką w Partners.
 2. **Dev store** – wybierz development store (np. `epir-art-silver-jewellery.myshopify.com` lub inny dev store).
 
 Po linku: `shopify app deploy` będzie wiedział, dokąd wgrywać extensions.

@@ -13,7 +13,7 @@ cd d:\aplikacja_epir
 shopify app config link
 ```
 
-- CLI zapyta o **aplikację** w Partners (np. "Agent EPIR Art Jewellery") lub pozwoli utworzyć nową.
+- CLI zapyta o **aplikację** w Partners (np. "epir_ai") lub pozwoli utworzyć nową.
 - Następnie o **dev store** (np. epir-art-silver-jewellery.myshopify.com).
 
 Bez tego `shopify app deploy` nie zadziała. **Client secret** (SHOPIFY_APP_SECRET) bierzesz z tej samej aplikacji w Partners → App setup → Client credentials.

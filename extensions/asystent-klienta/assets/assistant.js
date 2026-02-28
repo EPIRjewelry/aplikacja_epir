@@ -137,10 +137,12 @@ function reportUiExtensionError(error, context = {}) {
 }
 
 // Minimal initializer: bind toggle button to open/close the assistant
-document.addEventListener('DOMContentLoaded', () => {
+function initAssistantUI() {
   try {
     const section = document.getElementById('epir-assistant-section');
     if (!section) return;
+    if (section.dataset.assistantUiInit === '1') return;
+    section.dataset.assistantUiInit = '1';
     const toggle = document.getElementById('assistant-toggle-button');
     const content = document.getElementById('assistant-content');
     const startClosed = section.dataset.startClosed === 'true' || section.getAttribute('data-start-closed') === 'true';
@@ -204,7 +206,13 @@ document.addEventListener('DOMContentLoaded', () => {
   } catch (e) {
     console.warn('Assistant init error', e);
   }
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initAssistantUI, { once: true });
+} else {
+  initAssistantUI();
+}
 
 /* Typy - usunięte dla kompatybilności z przeglądarką (TypeScript → JavaScript) */
 // type MessageElement = { id; el };
@@ -530,13 +538,15 @@ async function sendMessageToWorker(
 // Kod ładowany bezpośrednio w przeglądarce - brak eksportów
 
 // DODANE: fix przeładowania strony (preventDefault) i wywołanie /apps/assistant/chat
-document.addEventListener('DOMContentLoaded', () => {
+function initAssistantSubmitHandler() {
   try {
     const form = document.querySelector('#assistant-form');
     if (!form) {
       console.warn('assistant.js: #assistant-form not found');
       return;
     }
+    if (form.dataset.assistantSubmitInit === '1') return;
+    form.dataset.assistantSubmitInit = '1';
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -573,4 +583,10 @@ document.addEventListener('DOMContentLoaded', () => {
   } catch (e) {
     console.error('assistant.js DOMContentLoaded submit handler error:', e);
   }
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initAssistantSubmitHandler, { once: true });
+} else {
+  initAssistantSubmitHandler();
+}

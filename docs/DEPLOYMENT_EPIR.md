@@ -128,7 +128,7 @@ Efekt: `https://epir-art-silver-jewellery.myshopify.com/apps/assistant/chat` →
 ### Kroki w Shopify Admin
 
 1. Zaloguj się do **Shopify Admin** → **Settings** → **Apps and sales channels**.
-2. Wybierz aplikację **Agent EPIR Art Jewellery**.
+2. Wybierz aplikację **epir_ai**.
 3. Przejdź do **App setup** / **App proxy**.
 4. Upewnij się, że:
    - **Subpath prefix:** `apps`

@@ -5,7 +5,7 @@ import path from 'path';
 
 describe('MCP system prompt tool names', () => {
   test('prompt contains all MCP tool names defined in TOOL_SCHEMAS', () => {
-    const promptPath = path.resolve(__dirname, '../src/prompts/epir_mcp_system_prompt.ts');
+    const promptPath = path.resolve(__dirname, '../src/prompts/luxury-system-prompt.ts');
     const prompt = fs.readFileSync(promptPath, 'utf8');
 
     const keys = Object.keys(TOOL_SCHEMAS);

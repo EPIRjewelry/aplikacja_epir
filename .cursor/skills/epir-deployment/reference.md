@@ -53,7 +53,7 @@ cd d:\aplikacja_epir
 shopify app config link
 ```
 
-1. **Aplikacja** – wybierz "Agent EPIR Art Jewellery" (lub utwórz nową). `client_id` w shopify.app.toml musi pasować do apki w Partners.
+1. **Aplikacja** – wybierz "epir_ai" (lub utwórz nową). `client_id` w shopify.app.toml musi pasować do apki w Partners.
 2. **Dev store** – wybierz development store (np. epir-art-silver-jewellery.myshopify.com).
 
 Po linku projekt jest powiązany z apką – `shopify app deploy` wie, dokąd wgrywać extensions.

@@ -2,8 +2,8 @@
 # client_id: skopiuj z Shopify Partners (App setup → Client credentials)
 # application_url: URL workera/backendu (np. chat worker)
 
-name = "Agent EPIR Art Jewellery"
-client_id = "abbb8988e6c96ba5ca0c3545de0d3491"
+name = "epir_ai"
+client_id = "80a9878cfb29c901c987bf0046a36238"
 application_url = "https://asystent.epirbizuteria.pl"
 embedded = true
 
