@@ -16,3 +16,4 @@ export {SectionFeaturedProducts} from './sections/SectionFeaturedProducts';
 export {SectionFeaturedCollections} from './sections/SectionFeaturedCollections';
 export {Sections, SECTIONS_HERO_FRAGMENT, SECTIONS_FEATURED_COLLECTIONS_FRAGMENT, SECTIONS_FEATURED_PRODUCTS_FRAGMENT} from './sections/Sections';
 export {RouteContent, ROUTE_CONTENT_QUERY} from './sections/RouteContent';
+export {ChatWidget, getOrCreateAnonymousId, type ChatMessage, type ChatWidgetProps} from './ChatWidget';
