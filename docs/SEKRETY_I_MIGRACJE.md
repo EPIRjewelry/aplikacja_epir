@@ -24,11 +24,11 @@ Bez tego `shopify app deploy` nie zadziała. **Client secret** (SHOPIFY_APP_SECR
 
 ### Chat worker (`epir-art-jewellery-worker`)
 
-| Sekret | Skąd wziąć | Polecenie |
-|--------|------------|-----------|
-| **GROQ_API_KEY** | [console.groq.com](https://console.groq.com) → API Keys → Create | `cd workers/chat && wrangler secret put GROQ_API_KEY` |
+| Sekret                 | Skąd wziąć                                                                                                       | Polecenie                                                   |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| **GROQ_API_KEY**       | [console.groq.com](https://console.groq.com) → API Keys → Create                                                 | `cd workers/chat && wrangler secret put GROQ_API_KEY`       |
 | **SHOPIFY_APP_SECRET** | Shopify Partners → Twoja aplikacja → **App setup** → **Client credentials** → **Client secret** (obok Client ID) | `cd workers/chat && wrangler secret put SHOPIFY_APP_SECRET` |
-| **ADMIN_KEY** | Dowolny losowy string (np. `openssl rand -hex 32`) – do Dashboard leadów | `cd workers/chat && wrangler secret put ADMIN_KEY` |
+| **ADMIN_KEY**          | Dowolny losowy string (np. `openssl rand -hex 32`) – do Dashboard leadów                                         | `cd workers/chat && wrangler secret put ADMIN_KEY`          |
 
 **SHOPIFY_APP_SECRET** – to **Client secret** (nie API key). Używany do weryfikacji HMAC żądań App Proxy. Bez tego chat przez App Proxy (`/apps/assistant/*`) będzie odrzucać requesty.
 
@@ -36,11 +36,11 @@ Bez tego `shopify app deploy` nie zadziała. **Client secret** (SHOPIFY_APP_SECR
 
 ### BigQuery batch worker (`epir-bigquery-batch`)
 
-| Sekret | Skąd wziąć | Polecenie |
-|--------|------------|-----------|
-| **GOOGLE_CLIENT_EMAIL** | GCP Console → IAM → Service Accounts → wybierz konto → Email (np. `epir-bq@projekt.iam.gserviceaccount.com`) | `cd workers/bigquery-batch && wrangler secret put GOOGLE_CLIENT_EMAIL` |
-| **GOOGLE_PRIVATE_KEY** | GCP → Service Account → Keys → Add key → JSON → skopiuj **pole `private_key`** (cały blok PEM). Nazwa sekretu musi być dokładnie `GOOGLE_PRIVATE_KEY` – worker czyta `env.GOOGLE_PRIVATE_KEY`. | `cd workers/bigquery-batch && wrangler secret put GOOGLE_PRIVATE_KEY` |
-| **GOOGLE_PROJECT_ID** | GCP Console → Dashboard → Project ID | `cd workers/bigquery-batch && wrangler secret put GOOGLE_PROJECT_ID` |
+| Sekret                  | Skąd wziąć                                                                                                                                                                                     | Polecenie                                                              |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| **GOOGLE_CLIENT_EMAIL** | GCP Console → IAM → Service Accounts → wybierz konto → Email (np. `epir-bq@projekt.iam.gserviceaccount.com`)                                                                                   | `cd workers/bigquery-batch && wrangler secret put GOOGLE_CLIENT_EMAIL` |
+| **GOOGLE_PRIVATE_KEY**  | GCP → Service Account → Keys → Add key → JSON → skopiuj **pole `private_key`** (cały blok PEM). Nazwa sekretu musi być dokładnie `GOOGLE_PRIVATE_KEY` – worker czyta `env.GOOGLE_PRIVATE_KEY`. | `cd workers/bigquery-batch && wrangler secret put GOOGLE_PRIVATE_KEY`  |
+| **GOOGLE_PROJECT_ID**   | GCP Console → Dashboard → Project ID                                                                                                                                                           | `cd workers/bigquery-batch && wrangler secret put GOOGLE_PROJECT_ID`   |
 
 **GOOGLE_PRIVATE_KEY** – wklej cały klucz tak jak jest (z `\n` z JSON – worker zamienia `\\n` na `\n`).
 
@@ -51,6 +51,7 @@ Bez tego `shopify app deploy` nie zadziała. **Client secret** (SHOPIFY_APP_SECR
 ## 2. Propozycja nr 1 – rozszerzenie deploy.ps1
 
 **Obecny stan:** `deploy.ps1` robi:
+
 - npm install
 - deploy analytics → bigquery-batch → chat
 - shopify app build + deploy
@@ -58,6 +59,7 @@ Bez tego `shopify app deploy` nie zadziała. **Client secret** (SHOPIFY_APP_SECR
 **Obecny stan deploy.ps1:** Obejmuje RAG → analytics → bigquery-batch → chat → shopify app build → shopify app deploy.
 
 **Czego brakuje (jednorazowo):**
+
 - Migracje D1 – trzeba wykonać ręcznie przed pierwszym deployem
 - Sekrety – ręcznie przed deployem
 
@@ -73,10 +75,10 @@ Migracje to pliki SQL (np. `001_*.sql`, `002_*.sql`), które tworzą tabele w ba
 
 ### Gdzie są migracje
 
-| Baza | Ścieżka migracji | Pliki |
-|------|------------------|-------|
-| **ai-assistant-sessions-db** | `workers/chat/migrations/` | 001_create_analytics_schema.sql (sessions, messages, tool_calls, usage_stats, cart_activity), 002_client_profiles.sql |
-| **jewelry-analytics-db** | `workers/bigquery-batch/migrations/` | 003_batch_exports.sql |
+| Baza                         | Ścieżka migracji                     | Pliki                                                                                                                 |
+| ---------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| **ai-assistant-sessions-db** | `workers/chat/migrations/`           | 001_create_analytics_schema.sql (sessions, messages, tool_calls, usage_stats, cart_activity), 002_client_profiles.sql |
+| **jewelry-analytics-db**     | `workers/bigquery-batch/migrations/` | 003_batch_exports.sql                                                                                                 |
 
 ### Kolejność wykonania
 

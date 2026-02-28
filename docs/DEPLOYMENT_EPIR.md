@@ -8,9 +8,9 @@ Dokument opisuje kroki wdrożenia infrastruktury Cloudflare (D1, Workers, Routes
 
 ### Wymagane bazy
 
-| Baza | Opis | Binding |
-|------|------|---------|
-| `jewelry-analytics-db` | Pixel events, batch_exports, analytics | `DB` |
+| Baza                       | Opis                                   | Binding      |
+| -------------------------- | -------------------------------------- | ------------ |
+| `jewelry-analytics-db`     | Pixel events, batch_exports, analytics | `DB`         |
 | `ai-assistant-sessions-db` | Sesje czatu, messages, client_profiles | `DB_CHATBOT` |
 
 ### Utworzenie baz
@@ -54,10 +54,10 @@ cd workers/chat
 wrangler d1 migrations apply ai-assistant-sessions-db --remote
 ```
 
-| Migracja | Tabele |
-|----------|--------|
-| 001 | sessions, messages, tool_calls, usage_stats, cart_activity |
-| 002 | client_profiles |
+| Migracja | Tabele                                                     |
+| -------- | ---------------------------------------------------------- |
+| 001      | sessions, messages, tool_calls, usage_stats, cart_activity |
+| 002      | client_profiles                                            |
 
 ### Baza: jewelry-analytics-db
 
@@ -68,9 +68,9 @@ cd workers/bigquery-batch
 wrangler d1 migrations apply jewelry-analytics-db --remote
 ```
 
-| Migracja | Tabele |
-|----------|--------|
-| 003 | batch_exports |
+| Migracja | Tabele        |
+| -------- | ------------- |
+| 003      | batch_exports |
 
 **Uwaga:** Tabela `pixel_events` jest tworzona automatycznie przez analytics worker przy pierwszym uruchomieniu (`ensurePixelTable`). Nie wymaga migracji D1.
 
@@ -110,7 +110,7 @@ wrangler deploy
 
 ---
 
-## 7.4 App Proxy: /apps/assistant/* → chat worker
+## 7.4 App Proxy: /apps/assistant/\* → chat worker
 
 App Proxy kieruje żądania z Shopify (`https://epir-art-silver-jewellery.myshopify.com/apps/assistant/*`) na chat workera.
 
@@ -164,25 +164,26 @@ wrangler secret put GOOGLE_PROJECT_ID
 
 ### Podsumowanie sekretów
 
-| Worker | Sekret | Opis |
-|--------|--------|------|
-| chat | `GROQ_API_KEY` | Klucz API Groq (LLM) |
-| chat | `SHOPIFY_APP_SECRET` | Client secret aplikacji Shopify (HMAC) |
-| bigquery-batch | `GOOGLE_CLIENT_EMAIL` | Service account email (BigQuery) |
-| bigquery-batch | `GOOGLE_PRIVATE_KEY` | Klucz prywatny (PEM) |
-| bigquery-batch | `GOOGLE_PROJECT_ID` | ID projektu GCP |
+| Worker         | Sekret                | Opis                                   |
+| -------------- | --------------------- | -------------------------------------- |
+| chat           | `GROQ_API_KEY`        | Klucz API Groq (LLM)                   |
+| chat           | `SHOPIFY_APP_SECRET`  | Client secret aplikacji Shopify (HMAC) |
+| bigquery-batch | `GOOGLE_CLIENT_EMAIL` | Service account email (BigQuery)       |
+| bigquery-batch | `GOOGLE_PRIVATE_KEY`  | Klucz prywatny (PEM)                   |
+| bigquery-batch | `GOOGLE_PROJECT_ID`   | ID projektu GCP                        |
 
 ---
 
 ## Spójność wrangler.toml (weryfikacja)
 
-| Worker | Plik | jewelry-analytics-db | ai-assistant-sessions-db | Routes |
-|--------|------|---------------------|--------------------------|--------|
-| chat | workers/chat/wrangler.toml | ✓ DB | ✓ DB_CHATBOT | asystent.epirbizuteria.pl/* |
-| analytics | workers/analytics/wrangler.toml | ✓ DB | – | workers_dev |
-| bigquery-batch | workers/bigquery-batch/wrangler.toml | ✓ DB | ✓ DB_CHATBOT | workers_dev (cron) |
+| Worker         | Plik                                 | jewelry-analytics-db | ai-assistant-sessions-db | Routes                       |
+| -------------- | ------------------------------------ | -------------------- | ------------------------ | ---------------------------- |
+| chat           | workers/chat/wrangler.toml           | ✓ DB                 | ✓ DB_CHATBOT             | asystent.epirbizuteria.pl/\* |
+| analytics      | workers/analytics/wrangler.toml      | ✓ DB                 | –                        | workers_dev                  |
+| bigquery-batch | workers/bigquery-batch/wrangler.toml | ✓ DB                 | ✓ DB_CHATBOT             | workers_dev (cron)           |
 
 **database_id (spójne we wszystkich workerach):**
+
 - `jewelry-analytics-db`: `6a4f7cbb-3c1c-42c7-9d79-4ef74d421f23`
 - `ai-assistant-sessions-db`: `475a1cb7-f1b5-47ba-94ed-40fd64c32451`
 
