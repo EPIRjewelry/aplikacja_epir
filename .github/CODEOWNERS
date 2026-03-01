@@ -1,0 +1,16 @@
+# Code Owners — EPIRjewelry/aplikacja_epir
+#
+# Format: <pattern> <owner> [<owner> ...]
+# Dokumentacja: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Domyślni właściciele dla całego repozytorium
+* @EPIRjewelry
+
+# Kod źródłowy aplikacji
+/apps/ @EPIRjewelry
+/packages/ @EPIRjewelry
+/workers/ @EPIRjewelry
+/extensions/ @EPIRjewelry
+
+# Pliki konfiguracyjne GitHub (zmiany wymagają przeglądu przez maintainera)
+/.github/ @EPIRjewelry
