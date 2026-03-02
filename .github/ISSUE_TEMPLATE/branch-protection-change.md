@@ -52,7 +52,11 @@ body:
       options:
         - label: Zmiany są opisane w `.github/branch-protection.md`
           required: false
+        - label: Przetestowałem/am workflow w trybie `dry_run=true`
+          required: true
         - label: Zmiana została omówiona z maintainerem repozytorium
+          required: true
+        - label: Przygotowałem/am plan rollback na wypadek blokady merge
           required: true
         - label: Jestem świadomy/a, że zmiana dotyczy gałęzi produkcyjnej `main`
           required: true

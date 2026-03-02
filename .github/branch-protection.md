@@ -15,6 +15,8 @@ Poniższe reguły ochrony są stosowane dla gałęzi `main` w repozytorium `EPIR
 | Ograniczenie kto może pushować | brak ograniczeń |
 | Wymuszanie reguł także dla adminów | **tak** |
 
+> **Uwaga operacyjna:** wartości `build`, `lint`, `typecheck` muszą odpowiadać faktycznym nazwom statusów/jobów CI w repozytorium.
+
 ## Uzasadnienie biznesowe
 
 ### 1. Wymagane recenzje PR (min. 1 recenzent)

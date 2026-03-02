@@ -7,7 +7,7 @@
 * @EPIRjewelry
 
 # Kod źródłowy aplikacji
-/src/* @EPIRjewelry
+/src/** @EPIRjewelry
 
 # Pliki konfiguracji GitHub (workflow, ochrona gałęzi, itp.)
 /.github/ @EPIRjewelry

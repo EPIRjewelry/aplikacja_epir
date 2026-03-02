@@ -16,10 +16,11 @@ jobs:
   apply-protection:
     name: Apply branch protection rules to main
     runs-on: ubuntu-latest
-    # Workflow wymaga sekretu GH_TOKEN z uprawnieniami repo (admin).
+    # Workflow wymaga sekretu GH_TOKEN z uprawnieniami administracyjnymi do repo.
     # Dodaj go ręcznie w: Settings > Secrets and variables > Actions > New repository secret
     # Nazwa sekretu: GH_TOKEN
-    # Wymagane uprawnienia tokenu: repo (pełne) lub fine-grained: administration:write
+    # Rekomendacja: fine-grained token z uprawnieniem "Administration: Read and write"
+    # dla repozytorium. Alternatywnie: classic PAT z zakresem `repo`.
     permissions:
       contents: read
 
@@ -104,10 +105,10 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             /repos/${{ github.repository }}/branches/main/protection \
-            | jq '{
-                required_status_checks: .required_status_checks.contexts,
-                strict: .required_status_checks.strict,
-                enforce_admins: .enforce_admins.enabled,
-                required_approving_review_count: .required_pull_request_reviews.required_approving_review_count,
-                dismiss_stale_reviews: .required_pull_request_reviews.dismiss_stale_reviews
-              }'
+            --jq '{
+              required_status_checks: .required_status_checks.contexts,
+              strict: .required_status_checks.strict,
+              enforce_admins: .enforce_admins.enabled,
+              required_approving_review_count: .required_pull_request_reviews.required_approving_review_count,
+              dismiss_stale_reviews: .required_pull_request_reviews.dismiss_stale_reviews
+            }'

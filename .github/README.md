@@ -29,6 +29,9 @@ Szczegółowy opis reguł ochrony i uzasadnienie biznesowe znajduje się w pliku
 | Ograniczenie pushowania | brak |
 | Wymuszanie dla adminów | tak |
 
+> **Ważne:** Nazwy wymaganych status checks muszą **dokładnie** odpowiadać nazwom jobów/reportów w CI.
+> Jeśli w repo są inne nazwy, zaktualizuj `contexts` przed zastosowaniem reguł.
+
 ---
 
 ## Ręczne zastosowanie reguł przez maintainerów
@@ -164,6 +167,38 @@ gh api \
 
 Lub przez interfejs webowy:  
 **Settings → Branches → Branch protection rules**
+
+---
+
+## Rollback (przywrócenie mniej restrykcyjnych ustawień)
+
+Jeśli po wdrożeniu reguł merge PR-ów zostanie nieoczekiwanie zablokowany, wykonaj rollback:
+
+```bash
+gh api \
+  --method PUT \
+  -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  /repos/EPIRjewelry/aplikacja_epir/branches/main/protection \
+  --input - <<'EOF'
+{
+  "required_status_checks": null,
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "dismiss_stale_reviews": false,
+    "require_code_owner_reviews": false,
+    "required_approving_review_count": 1
+  },
+  "restrictions": null,
+  "required_linear_history": false,
+  "allow_force_pushes": false,
+  "allow_deletions": false,
+  "required_conversation_resolution": false
+}
+EOF
+```
+
+Następnie ponownie zweryfikuj konfigurację poleceniem z sekcji **Weryfikacja aktualnych reguł**.
 
 ---
 
