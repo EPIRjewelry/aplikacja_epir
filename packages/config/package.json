@@ -10,7 +10,7 @@
     "./tsconfig": "./tsconfig.base.json"
   },
   "devDependencies": {
-    "eslint": "^8.20.0",
+    "eslint": "^10.0.2",
     "eslint-plugin-hydrogen": "0.12.2"
   }
 }
