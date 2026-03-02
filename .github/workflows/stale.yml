@@ -1,0 +1,29 @@
+name: Scheduled Maintenance - Stale Cleanup
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          stale-issue-message: "To zgłoszenie zostało oznaczone jako nieaktywne. Jeśli temat jest nadal aktualny, proszę o aktualizację komentarzem."
+          stale-pr-message: "Ten PR został oznaczony jako nieaktywny. Jeśli prace trwają, dodaj proszę aktualizację."
+          close-issue-message: "Zamykam automatycznie z powodu braku aktywności."
+          close-pr-message: "Zamykam automatycznie z powodu braku aktywności."
+          stale-issue-label: "stale"
+          stale-pr-label: "stale"
+          days-before-issue-stale: 30
+          days-before-pr-stale: 21
+          days-before-issue-close: 14
+          days-before-pr-close: 14
+          exempt-issue-labels: "security,critical,pinned"
+          exempt-pr-labels: "security,critical,do-not-close"
