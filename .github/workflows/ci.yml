@@ -33,12 +33,7 @@ jobs:
 
       - name: Install deps
         working-directory: apps/${{ matrix.app }}
-        run: |
-          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
-            npm ci
-          else
-            npm install --no-audit --no-fund
-          fi
+        run: npm install --no-audit --no-fund
 
       - name: Run lint
         working-directory: apps/${{ matrix.app }}
@@ -65,12 +60,7 @@ jobs:
 
       - name: Install deps
         working-directory: apps/${{ matrix.app }}
-        run: |
-          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
-            npm ci
-          else
-            npm install --no-audit --no-fund
-          fi
+        run: npm install --no-audit --no-fund
 
       - name: Run typecheck
         working-directory: apps/${{ matrix.app }}
@@ -97,12 +87,7 @@ jobs:
 
       - name: Install deps
         working-directory: apps/${{ matrix.app }}
-        run: |
-          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
-            npm ci
-          else
-            npm install --no-audit --no-fund
-          fi
+        run: npm install --no-audit --no-fund
 
       - name: Run build
         working-directory: apps/${{ matrix.app }}
