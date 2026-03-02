@@ -9,7 +9,7 @@ command = ""
 
 # Cron trigger: codziennie o 2:00 UTC
 [triggers]
-cron = ["0 2 * * *"]
+crons = ["0 2 * * *"]
 
 [[d1_databases]]
 binding = "DB"
