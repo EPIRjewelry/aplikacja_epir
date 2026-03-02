@@ -11,6 +11,6 @@
   },
   "devDependencies": {
     "eslint": "^8.20.0",
-    "eslint-plugin-hydrogen": "0.12.2"
+    "eslint-plugin-hydrogen": "0.12.5"
   }
 }
