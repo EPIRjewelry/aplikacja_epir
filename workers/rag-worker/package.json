@@ -18,11 +18,11 @@
   "author": "EPIRjewelry",
   "license": "UNLICENSED",
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.10.5",
+    "@cloudflare/vitest-pool-workers": "^0.12.18",
     "@cloudflare/workers-types": "^4.20241127.0",
-    "jsdom": "^27.1.0",
+    "jsdom": "^28.1.0",
     "typescript": "^5.3.3",
-    "vitest": "^3.2.0",
+    "vitest": "^4.0.18",
     "wrangler": "^4.46.0"
   }
 }
