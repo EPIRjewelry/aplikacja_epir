@@ -13,7 +13,7 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "baseUrl": ".",
-    "types": ["@cloudflare/workers-types"],
+    "types": ["@shopify/oxygen-workers-types"],
     "paths": {
       "~/*": ["app/*"]
     },

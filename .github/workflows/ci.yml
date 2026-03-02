@@ -23,7 +23,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Detect relevant changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            relevant:
+              - 'apps/${{ matrix.app }}/**'
+              - 'packages/**'
+              - 'package.json'
+
       - name: Setup Node
+        if: steps.changes.outputs.relevant == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -32,12 +43,18 @@ jobs:
             apps/${{ matrix.app }}/package-lock.json
 
       - name: Install deps
+        if: steps.changes.outputs.relevant == 'true'
         working-directory: apps/${{ matrix.app }}
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Run lint
+        if: steps.changes.outputs.relevant == 'true'
         working-directory: apps/${{ matrix.app }}
         run: npm run lint -- --config .eslintrc.cjs
+
+      - name: Skip (no relevant changes)
+        if: steps.changes.outputs.relevant != 'true'
+        run: echo "No app/package changes for ${{ matrix.app }} - skipping lint"
 
   typecheck:
     name: typecheck
@@ -50,7 +67,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Detect relevant changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            relevant:
+              - 'apps/${{ matrix.app }}/**'
+              - 'packages/**'
+              - 'package.json'
+
       - name: Setup Node
+        if: steps.changes.outputs.relevant == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -59,12 +87,18 @@ jobs:
             apps/${{ matrix.app }}/package-lock.json
 
       - name: Install deps
+        if: steps.changes.outputs.relevant == 'true'
         working-directory: apps/${{ matrix.app }}
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Run typecheck
+        if: steps.changes.outputs.relevant == 'true'
         working-directory: apps/${{ matrix.app }}
         run: npm run typecheck
+
+      - name: Skip (no relevant changes)
+        if: steps.changes.outputs.relevant != 'true'
+        run: echo "No app/package changes for ${{ matrix.app }} - skipping typecheck"
 
   build:
     name: build
@@ -77,7 +111,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Detect relevant changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            relevant:
+              - 'apps/${{ matrix.app }}/**'
+              - 'packages/**'
+              - 'package.json'
+
       - name: Setup Node
+        if: steps.changes.outputs.relevant == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -86,9 +131,15 @@ jobs:
             apps/${{ matrix.app }}/package-lock.json
 
       - name: Install deps
+        if: steps.changes.outputs.relevant == 'true'
         working-directory: apps/${{ matrix.app }}
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Run build
+        if: steps.changes.outputs.relevant == 'true'
         working-directory: apps/${{ matrix.app }}
         run: npm run build
+
+      - name: Skip (no relevant changes)
+        if: steps.changes.outputs.relevant != 'true'
+        run: echo "No app/package changes for ${{ matrix.app }} - skipping build"
