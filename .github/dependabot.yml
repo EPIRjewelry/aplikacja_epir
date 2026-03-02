@@ -3,66 +3,160 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 10
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    groups:
+      gh-actions:
+        patterns:
+          - "*"
 
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 10
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    groups:
+      root-npm:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/apps/kazka"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    groups:
+      app-kazka:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/apps/zareczyny"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    groups:
+      app-zareczyny:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/workers/analytics"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    groups:
+      worker-analytics:
+        patterns:
+          - "*"
 
   - package-ecosystem: "npm"
     directory: "/workers/bigquery-batch"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    groups:
+      worker-bigquery-batch:
+        patterns:
+          - "*"
 
   - package-ecosystem: "npm"
     directory: "/workers/chat"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    groups:
+      worker-chat:
+        patterns:
+          - "*"
 
   - package-ecosystem: "npm"
     directory: "/workers/rag-worker"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    groups:
+      worker-rag-worker:
+        patterns:
+          - "*"
 
   - package-ecosystem: "npm"
     directory: "/extensions/asystent-klienta"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    groups:
+      ext-asystent-klienta:
+        patterns:
+          - "*"
 
   - package-ecosystem: "npm"
     directory: "/extensions/my-web-pixel"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    groups:
+      ext-my-web-pixel:
+        patterns:
+          - "*"
 
   - package-ecosystem: "npm"
     directory: "/packages/config"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    groups:
+      package-config:
+        patterns:
+          - "*"
 
   - package-ecosystem: "npm"
     directory: "/packages/ui"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    groups:
+      package-ui:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/packages/utils"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    groups:
+      package-utils:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "@shopify/hydrogen"
+        update-types: ["version-update:semver-major"]
