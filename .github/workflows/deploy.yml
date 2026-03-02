@@ -6,12 +6,12 @@ on:
   workflow_dispatch:
     inputs:
       deploy_workers:
-        description: 'Deploy workers'
+        description: "Deploy workers"
         required: true
         type: boolean
         default: true
       deploy_pages:
-        description: 'Deploy Cloudflare Pages apps'
+        description: "Deploy Cloudflare Pages apps"
         required: true
         type: boolean
         default: true

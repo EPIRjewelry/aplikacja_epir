@@ -40,6 +40,7 @@
     "@cloudflare/workers-types": "^4.20230518.0",
     "@epir/config": "*",
     "@remix-run/dev": "^2.15.0",
+    "@shopify/oxygen-workers-types": "^2.2.0",
     "@shopify/prettier-config": "^1.1.2",
     "@types/eslint": "^8.4.10",
     "@types/react": "^18.2.22",

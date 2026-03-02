@@ -19,16 +19,16 @@ Szczegółowy opis reguł ochrony i uzasadnienie biznesowe znajduje się w pliku
 
 ### Podsumowanie reguł
 
-| Reguła | Wartość |
-|--------|---------|
-| Wymagane recenzje PR | 1 |
-| Wymagane sprawdzenia statusu | `build`, `lint`, `typecheck` |
-| Gałąź aktualna przed scaleniem | tak |
-| Podpisane commity | nie |
-| Historia liniowa | nie |
-| Odrzucanie nieaktualnych zatwierdzeń | tak |
-| Ograniczenie pushowania | brak |
-| Wymuszanie dla adminów | tak |
+| Reguła                               | Wartość                      |
+| ------------------------------------ | ---------------------------- |
+| Wymagane recenzje PR                 | 1                            |
+| Wymagane sprawdzenia statusu         | `build`, `lint`, `typecheck` |
+| Gałąź aktualna przed scaleniem       | tak                          |
+| Podpisane commity                    | nie                          |
+| Historia liniowa                     | nie                          |
+| Odrzucanie nieaktualnych zatwierdzeń | tak                          |
+| Ograniczenie pushowania              | brak                         |
+| Wymuszanie dla adminów               | tak                          |
 
 > **Ważne:** Nazwy wymaganych status checks muszą **dokładnie** odpowiadać nazwom jobów/reportów w CI.
 > Jeśli w repo są inne nazwy, zaktualizuj `contexts` przed zastosowaniem reguł.
