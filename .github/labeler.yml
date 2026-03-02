@@ -1,18 +1,30 @@
 apps:
-  - "apps/**"
+  - changed-files:
+      - any-glob-to-any-file:
+          - "apps/**"
 
 workers:
-  - "workers/**"
+  - changed-files:
+      - any-glob-to-any-file:
+          - "workers/**"
 
 extensions:
-  - "extensions/**"
+  - changed-files:
+      - any-glob-to-any-file:
+          - "extensions/**"
 
 packages:
-  - "packages/**"
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/**"
 
 github-config:
-  - ".github/**"
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
 
 documentation:
-  - "docs/**"
-  - "**/*.md"
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "**/*.md"
