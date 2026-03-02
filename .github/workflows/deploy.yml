@@ -1,0 +1,105 @@
+name: Deploy (Cloudflare)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_workers:
+        description: 'Deploy workers'
+        required: true
+        type: boolean
+        default: true
+      deploy_pages:
+        description: 'Deploy Cloudflare Pages apps'
+        required: true
+        type: boolean
+        default: true
+
+concurrency:
+  group: deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-workers:
+    name: deploy-workers
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || inputs.deploy_workers == true
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Cloudflare secrets
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
+            echo "Missing CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID."
+            exit 1
+          fi
+
+      - name: Deploy analytics worker
+        working-directory: workers/analytics
+        run: npx wrangler deploy
+
+      - name: Deploy bigquery-batch worker
+        working-directory: workers/bigquery-batch
+        run: npx wrangler deploy
+
+      - name: Deploy chat worker
+        working-directory: workers/chat
+        run: npx wrangler deploy
+
+      - name: Deploy rag worker
+        working-directory: workers/rag-worker
+        run: npx wrangler deploy
+
+  deploy-pages:
+    name: deploy-pages
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || inputs.deploy_pages == true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: kazka
+            project: kazka-hydrogen-pages
+          - app: zareczyny
+            project: zareczyny-hydrogen-pages
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Cloudflare secrets
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
+            echo "Missing CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID."
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            apps/${{ matrix.app }}/package-lock.json
+
+      - name: Install app dependencies
+        working-directory: apps/${{ matrix.app }}
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Build app
+        working-directory: apps/${{ matrix.app }}
+        run: npm run build
+
+      - name: Deploy app to Cloudflare Pages
+        working-directory: apps/${{ matrix.app }}
+        run: |
+          npx wrangler pages deploy public \
+            --project-name=${{ matrix.project }} \
+            --branch=main

@@ -25,6 +25,11 @@ Zakres:
 - Workflow deploy do środowiska docelowego
 - Workflow preview dla PR
 
+Status:
+- Rozpoczęty jako draft (workflowy: `workflows/deploy.yml`, `workflows/preview.yml`)
+- Wersja startowa obejmuje Cloudflare Workers + Cloudflare Pages
+- Shopify deploy pozostaje manualnie (kolejny etap PR B)
+
 Wymagane przed merge:
 - Uzupełnienie sekretów hostingu/deploy (np. Cloudflare/Shopify/Vercel/Netlify)
 - Ustalenie mapowania środowisk (preview/staging/prod)
