@@ -1,0 +1,13 @@
+# CODEOWNERS
+# Każda linia definiuje wzorzec ścieżki i właścicieli (GitHub users/teams).
+# Właściciele są automatycznie proszeni o recenzję PRów dotyczących ich ścieżek.
+# Więcej informacji: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Domyślny właściciel dla całego repozytorium
+* @EPIRjewelry
+
+# Kod źródłowy aplikacji
+/src/** @EPIRjewelry
+
+# Pliki konfiguracji GitHub (workflow, ochrona gałęzi, itp.)
+/.github/ @EPIRjewelry
