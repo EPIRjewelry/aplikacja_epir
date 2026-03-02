@@ -1,0 +1,18 @@
+apps:
+  - "apps/**"
+
+workers:
+  - "workers/**"
+
+extensions:
+  - "extensions/**"
+
+packages:
+  - "packages/**"
+
+github-config:
+  - ".github/**"
+
+documentation:
+  - "docs/**"
+  - "**/*.md"

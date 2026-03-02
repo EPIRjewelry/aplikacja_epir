@@ -9,6 +9,7 @@ Ten katalog zawiera konfigurację GitHub dla repozytorium: workflow CI/CD, szabl
 - [Automatyczne zastosowanie przez workflow](#automatyczne-zastosowanie-przez-workflow)
 - [Weryfikacja aktualnych reguł](#weryfikacja-aktualnych-reguł)
 - [Zgłaszanie zmian reguł](#zgłaszanie-zmian-reguł)
+- [Automatyzacja CI/CD i maintenance](#automatyzacja-cicd-i-maintenance)
 
 ---
 
@@ -208,3 +209,17 @@ Aby zgłosić propozycję zmiany reguł ochrony gałęzi, utwórz nowe zgłoszen
 [**Branch Protection Change**](ISSUE_TEMPLATE/branch-protection-change.md)
 
 Każda zmiana wymaga zatwierdzenia przez co najmniej jednego maintainera repozytorium.
+
+---
+
+## Automatyzacja CI/CD i maintenance
+
+W repozytorium przygotowano dodatkowe workflowy wspierające codzienną pracę zespołu:
+
+- `workflows/ci.yml` — pipeline CI z jobami `build`, `lint`, `typecheck`.
+- `dependabot.yml` — automatyczne PR-y z aktualizacjami zależności.
+- `workflows/triage-labeler.yml` + `labeler.yml` — automatyczne etykietowanie PR-ów.
+- `workflows/stale.yml` — cykliczne porządki nieaktywnych issue/PR.
+
+Plan wdrożeń kolejnych etapów (CD/preview/security/performance/release) znajduje się w:
+`AUTOMATION_ROADMAP.md`.
