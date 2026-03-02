@@ -1,0 +1,81 @@
+name: Preview (Cloudflare Pages)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/**"
+      - "packages/**"
+      - ".github/workflows/preview.yml"
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  preview-pages:
+    name: preview-pages
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: kazka
+            project: kazka-hydrogen-pages
+          - app: zareczyny
+            project: zareczyny-hydrogen-pages
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect relevant changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            relevant:
+              - 'apps/${{ matrix.app }}/**'
+              - 'packages/**'
+
+      - name: Validate Cloudflare secrets
+        if: steps.changes.outputs.relevant == 'true'
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
+            echo "Cloudflare secrets are missing. Skipping preview deploy for ${{ matrix.app }}."
+            echo "Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in repository secrets."
+            exit 0
+          fi
+
+      - name: Setup Node
+        if: steps.changes.outputs.relevant == 'true' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            apps/${{ matrix.app }}/package-lock.json
+
+      - name: Install app dependencies
+        if: steps.changes.outputs.relevant == 'true' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        working-directory: apps/${{ matrix.app }}
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Build app
+        if: steps.changes.outputs.relevant == 'true' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        working-directory: apps/${{ matrix.app }}
+        run: npm run build
+
+      - name: Deploy preview to Cloudflare Pages
+        if: steps.changes.outputs.relevant == 'true' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        working-directory: apps/${{ matrix.app }}
+        run: |
+          npx wrangler pages deploy public \
+            --project-name=${{ matrix.project }} \
+            --branch=pr-${{ github.event.pull_request.number }}
+
+      - name: Skip (no relevant changes)
+        if: steps.changes.outputs.relevant != 'true'
+        run: echo "No relevant app changes for ${{ matrix.app }} - skipping preview"

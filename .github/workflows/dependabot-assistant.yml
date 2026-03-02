@@ -1,0 +1,38 @@
+name: Dependabot assistant
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  comment-and-label:
+    runs-on: ubuntu-latest
+    if: "github.event.pull_request.user.login == 'app/dependabot' || github.event.pull_request.user.login == 'dependabot[bot]'"
+    steps:
+      - name: Add comment and label for Dependabot PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const files = await github.paginate(github.rest.pulls.listFiles, {owner, repo, pull_number: pr.number});
+            const paths = files.map(f => f.filename);
+            const lockOrPkg = paths.some(p => /(^|\/)(package.json|package-lock.json|yarn.lock|pnpm-lock.yaml)$/.test(p));
+            const affectsSrc = paths.some(p => /(^|\/)(src|app|workers|extensions|packages)\//.test(p));
+            const majorHint = /\b(major|breaking|react|tailwind)\b/i.test(pr.title);
+            let recommendation;
+            if (lockOrPkg && !affectsSrc && !majorHint) {
+              recommendation = '- Prawdopodobnie bezpieczne: aktualizacja zależności w lockfile/package.json. Sprawdź CI i zmerguj jeśli zielone.';
+            } else if (majorHint || affectsSrc) {
+              recommendation = '- Wymagana ręczna weryfikacja: duża zmiana lub wpływ na kod źródłowy (React/Tailwind/major). Uruchom testy i ręcznie sprawdź.';
+            } else {
+              recommendation = '- Proszę przejrzeć; jeśli CI przejdzie i zmiany są tylko devDeps, można zmergować.';
+            }
+
+            const shortPaths = paths.slice(0, 12).join('\n');
+            const more = paths.length > 12 ? `\n(+${paths.length - 12} więcej plików)` : '';
+            const body = `Automatyczny komentarz asystenta zależności dla PR #${pr.number} — **${pr.title}**\n\nZmiany (przykład):\n${shortPaths}${more}\n\nRekomendacja:\n${recommendation}\n\nEtykieta \`dependabot-review\` została dodana, proszę o ręczną ocenę przez zespół.`;
+
+            await github.rest.issues.createComment({owner, repo, issue_number: pr.number, body});
+            await github.rest.issues.addLabels({owner, repo, issue_number: pr.number, labels: ['dependabot-review']});

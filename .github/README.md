@@ -19,16 +19,16 @@ Szczegółowy opis reguł ochrony i uzasadnienie biznesowe znajduje się w pliku
 
 ### Podsumowanie reguł
 
-| Reguła | Wartość |
-|--------|---------|
-| Wymagane recenzje PR | 1 |
-| Wymagane sprawdzenia statusu | `build`, `lint`, `typecheck` |
-| Gałąź aktualna przed scaleniem | tak |
-| Podpisane commity | nie |
-| Historia liniowa | nie |
-| Odrzucanie nieaktualnych zatwierdzeń | tak |
-| Ograniczenie pushowania | brak |
-| Wymuszanie dla adminów | tak |
+| Reguła                               | Wartość                      |
+| ------------------------------------ | ---------------------------- |
+| Wymagane recenzje PR                 | 1                            |
+| Wymagane sprawdzenia statusu         | `build`, `lint`, `typecheck` |
+| Gałąź aktualna przed scaleniem       | tak                          |
+| Podpisane commity                    | nie                          |
+| Historia liniowa                     | nie                          |
+| Odrzucanie nieaktualnych zatwierdzeń | tak                          |
+| Ograniczenie pushowania              | brak                         |
+| Wymuszanie dla adminów               | tak                          |
 
 > **Ważne:** Nazwy wymaganych status checks muszą **dokładnie** odpowiadać nazwom jobów/reportów w CI.
 > Jeśli w repo są inne nazwy, zaktualizuj `contexts` przed zastosowaniem reguł.
@@ -217,9 +217,16 @@ Każda zmiana wymaga zatwierdzenia przez co najmniej jednego maintainera repozyt
 W repozytorium przygotowano dodatkowe workflowy wspierające codzienną pracę zespołu:
 
 - `workflows/ci.yml` — pipeline CI z jobami `build`, `lint`, `typecheck`.
+- `workflows/deploy.yml` — automatyczny deploy Cloudflare na `main` (Workers + Pages) oraz `workflow_dispatch`.
+- `workflows/preview.yml` — preview deploy dla PR-ów na Cloudflare Pages.
 - `dependabot.yml` — automatyczne PR-y z aktualizacjami zależności.
 - `workflows/triage-labeler.yml` + `labeler.yml` — automatyczne etykietowanie PR-ów.
 - `workflows/stale.yml` — cykliczne porządki nieaktywnych issue/PR.
+
+### Sekrety wymagane dla CD/Preview (PR B)
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
 
 Plan wdrożeń kolejnych etapów (CD/preview/security/performance/release) znajduje się w:
 `AUTOMATION_ROADMAP.md`.
