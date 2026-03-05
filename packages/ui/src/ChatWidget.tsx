@@ -80,30 +80,25 @@ function ChatWidgetFallback({
       setIsLoading(true);
       setErrorMessage(null);
 
-      const isMcp = chatApiUrl.includes('/apps/assistant/chat');
+      // Worker (asystent.epirbizuteria.pl/chat) zawsze zwraca SSE – używamy tego samego formatu
+      // niezależnie od URL (zarówno /chat jak /apps/assistant/chat)
       const sessionId =
         typeof window !== 'undefined' ? sessionStorage.getItem(SESSION_ID_KEY) : null;
 
       try {
-        const body = isMcp
-          ? {
-              message: trimmed,
-              session_id: sessionId || undefined,
-              cart_id: cartId ?? undefined,
-              brand,
-              stream: true,
-            }
-          : {
-              message: trimmed,
-              anonymousId: getOrCreateAnonymousId() || undefined,
-              cartId: cartId ?? undefined,
-            };
+        const body = {
+          message: trimmed,
+          session_id: sessionId || undefined,
+          cart_id: cartId ?? undefined,
+          brand,
+          stream: true,
+        };
 
         const res = await fetch(chatApiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Accept: isMcp ? 'text/event-stream, application/json' : 'application/json',
+            Accept: 'text/event-stream, application/json',
           },
           body: JSON.stringify(body),
         });
@@ -113,7 +108,7 @@ function ChatWidgetFallback({
           throw new Error((errData as {error?: string}).error ?? `HTTP ${res.status}`);
         }
 
-        if (isMcp && res.headers.get('content-type')?.includes('text/event-stream')) {
+        if (res.headers.get('content-type')?.includes('text/event-stream')) {
           const reader = res.body?.getReader();
           if (!reader) throw new Error('No response body');
           const decoder = new TextDecoder();

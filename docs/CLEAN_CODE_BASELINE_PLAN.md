@@ -5,6 +5,7 @@ Cel: oddzielić porządki jakości kodu od zmian deploy/CI, żeby utrzymać mał
 ## Zakres
 
 1. Aplikacje `apps/kazka` i `apps/zareczyny`
+
    - uporządkowanie konfiguracji ESLint (spójny format i jedna konwencja plików)
    - stabilizacja TypeScript (`typecheck` bez błędów)
    - redukcja ostrzeżeń i błędów linta blokujących CI

@@ -3,7 +3,7 @@
 # Używa: wrangler pages deploy public --project-name=zareczyny-hydrogen-pages
 
 name = "zareczyny-hydrogen-pages"
-account_id = "73283c24dc79f92edef30dcdbc98f230"
+# account_id – Pages nie obsługuje w wrangler.toml; ustaw CLOUDFLARE_ACCOUNT_ID lub wrangler login
 compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
 

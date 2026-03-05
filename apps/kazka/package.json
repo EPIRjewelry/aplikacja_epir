@@ -6,9 +6,9 @@
   "type": "module",
   "scripts": {
     "build": "npm run build:css && remix build",
-    "build:css": "postcss app/styles/tailwind.css -o app/styles/tailwind-build.css --env production",
+    "build:css": "npx postcss-cli app/styles/tailwind.css -o app/styles/tailwind-build.css --env production",
     "dev": "npm run build:css && concurrently -g -r npm:dev:wrangler npm:dev:css \"remix watch\"",
-    "dev:css": "postcss app/styles/tailwind.css -o app/styles/tailwind-build.css -w",
+    "dev:css": "npx postcss-cli app/styles/tailwind.css -o app/styles/tailwind-build.css -w",
     "dev:wrangler": "cross-env NODE_ENV=development npm run wrangler",
     "preview": "npm run build && shopify hydrogen preview",
     "lint": "eslint --no-error-on-unmatched-pattern --ext .js,.ts,.jsx,.tsx .",
