@@ -1,0 +1,3 @@
+# Theme Check config – assistant.js ~27KB przekracza domyślne 10KB
+AssetSizeAppBlockJavaScript:
+  threshold_in_bytes: 30000

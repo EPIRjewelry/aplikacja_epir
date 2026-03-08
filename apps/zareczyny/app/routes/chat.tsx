@@ -9,19 +9,28 @@ export function meta() {
   ];
 }
 
-const DEFAULT_CHAT_API_URL = 'https://asystent.epirbizuteria.pl/chat';
+const DEFAULT_CHAT_API_URL = 'https://epirbizuteria.pl/apps/assistant/chat';
 
 export async function loader({context, request}: LoaderArgs) {
+  const configuredChatApiUrl = context.env.CHAT_API_URL as string | undefined;
   const chatApiUrl =
-    (context.env.CHAT_API_URL as string | undefined) || DEFAULT_CHAT_API_URL;
+    configuredChatApiUrl && configuredChatApiUrl.includes('/apps/assistant/chat')
+      ? configuredChatApiUrl
+      : DEFAULT_CHAT_API_URL;
   const cartId = await context.session.get('cartId');
   const brand = (context.env.BRAND as string) || 'zareczyny';
 
-  return json({chatApiUrl, cartId, brand});
+  return json({
+    chatApiUrl,
+    cartId,
+    brand,
+    storefrontId: 'zareczyny',
+    channel: 'hydrogen-zareczyny',
+  });
 }
 
 export default function ChatPage() {
-  const {chatApiUrl, cartId, brand} = useLoaderData<typeof loader>();
+  const {chatApiUrl, cartId, brand, storefrontId, channel} = useLoaderData<typeof loader>();
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -29,7 +38,13 @@ export default function ChatPage() {
       <p className="mb-8 text-gray-600">
         Zadaj pytanie o produkty lub usługi. Jesteśmy tu, aby pomóc.
       </p>
-      <ChatWidget chatApiUrl={chatApiUrl} cartId={cartId} brand={brand} />
+      <ChatWidget
+        chatApiUrl={chatApiUrl}
+        cartId={cartId}
+        brand={brand}
+        storefrontId={storefrontId}
+        channel={channel}
+      />
     </div>
   );
 }

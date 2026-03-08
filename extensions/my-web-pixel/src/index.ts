@@ -23,6 +23,43 @@ register(async ({ analytics, browser, init, settings }) => {
       sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     }
     
+    // ============================================================================
+    // STOREFRONT & CHANNEL (EPIR: kazka vs zareczyny vs online-store)
+    // ============================================================================
+    // Infer from URL (page.location from Web Pixels API init/event context)
+    function inferStorefrontFromUrl(url: string | null | undefined): { storefront_id: string; channel: string } {
+      if (!url || typeof url !== 'string') return { storefront_id: 'unknown', channel: 'unknown' };
+      if (url.includes('kazka')) return { storefront_id: 'kazka', channel: 'hydrogen-kazka' };
+      if (url.includes('zareczyny')) return { storefront_id: 'zareczyny', channel: 'hydrogen-zareczyny' };
+      return { storefront_id: 'online-store', channel: 'online-store' };
+    }
+    async function getStorefrontContext(event: unknown): Promise<{ storefront_id: string; channel: string }> {
+      let url: string | null = null;
+      if (event && typeof event === 'object' && 'context' in event) {
+        const ctx = (event as any).context;
+        if (ctx?.document?.location?.href) url = ctx.document.location.href;
+      }
+      if (!url && init?.context?.document?.location?.href) {
+        url = init.context.document.location.href;
+      }
+      const result = inferStorefrontFromUrl(url);
+      if (result.storefront_id !== 'unknown') {
+        try {
+          await browser.sessionStorage.setItem('_epir_storefront', JSON.stringify(result));
+        } catch (_) {}
+      }
+      return result;
+    }
+    async function getStorefrontForEvent(event: unknown): Promise<{ storefront_id: string; channel: string }> {
+      const fromEvent = await getStorefrontContext(event);
+      if (fromEvent.storefront_id !== 'unknown') return fromEvent;
+      try {
+        const stored = await browser.sessionStorage.getItem('_epir_storefront');
+        if (stored) return JSON.parse(stored);
+      } catch (_) {}
+      return fromEvent;
+    }
+    
     console.log('[EPIR Pixel] Customer ID:', customerId || 'anonymous');
     console.log('[EPIR Pixel] Session ID:', sessionId);
     
@@ -35,13 +72,16 @@ register(async ({ analytics, browser, init, settings }) => {
     // 3. Batching would delay proactive chat activation signals
     // 4. High-value events (checkout, purchase) should be sent immediately
     // ============================================================================
-    async function sendPixelEvent(eventType: string, eventData: unknown): Promise<void> {
+    async function sendPixelEvent(eventType: string, eventData: unknown, event?: unknown): Promise<void> {
       try {
-        // Enrich event data with customer_id and session_id
+        const storefront = await getStorefrontForEvent(event ?? eventData);
+        // Enrich event data with customer_id, session_id, storefront_id, channel
         const enrichedData = {
           ...(typeof eventData === 'object' && eventData !== null ? eventData : {}),
           customerId: customerId,
-          sessionId: sessionId
+          sessionId: sessionId,
+          storefront_id: storefront.storefront_id,
+          channel: storefront.channel
         };
         
         // Endpoint z extension settings (pixelEndpoint) lub stała – chat worker proxy do analytics

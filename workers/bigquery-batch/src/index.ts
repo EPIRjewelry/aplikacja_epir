@@ -9,6 +9,7 @@
 // ============================================================================
 
 import { base64UrlEncode, str2ab } from './auth';
+import { ANALYTICS_QUERY_WHITELIST, VALID_QUERY_IDS } from './analytics-queries';
 
 interface Env {
   DB: D1Database;
@@ -16,6 +17,7 @@ interface Env {
   GOOGLE_CLIENT_EMAIL?: string;
   GOOGLE_PRIVATE_KEY?: string;
   GOOGLE_PROJECT_ID?: string;
+  ADMIN_KEY?: string;
 }
 
 const BQ_DATASET = 'analytics_435783047';
@@ -27,7 +29,7 @@ const BATCH_SIZE = 100;
 // Google Auth (wzór z epir_asystent/workers/analytics-worker)
 // ============================================================================
 
-async function getGoogleAuthToken(env: Env): Promise<string | null> {
+async function getGoogleAuthToken(env: Env, scope = 'https://www.googleapis.com/auth/bigquery.insertdata'): Promise<string | null> {
   if (!env.GOOGLE_PRIVATE_KEY || !env.GOOGLE_CLIENT_EMAIL || !env.GOOGLE_PROJECT_ID) return null;
   try {
     const pem = env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
@@ -35,7 +37,7 @@ async function getGoogleAuthToken(env: Env): Promise<string | null> {
     const now = Math.floor(Date.now() / 1000);
     const claim = {
       iss: env.GOOGLE_CLIENT_EMAIL,
-      scope: 'https://www.googleapis.com/auth/bigquery.insertdata',
+      scope,
       aud: 'https://oauth2.googleapis.com/token',
       exp: now + 3600,
       iat: now,
@@ -128,6 +130,8 @@ async function exportPixelEvents(
         event_type: r.event_type,
         session_id: r.session_id,
         customer_id: r.customer_id,
+        storefront_id: r.storefront_id ?? null,
+        channel: r.channel ?? null,
         url: r.page_url ?? '',
         payload: JSON.stringify(r),
         created_at: createdAt ?? new Date().toISOString(),
@@ -181,6 +185,8 @@ async function exportMessages(
         tool_calls: r.tool_calls,
         tool_call_id: r.tool_call_id,
         name: r.name,
+        storefront_id: r.storefront_id ?? null,
+        channel: r.channel ?? null,
       };
     });
     const { inserted } = await bulkInsertToBigQuery(env, token, BQ_TABLE_MESSAGES, bqRows);
@@ -261,6 +267,94 @@ async function handleScheduled(env: Env): Promise<void> {
 }
 
 // ============================================================================
+// Analytics Query API (run_analytics_query – internal only, ADMIN_KEY)
+// ============================================================================
+
+function verifyAdminKey(env: Env, request: Request): boolean {
+  const key = env.ADMIN_KEY;
+  if (!key) return false;
+  const provided = request.headers.get('Authorization')?.replace(/^Bearer\s+/i, '') ?? request.headers.get('X-Admin-Key');
+  return provided === key;
+}
+
+async function runBigQueryJob(env: Env, query: string): Promise<{ rows?: Record<string, unknown>[]; error?: string }> {
+  const token = await getGoogleAuthToken(env, 'https://www.googleapis.com/auth/bigquery.readonly');
+  if (!token || !env.GOOGLE_PROJECT_ID) {
+    return { error: 'BigQuery not configured for queries' };
+  }
+  const url = `https://bigquery.googleapis.com/bigquery/v2/projects/${env.GOOGLE_PROJECT_ID}/jobs`;
+  const jobRes = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      configuration: {
+        query: { query: query.trim(), useLegacySql: false },
+      },
+    }),
+  });
+  if (!jobRes.ok) {
+    const errText = await jobRes.text();
+    return { error: `BigQuery job failed: ${jobRes.status} ${errText.slice(0, 200)}` };
+  }
+  const job = (await jobRes.json()) as { jobReference?: { jobId: string; projectId: string; location?: string } };
+  const jobId = job.jobReference?.jobId;
+  const projectId = job.jobReference?.projectId ?? env.GOOGLE_PROJECT_ID;
+  if (!jobId) return { error: 'No job ID in response' };
+
+  // jobs.getQueryResults – czeka na zakończenie (timeoutMs=60000)
+  const resultsRes = await fetch(
+    `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries/${jobId}?timeoutMs=60000`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!resultsRes.ok) {
+    const errText = await resultsRes.text();
+    return { error: `getQueryResults failed: ${resultsRes.status} ${errText.slice(0, 200)}` };
+  }
+  const data = (await resultsRes.json()) as {
+    rows?: Array<{ f?: Array<{ v?: unknown }> }>;
+    schema?: { fields?: Array<{ name?: string }> };
+    errors?: Array<{ message?: string }>;
+  };
+  if (data.errors?.length) {
+    return { error: data.errors.map((e) => e.message).join('; ') };
+  }
+  const fields = data.schema?.fields?.map((f) => f.name ?? '') ?? [];
+  const rows = (data.rows ?? []).map((r) => {
+    const obj: Record<string, unknown> = {};
+    fields.forEach((f, i) => {
+      obj[f] = r.f?.[i]?.v ?? null;
+    });
+    return obj;
+  });
+  return { rows };
+}
+
+async function handleAnalyticsQuery(request: Request, env: Env): Promise<Response> {
+  if (!verifyAdminKey(env, request)) {
+    return new Response(JSON.stringify({ error: 'Unauthorized: ADMIN_KEY required' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+  }
+  let body: { queryId?: string; dateFrom?: number; dateTo?: number };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+  }
+  const queryId = body?.queryId;
+  if (!queryId || typeof queryId !== 'string') {
+    return new Response(JSON.stringify({ error: 'queryId required', validIds: VALID_QUERY_IDS }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+  }
+  const sql = ANALYTICS_QUERY_WHITELIST[queryId];
+  if (!sql) {
+    return new Response(JSON.stringify({ error: `Invalid queryId: ${queryId}`, validIds: VALID_QUERY_IDS }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+  }
+  const { rows, error } = await runBigQueryJob(env, sql);
+  if (error) {
+    return new Response(JSON.stringify({ error }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+  }
+  return new Response(JSON.stringify({ queryId, rows: rows ?? [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+}
+
+// ============================================================================
 // Worker export
 // ============================================================================
 
@@ -269,6 +363,9 @@ export default {
     const url = new URL(request.url);
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/healthz')) {
       return new Response('ok', { status: 200 });
+    }
+    if (request.method === 'POST' && url.pathname === '/internal/analytics/query') {
+      return handleAnalyticsQuery(request, env);
     }
     return new Response('Not Found', { status: 404 });
   },

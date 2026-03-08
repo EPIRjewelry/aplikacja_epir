@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run ESOG Agent",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/agents/epir_esog_agent/agent.py",
+      "console": "integratedTerminal",
+      "args": [
+        "Check: workers/chat/src/index.ts contains admin token"
+      ],
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "EPIR_AGENT_MODE": "local"
+      },
+      "cwd": "${workspaceFolder}/agents/epir_esog_agent"
+    },
+    {
+      "name": "Run EFA (Fix Agent)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/agents/epir_fix_agent/agent.py",
+      "console": "integratedTerminal",
+      "args": [
+        "Set default_start_closed = false"
+      ],
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "EPIR_AGENT_MODE": "local"
+      },
+      "cwd": "${workspaceFolder}/agents/epir_fix_agent"
+    }
+  ]
+}

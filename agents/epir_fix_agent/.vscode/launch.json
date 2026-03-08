@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run EFA (Fix Agent)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/agents/epir_fix_agent/agent.py",
+      "console": "integratedTerminal",
+      "args": ["Set default_start_closed = false"],
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "EPIR_AGENT_MODE": "local"
+      },
+      "cwd": "${workspaceFolder}/agents/epir_fix_agent"
+    }
+  ]
+}

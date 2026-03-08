@@ -25,6 +25,8 @@ database_id = "475a1cb7-f1b5-47ba-94ed-40fd64c32451"
 # wrangler secret put GOOGLE_CLIENT_EMAIL
 # wrangler secret put GOOGLE_PRIVATE_KEY
 # wrangler secret put GOOGLE_PROJECT_ID
+# ADMIN_KEY – wymagany dla POST /internal/analytics/query (run_analytics_query)
+# wrangler secret put ADMIN_KEY
 
 [observability]
 enabled = true

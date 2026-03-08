@@ -4,6 +4,15 @@ node_modules
 dist
 .dev.vars
 *.log
+**/service-account.json
 .shopify
 **/public/build
 /package-lock.json
+
+# Sekrety – nigdy nie commitować
+*-secrets.txt
+bigquery-secrets.txt
+chat-secrets.txt
+
+# Cache buildów
+**/.cache/

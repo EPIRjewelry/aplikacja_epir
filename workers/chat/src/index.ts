@@ -33,6 +33,40 @@ import { LUXURY_SYSTEM_PROMPT } from './prompts/luxury-system-prompt'; // 🟢 U
 import { TOOL_SCHEMAS } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2
 import { truncateWithSummary } from './utils/history'; // 🔵 History truncation
 import { callMcpToolDirect, handleMcpRequest } from './mcp_server';
+
+/** Wywołanie run_analytics_query – tylko gdy channel=internal-dashboard (BIGQUERY_BATCH + ADMIN_KEY) */
+async function runAnalyticsQuery(env: Env, args: { queryId?: string; dateFrom?: number; dateTo?: number }): Promise<{ result?: unknown; error?: unknown }> {
+  const binding = (env as any).BIGQUERY_BATCH as Fetcher | undefined;
+  const adminKey = env.ADMIN_KEY;
+  if (!binding || !adminKey) {
+    return { error: { code: -32603, message: 'run_analytics_query not configured (BIGQUERY_BATCH or ADMIN_KEY missing)' } };
+  }
+  const queryId = args?.queryId;
+  if (!queryId || typeof queryId !== 'string') {
+    return { error: { code: -32602, message: 'queryId required' } };
+  }
+  try {
+    const res = await binding.fetch('https://bq/internal/analytics/query', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${adminKey}`,
+        'X-Admin-Key': adminKey,
+      },
+      body: JSON.stringify({ queryId, dateFrom: args.dateFrom, dateTo: args.dateTo }),
+    });
+    const data = await res.json().catch(() => ({})) as { rows?: unknown[]; error?: string };
+    if (!res.ok) {
+      return { error: { code: res.status, message: data.error ?? `HTTP ${res.status}` } };
+    }
+    if (data.error) {
+      return { error: { code: -32000, message: data.error } };
+    }
+    return { result: { queryId, rows: data.rows ?? [] } };
+  } catch (e: any) {
+    return { error: { code: -32000, message: e?.message ?? 'run_analytics_query failed' } };
+  }
+}
 import { ProfileService } from './profile';
 import { AnalyticsService } from './analytics-service';
 import { DASHBOARD_HTML } from './dashboard-html';
@@ -70,6 +104,14 @@ interface ChatRequestBody {
   stream?: boolean;
   /** Obraz w base64 – gdy obecny, używany jest model vision (Workers AI) zamiast Groq */
   image_base64?: string;
+  /** Alias storefrontu (np. "kazka") – MCP mapuje na Storefront ID */
+  storefrontId?: string;
+  /** Kanał (np. "hydrogen-kazka") – kontekst dla RAG/MCP */
+  channel?: string;
+  /** Aktualna ścieżka (np. "/collections/kazka-xyz") */
+  route?: string;
+  /** Handle kolekcji, gdy na stronie kolekcji */
+  collectionHandle?: string;
 }
 
 export interface Env {
@@ -104,7 +146,21 @@ export interface Env {
   ANALYTICS_WORKER?: Fetcher;
   /** Klucz admin dla Dashboard leadów – wrangler secret put ADMIN_KEY */
   ADMIN_KEY?: string;
+  /** Service binding do epir-bigquery-batch (run_analytics_query) */
+  BIGQUERY_BATCH?: Fetcher;
 }
+
+/** Mapowanie aliasów storefrontów na konfigurację. Na drucie używamy aliasu (np. "kazka"), wewnątrz MCP – rzeczywisty Storefront ID. */
+const STOREFRONTS: Record<string, { storefrontId: string; channel: string }> = {
+  kazka: {
+    storefrontId: 'gid://shopify/Storefront/1000013955', // Zastąp faktycznym ID z Headless sales channel
+    channel: 'hydrogen-kazka',
+  },
+  zareczyny: {
+    storefrontId: 'gid://shopify/Storefront/1000013955', // Zastąp faktycznym ID kanału zareczyny
+    channel: 'hydrogen-zareczyny',
+  },
+};
 
 // Stałe konfiguracyjne
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -134,6 +190,10 @@ function parseChatRequestBody(input: unknown, xBrand?: string | null): ChatReque
   // image_base64: surowy base64 lub data URI (data:image/...;base64,...)
   const rawImage = typeof maybe.image_base64 === 'string' && maybe.image_base64.trim().length > 0 ? maybe.image_base64.trim() : undefined;
   const image_base64 = rawImage ? normalizeImageBase64(rawImage) : undefined;
+  const storefrontId = typeof maybe.storefrontId === 'string' && maybe.storefrontId.trim().length > 0 ? maybe.storefrontId.trim() : undefined;
+  const channel = typeof maybe.channel === 'string' && maybe.channel.trim().length > 0 ? maybe.channel.trim() : undefined;
+  const route = typeof maybe.route === 'string' && maybe.route.trim().length > 0 ? maybe.route.trim() : undefined;
+  const collectionHandle = typeof maybe.collectionHandle === 'string' && maybe.collectionHandle.trim().length > 0 ? maybe.collectionHandle.trim() : undefined;
   return {
     message: String(maybe.message),
     session_id: sessionId,
@@ -141,6 +201,10 @@ function parseChatRequestBody(input: unknown, xBrand?: string | null): ChatReque
     brand,
     stream,
     image_base64,
+    storefrontId,
+    channel,
+    route,
+    collectionHandle,
   };
 }
 
@@ -320,6 +384,20 @@ export class SessionDO {
       return new Response('ok');
     }
 
+    // POST /set-storefront-context (ANALYTICS_KB: storefront_id + channel for messages_raw)
+    if (method === 'POST' && pathname.endsWith('/set-storefront-context')) {
+      const payload = (await request.json().catch(() => null)) as { storefront_id?: string; channel?: string } | null;
+      if (payload) {
+        if (typeof payload.storefront_id === 'string') {
+          await this.state.storage.put('storefront_id', payload.storefront_id);
+        }
+        if (typeof payload.channel === 'string') {
+          await this.state.storage.put('channel', payload.channel);
+        }
+      }
+      return new Response('ok');
+    }
+
     // POST /replay-check
     if (method === 'POST' && pathname.endsWith('/replay-check')) {
       const payload = await request.json().catch(() => null);
@@ -393,13 +471,15 @@ export class SessionDO {
 
     const sessionId = this.sessionId ?? this.state.id.toString();
     const db = this.env.DB_CHATBOT;
+    const storefrontId = await this.state.storage.get<string>('storefront_id') ?? null;
+    const channel = await this.state.storage.get<string>('channel') ?? null;
 
     try {
       for (const msg of messages) {
         await db
           .prepare(
-            `INSERT INTO messages (session_id, role, content, timestamp, tool_calls, tool_call_id, name)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`
+            `INSERT INTO messages (session_id, role, content, timestamp, tool_calls, tool_call_id, name, storefront_id, channel)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .bind(
             sessionId,
@@ -408,7 +488,9 @@ export class SessionDO {
             msg.ts ?? now(),
             msg.tool_calls ? JSON.stringify(msg.tool_calls) : null,
             msg.tool_call_id ?? null,
-            msg.name ?? null
+            msg.name ?? null,
+            storefrontId,
+            channel
           )
           .run();
       }
@@ -580,15 +662,30 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
     });
   }
 
+  // Zapisz storefront_id i channel w DO (ANALYTICS_KB: dla messages_raw)
+  if (payload.storefrontId || payload.channel) {
+    const sfConfig = payload.storefrontId ? STOREFRONTS[payload.storefrontId] : null;
+    await stub.fetch('https://session/set-storefront-context', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        storefront_id: payload.storefrontId ?? null,
+        channel: payload.channel ?? sfConfig?.channel ?? null,
+      }),
+    });
+  }
+
   // [GREETING PREFILTER] Bez zmian - dobra optymalizacja (pomijamy gdy jest obraz – vision path)
   const greetingCheck = payload.message.toLowerCase().trim();
   const greetingPattern = /^(cześć|czesc|hej|witaj|witam|dzień dobry|dzien dobry|dobry wieczór|dobry wieczor|hi|hello|hey)$/i;
   const isShortGreeting = !payload.image_base64 && greetingCheck.length < 15 && greetingPattern.test(greetingCheck);
 
   if (isShortGreeting) {
-    const greetingReply = (payload.brand === 'kazka')
+    const greetingReply = (payload.storefrontId === 'kazka' || payload.brand === 'kazka')
       ? 'Witaj! Jestem Aura, doradca marki Kazka Jewelry. Jak mogę Ci dzisiaj pomóc? ✨'
-      : 'Witaj! Jestem Aura, doradca z pracowni EPIR Art Jewellery. Jak mogę Ci dzisiaj pomóc? 🌟';
+      : (payload.storefrontId === 'zareczyny' || payload.brand === 'zareczyny')
+        ? 'Witaj! Jestem Aura, doradca pierścionków zaręczynowych EPIR. Jak mogę Ci dzisiaj pomóc? 💍'
+        : 'Witaj! Jestem Aura, doradca z pracowni EPIR Art Jewellery. Jak mogę Ci dzisiaj pomóc? 🌟';
     await stub.fetch('https://session/append', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -613,13 +710,25 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
   }
 
   console.log(`[handleChat] Przekierowanie do streamAssistantResponse dla sesji: ${sessionId}`);
-  return streamAssistantResponse(request, sessionId, payload.message, stub, env, customerToken, payload.brand, payload.image_base64);
+  return streamAssistantResponse(request, sessionId, payload.message, stub, env, customerToken, payload.brand, payload.image_base64, {
+    storefrontId: payload.storefrontId,
+    channel: payload.channel,
+    route: payload.route,
+    collectionHandle: payload.collectionHandle,
+  });
 }
 
 // ============================================================================
 // HANDLER STREAMINGU (streamAssistantResponse)
 // KRYTYCZNA AKTUALIZACJA: Pełna implementacja pętli wywołań narzędzi (Harmony).
 // ============================================================================
+interface StorefrontContext {
+  storefrontId?: string;
+  channel?: string;
+  route?: string;
+  collectionHandle?: string;
+}
+
 async function streamAssistantResponse(
   request: Request,
   sessionId: string,
@@ -628,7 +737,8 @@ async function streamAssistantResponse(
   env: Env,
   customerToken?: string,
   brand?: string,
-  imageBase64?: string
+  imageBase64?: string,
+  storefrontContext?: StorefrontContext
 ): Promise<Response> {
   const { readable, writable } = new TransformStream();
   const encoder = new TextEncoder();
@@ -677,7 +787,11 @@ async function streamAssistantResponse(
             ...(h.tool_calls && { tool_calls: h.tool_calls as any }),
         }));
         
-      const toolDefinitions = Object.values(TOOL_SCHEMAS).map((schema) => ({
+      // run_analytics_query tylko gdy channel === "internal-dashboard" (MUST z planu)
+      const schemasToUse = storefrontContext?.channel === 'internal-dashboard'
+        ? Object.values(TOOL_SCHEMAS)
+        : Object.values(TOOL_SCHEMAS).filter((s) => s.name !== 'run_analytics_query');
+      const toolDefinitions = schemasToUse.map((schema) => ({
         type: 'function' as const,
         function: {
           name: schema.name,
@@ -699,6 +813,23 @@ async function streamAssistantResponse(
       }
       if (customerToken) {
         messages.push({ role: 'system', content: `Kontekst systemowy: Klient jest zalogowany. Jego anonimowy token to: ${customerToken}` });
+      }
+      // Kontekst storefrontu (kazka, zareczyny) – baza wiedzy segmentowana
+      if (storefrontContext?.storefrontId || storefrontContext?.channel) {
+        const sfKey = storefrontContext.storefrontId;
+        const sfConfig = sfKey ? STOREFRONTS[sfKey] : null;
+        const ctxParts: string[] = [
+          `storefrontId: ${storefrontContext.storefrontId ?? 'nieokreślony'}`,
+          `channel: ${storefrontContext.channel ?? sfConfig?.channel ?? 'nieokreślony'}`,
+        ];
+        if (storefrontContext.route) ctxParts.push(`route: ${storefrontContext.route}`);
+        if (storefrontContext.collectionHandle) ctxParts.push(`collectionHandle: ${storefrontContext.collectionHandle}`);
+        if (sfKey === 'kazka') {
+          ctxParts.push('Odpowiadaj w kontekście marki Kazka Jewelry – kamienie szlachetne, biżuteria artystyczna.');
+        } else if (sfKey === 'zareczyny') {
+          ctxParts.push('Odpowiadaj w kontekście pierścionków zaręczynowych EPIR.');
+        }
+        messages.push({ role: 'system', content: `Kontekst storefrontu: ${ctxParts.join(', ')}` });
       }
 
       // 🔴 KROK 3b: ZDELEGUJ LOGIKĘ RAG DO RAG_WORKER
@@ -837,7 +968,15 @@ async function streamAssistantResponse(
             }
 
             console.log(`[streamAssistant] 🛠️ Wykonuję narzędzie: ${call.name} z argumentami:`, parsedArgs);
-            const toolResult = await callMcpToolDirect(env, call.name, parsedArgs, brand);
+            let toolResult: { result?: unknown; error?: unknown };
+            if (call.name === 'run_analytics_query') {
+              toolResult = await runAnalyticsQuery(env, parsedArgs);
+            } else {
+              const brandForMcp = (storefrontContext?.storefrontId === 'kazka' || storefrontContext?.storefrontId === 'zareczyny')
+                ? storefrontContext.storefrontId
+                : brand;
+              toolResult = await callMcpToolDirect(env, call.name, parsedArgs, brandForMcp);
+            }
             const toolResultString = JSON.stringify(toolResult.error ? toolResult : toolResult.result);
 
             console.log(`[streamAssistant] 🛠️ Wynik narzędzia ${call.name}: ${toolResultString.substring(0, 100)}...`);
@@ -870,6 +1009,28 @@ async function streamAssistantResponse(
           break; // Wyjdź z pętli for
         }
       } // koniec for(MAX_TOOL_CALLS)
+
+      // Fallback: jeżeli model wielokrotnie wywoływał narzędzia i nie zwrócił tekstu,
+      // domykamy odpowiedź jednym zapytaniem non-stream bez narzędzi.
+      if (!finalTextResponse.trim()) {
+        console.warn('[streamAssistant] ⚠️ Brak finalnego tekstu po pętli tool_calls. Uruchamiam fallback getGroqResponse().');
+        try {
+          const recoveryText = await getGroqResponse(currentMessages, env);
+          if (typeof recoveryText === 'string' && recoveryText.trim()) {
+            finalTextResponse = recoveryText;
+            await sendDelta(finalTextResponse);
+          }
+        } catch (recoveryErr) {
+          console.error('[streamAssistant] ❌ Fallback getGroqResponse failed:', recoveryErr);
+        }
+      }
+
+      // Ostateczny fallback UX – nie kończ strumienia pustą odpowiedzią.
+      if (!finalTextResponse.trim()) {
+        finalTextResponse =
+          'Przepraszam, chwilowo nie mogę przygotować pełnej odpowiedzi. Spróbuj proszę ponownie za moment.';
+        await sendDelta(finalTextResponse);
+      }
 
       // 🔴 KROK 5: FINALIZACJA I ZAPIS
       console.log('[streamAssistant] ✅ Strumień zakończony. Finalna odpowiedź (tekst):', finalTextResponse.substring(0, 100));

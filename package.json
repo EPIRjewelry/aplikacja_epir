@@ -1,1 +1,1 @@
-{"name":"aplikacja_epir","private":true,"workspaces":["apps/*","workers/*","extensions/*","packages/*"]}
+{"name":"aplikacja_epir","private":true,"workspaces":["apps/*","workers/*","extensions/*","packages/*"],"dependencies":{"lodash":"^4.17.23"}}

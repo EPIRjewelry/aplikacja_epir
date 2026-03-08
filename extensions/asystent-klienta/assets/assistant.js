@@ -1,7 +1,8 @@
 // Przywrócona wersja z backupu (UTF-8, poprawne polskie znaki)
 // extensions/asystent-klienta/assets/assistant.js
-// Zmienić przed deployem – fallback gdy brak ustawienia w sekcji
-var EPIR_CHAT_WORKER_ENDPOINT = 'https://asystent.epirbizuteria.pl/chat';
+// Shopify-recommended default for storefront: App Proxy endpoint.
+// Can be overridden via block/app-embed setting "worker_endpoint".
+var EPIR_CHAT_WORKER_ENDPOINT = '/apps/assistant/chat';
 // Lekki, poprawiony klient czatu z obsługą streaming SSE/JSON + fallback.
 // Kompiluj do JS (np. tsc) przed użyciem w Theme App Extension.
 
@@ -136,27 +137,74 @@ function reportUiExtensionError(error, context = {}) {
   }
 }
 
-// Minimal initializer: bind toggle button to open/close the assistant
-function initAssistantUI() {
+// Helper: find section (block or embed)
+function getAssistantSection() {
+  return document.getElementById('epir-assistant-section') || document.getElementById('epir-assistant-embed');
+}
+
+// Canonicalize endpoint so storefront always uses a single source of truth.
+function normalizeAssistantEndpoint(endpoint) {
+  if (!endpoint || typeof endpoint !== 'string') return EPIR_CHAT_WORKER_ENDPOINT;
+  const trimmed = endpoint.trim();
+  if (!trimmed) return EPIR_CHAT_WORKER_ENDPOINT;
+  if (trimmed === '/apps/assistant/chat') return trimmed;
+
   try {
-    const section = document.getElementById('epir-assistant-section');
-    if (!section) return;
-    if (section.dataset.assistantUiInit === '1') return;
+    const parsed = new URL(trimmed, window.location.origin);
+    const isLegacyDirectWorker =
+      parsed.hostname === 'asystent.epirbizuteria.pl' && parsed.pathname === '/chat';
+
+    if (isLegacyDirectWorker) {
+      return '/apps/assistant/chat';
+    }
+    return trimmed;
+  } catch (_e) {
+    return trimmed;
+  }
+}
+
+// Teleport: przenosi widżet do body, aby position:fixed działał (sekcje mają transform/overflow)
+function teleportAssistantToBody(section) {
+  if (!section || !document.body) return;
+  if (section.parentElement === document.body) return;
+  try {
+    document.body.appendChild(section);
+  } catch (e) {
+    console.warn('[EPIR Assistant] Teleport failed', e);
+  }
+}
+
+// Minimal initializer: bind toggle button to open/close the assistant (supports block + embed)
+function initAssistantUIForSection(section) {
+  if (!section || section.dataset.assistantUiInit === '1') return;
+  try {
+    teleportAssistantToBody(section);
     section.dataset.assistantUiInit = '1';
-    const toggle = document.getElementById('assistant-toggle-button');
-    const content = document.getElementById('assistant-content');
-    const startClosed = section.dataset.startClosed === 'true' || section.getAttribute('data-start-closed') === 'true';
-    if (startClosed && content) content.classList.add('is-closed');
-    if (!toggle) return;
-    toggle.addEventListener('click', (e) => {
+    const launcher = section.querySelector('#assistant-launcher') || section.querySelector('#assistant-launcher-embed');
+    const closeBtn = section.querySelector('#assistant-close-button') || section.querySelector('#assistant-close-button-embed');
+    const content = section.querySelector('#assistant-content') || section.querySelector('#assistant-content-embed');
+    if (!launcher || !closeBtn) return;
+    
+    // Launcher: otwiera panel
+    launcher.addEventListener('click', (e) => {
       e.preventDefault();
-      const isClosed = content && content.classList.toggle('is-closed');
-      // update ARIA
-      toggle.setAttribute('aria-expanded', isClosed ? 'false' : 'true');
+      if (content) {
+        content.classList.remove('is-closed');
+        launcher.setAttribute('aria-expanded', 'true');
+      }
+    });
+    
+    // Close button: zamyka panel i wraca do launchera
+    closeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (content) {
+        content.classList.add('is-closed');
+        launcher.setAttribute('aria-expanded', 'false');
+      }
     });
 
     // --- Powitanie klienta imieniem z localStorage/sessionStorage ---
-    const messagesEl = document.getElementById('assistant-messages');
+    const messagesEl = section.querySelector('#assistant-messages') || section.querySelector('#assistant-messages-embed');
     let localName = null;
     try {
       localName = localStorage.getItem('epir_customer_name') || sessionStorage.getItem('epir_customer_name');
@@ -187,7 +235,7 @@ function initAssistantUI() {
       // Auto-open chat if closed
       if (content && content.classList.contains('is-closed')) {
         content.classList.remove('is-closed');
-        if (toggle) toggle.setAttribute('aria-expanded', 'true');
+        if (launcher) launcher.setAttribute('aria-expanded', 'true');
         console.log('[EPIR Assistant] ✅ Chat opened proactively');
       }
       
@@ -208,10 +256,53 @@ function initAssistantUI() {
   }
 }
 
+function initAllAssistantSections() {
+  const sectionBlock = document.getElementById('epir-assistant-section');
+  const sectionEmbed = document.getElementById('epir-assistant-embed');
+
+  // Prevent duplicate UIs when both block and embed are enabled.
+  // Embed is preferred because it is global and consistent across pages.
+  if (sectionBlock && sectionEmbed) {
+    sectionBlock.style.display = 'none';
+    sectionBlock.setAttribute('data-assistant-disabled-duplicate', 'true');
+  }
+
+  const sections = [sectionEmbed || sectionBlock].filter(Boolean);
+  sections.forEach(function(section) {
+    initAssistantUIForSection(section);
+  });
+}
+
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initAssistantUI, { once: true });
+  document.addEventListener('DOMContentLoaded', initAllAssistantSections, { once: true });
 } else {
-  initAssistantUI();
+  initAllAssistantSections();
+}
+
+// Retry when DOM might load late (e.g. Shopify app blocks)
+if (typeof MutationObserver !== 'undefined') {
+  var observerTimeout = 8000;
+  var observerStart = Date.now();
+  const observer = new MutationObserver(function() {
+    if (Date.now() - observerStart > observerTimeout) {
+      observer.disconnect();
+      return;
+    }
+    const section = getAssistantSection();
+    if (section && !section.dataset.assistantUiInit) {
+      initAllAssistantSections();
+    }
+  });
+  function startObserving() {
+    if (document.body) {
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+  }
+  if (document.body) {
+    startObserving();
+  } else {
+    document.addEventListener('DOMContentLoaded', startObserving);
+  }
 }
 
 /* Typy - usunięte dla kompatybilności z przeglądarką (TypeScript → JavaScript) */
@@ -365,15 +456,15 @@ async function sendMessageToWorker(
   setLoading,
   controller
 ) {
-  // Small UX helpers: global loader below messages
-  const globalLoader = document.getElementById('assistant-loader');
+  // Small UX helpers: global loader below messages (block or embed)
+  const globalLoader = document.getElementById('assistant-loader') || document.getElementById('assistant-loader-embed');
   const showGlobalLoader = () => { try { if (globalLoader) globalLoader.style.display = 'flex'; } catch {}
   };
   const hideGlobalLoader = () => { try { if (globalLoader) globalLoader.style.display = 'none'; } catch {}
   };
 
   // Render mode: 'growing' (default) or 'dots' (keeps '...' until finish)
-  const sectionEl = document.getElementById('epir-assistant-section');
+  const sectionEl = (messagesEl && (messagesEl.closest('#epir-assistant-section') || messagesEl.closest('#epir-assistant-embed'))) || getAssistantSection();
   const renderMode = (sectionEl && sectionEl.dataset && sectionEl.dataset.streamRender) || 'growing';
 
   setLoading(true);
@@ -537,52 +628,71 @@ async function sendMessageToWorker(
 
 // Kod ładowany bezpośrednio w przeglądarce - brak eksportów
 
-// DODANE: fix przeładowania strony (preventDefault) i wywołanie /apps/assistant/chat
+// Event delegation: works even when form loads after DOMContentLoaded (Shopify app blocks)
 function initAssistantSubmitHandler() {
-  try {
-    const form = document.querySelector('#assistant-form');
-    if (!form) {
-      console.warn('assistant.js: #assistant-form not found');
-      return;
+  if (document.body && document.body.dataset.assistantSubmitDelegation === '1') return;
+  if (document.body) document.body.dataset.assistantSubmitDelegation = '1';
+
+  document.addEventListener('click', function(e) {
+    const btn = e.target && (e.target.closest('#assistant-send-button') || e.target.closest('#assistant-send-button-embed'));
+    if (!btn) return;
+    e.preventDefault();
+    const form = btn.closest('form') || document.querySelector('#assistant-form') || document.querySelector('#assistant-form-embed');
+    const input = form && (form.querySelector('#assistant-input') || form.querySelector('#assistant-input-embed'));
+    if (form && input) doSendFromForm(form, input);
+  }, true);
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    const input = e.target && (e.target.matches('#assistant-input') || e.target.matches('#assistant-input-embed')) ? e.target : null;
+    if (!input) return;
+    const form = input.closest('form') || document.querySelector('#assistant-form') || document.querySelector('#assistant-form-embed');
+    if (form) {
+      e.preventDefault();
+      doSendFromForm(form, input);
     }
-    if (form.dataset.assistantSubmitInit === '1') return;
-    form.dataset.assistantSubmitInit = '1';
-    form.addEventListener('submit', async (e) => {
+  }, true);
+
+  document.addEventListener('submit', function(e) {
+    const form = e.target;
+    if (form && (form.id === 'assistant-form' || form.id === 'assistant-form-embed')) {
       e.preventDefault();
       e.stopPropagation();
-      const input = document.querySelector('#assistant-input');
-      const messagesEl = document.querySelector('#assistant-messages');
-      const text = (input && input.value && input.value.trim()) || '';
-      if (!text || !messagesEl) {
-        console.warn('assistant.js: input or messages container not found');
-        return;
+      const input = form.querySelector('#assistant-input') || form.querySelector('#assistant-input-embed');
+      if (input) doSendFromForm(form, input);
+      return false;
+    }
+  }, true);
+}
+
+function doSendFromForm(form, input) {
+  const sectionEl = form.closest('#epir-assistant-section') || form.closest('#epir-assistant-embed') || getAssistantSection();
+  const messagesEl = sectionEl && (sectionEl.querySelector('#assistant-messages') || sectionEl.querySelector('#assistant-messages-embed'));
+  const text = (input && input.value && input.value.trim()) || '';
+  if (!text || !messagesEl) return;
+  input.value = '';
+  const controller = new AbortController();
+  const setLoading = function(b) {
+    if (!messagesEl) return;
+    if (b) messagesEl.classList.add('is-loading'); else messagesEl.classList.remove('is-loading');
+  };
+  (async function() {
+    try {
+      let endpoint = (sectionEl && sectionEl.dataset && sectionEl.dataset.workerEndpoint) || EPIR_CHAT_WORKER_ENDPOINT;
+      endpoint = normalizeAssistantEndpoint(endpoint);
+      const shop = (sectionEl && sectionEl.dataset && sectionEl.dataset.shopDomain) || '';
+      const customerId = (sectionEl && sectionEl.dataset && sectionEl.dataset.loggedInCustomerId) || '';
+      if (shop || customerId) {
+        const params = new URLSearchParams();
+        if (shop) params.set('shop', shop);
+        if (customerId) params.set('logged_in_customer_id', customerId);
+        endpoint = endpoint + (endpoint.includes('?') ? '&' : '?') + params.toString();
       }
-      input.value = '';
-      const controller = new AbortController();
-      const setLoading = (b) => {
-        if (!messagesEl) return;
-        if (b) messagesEl.classList.add('is-loading'); else messagesEl.classList.remove('is-loading');
-      };
-      try {
-        // Endpoint z ustawień sekcji (data-worker-endpoint) lub stała konfiguracyjna
-        const sectionEl = document.getElementById('epir-assistant-section');
-        let endpoint = (sectionEl && sectionEl.dataset && sectionEl.dataset.workerEndpoint) || EPIR_CHAT_WORKER_ENDPOINT;
-        const shop = (sectionEl && sectionEl.dataset && sectionEl.dataset.shopDomain) || '';
-        const customerId = (sectionEl && sectionEl.dataset && sectionEl.dataset.loggedInCustomerId) || '';
-        if (shop || customerId) {
-          const params = new URLSearchParams();
-          if (shop) params.set('shop', shop);
-          if (customerId) params.set('logged_in_customer_id', customerId);
-          endpoint = endpoint + (endpoint.includes('?') ? '&' : '?') + params.toString();
-        }
-        await sendMessageToWorker(text, endpoint, 'epir-assistant-session', messagesEl, setLoading, controller);
-      } catch (err) {
-        console.error('Fetch error:', err);
-      }
-    });
-  } catch (e) {
-    console.error('assistant.js DOMContentLoaded submit handler error:', e);
-  }
+      await sendMessageToWorker(text, endpoint, 'epir-assistant-session', messagesEl, setLoading, controller);
+    } catch (err) {
+      console.error('Fetch error:', err);
+    }
+  })();
 }
 
 if (document.readyState === 'loading') {

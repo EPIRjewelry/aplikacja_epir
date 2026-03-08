@@ -63,6 +63,8 @@ async function ensurePixelTable(db: D1Database): Promise<void> {
           created_at TEXT DEFAULT (datetime('now')),
           customer_id TEXT,
           session_id TEXT,
+          storefront_id TEXT,
+          channel TEXT,
           page_url TEXT,
           page_title TEXT,
           referrer TEXT,
@@ -106,6 +108,16 @@ async function ensurePixelTable(db: D1Database): Promise<void> {
     console.error('[ANALYTICS_WORKER] ❌ Failed to create pixel_events table:', err);
     throw err;
   }
+
+  // Migration: add storefront_id and channel for existing tables
+  try {
+    await db.prepare('ALTER TABLE pixel_events ADD COLUMN storefront_id TEXT').run();
+    console.log('[ANALYTICS_WORKER] ✅ Added storefront_id column');
+  } catch (_) { /* column may already exist */ }
+  try {
+    await db.prepare('ALTER TABLE pixel_events ADD COLUMN channel TEXT').run();
+    console.log('[ANALYTICS_WORKER] ✅ Added channel column');
+  } catch (_) { /* column may already exist */ }
   
   // Create indexes exactly as defined in SQL files (idempotent)
   console.log('[ANALYTICS_WORKER] 🔧 Creating indexes...');
@@ -542,6 +554,8 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
     let pageUrl: string | null = null;
     let pageTitle: string | null = null;
     let referrer: string | null = headerReferrer;
+    let storefrontId: string | null = null;
+    let channel: string | null = null;
     
     // Parse event data (Shopify structure varies by event type)
     if (typeof eventData === 'object' && eventData !== null) {
@@ -698,6 +712,13 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
       }
       if (data.sessionId) {
         sessionId = String(data.sessionId);
+      }
+      // Storefront & channel (from Web Pixel enriched payload - ANALYTICS_KB)
+      if (typeof data.storefront_id === 'string') {
+        storefrontId = data.storefront_id;
+      }
+      if (typeof data.channel === 'string') {
+        channel = data.channel;
       }
     }
     
@@ -862,11 +883,11 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
       timestamp
     });
     
-    // Insert with structured columns (schema base + heatmap)
+    // Insert with structured columns (schema base + heatmap + storefront)
     const insertResult = await env.DB.prepare(
       `INSERT INTO pixel_events (
         id, event_type, event_name, created_at,
-        customer_id, session_id,
+        customer_id, session_id, storefront_id, channel,
         page_url, page_title, referrer, user_agent,
         product_id, product_title, product_variant_id, product_price, product_quantity,
         cart_total,
@@ -883,26 +904,26 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
         mouse_x, mouse_y
       ) VALUES (
         ?1, ?2, ?3, ?4,
-        ?5, ?6,
-        ?7, ?8, ?9, ?10,
-        ?11, ?12, ?13, ?14, ?15,
-        ?16,
-        ?17,
+        ?5, ?6, ?7, ?8,
+        ?9, ?10, ?11, ?12,
+        ?13, ?14, ?15, ?16, ?17,
         ?18,
-        ?19, ?20, ?21, ?22,
-        ?23, ?24,
-        ?25, ?26, ?27,
-        ?28, ?29,
-        ?30, ?31, ?32,
-        ?33, ?34, ?35,
-        ?36, ?37,
+        ?19,
+        ?20,
+        ?21, ?22, ?23, ?24,
+        ?25, ?26,
+        ?27, ?28, ?29,
+        ?30, ?31,
+        ?32, ?33, ?34,
+        ?35, ?36, ?37,
         ?38, ?39,
-        ?40, ?41
+        ?40, ?41,
+        ?42, ?43
       )`
     )
     .bind(
       eventId, eventType, eventType, createdAtIso,
-      normalizedCustomerId, normalizedSessionId,
+      normalizedCustomerId, normalizedSessionId, storefrontId, channel,
       pageUrl, pageTitle, referrer, userAgent,
       productId, productTitle, productVariantId, productPrice, productQuantity,
       cartTotal,

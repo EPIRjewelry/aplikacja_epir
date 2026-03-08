@@ -57,6 +57,11 @@ service = "epir-rag-worker"
 binding = "ANALYTICS_WORKER"
 service = "epir-analityc-worker"
 
+# Analytics query (run_analytics_query) – internal only, wymaga ADMIN_KEY
+[[services]]
+binding = "BIGQUERY_BATCH"
+service = "epir-bigquery-batch"
+
 # Routes - subdomena dla Workera
 [[routes]]
 pattern = "asystent.epirbizuteria.pl/*"
@@ -74,7 +79,7 @@ invocation_logs = true
 
 [vars]
 ALLOWED_ORIGIN = "https://epir-art-silver-jewellery.myshopify.com"
-ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://epir-art-silver-jewellery.myshopify.com,https://asystent.epirbizuteria.pl"
+ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://epir-art-silver-jewellery.myshopify.com,https://asystent.epirbizuteria.pl,https://kazka.epirbizuteria.pl,https://zareczyny.epirbizuteria.pl"
 SHOP_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
 # MCP endpoint - zmienna konfiguracyjna (CHAT_SPEC: shopify-admin-mcp = {shop_domain}/api/mcp)
 MCP_ENDPOINT = "https://epir-art-silver-jewellery.myshopify.com/api/mcp"

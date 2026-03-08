@@ -33,17 +33,21 @@ export const links: LinksFunction = () => {
   ];
 };
 
-const DEFAULT_CHAT_API_URL = 'https://asystent.epirbizuteria.pl/chat';
+const DEFAULT_CHAT_API_URL = 'https://epirbizuteria.pl/apps/assistant/chat';
 
 export async function loader({context, request}: LoaderArgs) {
   const cartId = await context.session.get('cartId');
+  const configuredChatApiUrl = context.env.CHAT_API_URL as string | undefined;
   const chatApiUrl =
-    (context.env.CHAT_API_URL as string | undefined) || DEFAULT_CHAT_API_URL;
+    configuredChatApiUrl && configuredChatApiUrl.includes('/apps/assistant/chat')
+      ? configuredChatApiUrl
+      : DEFAULT_CHAT_API_URL;
   const brand = (context.env.BRAND as string) || 'zareczyny';
   const filter = context.env.COLLECTION_FILTER;
   const allowedHandles = filter
     ? filter.split(',').map((h: string) => h.trim()).filter(Boolean)
     : null;
+  const route = new URL(request.url).pathname;
 
   const [layout, collectionsResult] = await Promise.all([
     context.storefront.query<{shop: Shop}>(LAYOUT_QUERY),
@@ -65,6 +69,9 @@ export async function loader({context, request}: LoaderArgs) {
     chatApiUrl,
     cartId,
     brand,
+    storefrontId: 'zareczyny',
+    channel: 'hydrogen-zareczyny',
+    route,
   });
 }
 
@@ -115,6 +122,9 @@ export default function App() {
           chatApiUrl={data.chatApiUrl}
           cartId={data.cartId}
           brand={data.brand}
+          storefrontId={data.storefrontId}
+          channel={data.channel}
+          route={data.route}
         />
         <ScrollRestoration />
         <Scripts />

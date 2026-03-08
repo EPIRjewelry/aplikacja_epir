@@ -70,6 +70,30 @@ export const TOOL_SCHEMAS = {
     }
   },
 
+  run_analytics_query: {
+    name: 'run_analytics_query',
+    description: 'Wykonuje whitelistowane zapytanie analityczne z ANALYTICS_KB. Dostępne TYLKO dla internal-dashboard. Zwraca wyniki z BigQuery (events_raw, messages_raw).',
+    parameters: {
+      type: 'object',
+      properties: {
+        queryId: {
+          type: 'string',
+          description: 'ID zapytania z whitelisty: Q1_CONVERSION_CHAT, Q2_CONVERSION_PATHS, Q3_TOP_CHAT_QUESTIONS, Q4_STOREFRONT_SEGMENTATION, Q5_TOP_PRODUCTS, Q6_CHAT_ENGAGEMENT, Q7_PRODUCT_TO_PURCHASE, Q8_DAILY_EVENTS, Q9_TOOL_USAGE, Q10_SESSION_DURATION',
+          enum: ['Q1_CONVERSION_CHAT', 'Q2_CONVERSION_PATHS', 'Q3_TOP_CHAT_QUESTIONS', 'Q4_STOREFRONT_SEGMENTATION', 'Q5_TOP_PRODUCTS', 'Q6_CHAT_ENGAGEMENT', 'Q7_PRODUCT_TO_PURCHASE', 'Q8_DAILY_EVENTS', 'Q9_TOOL_USAGE', 'Q10_SESSION_DURATION'],
+        },
+        dateFrom: {
+          type: 'number',
+          description: 'Opcjonalnie: początek zakresu dat (Unix ms)',
+        },
+        dateTo: {
+          type: 'number',
+          description: 'Opcjonalnie: koniec zakresu dat (Unix ms)',
+        },
+      },
+      required: ['queryId'],
+    },
+  },
+
   update_cart: {
     name: 'update_cart',
     description: 'Update quantities of items in an existing cart or add new items. Creates a new cart if no cart_id is provided. Set quantity to 0 to remove an item.',
