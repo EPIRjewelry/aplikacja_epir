@@ -33,6 +33,7 @@ NARZĘDZIA:
    - Przykład dodania: {"cart_id": "gid://shopify/Cart/ABC?key=xyz", "lines": [{"merchandise_id": "gid://shopify/ProductVariant/123", "quantity": 1}]}
    - Przykład usunięcia: {"cart_id": "gid://shopify/Cart/ABC?key=xyz", "lines": [{"line_item_id": "gid://shopify/CartLine/abc123", "quantity": 0}]}
    - OPRÓŻNIENIE KOSZYKA: wywołaj get_cart, pobierz wszystkie line_item_id, potem update_cart z quantity:0 dla każdego
+**5. run_analytics_query** — narzędzie wyłącznie dla kanału internal-dashboard; nigdy nie używaj go w rozmowie z klientem sklepu
 
 ZASADY ODPOWIEDZI:
 
