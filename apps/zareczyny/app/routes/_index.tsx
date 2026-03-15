@@ -58,6 +58,9 @@ export async function loader({context}: LoaderArgs): Promise<LoaderData> {
     context.storefront.query<{collections: CollectionConnection}>(COLLECTIONS_QUERY),
   ]);
 
+  // Debug: raw result from Storefront for route content
+  console.log('ROUTE_RESULT', JSON.stringify(routeResult, null, 2));
+
   const {route} = routeResult;
   const {collections} = collectionsResult;
 
@@ -125,7 +128,6 @@ function FallbackView({collections}: {collections: CollectionConnection}) {
 
 export default function Index() {
   const {route, collections} = useLoaderData<LoaderData>();
-
   const heroCount = route?.sections?.references?.nodes?.length ?? route?.sections?.nodes?.length ?? 0;
   const collectionsCount =
     route?.featured_collections?.references?.nodes?.length ??
@@ -136,6 +138,15 @@ export default function Index() {
     route?.featured_products?.nodes?.length ??
     0;
   const hasRouteSections = (heroCount > 0 || collectionsCount > 0 || productsCount > 0) && route;
+
+  // Debug: what the component receives and how it computes counts
+  console.log('COMPONENT_ROUTE_DEBUG', JSON.stringify({
+    route: route ? { id: route.id, sections: route.sections, featured_collections: route.featured_collections, featured_products: route.featured_products } : null,
+    heroCount,
+    collectionsCount,
+    productsCount,
+    hasRouteSections,
+  }, null, 2));
 
   if (hasRouteSections) {
     return (

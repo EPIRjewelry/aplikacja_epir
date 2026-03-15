@@ -70,6 +70,7 @@ async function runAnalyticsQuery(env: Env, args: { queryId?: string; dateFrom?: 
 import { ProfileService } from './profile';
 import { AnalyticsService } from './analytics-service';
 import { DASHBOARD_HTML } from './dashboard-html';
+import { buildAIProfilePrompt, fetchAIProfile } from './ai-profile';
 
 // Importy RAG (teraz używane tylko przez narzędzia, a nie przez index.ts)
 import {
@@ -125,6 +126,8 @@ export interface Env {
   ALLOWED_ORIGIN?: string;
   ALLOWED_ORIGINS?: string; // Comma-separated whitelist for CORS
   SHOPIFY_STOREFRONT_TOKEN?: string;
+  PUBLIC_STOREFRONT_API_TOKEN_KAZKA?: string;
+  PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY?: string;
   SHOPIFY_ADMIN_TOKEN?: string;
   SHOP_DOMAIN?: string;
   /** MCP endpoint - zmienna z wrangler.toml [vars], fallback: https://{SHOP_DOMAIN}/api/mcp */
@@ -150,17 +153,46 @@ export interface Env {
   BIGQUERY_BATCH?: Fetcher;
 }
 
+type StorefrontTokenEnvKey = 'PUBLIC_STOREFRONT_API_TOKEN_KAZKA' | 'PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY';
+
+type StaticStorefrontConfig = {
+  storefrontId: string;
+  channel: string;
+  aiProfileGid?: string;
+  apiTokenEnvKey?: StorefrontTokenEnvKey;
+};
+
+type ResolvedStorefrontConfig = StaticStorefrontConfig & {
+  apiToken?: string;
+};
+
 /** Mapowanie aliasów storefrontów na konfigurację. Na drucie używamy aliasu (np. "kazka"), wewnątrz MCP – rzeczywisty Storefront ID. */
-const STOREFRONTS: Record<string, { storefrontId: string; channel: string }> = {
+const STOREFRONTS: Record<string, StaticStorefrontConfig> = {
   kazka: {
     storefrontId: 'gid://shopify/Storefront/1000013955', // Zastąp faktycznym ID z Headless sales channel
     channel: 'hydrogen-kazka',
+    aiProfileGid: 'gid://shopify/Metaobject/2057969205580',
+    apiTokenEnvKey: 'PUBLIC_STOREFRONT_API_TOKEN_KAZKA',
   },
   zareczyny: {
     storefrontId: 'gid://shopify/Storefront/1000013955', // Zastąp faktycznym ID kanału zareczyny
     channel: 'hydrogen-zareczyny',
+    aiProfileGid: 'gid://shopify/Metaobject/ZARECZYNY_AI_PROFILE_TODO',
+    apiTokenEnvKey: 'PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY',
   },
 };
+
+function resolveStorefrontConfig(env: Env, storefrontKey?: string): ResolvedStorefrontConfig | null {
+  if (!storefrontKey) return null;
+
+  const config = STOREFRONTS[storefrontKey];
+  if (!config) return null;
+
+  return {
+    ...config,
+    apiToken: config.apiTokenEnvKey ? env[config.apiTokenEnvKey] ?? env.SHOPIFY_STOREFRONT_TOKEN : env.SHOPIFY_STOREFRONT_TOKEN,
+  };
+}
 
 // Stałe konfiguracyjne
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -664,7 +696,7 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 
   // Zapisz storefront_id i channel w DO (ANALYTICS_KB: dla messages_raw)
   if (payload.storefrontId || payload.channel) {
-    const sfConfig = payload.storefrontId ? STOREFRONTS[payload.storefrontId] : null;
+    const sfConfig = resolveStorefrontConfig(env, payload.storefrontId);
     await stub.fetch('https://session/set-storefront-context', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -801,9 +833,23 @@ async function streamAssistantResponse(
       }));
 
       const toolSchemaString = JSON.stringify(toolDefinitions, null, 2);
+      const activeStorefrontConfig = resolveStorefrontConfig(env, storefrontContext?.storefrontId);
+      const aiProfile = await fetchAIProfile(
+        activeStorefrontConfig?.aiProfileGid,
+        activeStorefrontConfig?.apiToken,
+        env.SHOP_DOMAIN
+      );
+      const aiProfilePrompt = aiProfile ? buildAIProfilePrompt(aiProfile) : null;
+
+      if (activeStorefrontConfig?.aiProfileGid && !aiProfile) {
+        console.warn(
+          `[streamAssistant] AI profile unavailable for storefront ${storefrontContext?.storefrontId ?? 'unknown'}; fallback to base prompt`
+        );
+      }
 
       const messages: GroqMessage[] = [
         { role: 'system', content: LUXURY_SYSTEM_PROMPT },
+        ...(aiProfilePrompt ? [{ role: 'system' as const, content: aiProfilePrompt }] : []),
         { role: 'system', content: `Oto dostępne schematy narzędzi:\n${toolSchemaString}` },
       ];
 
@@ -817,7 +863,7 @@ async function streamAssistantResponse(
       // Kontekst storefrontu (kazka, zareczyny) – baza wiedzy segmentowana
       if (storefrontContext?.storefrontId || storefrontContext?.channel) {
         const sfKey = storefrontContext.storefrontId;
-        const sfConfig = sfKey ? STOREFRONTS[sfKey] : null;
+        const sfConfig = resolveStorefrontConfig(env, sfKey);
         const ctxParts: string[] = [
           `storefrontId: ${storefrontContext.storefrontId ?? 'nieokreślony'}`,
           `channel: ${storefrontContext.channel ?? sfConfig?.channel ?? 'nieokreślony'}`,
@@ -850,7 +896,7 @@ async function streamAssistantResponse(
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log(`[streamAssistant] Rozpoczynam pętlę AI. Sesja: ${sessionId}`);
       console.log('[streamAssistant] 🤖 Model:', imageBase64 ? 'Workers AI Vision' : (env.USE_WORKERS_AI ? 'Workers AI (A/B)' : GROQ_MODEL_ID));
-      console.log('[streamAssistant] 📜 System Prompt length:', LUXURY_SYSTEM_PROMPT.length, 'chars');
+      console.log('[streamAssistant] 📜 System Prompt length:', LUXURY_SYSTEM_PROMPT.length + (aiProfilePrompt?.length ?? 0), 'chars');
       console.log('[streamAssistant] 📚 History entries (before truncation):', aiHistory.length);
       console.log('[streamAssistant] 📨 Total messages (after truncation):', truncatedMessages.length);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -859,6 +905,7 @@ async function streamAssistantResponse(
       if (imageBase64 && env.AI?.run) {
         const visionMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
           { role: 'system', content: LUXURY_SYSTEM_PROMPT },
+          ...(aiProfilePrompt ? [{ role: 'system' as const, content: aiProfilePrompt }] : []),
           { role: 'user', content: userMessage },
         ];
         const visionStream = await streamVisionEvents(visionMessages, imageBase64, env);

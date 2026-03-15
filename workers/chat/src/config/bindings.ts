@@ -127,6 +127,18 @@ export interface Env {
   SHOPIFY_STOREFRONT_TOKEN?: string;
 
   /**
+   * Dedykowany publiczny token Storefront API dla storefrontu kazka.
+   * Ustawiany jako secret/variable na poziomie Workera w Cloudflare.
+   */
+  PUBLIC_STOREFRONT_API_TOKEN_KAZKA?: string;
+
+  /**
+   * Dedykowany publiczny token Storefront API dla storefrontu zareczyny.
+   * Ustawiany jako secret/variable na poziomie Workera w Cloudflare.
+   */
+  PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY?: string;
+
+  /**
    * Shopify Admin Access Token
    * Used for Admin GraphQL API (fallback when MCP unavailable)
    * Set with: wrangler secret put SHOPIFY_ADMIN_TOKEN
@@ -205,6 +217,8 @@ export const REQUIRED_SECRETS = [
  */
 export const OPTIONAL_SECRETS = [
   'SHOPIFY_STOREFRONT_TOKEN',
+  'PUBLIC_STOREFRONT_API_TOKEN_KAZKA',
+  'PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY',
   'SHOPIFY_ADMIN_TOKEN',
 ] as const;
 

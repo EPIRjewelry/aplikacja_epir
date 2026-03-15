@@ -87,6 +87,9 @@ MCP_ENDPOINT = "https://epir-art-silver-jewellery.myshopify.com/api/mcp"
 # W produkcji: https://asystent.epirbizuteria.pl
 # W dev: https://asystent-epir.YOUR-NAME.workers.dev
 WORKER_ORIGIN = "https://asystent.epirbizuteria.pl"
+# Per-storefront public Storefront API tokens ustawiane jako secrets/vars na poziomie Workera:
+# - PUBLIC_STOREFRONT_API_TOKEN_KAZKA
+# - PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY
 # AI Gateway (opcjonalne) - gdy ustawione, requesty Groq idą przez gateway
 # AI_GATEWAY_ACCOUNT_ID = "your-account-id"
 # AI_GATEWAY_NAME = "epir-chat-gateway"
