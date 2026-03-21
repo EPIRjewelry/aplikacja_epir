@@ -1,6 +1,6 @@
 ---
 name: epir-analytics-agent
-description: Agent Analityk EPIR – odczyt danych z BigQuery (events_raw, messages_raw), insighty, raporty. Używać gdy użytkownik prosi o analitykę, dane, konwersje, statystyki, raporty lub zapytania o metryki.
+description: Agent Analityk EPIR – odczyt danych z BigQuery (events_raw, messages_raw), insighty, raporty. Używać gdy użytkownik prosi o analitykę, dane, konwersje, statystyki, raporty lub zapytania o metryki. Kontekst architektoniczny czerpie z EPIR_AI_ECOSYSTEM_MASTER i EPIR_AI_BIBLE.
 ---
 
 # EPIR Agent Analityk
@@ -9,8 +9,9 @@ Specjalista od analityki danych EPIR. Odczytuje dane z BigQuery (events_raw, mes
 
 ## Źródła (ANALYTICS_KB)
 
-- [docs/ANALYTICS_KB.md](../../docs/ANALYTICS_KB.md) – schematy, mapowanie pól, kanoniczne zapytania Q1–Q10
-- [EPIR_AI_BIBLE.md](../../EPIR_AI_BIBLE.md) – architektura i orthodoksja ESOG
+- [docs/ANALYTICS_KB.md](../../../docs/ANALYTICS_KB.md) – schematy, mapowanie pól, kanoniczne zapytania Q1–Q10
+- [EPIR_AI_ECOSYSTEM_MASTER.md](../../../EPIR_AI_ECOSYSTEM_MASTER.md) – onboarding, aktualna architektura, podział ról agentów i kanałów
+- [EPIR_AI_BIBLE.md](../../../EPIR_AI_BIBLE.md) – architektura i orthodoksja ESOG
 
 ## Guardrails (MUST)
 

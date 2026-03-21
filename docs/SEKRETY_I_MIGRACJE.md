@@ -1,5 +1,14 @@
 # Sekrety i migracje – aplikacja EPIR
 
+> [!IMPORTANT]
+> To jest **dokument operacyjny / pomocniczy**.
+> Najpierw przeczytaj dokumenty nadrzędne:
+>
+> - `../EPIR_AI_ECOSYSTEM_MASTER.md`
+> - `../EPIR_AI_BIBLE.md`
+>
+> Ten plik odpowiada za **sekrety, migracje i deploy workflow**, ale nie zastępuje dokumentów bazowych.
+
 Dokument odpowiada na pytania: które konkretnie sekrety ustawić, o co chodzi z deploy.ps1, jak działa migracja D1.
 
 ---

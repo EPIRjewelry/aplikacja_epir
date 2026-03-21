@@ -1,5 +1,14 @@
 # EPIR Analytics Knowledge Base
 
+> [!IMPORTANT]
+> To jest **dokument domenowy / pomocniczy**.
+> Najpierw przeczytaj dokumenty nadrzędne:
+>
+> - `../EPIR_AI_ECOSYSTEM_MASTER.md`
+> - `../EPIR_AI_BIBLE.md`
+>
+> Ten plik opisuje warstwę analityczną i zapytania, ale nie jest nadrzędnym źródłem prawdy dla całego repo.
+
 Dokumentacja źródeł danych analitycznych, mapowania pól i kanonicznych zapytań dla Agent Analityk. Opiera się na [Shopify Web Pixels API Standard Events](https://shopify.dev/docs/api/web-pixels-api/standard-events).
 
 ---
@@ -16,48 +25,48 @@ Tabela `analytics_435783047.events_raw` – eksport z D1 `pixel_events` (nocny b
 
 **Pełna lista 25 typów zdarzeń śledzonych w EPIR:**
 
-| # | event_type | Kategoria | Opis |
-|---|------------|-----------|------|
-| 1 | `page_viewed` | Standard | Wyświetlenie strony |
-| 2 | `product_viewed` | Standard | Wyświetlenie produktu |
-| 3 | `cart_viewed` | Standard | Wyświetlenie koszyka |
-| 4 | `cart_updated` | Standard | Aktualizacja koszyka |
-| 5 | `product_added_to_cart` | Standard | Dodanie do koszyka |
-| 6 | `product_removed_from_cart` | Standard | Usunięcie z koszyka |
-| 7 | `collection_viewed` | Standard | Wyświetlenie kolekcji |
-| 8 | `search_submitted` | Standard | Wyszukiwanie |
-| 9 | `checkout_started` | Standard | Rozpoczęcie checkoutu |
-| 10 | `checkout_completed` | Standard | Zakończenie checkoutu |
-| 11 | `checkout_contact_info_submitted` | Standard | Checkout – dane kontaktowe |
-| 12 | `checkout_address_info_submitted` | Standard | Checkout – adres |
-| 13 | `checkout_shipping_info_submitted` | Standard | Checkout – wysyłka |
-| 14 | `payment_info_submitted` | Standard | Checkout – płatność |
-| 15 | `purchase_completed` | Standard | Zakup zrealizowany |
-| 16 | `alert_displayed` | Standard | Alert wyświetlony |
-| 17 | `ui_extension_errored` | Standard | Błąd rozszerzenia UI |
-| 18 | `form_submitted` | DOM | Formularz wysłany |
-| 19 | `input_focused` | DOM | Fokus na polu |
-| 20 | `input_blurred` | DOM | Blur pola |
-| 21 | `input_changed` | DOM | Zmiana wartości pola |
-| 22 | `click_with_position` | epir: | Klik z pozycją (heatmap) |
-| 23 | `scroll_depth` | epir: | Głębokość scrolla |
-| 24 | `page_exit` | epir: | Wyjście ze strony / czas na stronie |
-| 25 | `mouse_sample` | epir: | Próbka ruchu myszy (heatmap) |
+| #   | event_type                         | Kategoria | Opis                                |
+| --- | ---------------------------------- | --------- | ----------------------------------- |
+| 1   | `page_viewed`                      | Standard  | Wyświetlenie strony                 |
+| 2   | `product_viewed`                   | Standard  | Wyświetlenie produktu               |
+| 3   | `cart_viewed`                      | Standard  | Wyświetlenie koszyka                |
+| 4   | `cart_updated`                     | Standard  | Aktualizacja koszyka                |
+| 5   | `product_added_to_cart`            | Standard  | Dodanie do koszyka                  |
+| 6   | `product_removed_from_cart`        | Standard  | Usunięcie z koszyka                 |
+| 7   | `collection_viewed`                | Standard  | Wyświetlenie kolekcji               |
+| 8   | `search_submitted`                 | Standard  | Wyszukiwanie                        |
+| 9   | `checkout_started`                 | Standard  | Rozpoczęcie checkoutu               |
+| 10  | `checkout_completed`               | Standard  | Zakończenie checkoutu               |
+| 11  | `checkout_contact_info_submitted`  | Standard  | Checkout – dane kontaktowe          |
+| 12  | `checkout_address_info_submitted`  | Standard  | Checkout – adres                    |
+| 13  | `checkout_shipping_info_submitted` | Standard  | Checkout – wysyłka                  |
+| 14  | `payment_info_submitted`           | Standard  | Checkout – płatność                 |
+| 15  | `purchase_completed`               | Standard  | Zakup zrealizowany                  |
+| 16  | `alert_displayed`                  | Standard  | Alert wyświetlony                   |
+| 17  | `ui_extension_errored`             | Standard  | Błąd rozszerzenia UI                |
+| 18  | `form_submitted`                   | DOM       | Formularz wysłany                   |
+| 19  | `input_focused`                    | DOM       | Fokus na polu                       |
+| 20  | `input_blurred`                    | DOM       | Blur pola                           |
+| 21  | `input_changed`                    | DOM       | Zmiana wartości pola                |
+| 22  | `click_with_position`              | epir:     | Klik z pozycją (heatmap)            |
+| 23  | `scroll_depth`                     | epir:     | Głębokość scrolla                   |
+| 24  | `page_exit`                        | epir:     | Wyjście ze strony / czas na stronie |
+| 25  | `mouse_sample`                     | epir:     | Próbka ruchu myszy (heatmap)        |
 
 Agent Analityk **nie wymyśla** eventów spoza tej listy – wszystkie pochodzą z Web Pixels API (standard + DOM) lub z TAE (epir:).
 
 **Kolumny events_raw:**
 
-| Kolumna | Typ | Opis |
-|---------|-----|------|
-| `event_type` | STRING | Typ eventu (Shopify standard) |
-| `session_id` | STRING | ID sesji przeglądarki |
-| `customer_id` | STRING | ID klienta (anonimizowany) |
-| `url` | STRING | page_url |
-| `payload` | STRING | Pełny JSON eventu |
-| `created_at` | TIMESTAMP | Czas utworzenia |
-| `storefront_id` | STRING | (docelowo) ID storefrontu: kazka/zareczyny |
-| `channel` | STRING | (docelowo) Kanał: online-store, hydrogen-kazka, hydrogen-zareczyny |
+| Kolumna         | Typ       | Opis                                                               |
+| --------------- | --------- | ------------------------------------------------------------------ |
+| `event_type`    | STRING    | Typ eventu (Shopify standard)                                      |
+| `session_id`    | STRING    | ID sesji przeglądarki                                              |
+| `customer_id`   | STRING    | ID klienta (anonimizowany)                                         |
+| `url`           | STRING    | page_url                                                           |
+| `payload`       | STRING    | Pełny JSON eventu                                                  |
+| `created_at`    | TIMESTAMP | Czas utworzenia                                                    |
+| `storefront_id` | STRING    | (docelowo) ID storefrontu: kazka/zareczyny                         |
+| `channel`       | STRING    | (docelowo) Kanał: online-store, hydrogen-kazka, hydrogen-zareczyny |
 
 ### 1.2 messages_raw (BigQuery)
 
@@ -67,39 +76,39 @@ Tabela `analytics_435783047.messages_raw` – eksport z D1 `messages` (ai-assist
 
 **Kolumny messages_raw:**
 
-| Kolumna | Typ | Opis |
-|---------|-----|------|
-| `id` | INTEGER | ID wiadomości |
-| `session_id` | STRING | ID sesji czatu |
-| `role` | STRING | user, assistant, system, tool |
-| `content` | STRING | Treść wiadomości |
-| `timestamp` | INTEGER | Unix ms |
-| `tool_calls` | STRING | JSON wywołań narzędzi |
-| `tool_call_id` | STRING | ID odpowiedzi tool |
-| `name` | STRING | Nazwa narzędzia |
-| `storefront_id` | STRING | (docelowo) kazka/zareczyny |
-| `channel` | STRING | (docelowo) Kanał sesji |
+| Kolumna         | Typ     | Opis                          |
+| --------------- | ------- | ----------------------------- |
+| `id`            | INTEGER | ID wiadomości                 |
+| `session_id`    | STRING  | ID sesji czatu                |
+| `role`          | STRING  | user, assistant, system, tool |
+| `content`       | STRING  | Treść wiadomości              |
+| `timestamp`     | INTEGER | Unix ms                       |
+| `tool_calls`    | STRING  | JSON wywołań narzędzi         |
+| `tool_call_id`  | STRING  | ID odpowiedzi tool            |
+| `name`          | STRING  | Nazwa narzędzia               |
+| `storefront_id` | STRING  | (docelowo) kazka/zareczyny    |
+| `channel`       | STRING  | (docelowo) Kanał sesji        |
 
 ### 1.3 storefront_id i channel – wartości i interpretacja
 
 **storefront_id** – alias storefrontu (źródło danych / świat oferty):
 
-| Wartość | Znaczenie |
-|---------|-----------|
-| `kazka` | Headless storefront Kazka Jewelry (osobny asortyment) |
-| `zareczyny` | Headless storefront pierścionków zaręczynowych |
-| `online-store` | Klasyczny sklep Online Store (motyw) |
-| `unknown` | Nieznany (fallback) |
+| Wartość        | Znaczenie                                             |
+| -------------- | ----------------------------------------------------- |
+| `kazka`        | Headless storefront Kazka Jewelry (osobny asortyment) |
+| `zareczyny`    | Headless storefront pierścionków zaręczynowych        |
+| `online-store` | Klasyczny sklep Online Store (motyw)                  |
+| `unknown`      | Nieznany (fallback)                                   |
 
 **channel** – kanał techniczny (skąd pochodzi interakcja):
 
-| Wartość | Znaczenie |
-|---------|-----------|
-| `hydrogen-kazka` | Interakcje z frontu Hydrogen kazka |
-| `hydrogen-zareczyny` | Interakcje z frontu Hydrogen zareczyny |
-| `online-store` | Interakcje z motywu Online Store (TAE) |
+| Wartość              | Znaczenie                                                 |
+| -------------------- | --------------------------------------------------------- |
+| `hydrogen-kazka`     | Interakcje z frontu Hydrogen kazka                        |
+| `hydrogen-zareczyny` | Interakcje z frontu Hydrogen zareczyny                    |
+| `online-store`       | Interakcje z motywu Online Store (TAE)                    |
 | `internal-dashboard` | Panel admin – **tylko tu** dostępne `run_analytics_query` |
-| `unknown` | Nieznany (fallback) |
+| `unknown`            | Nieznany (fallback)                                       |
 
 **Interpretacja:** `storefront_id = "kazka"` + `channel = "hydrogen-kazka"` oznacza, że event/wiadomość pochodzi z headless storefrontu Kazka. Segmentacja po tych polach pozwala analizować kazka vs zareczyny vs online-store osobno.
 
@@ -117,6 +126,7 @@ Tabela `analytics_435783047.messages_raw` – eksport z D1 `messages` (ai-assist
 ### 2.2 Pola best-effort / heurystyczne
 
 - **storefront_inferred_from_url** – fallback do czasu wdrożenia `storefront_id`:
+
   - URL zawiera `kazka` → storefront = kazka
   - URL zawiera `zareczyny` → storefront = zareczyny
   - W przeciwnym razie → online-store lub unknown
@@ -395,6 +405,7 @@ LIMIT 100;
 **Dostępność:** Narzędzie jest dostępne **wyłącznie** gdy `channel === "internal-dashboard"` (panel admin). Nigdy w kontekście anonimowego kupującego.
 
 **Zasady:**
+
 - Agent Analityk **nie tworzy** nowych zapytań SQL samodzielnie – tylko wybiera spośród whitelisty.
 - `queryId` musi być wcześniej zdefiniowany w ANALYTICS_KB i w kodzie Workera.
 - Nowe zapytania dodaje się przez aktualizację whitelisty w kodzie, nie przez LLM.
@@ -421,17 +432,21 @@ Dozwolone wartości `queryId`:
 ### MUST
 
 1. **Migracja messages (storefront_id, channel):**
+
    ```bash
    cd workers/chat
    wrangler d1 execute ai-assistant-sessions-db --remote --file=./migrations/003_storefront_messages.sql
    ```
+
    Bez tego wiadomości czatu nie będą miały storefront_id/channel w D1.
 
 2. **Sekret ADMIN_KEY w bigquery-batch:**
+
    ```bash
    cd workers/bigquery-batch
    wrangler secret put ADMIN_KEY
    ```
+
    Bez tego POST /internal/analytics/query nie przyjmuje żadnych żądań.
 
 3. **Schemat BigQuery:** Rozszerzyć tabele `events_raw` i `messages_raw` o kolumny `storefront_id` i `channel` (BigQuery Console / bq CLI), jeśli nie robi się to automatycznie.
@@ -443,6 +458,11 @@ Dozwolone wartości `queryId`:
 ---
 
 ## 6. Odniesienia
+
+- Ten dokument jest **pomocniczy**. Dokumenty nadrzędne dla całego repo to:
+
+  - [EPIR_AI_ECOSYSTEM_MASTER.md](../EPIR_AI_ECOSYSTEM_MASTER.md)
+  - [EPIR_AI_BIBLE.md](../EPIR_AI_BIBLE.md)
 
 - [Shopify Web Pixels API](https://shopify.dev/docs/api/web-pixels-api)
 - [Web pixel standard events](https://shopify.dev/docs/api/web-pixels-api/standard-events)

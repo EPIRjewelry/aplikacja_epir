@@ -2,7 +2,12 @@
 
 ## Purpose
 
-ESOG (EPIR Shopify Orthodoxy Guardian) reviews code and architecture against EPIR orthodoxy from `EPIR_AI_BIBLE.md`.
+ESOG (EPIR Shopify Orthodoxy Guardian) reviews code and architecture against EPIR orthodoxy and current system architecture from:
+
+- `../../EPIR_AI_ECOSYSTEM_MASTER.md`
+- `../../EPIR_AI_BIBLE.md`
+
+`EPIR_AI_ECOSYSTEM_MASTER.md` explains how the system is built; `EPIR_AI_BIBLE.md` defines the non-negotiable rules ESOG must enforce.
 
 ## Runtime model (local-first)
 

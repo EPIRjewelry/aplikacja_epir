@@ -1,5 +1,14 @@
 # Instrukcja wdrożenia EPIR – Faza 7
 
+> [!IMPORTANT]
+> To jest **dokument operacyjny / pomocniczy**.
+> Najpierw przeczytaj dokumenty nadrzędne:
+>
+> - `../EPIR_AI_ECOSYSTEM_MASTER.md`
+> - `../EPIR_AI_BIBLE.md`
+>
+> Ten plik opisuje **wdrożenie infrastruktury i konfiguracji**, a nie pełny model architektury ani reguły orthodoksji.
+
 Dokument opisuje kroki wdrożenia infrastruktury Cloudflare (D1, Workers, Routes, App Proxy) oraz sekretów dla aplikacji EPIR Art Jewellery.
 
 ---

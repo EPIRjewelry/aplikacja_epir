@@ -1,5 +1,14 @@
 # EPIR AI – Bible for Agents & Collaborators
 
+## ⚠️ Czytaj najpierw
+
+Ten plik jest **jednym z dwóch podstawowych dokumentów** dla całego repozytorium `d:\aplikacja_epir`.
+
+**Obowiązkowa kolejność czytania dla nowej osoby:**
+
+1. `EPIR_AI_ECOSYSTEM_MASTER.md` — onboarding, aktualna architektura, role agentów, prompty produkcyjne
+2. `EPIR_AI_BIBLE.md` — orthodoksja, zasady nienegocjowalne, guardrails dla zmian
+
 ## ⚠️ DROGOWSKAZ (źródło prawdy)
 
 **EPIR AI = jedna aplikacja Shopify.**
@@ -24,6 +33,11 @@ Zawiera:
 
 Jeżeli jakakolwiek inna odpowiedź AI jest sprzeczna z tym dokumentem, **ten dokument wygrywa**.
 
+Ten dokument należy czytać **łącznie** z `EPIR_AI_ECOSYSTEM_MASTER.md`:
+
+- `EPIR_AI_ECOSYSTEM_MASTER.md` opisuje, **jak system jest zbudowany i jak rozdzielone są role agentów**,
+- `EPIR_AI_BIBLE.md` definiuje, **jakich zasad nie wolno łamać przy implementacji, review i zmianach architektonicznych**.
+
 ---
 
 ## 1. Wysokopoziomowa architektura EPIR AI
@@ -35,11 +49,18 @@ Jeżeli jakakolwiek inna odpowiedź AI jest sprzeczna z tym dokumentem, **ten do
 - Typ: Pełnozakresowa aplikacja Shopify z embedded extensions i serverless backendem.
 - Konfiguracja (fragment `shopify.app.toml`):
 
-toml name = "epir_ai" application_url = "https://asystent.epirbizuteria.pl" embedded = true extension_directories = ["extensions/asystent-klienta", "extensions/my-web-pixel"] scopes = "customer_read_customers,customer_read_orders,customer_read_store_credit_*,unauthenticated_read_product_listings"
+```toml
+name = "epir_ai"
+application_url = "https://asystent.epirbizuteria.pl"
+embedded = true
+extension_directories = ["extensions/asystent-klienta", "extensions/my-web-pixel"]
+scopes = "customer_read_customers,customer_read_orders,customer_read_store_credit_*,unauthenticated_read_product_listings"
 
 app_proxy: url = "https://asystent.epirbizuteria.pl" subpath = "assistant" prefix = "apps"
 
 auth.redirect_urls = ["https://asystent.epirbizuteria.pl/api/auth"]
+```
+
 **ZNACZENIE:**
 
 - **App Proxy**:
@@ -70,6 +91,7 @@ Główny AI assistant (MCP) obsługujący rozmowy klientów dla wszystkich front
   - Groq API (gpt-oss-120B),
   - fallback: llama-3.2-11b-vision dla obrazów.
 - Durable Objects:
+
   - **SessionDO** – per-session state:
     - bieżąca historia (max ~200 wiadomości in-memory),
     - starsze → `ai-assistant-sessions-db/messages` (D1),
@@ -316,10 +338,22 @@ MUST:
   - `Settings → Apps and sales channels → Headless (Kazka)` → skopiuj **Storefront ID**.
 - W Chat Workerze:
 
-ts const STOREFRONTS = { kazka: { storefrontId: 'gid://shopify/Storefront/XXXX', // realne ID z Admina apiToken: env.PUBLIC_STOREFRONT_API_TOKEN_KAZKA, // profil RAG, metaobject profile, itp. }, // ... };
+```ts
+const STOREFRONTS = {
+  kazka: {
+    storefrontId: "gid://shopify/Storefront/XXXX", // realne ID z Admina
+    apiToken: env.PUBLIC_STOREFRONT_API_TOKEN_KAZKA,
+    // profil RAG, metaobject profile, itp.
+  },
+  // ...
+};
+```
 
 - W requestach z kazka:
-json { "storefrontId": "kazka", "channel": "hydrogen-kazka", ... }
+
+```json
+{ "storefrontId": "kazka", "channel": "hydrogen-kazka", "...": "..." }
+```
 
 Worker:
 
@@ -360,8 +394,20 @@ MUST:
 - W Admin:
   - ustalić Storefront ID dla storefrontu `zareczyny`.
 - W Workerze:
-ts const STOREFRONTS = { kazka: { ... }, zareczyny: { storefrontId: 'gid://shopify/Storefront/YYYY', apiToken: env.PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY, // profil RAG, metaobject profile, itp. }, };
+
+```ts
+const STOREFRONTS = {
+  kazka: { ... },
+  zareczyny: {
+    storefrontId: 'gid://shopify/Storefront/YYYY',
+    apiToken: env.PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY,
+    // profil RAG, metaobject profile, itp.
+  },
+};
+```
+
 - W requestach z Hydrogen `zareczyny`:
+
 SHOULD:
 
 - Jeśli zareczyny ma osobny asortyment/narrację (np. pierścionki zaręczynowe):
@@ -376,6 +422,7 @@ SHOULD:
 ### 6.1. ESOG – EPIR Shopify Orthodoxy Guardian
 
 - Strażnik ortodoksji:
+
   - recenzuje architekturę i kod,
   - ocenia: **Compliant / Partially / Non-compliant / Needs design**,
   - pilnuje zasad z tego dokumentu i z oficjalnych docs Shopify.
@@ -403,6 +450,7 @@ SHOULD:
 ## 7. Jak z tego korzystać
 
 1. **Ludzie w zespole**:
+
    - czytają ten dokument jako:
      - overview architektury,
      - listę zasad bezpieczeństwa/orthodoksji,
@@ -411,6 +459,7 @@ SHOULD:
      - odwołują się do niego jako do źródła prawdy.
 
 2. **Agenci w Cursor / innych narzędziach**:
+
    - ESOG:
      - ma ten dokument w knowledge-base,
      - porównuje do niego każdą propozycję architektury/kodu.

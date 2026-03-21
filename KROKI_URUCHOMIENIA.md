@@ -1,7 +1,16 @@
 # Kroki uruchomienia aplikacji EPIR
 
+> [!IMPORTANT]
+> To jest **dokument operacyjny / pomocniczy**.
+> Najpierw przeczytaj dokumenty nadrzędne:
+>
+> - `EPIR_AI_ECOSYSTEM_MASTER.md`
+> - `EPIR_AI_BIBLE.md`
+>
+> Ten plik opisuje **kolejność uruchomienia i deployu**, a nie nadrzędną architekturę ani orthodoksję.
+
 Uruchom w terminalu (PowerShell) – **pojedynczo, w podanej kolejności**.  
-Przed startem: `wrangler login` lub `$env:CLOUDFLARE_API_TOKEN = "..."`  
+Przed startem: `wrangler login` lub `$env:CLOUDFLARE_API_TOKEN = "..."`
 
 ---
 
@@ -26,7 +35,7 @@ wrangler secret put SHOPIFY_APP_SECRET
 wrangler secret put ADMIN_KEY
 ```
 
-*(Wrangler poprosi o wartość dla każdego – wklej z klipboarda.)*
+_(Wrangler poprosi o wartość dla każdego – wklej z klipboarda.)_
 
 ---
 
@@ -70,7 +79,7 @@ cd D:\aplikacja_epir
 .\deploy.ps1
 ```
 
-*(npm install → RAG → analytics → bigquery-batch → chat → shopify app build → shopify app deploy)*
+_(npm install → RAG → analytics → bigquery-batch → chat → shopify app build → shopify app deploy)_
 
 ---
 
