@@ -20,6 +20,15 @@ Te dwa dokumenty są **podstawowym źródłem prawdy** dla całego repo.
 - [`../EPIR_AI_ECOSYSTEM_MASTER.md`](../EPIR_AI_ECOSYSTEM_MASTER.md)
 - [`../EPIR_AI_BIBLE.md`](../EPIR_AI_BIBLE.md)
 
+## Współdzielony kontekst AI po klonie repo
+
+Jeśli otwierasz repo na nowym komputerze i chcesz, żeby narzędzia AI widziały ten sam kontekst repozytoryjny:
+
+- [`../AGENTS.md`](../AGENTS.md) — wspólny onboarding AI dla repo
+- [`../.github/copilot-instructions.md`](../.github/copilot-instructions.md) — instrukcje workspace dla GitHub Copilot
+
+Te pliki są commitowane do repo, więc nowy klon dostaje ten sam kontekst startowy bez polegania na lokalnej pamięci czy stashu.
+
 ## Dokumenty operacyjne
 
 - [`../KROKI_URUCHOMIENIA.md`](../KROKI_URUCHOMIENIA.md) — szybka sekwencja uruchomienia i deployu

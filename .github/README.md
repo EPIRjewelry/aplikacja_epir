@@ -2,6 +2,18 @@
 
 Ten katalog zawiera konfigurację GitHub dla repozytorium: workflow CI/CD, szablony zgłoszeń oraz dokumentację reguł ochrony gałęzi.
 
+## Współdzielone instrukcje AI
+
+Repo zawiera także współdzielone instrukcje dla narzędzi AI, tak aby po sklonowaniu na nowy komputer kontekst pracy był odtwarzalny z gita:
+
+- `../AGENTS.md` — wspólny onboarding AI dla repo
+- `copilot-instructions.md` — instrukcje workspace dla GitHub Copilot
+
+Dokumenty bazowe dla architektury i zasad znajdują się w root repo:
+
+- `../EPIR_AI_ECOSYSTEM_MASTER.md`
+- `../EPIR_AI_BIBLE.md`
+
 ## Spis treści
 
 - [Ochrona gałęzi `main`](#ochrona-gałęzi-main)
