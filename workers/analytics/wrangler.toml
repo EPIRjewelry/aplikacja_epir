@@ -8,7 +8,7 @@ workers_dev = true
 command = ""
 
 [vars]
-ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://epir-art-silver-jewellery.myshopify.com,https://asystent.epirbizuteria.pl"
+ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://zareczyny.epirbizuteria.pl,https://epir-art-silver-jewellery.myshopify.com,https://asystent.epirbizuteria.pl"
 
 [[d1_databases]]
 binding = "DB"
