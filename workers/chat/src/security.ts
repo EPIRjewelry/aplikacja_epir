@@ -5,7 +5,7 @@
 
 import { verifyHmac, parseSignature, canonicalizeParams, verifyTimestamp } from './hmac';
 
-export async function verifyAppProxyHmac(request: Request, secret: string): Promise<{ ok: boolean; reason?: string }> {
+export async function verifyAppProxyHmac(request: Request<any, any>, secret: string): Promise<{ ok: boolean; reason?: string }> {
   try {
     // 1) Pobierz podpis (header lub query param)
     const headerSig = request.headers.get('x-shopify-hmac-sha256') ?? undefined;

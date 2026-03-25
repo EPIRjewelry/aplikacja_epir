@@ -1,5 +1,9 @@
 /// <reference types="@cloudflare/workers-types" />
 
+import type { Env } from './config/bindings';
+
+export type { Env } from './config/bindings';
+
 /**
  * GŁÓWNY PLIK WORKERA (epir-art-jewellery-worker)
  *
@@ -31,7 +35,7 @@ import {
 import { GROQ_MODEL_ID } from './config/model-params';
 import { LUXURY_SYSTEM_PROMPT } from './prompts/luxury-system-prompt'; // 🟢 Używa nowego promptu v2
 import { TOOL_SCHEMAS } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2
-import { truncateWithSummary } from './utils/history'; // 🔵 History truncation
+import { truncateWithSummary, type Message as HistoryMessage } from './utils/history'; // 🔵 History truncation
 import { callMcpToolDirect, handleMcpRequest } from './mcp_server';
 
 /** Wywołanie run_analytics_query – tylko gdy channel=internal-dashboard (BIGQUERY_BATCH + ADMIN_KEY) */
@@ -115,44 +119,6 @@ interface ChatRequestBody {
   collectionHandle?: string;
 }
 
-export interface Env {
-  DB: D1Database;
-  DB_CHATBOT: D1Database;
-  SESSION_DO: DurableObjectNamespace;
-  RATE_LIMITER_DO: DurableObjectNamespace;
-  TOKEN_VAULT_DO: DurableObjectNamespace;
-  VECTOR_INDEX?: VectorizeIndex;
-  SHOPIFY_APP_SECRET: string;
-  ALLOWED_ORIGIN?: string;
-  ALLOWED_ORIGINS?: string; // Comma-separated whitelist for CORS
-  SHOPIFY_STOREFRONT_TOKEN?: string;
-  PUBLIC_STOREFRONT_API_TOKEN_KAZKA?: string;
-  PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY?: string;
-  SHOPIFY_ADMIN_TOKEN?: string;
-  SHOP_DOMAIN?: string;
-  /** MCP endpoint - zmienna z wrangler.toml [vars], fallback: https://{SHOP_DOMAIN}/api/mcp */
-  MCP_ENDPOINT?: string;
-  GROQ_API_KEY: string;
-  /** AI Gateway - opcjonalne, gdy ustawione requesty idą przez gateway (cache, analytics) */
-  AI_GATEWAY_ACCOUNT_ID?: string;
-  AI_GATEWAY_NAME?: string;
-  /** A/B test: USE_WORKERS_AI=1 używa Cloudflare Workers AI zamiast Groq */
-  USE_WORKERS_AI?: string;
-  /** Cloudflare Workers AI binding (wrangler [ai]) */
-  AI?: { run: (model: string, input: unknown, opts?: unknown) => Promise<unknown> };
-  DEV_BYPASS?: string;
-  WORKER_ORIGIN?: string;
-  EPIR_INTERNAL_KEY?: string;
-  // AI_WORKER removed - using direct ai-client.ts only
-  RAG_WORKER?: Fetcher;
-  /** Gateway pattern: Service binding do analytics-worker (proxy /pixel) */
-  ANALYTICS_WORKER?: Fetcher;
-  /** Klucz admin dla Dashboard leadów – wrangler secret put ADMIN_KEY */
-  ADMIN_KEY?: string;
-  /** Service binding do epir-bigquery-batch (run_analytics_query) */
-  BIGQUERY_BATCH?: Fetcher;
-}
-
 type StorefrontTokenEnvKey = 'PUBLIC_STOREFRONT_API_TOKEN_KAZKA' | 'PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY';
 
 type StaticStorefrontConfig = {
@@ -175,22 +141,23 @@ const STOREFRONTS: Record<string, StaticStorefrontConfig> = {
     apiTokenEnvKey: 'PUBLIC_STOREFRONT_API_TOKEN_KAZKA',
   },
   zareczyny: {
-    storefrontId: 'gid://shopify/Storefront/1000013955', // Zastąp faktycznym ID kanału zareczyny
+    storefrontId: 'gid://shopify/Storefront/1000013955',
     channel: 'hydrogen-zareczyny',
-    aiProfileGid: 'gid://shopify/Metaobject/ZARECZYNY_AI_PROFILE_TODO',
+    /** Typ Admin: `ai_profile`, handle: zareczyny — opublikuj wpis (Active), inaczej Storefront zwróci null */
+    aiProfileGid: 'gid://shopify/Metaobject/2117458166092',
     apiTokenEnvKey: 'PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY',
   },
 };
 
 function resolveStorefrontConfig(env: Env, storefrontKey?: string): ResolvedStorefrontConfig | null {
   if (!storefrontKey) return null;
-
   const config = STOREFRONTS[storefrontKey];
   if (!config) return null;
-
   return {
     ...config,
-    apiToken: config.apiTokenEnvKey ? env[config.apiTokenEnvKey] ?? env.SHOPIFY_STOREFRONT_TOKEN : env.SHOPIFY_STOREFRONT_TOKEN,
+    apiToken: config.apiTokenEnvKey
+      ? env[config.apiTokenEnvKey] ?? env.SHOPIFY_STOREFRONT_TOKEN
+      : env.SHOPIFY_STOREFRONT_TOKEN,
   };
 }
 
@@ -891,7 +858,20 @@ async function streamAssistantResponse(
 
       // 🟢 KROK 3c: TRUNCATE HISTORY - zredukuj długość kontekstu przed wysłaniem do AI
       // Cel: Zapobiegaj overflow kontekstu, oszczędzaj tokeny, zwiększ szybkość
-      const truncatedMessages = truncateWithSummary(messages, 8000, 12);
+      const messagesForTruncate: HistoryMessage[] = messages.map((m) => ({
+        role: m.role as HistoryMessage['role'],
+        content: m.content ?? '',
+        ...(m.tool_calls && { tool_calls: m.tool_calls }),
+        ...(m.tool_call_id && { tool_call_id: m.tool_call_id }),
+        ...(m.name && { name: m.name }),
+      }));
+      const truncatedMessages: GroqMessage[] = truncateWithSummary(messagesForTruncate, 8000, 12).map((m) => ({
+        role: m.role,
+        content: m.content,
+        ...(m.tool_calls && { tool_calls: m.tool_calls }),
+        ...(m.tool_call_id && { tool_call_id: m.tool_call_id }),
+        ...(m.name && { name: m.name }),
+      }));
       
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log(`[streamAssistant] Rozpoczynam pętlę AI. Sesja: ${sessionId}`);

@@ -13,6 +13,9 @@
 import { callMcpToolDirect, getMcpEndpoint } from './mcp_server';
 import { isString, isRecord, safeJsonParse, asStringField } from './utils/json';
 
+/** Kanoniczny endpoint MCP sklepu EPIR (zgodny z EPIR_AI_BIBLE / SHOP_DOMAIN). */
+const CANONICAL_MCP_URL = 'https://epir-art-silver-jewellery.myshopify.com/api/mcp';
+
 const MCP_TIMEOUT_MS = 5000;
 const CATALOG_FALLBACK = {
   products: [],

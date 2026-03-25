@@ -12,6 +12,7 @@ export interface Env {
   SHOP_DOMAIN?: string;
   /** MCP endpoint - zmienna z wrangler.toml [vars] */
   MCP_ENDPOINT?: string;
+  SHOPIFY_ADMIN_TOKEN?: string;
 }
 
 const MCP_TIMEOUT_MS = 5000;
@@ -94,7 +95,7 @@ export async function callShopifyMcpTool(
       throw new Error(`Shopify MCP HTTP ${response.status}: ${text}`);
     }
 
-    const mcpResponse: McpResponse | null = await response.json().catch(() => null);
+    const mcpResponse = (await response.json().catch(() => null)) as McpResponse | null;
     if (!mcpResponse) {
       throw new Error('Shopify MCP returned invalid JSON');
     }

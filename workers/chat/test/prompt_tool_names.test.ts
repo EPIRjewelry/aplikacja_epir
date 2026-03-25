@@ -8,7 +8,7 @@ describe('MCP system prompt tool names', () => {
     const promptPath = path.resolve(__dirname, '../src/prompts/luxury-system-prompt.ts');
     const prompt = fs.readFileSync(promptPath, 'utf8');
 
-    const keys = Object.keys(TOOL_SCHEMAS);
+    const keys = Object.keys(TOOL_SCHEMAS) as (keyof typeof TOOL_SCHEMAS)[];
     const missing: string[] = [];
 
     for (const key of keys) {

@@ -1,9 +1,9 @@
-﻿import type { Env } from './index';
+import type { Env } from './index';
 import { callShopifyMcpTool } from './shopify-mcp-client';
 
 // --- Typy dla parametrów i wyników narzędzi ---
 
-interface SearchProductParams {
+export interface SearchProductParams {
   query: string;
   first?: number;
   context?: string;
@@ -30,18 +30,27 @@ interface PolicyResult {
 // --- Implementacje narzędzi (Tools) ---
 
 /**
- * Narz─Ödzie MCP: Wyszukuje produkty w katalogu Shopify za pomoc─ů Storefront API.
- * @param params Parametry wyszukiwania, głównie `query`.
- * @param env Zmienne srodowiskowe.
- * @returns Structured JSON z wynikami.
-/**
- * Narzędzie MCP: Wyszukuje produkty w katalogu Shopify przez oficjalny endpoint MCP sklepu.
- * @param params Parametry wyszukiwania, głównie `query`.
- * @param env Zmienne środowiskowe.
- * @returns Structured JSON z wynikami.
+ * Wyszukuje produkty w katalogu przez endpoint MCP sklepu.
  */
-  if (result && typeof result === 'object' && 'products' in (result as any)) {
-    return result as any;
+export async function searchProductCatalog(
+  params: SearchProductParams,
+  env: Env,
+): Promise<{ products: ProductResult[] }> {
+  try {
+    const result = await callShopifyMcpTool(
+      'search_shop_catalog',
+      {
+        query: params.query,
+        first: params.first ?? 5,
+        context: params.context ?? 'biżuteria',
+      },
+      env as any,
+    );
+    if (result && typeof result === 'object' && 'products' in (result as any)) {
+      return result as any;
+    }
+  } catch (e) {
+    console.warn('searchProductCatalog via MCP failed:', e);
   }
   return { products: [] };
 }
@@ -118,35 +127,3 @@ export async function mcpCatalogSearch(
     return null;
   }
 }
-
-// Added validation for model responses
-function validateModelResponse(response: any): boolean {
-  if (!response || typeof response !== 'object') {
-    logError('Invalid model response format', response);
-    return false;
-  }
-  if (!response.reply || typeof response.reply !== 'string') {
-    logError('Model response missing required fields', response);
-    return false;
-  }
-  return true;
-}
-
-// Defined missing variable and fixed return statement
-const modelResponse = { reply: 'Mock reply' }; // Mock response for testing
-
-function logError(message: string, data?: any) {
-  console.error(`[ERROR] ${message}`, data || '');
-}
-
-// Wrapped return statement in a function
-function handleError() {
-  return 'An error occurred while processing your request. Please try again.';
-}
-
-// Example usage
-const isValid = validateModelResponse(modelResponse);
-if (!isValid) {
-  handleError();
-}
-

@@ -119,7 +119,9 @@ export async function streamGroqResponse(
     }) as ReadableStream<Uint8Array>;
     if (stream && typeof stream.getReader === 'function') {
       let buf = '';
-      return stream.pipeThrough(new TextDecoderStream()).pipeThrough(
+      return stream
+        .pipeThrough(new TextDecoderStream() as unknown as TransformStream<Uint8Array, string>)
+        .pipeThrough(
         new TransformStream<string, string>({
           transform(chunk, controller) {
             buf += chunk;
@@ -386,7 +388,9 @@ export async function streamGroqEvents(
       tools: tools,
     }) as ReadableStream<Uint8Array>;
     if (stream && typeof stream.getReader === 'function') {
-      return stream.pipeThrough(new TextDecoderStream()).pipeThrough(createGroqStreamTransform());
+      return stream
+        .pipeThrough(new TextDecoderStream() as unknown as TransformStream<Uint8Array, string>)
+        .pipeThrough(createGroqStreamTransform());
     }
   }
 
@@ -456,7 +460,7 @@ export async function streamVisionEvents(
     throw new Error('Workers AI vision did not return a stream');
   }
   return stream
-    .pipeThrough(new TextDecoderStream())
+    .pipeThrough(new TextDecoderStream() as unknown as TransformStream<Uint8Array, string>)
     .pipeThrough(createGroqStreamTransform());
 }
 
