@@ -43,5 +43,5 @@ Write-Host "`n[7/7] shopify app deploy..." -ForegroundColor Yellow
 shopify app deploy --allow-updates
 if ($LASTEXITCODE -ne 0) { throw "shopify app deploy failed" }
 
-Write-Host "`n=== Deploy zakończony ===" -ForegroundColor Green
-Write-Host "Sprawdź: https://asystent.epirbizuteria.pl/chat" -ForegroundColor Gray
+Write-Host "`n=== Deploy zakonczony ===" -ForegroundColor Green
+Write-Host "Sprawdz: https://asystent.epirbizuteria.pl/chat" -ForegroundColor Gray
