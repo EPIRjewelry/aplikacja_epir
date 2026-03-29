@@ -140,7 +140,7 @@ function reportUiExtensionError(error, context = {}) {
 
 // Helper: find section (block or embed)
 function getAssistantSection() {
-  return document.getElementById('epir-assistant-section') || document.getElementById('epir-assistant-embed');
+  return document.getElementById('epir-assistant-embed') || document.getElementById('epir-assistant-section');
 }
 
 // Canonicalize endpoint so storefront always uses a single source of truth.
@@ -180,11 +180,11 @@ function initAssistantUIForSection(section) {
   if (!section || section.dataset.assistantUiInit === '1') return;
   try {
     teleportAssistantToBody(section);
-    section.dataset.assistantUiInit = '1';
     const launcher = section.querySelector('#assistant-launcher') || section.querySelector('#assistant-launcher-embed');
     const closeBtn = section.querySelector('#assistant-close-button') || section.querySelector('#assistant-close-button-embed');
     const content = section.querySelector('#assistant-content') || section.querySelector('#assistant-content-embed');
     if (!launcher || !closeBtn) return;
+    section.dataset.assistantUiInit = '1';
     
     // Launcher: otwiera panel
     launcher.addEventListener('click', (e) => {
@@ -465,7 +465,7 @@ async function sendMessageToWorker(
   };
 
   // Render mode: 'growing' (default) or 'dots' (keeps '...' until finish)
-  const sectionEl = (messagesEl && (messagesEl.closest('#epir-assistant-section') || messagesEl.closest('#epir-assistant-embed'))) || getAssistantSection();
+  const sectionEl = (messagesEl && (messagesEl.closest('#epir-assistant-embed') || messagesEl.closest('#epir-assistant-section'))) || getAssistantSection();
   const renderMode = (sectionEl && sectionEl.dataset && sectionEl.dataset.streamRender) || 'growing';
 
   setLoading(true);
@@ -667,7 +667,7 @@ function initAssistantSubmitHandler() {
 }
 
 function doSendFromForm(form, input) {
-  const sectionEl = form.closest('#epir-assistant-section') || form.closest('#epir-assistant-embed') || getAssistantSection();
+  const sectionEl = form.closest('#epir-assistant-embed') || form.closest('#epir-assistant-section') || getAssistantSection();
   const messagesEl = sectionEl && (sectionEl.querySelector('#assistant-messages') || sectionEl.querySelector('#assistant-messages-embed'));
   const text = (input && input.value && input.value.trim()) || '';
   if (!text || !messagesEl) return;
