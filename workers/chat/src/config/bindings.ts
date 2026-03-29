@@ -44,6 +44,7 @@ export interface Env {
   DEV_BYPASS?: string;
   WORKER_ORIGIN?: string;
   EPIR_INTERNAL_KEY?: string;
+  EPIR_CHAT_SHARED_SECRET?: string;
 
   RAG_WORKER?: Fetcher;
   ANALYTICS_WORKER?: Fetcher;
@@ -58,6 +59,7 @@ export const OPTIONAL_SECRETS = [
   'PUBLIC_STOREFRONT_API_TOKEN_KAZKA',
   'PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY',
   'SHOPIFY_ADMIN_TOKEN',
+  'EPIR_CHAT_SHARED_SECRET',
 ] as const;
 
 export const REQUIRED_VARS = ['SHOP_DOMAIN', 'ALLOWED_ORIGIN'] as const;

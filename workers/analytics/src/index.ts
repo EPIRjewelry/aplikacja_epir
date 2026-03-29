@@ -1,5 +1,7 @@
 /// <reference types="@cloudflare/workers-types" />
 
+import { timingSafeEqual } from 'node:crypto';
+
 // ============================================================================
 // ANALYTICS WORKER - Shopify Web Pixel Event Tracking
 // ============================================================================
@@ -13,6 +15,7 @@ interface Env {
   SESSION_DO: DurableObjectNamespace;
   AI_WORKER?: Fetcher; // Removed - analytics skips AI analysis when undefined (graceful degradation)
   ALLOWED_ORIGINS?: string; // Comma-separated whitelist for CORS
+  SHOPIFY_WEBHOOK_SECRET?: string;
 }
 
 // ============================================================================
@@ -233,6 +236,119 @@ async function ensureCustomerEventsTable(db: D1Database): Promise<void> {
   }
 }
 
+async function ensureOrderAttributionsTable(db: D1Database): Promise<void> {
+  try {
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS order_attributions (
+          shopify_order_gid TEXT PRIMARY KEY,
+          order_name TEXT,
+          epir_session_id TEXT,
+          source TEXT,
+          received_at INTEGER NOT NULL
+        )`
+      )
+      .run();
+  } catch (err) {
+    console.error('[ANALYTICS_WORKER] ❌ Failed to ensure order_attributions table:', err);
+    throw err;
+  }
+}
+
+function base64DecodeToUint8(b64: string): Uint8Array | null {
+  try {
+    const binary = atob(b64);
+    const out = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+async function verifyShopifyWebhookHmac(
+  rawBody: ArrayBuffer,
+  hmacHeader: string | null,
+  secret: string
+): Promise<boolean> {
+  if (!hmacHeader || !secret) return false;
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, rawBody));
+  const expected = base64DecodeToUint8(hmacHeader.trim());
+  if (!expected || sig.length !== expected.length) return false;
+  return timingSafeEqual(sig, expected);
+}
+
+function resolveShopifyOrderGid(order: Record<string, unknown>): string | null {
+  const gid = order.admin_graphql_api_id;
+  if (typeof gid === 'string' && gid.length > 0) return gid;
+  const id = order.id;
+  if (typeof id === 'number' || typeof id === 'string') return `gid://shopify/Order/${String(id)}`;
+  return null;
+}
+
+function extractEpirSessionIdFromOrder(order: Record<string, unknown>): string | null {
+  const tryAttrs = (arr: unknown): string | null => {
+    if (!Array.isArray(arr)) return null;
+    for (const item of arr) {
+      if (!item || typeof item !== 'object') continue;
+      const o = item as Record<string, unknown>;
+      const nk = o.name ?? o.key;
+      if (nk === '_epir_session_id') {
+        const v = o.value;
+        if (typeof v === 'string' && v.trim()) return v.trim();
+      }
+    }
+    return null;
+  };
+  return tryAttrs(order.note_attributes) ?? tryAttrs(order.custom_attributes);
+}
+
+async function handleOrdersCreateWebhook(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') {
+    return new Response('Method Not Allowed', { status: 405 });
+  }
+  const secret = env.SHOPIFY_WEBHOOK_SECRET;
+  if (!secret) {
+    return json({ ok: false, error: 'Webhook secret not configured' }, 401);
+  }
+  const rawBody = await request.arrayBuffer();
+  const hmacHeader = request.headers.get('X-Shopify-Hmac-Sha256');
+  if (!(await verifyShopifyWebhookHmac(rawBody, hmacHeader, secret))) {
+    return json({ ok: false, error: 'Unauthorized' }, 401);
+  }
+  let order: Record<string, unknown>;
+  try {
+    order = JSON.parse(new TextDecoder().decode(rawBody)) as Record<string, unknown>;
+  } catch {
+    return json({ ok: false, error: 'Invalid JSON' }, 400);
+  }
+  const shopifyGid = resolveShopifyOrderGid(order);
+  if (!shopifyGid) {
+    return json({ ok: false, error: 'Missing order id' }, 400);
+  }
+  const orderName = typeof order.name === 'string' ? order.name : null;
+  const epirSessionId = extractEpirSessionIdFromOrder(order);
+  const receivedAt = Date.now();
+  await ensureOrderAttributionsTable(env.DB);
+  await env.DB
+    .prepare(
+      `INSERT INTO order_attributions (shopify_order_gid, order_name, epir_session_id, source, received_at)
+       VALUES (?1, ?2, ?3, ?4, ?5)
+       ON CONFLICT(shopify_order_gid) DO UPDATE SET epir_session_id = excluded.epir_session_id`
+    )
+    .bind(shopifyGid, orderName, epirSessionId, 'webhook_orders_create', receivedAt)
+    .run();
+  return json({ ok: true }, 200);
+}
+
 async function insertCustomerEvent(
   db: D1Database,
   customerId: string,
@@ -280,7 +396,9 @@ async function insertCustomerEvent(
   } catch (e) {
     console.error('[ANALYTICS_WORKER] ❌ Failed to insert customer event:', e);
   }
-}// ============================================================================
+}
+
+// ============================================================================
 // CUSTOMER BEHAVIOR TRACKING & AI SCORING
 // ============================================================================
 
@@ -318,7 +436,9 @@ async function upsertCustomerSession(
   } catch (e) {
     console.error('[ANALYTICS_WORKER] ❌ Failed to upsert customer session:', e);
   }
-}/**
+}
+
+/**
  * Analyze customer behavior using AI Worker and update scoring
  * Returns true if chat should be activated based on AI analysis
  */
@@ -1303,6 +1423,9 @@ async function handleCustomerSessions(request: Request, env: Env, url: URL): Pro
 export default {
   async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    if (request.method === 'POST' && url.pathname === '/webhooks/orders/create') {
+      return handleOrdersCreateWebhook(request, env);
+    }
     if (request.method === 'POST' && url.pathname === '/pixel') {
       return handlePixelPost(request, env, ctx);
     }

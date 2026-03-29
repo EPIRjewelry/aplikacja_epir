@@ -9,6 +9,7 @@ command = ""
 
 [vars]
 ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://zareczyny.epirbizuteria.pl,https://epir-art-silver-jewellery.myshopify.com,https://asystent.epirbizuteria.pl"
+SHOPIFY_WEBHOOK_SECRET = "dev-placeholder-override-with-wrangler-secret-put"
 
 [[d1_databases]]
 binding = "DB"

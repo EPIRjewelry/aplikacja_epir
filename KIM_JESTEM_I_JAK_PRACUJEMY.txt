@@ -1,0 +1,50 @@
+================================================================================
+KIM JESTEŚMY I JAK PRACUJEMY — EPIR (aplikacja_epir)
+================================================================================
+Wersja: repozytoryjna (z gita). Lokalne notatki nie zastępują tego pliku.
+
+KIM JESTEŚMY
+------------
+• Budujemy ekosystem jubilerski EPIR AI: jedna aplikacja Shopify (epir_ai),
+  jedno repozytorium (EPIRjewelry/aplikacja_epir), jedna gałąź źródła prawdy: main.
+• Obsługujemy równolegle: sklep w motywie (Theme App Extension), headless Kazka,
+  headless Zaręczyny — z jednego „mózgu” backendu i spójnym modelem danych.
+• Sztuczna inteligencja w produkcji ma dwa rozłączne oblicza:
+  — Gemma: rozmowa z kupującym (luksusowy doradca jubilerski; bez techniki).
+  — Dev-asystent: panel / IDE — Shopify, architektura EPIR, MCP, debug (bez
+    udawania Gemmy).
+
+JAK PRACUJEMY (ŹRÓDŁA PRAWDY)
+-----------------------------
+1. Najpierw (obowiązkowa kolejność):
+   EPIR_AI_ECOSYSTEM_MASTER.md  — jak system jest zbudowany, kanały, prompty PROD.
+   EPIR_AI_BIBLE.md             — czego nie wolno łamać (orthodoksja, guardrails).
+
+2. Potem: docs/README.md, AGENTS.md, dokumenty operacyjne (deploy, sekrety, kroki).
+
+3. Jeśli dokument pomocniczy jest sprzeczny z Master lub Bible — wygrywają Master
+   i Bible; pomocniczy wymaga aktualizacji.
+
+ARCHITEKTURA W JEDNYM ZDANIU
+-----------------------------
+Frontend nigdy nie omija kanonicznego ingressu: Shopify App Proxy /apps/assistant/;
+backend (Chat Worker / MCP) routuje po storefrontId i channel; sesje → Durable
+Objects → D1 → eksport analityczny (m.in. BigQuery), zgodnie z dokumentacją w repo.
+
+ZASADY DLA LUDZI I AGENTÓW
+--------------------------
+• Nie projektujemy „drugiego backendu” ani równoległego źródła prawdy poza tym repo.
+• Sekretów i kluczy nie umieszczamy w czacie ani w kliencie — tylko tam, gdzie
+  przewiduje to dokumentacja operacyjna (Wrangler, GitHub Secrets itd.).
+• Zmiany architektoniczne wysokiego poziomu: najpierw zgodność z Master/Bible,
+  potem implementacja.
+
+GDZIE SZUKAĆ KONTEKSTU PO KLONIE
+--------------------------------
+AGENTS.md
+.github/copilot-instructions.md
+(dokumenty bazowe jak wyżej)
+
+================================================================================
+Koniec pliku
+================================================================================

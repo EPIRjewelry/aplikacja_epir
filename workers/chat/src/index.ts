@@ -132,6 +132,25 @@ type ResolvedStorefrontConfig = StaticStorefrontConfig & {
   apiToken?: string;
 };
 
+type ChatContextOverride = {
+  storefrontId?: string;
+  channel?: string;
+};
+
+type S2SChatAuthorizationResult =
+  | {
+      ok: true;
+      contextOverride: Required<ChatContextOverride>;
+    }
+  | {
+      ok: false;
+      response: Response;
+    };
+
+const EPIR_SHARED_SECRET_HEADER = 'X-EPIR-SHARED-SECRET';
+const EPIR_STOREFRONT_HEADER = 'X-EPIR-STOREFRONT-ID';
+const EPIR_CHANNEL_HEADER = 'X-EPIR-CHANNEL';
+
 /** Mapowanie aliasów storefrontów na konfigurację. Na drucie używamy aliasu (np. "kazka"), wewnątrz MCP – rzeczywisty Storefront ID. */
 const STOREFRONTS: Record<string, StaticStorefrontConfig> = {
   kazka: {
@@ -177,7 +196,94 @@ function isNonEmptyString(value: unknown): value is string {
 function isChatRole(value: unknown): value is ChatRole {
   return value === 'user' || value === 'assistant' || value === 'system' || value === 'tool';
 }
-function parseChatRequestBody(input: unknown, xBrand?: string | null): ChatRequestBody | null {
+function getTrimmedHeader(request: Request, headerName: string): string | null {
+  const value = request.headers.get(headerName);
+  if (!isNonEmptyString(value)) return null;
+  return value.trim();
+}
+
+function timingSafeEqualText(expected: string, provided: string): boolean {
+  const encoder = new TextEncoder();
+  const expectedBytes = encoder.encode(expected);
+  const providedBytes = encoder.encode(provided);
+  if (expectedBytes.length !== providedBytes.length) return false;
+  let result = 0;
+  for (let i = 0; i < expectedBytes.length; i++) {
+    result |= expectedBytes[i] ^ providedBytes[i];
+  }
+  return result === 0;
+}
+
+function verifyS2SChatRequest(request: Request, env: Env): S2SChatAuthorizationResult {
+  const expectedSharedSecret =
+    typeof env.EPIR_CHAT_SHARED_SECRET === 'string' ? env.EPIR_CHAT_SHARED_SECRET.trim() : '';
+  if (!expectedSharedSecret) {
+    return {
+      ok: false,
+      response: new Response('Server misconfigured', {
+        status: 500,
+        headers: cors(env, request),
+      }),
+    };
+  }
+
+  const providedSecret = getTrimmedHeader(request, EPIR_SHARED_SECRET_HEADER);
+  if (!providedSecret) {
+    return {
+      ok: false,
+      response: new Response(`Unauthorized (missing ${EPIR_SHARED_SECRET_HEADER})`, {
+        status: 401,
+        headers: cors(env, request),
+      }),
+    };
+  }
+
+  if (!timingSafeEqualText(expectedSharedSecret, providedSecret)) {
+    return {
+      ok: false,
+      response: new Response(`Unauthorized (invalid ${EPIR_SHARED_SECRET_HEADER})`, {
+        status: 401,
+        headers: cors(env, request),
+      }),
+    };
+  }
+
+  const storefrontId = getTrimmedHeader(request, EPIR_STOREFRONT_HEADER);
+  if (!storefrontId) {
+    return {
+      ok: false,
+      response: new Response(`Bad Request (missing ${EPIR_STOREFRONT_HEADER})`, {
+        status: 400,
+        headers: cors(env, request),
+      }),
+    };
+  }
+
+  const channel = getTrimmedHeader(request, EPIR_CHANNEL_HEADER);
+  if (!channel) {
+    return {
+      ok: false,
+      response: new Response(`Bad Request (missing ${EPIR_CHANNEL_HEADER})`, {
+        status: 400,
+        headers: cors(env, request),
+      }),
+    };
+  }
+
+  return {
+    ok: true,
+    contextOverride: {
+      storefrontId,
+      channel,
+    },
+  };
+}
+
+function parseChatRequestBody(
+  input: unknown,
+  xBrand?: string | null,
+  contextOverride?: ChatContextOverride,
+): ChatRequestBody | null {
   if (typeof input !== 'object' || input === null) return null;
   const maybe = input as Record<string, unknown>;
   if (!isNonEmptyString(maybe.message)) return null;
@@ -189,8 +295,10 @@ function parseChatRequestBody(input: unknown, xBrand?: string | null): ChatReque
   // image_base64: surowy base64 lub data URI (data:image/...;base64,...)
   const rawImage = typeof maybe.image_base64 === 'string' && maybe.image_base64.trim().length > 0 ? maybe.image_base64.trim() : undefined;
   const image_base64 = rawImage ? normalizeImageBase64(rawImage) : undefined;
-  const storefrontId = typeof maybe.storefrontId === 'string' && maybe.storefrontId.trim().length > 0 ? maybe.storefrontId.trim() : undefined;
-  const channel = typeof maybe.channel === 'string' && maybe.channel.trim().length > 0 ? maybe.channel.trim() : undefined;
+  const storefrontIdFromBody = typeof maybe.storefrontId === 'string' && maybe.storefrontId.trim().length > 0 ? maybe.storefrontId.trim() : undefined;
+  const channelFromBody = typeof maybe.channel === 'string' && maybe.channel.trim().length > 0 ? maybe.channel.trim() : undefined;
+  const storefrontId = contextOverride?.storefrontId ?? storefrontIdFromBody;
+  const channel = contextOverride?.channel ?? channelFromBody;
   const route = typeof maybe.route === 'string' && maybe.route.trim().length > 0 ? maybe.route.trim() : undefined;
   const collectionHandle = typeof maybe.collectionHandle === 'string' && maybe.collectionHandle.trim().length > 0 ? maybe.collectionHandle.trim() : undefined;
   return {
@@ -271,7 +379,16 @@ function cors(env: Env, request?: Request): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Shop-Signature,X-Brand',
+    'Access-Control-Allow-Headers': [
+      'Content-Type',
+      'Authorization',
+      'X-Shop-Signature',
+      'X-Shopify-Hmac-Sha256',
+      'X-Brand',
+      EPIR_SHARED_SECRET_HEADER,
+      EPIR_STOREFRONT_HEADER,
+      EPIR_CHANNEL_HEADER,
+    ].join(','),
   };
 }
 
@@ -549,7 +666,11 @@ export class SessionDO {
 // GŁÓWNY HANDLER CZATU (handleChat)
 // ZMIENIONY: Usuwa logikę RAG, zawsze wywołuje streaming.
 // ============================================================================
-async function handleChat(request: Request, env: Env): Promise<Response> {
+async function handleChat(
+  request: Request,
+  env: Env,
+  contextOverride?: ChatContextOverride,
+): Promise<Response> {
   const xBrand = request.headers.get('X-Brand');
   const raw = await request.json().catch(() => null);
 
@@ -585,7 +706,7 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
     }
   }
 
-  const payload = parseChatRequestBody(raw, xBrand);
+  const payload = parseChatRequestBody(raw, xBrand, contextOverride);
   if (!payload) {
     return new Response('Bad Request: message required', { status: 400, headers: cors(env, request) });
   }
@@ -1229,9 +1350,13 @@ export default {
       return handleChat(request, env);
     }
 
-    // Endpoint czatu (lokalny, deweloperski - bez HMAC)
+    // Endpoint czatu headless / BFF – zabezpieczony shared secret + headers kontekstowe
     if (url.pathname === '/chat' && request.method === 'POST') {
-      return handleChat(request, env);
+      const s2sResult = verifyS2SChatRequest(request, env);
+      if (!s2sResult.ok) {
+        return s2sResult.response;
+      }
+      return handleChat(request, env, s2sResult.contextOverride);
     }
 
     // Endpoint serwera MCP (JSON-RPC 2.0)

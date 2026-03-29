@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { env, SELF } from 'cloudflare:test';
+import { createHmac } from 'node:crypto';
+
+const WEBHOOK_TEST_SECRET = 'dev-placeholder-override-with-wrangler-secret-put';
+
+function shopifyWebhookHmac(body: string): string {
+    return createHmac('sha256', WEBHOOK_TEST_SECRET).update(body, 'utf8').digest('base64');
+}
 
 describe('Analytics Worker - /pixel endpoint', () => {
     beforeAll(async () => {
@@ -598,5 +605,98 @@ describe('Analytics Worker - /pixel/events endpoint', () => {
         expect(result).toHaveProperty('events');
         expect(Array.isArray(result.events)).toBe(true);
         expect(result.events.length).toBeGreaterThan(0);
+    });
+});
+
+describe('Analytics Worker - POST /webhooks/orders/create', () => {
+    beforeAll(async () => {
+        await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS order_attributions (
+                shopify_order_gid TEXT PRIMARY KEY,
+                order_name TEXT,
+                epir_session_id TEXT,
+                source TEXT,
+                received_at INTEGER NOT NULL
+            )
+        `).run();
+    });
+
+    afterEach(async () => {
+        await env.DB.prepare('DELETE FROM order_attributions').run();
+    });
+
+    it('returns 401 when HMAC is missing', async () => {
+        const body = JSON.stringify({ id: 1, name: '#1' });
+        const response = await SELF.fetch('https://example.com/webhooks/orders/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body,
+        });
+        expect(response.status).toBe(401);
+    });
+
+    it('returns 401 when HMAC is invalid', async () => {
+        const body = JSON.stringify({ id: 2, name: '#2' });
+        const response = await SELF.fetch('https://example.com/webhooks/orders/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Shopify-Hmac-Sha256': 'invalidbase64AAAAAAAAAAAAAAAAAAAAAA==',
+            },
+            body,
+        });
+        expect(response.status).toBe(401);
+    });
+
+    it('returns 200 and upserts order_attributions with valid HMAC', async () => {
+        const payload = {
+            id: 555001,
+            name: '#1001',
+            admin_graphql_api_id: 'gid://shopify/Order/555001',
+            note_attributes: [{ name: '_epir_session_id', value: 'sess-from-webhook' }],
+        };
+        const body = JSON.stringify(payload);
+        const response = await SELF.fetch('https://example.com/webhooks/orders/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Shopify-Hmac-Sha256': shopifyWebhookHmac(body),
+            },
+            body,
+        });
+        expect(response.status).toBe(200);
+        const row = await env.DB.prepare('SELECT * FROM order_attributions WHERE shopify_order_gid = ?')
+            .bind('gid://shopify/Order/555001')
+            .first<{
+                shopify_order_gid: string;
+                order_name: string | null;
+                epir_session_id: string | null;
+                source: string | null;
+            }>();
+        expect(row?.epir_session_id).toBe('sess-from-webhook');
+        expect(row?.order_name).toBe('#1001');
+        expect(row?.source).toBe('webhook_orders_create');
+    });
+
+    it('reads _epir_session_id from custom_attributes when note_attributes omit it', async () => {
+        const payload = {
+            id: 555002,
+            name: '#1002',
+            custom_attributes: [{ key: '_epir_session_id', value: 'sess-custom-attr' }],
+        };
+        const body = JSON.stringify(payload);
+        const response = await SELF.fetch('https://example.com/webhooks/orders/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Shopify-Hmac-Sha256': shopifyWebhookHmac(body),
+            },
+            body,
+        });
+        expect(response.status).toBe(200);
+        const row = await env.DB.prepare('SELECT epir_session_id FROM order_attributions WHERE shopify_order_gid = ?')
+            .bind('gid://shopify/Order/555002')
+            .first<{ epir_session_id: string | null }>();
+        expect(row?.epir_session_id).toBe('sess-custom-attr');
     });
 });

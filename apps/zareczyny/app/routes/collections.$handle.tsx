@@ -5,6 +5,11 @@ import {json, redirect, LoaderArgs} from '@remix-run/cloudflare';
 
 export async function loader({context, params, request}: LoaderArgs) {
   const {handle} = params;
+
+  if (!handle) {
+    throw new Response('Not Found', {status: 404});
+  }
+
   const searchParams = new URL(request.url).searchParams;
   const cursor = searchParams.get('cursor');
   const {collection} = await context.storefront.query(COLLECTION_QUERY, {
@@ -123,7 +128,7 @@ const COLLECTION_QUERY = `#graphql
 
 const seo: SeoHandleFunction<typeof loader> = ({data}) => ({
   title: data?.collection?.title,
-  description: data?.collection?.description?.substr(0, 154) ?? undefined,
+  description: data?.collection?.description?.slice(0, 154) ?? undefined,
 });
 export const handle = {
   seo,

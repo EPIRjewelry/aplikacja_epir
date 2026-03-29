@@ -47,6 +47,9 @@ binding = "AI"
 
 # AI worker removed - main worker uses ai-client.ts (direct Groq) per Cloudflare architecture plan
 
+# Headless / BFF S2S ingress secret (must be set via secret, never in [vars]):
+# wrangler secret put EPIR_CHAT_SHARED_SECRET
+
 # Service binding to RAG worker (reusable RAG orchestrator)
 [[services]]
 binding = "RAG_WORKER"

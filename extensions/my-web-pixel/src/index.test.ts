@@ -21,6 +21,9 @@ interface MockWebPixelAPI {
         subscribe: ReturnType<typeof vi.fn>;
     };
     browser: {
+        cookie?: {
+            get: ReturnType<typeof vi.fn>;
+        };
         sessionStorage: {
             getItem: ReturnType<typeof vi.fn>;
             setItem: ReturnType<typeof vi.fn>;
@@ -59,15 +62,19 @@ async function invokePixelCallback(overrides: Partial<MockWebPixelAPI> = {}): Pr
                 subscriptions.set(eventName, handler);
             }),
         },
+        init: { data: { customer: null } },
+        settings: { pixelEndpoint: 'https://test-pixel.example.com' },
+        ...overrides,
         browser: {
+            cookie: {
+                get: vi.fn().mockResolvedValue(null),
+            },
             sessionStorage: {
                 getItem: vi.fn().mockResolvedValue(null),
                 setItem: vi.fn().mockResolvedValue(undefined),
             },
+            ...overrides.browser,
         },
-        init: { data: { customer: null } },
-        settings: { pixelEndpoint: 'https://test-pixel.example.com' },
-        ...overrides,
     };
 
     if (mockState.registeredCallback) {
@@ -80,10 +87,9 @@ async function invokePixelCallback(overrides: Partial<MockWebPixelAPI> = {}): Pr
 // ============================================================================
 // Tests
 // ============================================================================
-describe('web-pixel extension – session management', () => {
+describe('web-pixel extension – identity resolution (cookie + clientId)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        // Reset fetch mock
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,
             json: vi.fn().mockResolvedValue({ ok: true, activate_chat: false }),
@@ -94,53 +100,45 @@ describe('web-pixel extension – session management', () => {
         vi.unstubAllGlobals();
     });
 
-    it('creates a new session ID when sessionStorage is empty', async () => {
-        const { api } = await invokePixelCallback({
+    it('reads _epir_session_id via browser.cookie.get (no client-side generation)', async () => {
+        const fromHydrogen = 'a1b2c3d4e5f6789012345678abcdef01';
+        const { subscriptions, api } = await invokePixelCallback({
             browser: {
-                sessionStorage: {
-                    getItem: vi.fn().mockResolvedValue(null),
-                    setItem: vi.fn().mockResolvedValue(undefined),
+                cookie: {
+                    get: vi.fn().mockImplementation((name: string) =>
+                        name === '_epir_session_id' ? Promise.resolve(fromHydrogen) : Promise.resolve(null),
+                    ),
                 },
             },
         });
 
-        expect(api.browser.sessionStorage.getItem).toHaveBeenCalledWith('_epir_session_id');
-        expect(api.browser.sessionStorage.setItem).toHaveBeenCalledOnce();
+        const handler = subscriptions.get('page_viewed');
+        await handler!({ clientId: 'shopify-client-fallback' });
 
-        const [key, value] = api.browser.sessionStorage.setItem.mock.calls[0];
-        expect(key).toBe('_epir_session_id');
-        expect(value).toMatch(/^session_\d+_[a-z0-9]+$/);
+        expect(api.browser.cookie?.get).toHaveBeenCalledWith('_epir_session_id');
+
+        const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+        const body = JSON.parse(fetchCall[1].body);
+        expect(body.data.sessionId).toBe(fromHydrogen);
+        expect(body.data.session_id).toBe(fromHydrogen);
     });
 
-    it('reuses existing session ID from sessionStorage', async () => {
-        const existingSessionId = 'session_1234567890_abc123';
-
-        const { api } = await invokePixelCallback({
+    it('falls back to event clientId when cookie is empty', async () => {
+        const { subscriptions } = await invokePixelCallback({
             browser: {
-                sessionStorage: {
-                    getItem: vi.fn().mockResolvedValue(existingSessionId),
-                    setItem: vi.fn().mockResolvedValue(undefined),
+                cookie: {
+                    get: vi.fn().mockResolvedValue(null),
                 },
             },
         });
 
-        expect(api.browser.sessionStorage.getItem).toHaveBeenCalledWith('_epir_session_id');
-        expect(api.browser.sessionStorage.setItem).not.toHaveBeenCalled();
-    });
+        const handler = subscriptions.get('page_viewed');
+        await handler!({ clientId: 'pixel-native-client-id-xyz' });
 
-    it('generates fallback session ID when sessionStorage throws', async () => {
-        const { api } = await invokePixelCallback({
-            browser: {
-                sessionStorage: {
-                    getItem: vi.fn().mockRejectedValue(new Error('sessionStorage unavailable')),
-                    setItem: vi.fn().mockResolvedValue(undefined),
-                },
-            },
-        });
-
-        expect(api.browser.sessionStorage.getItem).toHaveBeenCalled();
-        // setItem should NOT be called because the error path uses a local fallback
-        expect(api.browser.sessionStorage.setItem).not.toHaveBeenCalled();
+        const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+        const body = JSON.parse(fetchCall[1].body);
+        expect(body.data.sessionId).toBe('pixel-native-client-id-xyz');
+        expect(body.data.session_id).toBe('pixel-native-client-id-xyz');
     });
 });
 
@@ -264,9 +262,8 @@ describe('web-pixel extension – event payload structure', () => {
         const { subscriptions } = await invokePixelCallback({
             init: { data: { customer: { id: 'cust-123' } } },
             browser: {
-                sessionStorage: {
-                    getItem: vi.fn().mockResolvedValue('session-abc'),
-                    setItem: vi.fn().mockResolvedValue(undefined),
+                cookie: {
+                    get: vi.fn().mockResolvedValue('session-abc'),
                 },
             },
         });
@@ -283,6 +280,7 @@ describe('web-pixel extension – event payload structure', () => {
         expect(body.data).toMatchObject({
             customerId: 'cust-123',
             sessionId: 'session-abc',
+            session_id: 'session-abc',
             context: { document: { url: 'https://shop.example.com/home' } },
         });
     });
@@ -293,9 +291,8 @@ describe('web-pixel extension – event payload structure', () => {
         const { subscriptions } = await invokePixelCallback({
             init: { data: { customer: { id: customerId } } },
             browser: {
-                sessionStorage: {
-                    getItem: vi.fn().mockResolvedValue(sessionId),
-                    setItem: vi.fn().mockResolvedValue(undefined),
+                cookie: {
+                    get: vi.fn().mockResolvedValue(sessionId),
                 },
             },
         });
@@ -308,6 +305,7 @@ describe('web-pixel extension – event payload structure', () => {
 
         expect(body.data.customerId).toBe(customerId);
         expect(body.data.sessionId).toBe(sessionId);
+        expect(body.data.session_id).toBe(sessionId);
     });
 
     it('does not swallow original event data when enriching', async () => {
@@ -356,21 +354,14 @@ describe('web-pixel extension – proactive chat activation', () => {
         const { subscriptions } = await invokePixelCallback({
             init: { data: { customer: { id: 'cust-active' } } },
             browser: {
-                sessionStorage: {
-                    getItem: vi.fn().mockResolvedValue('session-active'),
-                    setItem: vi.fn().mockResolvedValue(undefined),
+                cookie: {
+                    get: vi.fn().mockResolvedValue('session-active'),
                 },
             },
         });
 
         const handler = subscriptions.get('page_viewed');
-        handler!({});
-
-        // sendPixelEvent is async (fetch → response.json → dispatchEvent);
-        // flush the microtask queue so all awaited promises resolve
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
+        await handler!({});
 
         expect(window.dispatchEvent).toHaveBeenCalledOnce();
         const event = dispatchedEvents[0];
@@ -389,11 +380,7 @@ describe('web-pixel extension – proactive chat activation', () => {
 
         const { subscriptions } = await invokePixelCallback();
         const handler = subscriptions.get('page_viewed');
-        handler!({});
-
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
+        await handler!({});
 
         expect(window.dispatchEvent).not.toHaveBeenCalled();
     });
@@ -406,10 +393,7 @@ describe('web-pixel extension – proactive chat activation', () => {
 
         const { subscriptions } = await invokePixelCallback();
         const handler = subscriptions.get('page_viewed');
-        handler!({});
-
-        await Promise.resolve();
-        await Promise.resolve();
+        await handler!({});
 
         expect(window.dispatchEvent).not.toHaveBeenCalled();
     });
@@ -420,11 +404,7 @@ describe('web-pixel extension – proactive chat activation', () => {
         const { subscriptions } = await invokePixelCallback();
         const handler = subscriptions.get('page_viewed');
 
-        // handler returns void (not a Promise) because sendPixelEvent is not awaited
-        expect(() => handler!({})).not.toThrow();
-        // Ensure the background rejection is handled gracefully (no unhandled rejection)
-        await Promise.resolve();
-        await Promise.resolve();
+        await expect(handler!({})).resolves.toBeUndefined();
     });
 });
 

@@ -9,6 +9,9 @@ export default defineWorkersConfig({
           compatibilityDate: '2025-09-30',
           compatibilityFlags: ['nodejs_compat'],
           d1Databases: ['DB'],
+          bindings: {
+            SHOPIFY_WEBHOOK_SECRET: 'dev-placeholder-override-with-wrangler-secret-put',
+          },
         },
       },
     },

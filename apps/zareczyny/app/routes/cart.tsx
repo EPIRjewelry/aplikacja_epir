@@ -2,12 +2,55 @@ import {Link, useLoaderData} from '@remix-run/react';
 import {json, LoaderArgs} from '@remix-run/cloudflare';
 import {Storefront} from '@shopify/hydrogen';
 import {
+  AttributeInput,
   CartInput,
   CartLineInput,
   CountryCode,
 } from '@shopify/hydrogen/dist/storefront-api-types';
 import {CART_QUERY} from '~/queries/cart';
 import {CartLineItems, CartSummary, CartActions} from '@epir/ui';
+
+const EPIR_SESSION_ATTR_KEY = '_epir_session_id';
+
+/** 128-bitowy identyfikator (32 znaki hex) — bez znaków specjalnych dla atrybutu koszyka. */
+function generateEpirSessionId(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function ensureEpSessionId(session: {
+  get: (key: string) => unknown;
+  set: (key: string, value: string) => void;
+}): Promise<string> {
+  const existing = await session.get(EPIR_SESSION_ATTR_KEY);
+  if (typeof existing === 'string' && existing.trim().length > 0) {
+    return existing.trim();
+  }
+  const id = generateEpirSessionId();
+  session.set(EPIR_SESSION_ATTR_KEY, id);
+  return id;
+}
+
+type CartAttribute = {key: string; value: string | null};
+
+function mergeEpirSessionIntoAttributes(
+  attributes: readonly CartAttribute[] | null | undefined,
+  epirSessionId: string,
+): AttributeInput[] {
+  const rest = (attributes ?? [])
+    .filter((a): a is CartAttribute => Boolean(a?.key))
+    .filter((a) => a.key !== EPIR_SESSION_ATTR_KEY)
+    .map((a) => ({key: a.key, value: a.value ?? ''}));
+  return [...rest, {key: EPIR_SESSION_ATTR_KEY, value: epirSessionId}];
+}
+
+function getEpirSessionFromCartAttributes(
+  attributes: readonly CartAttribute[] | null | undefined,
+): string | undefined {
+  const raw = (attributes ?? []).find((a) => a?.key === EPIR_SESSION_ATTR_KEY)?.value;
+  return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
+}
 
 export async function loader({context}: LoaderArgs) {
   const cartId = await context.session.get('cartId');
@@ -32,13 +75,14 @@ export async function action({request, context}: LoaderArgs) {
   const {session, storefront} = context;
   const headers = new Headers();
 
-  const [formData, storedCartId, customerAccessToken] = await Promise.all([
+  const epirSessionId = await ensureEpSessionId(session);
+
+  const [formData, storedCartId] = await Promise.all([
     request.formData(),
     session.get('cartId'),
-    session.get('customerAccessToken'),
   ]);
 
-  let cartId = storedCartId;
+  let cartId = storedCartId as string | undefined;
 
   let status = 200;
   let result;
@@ -49,25 +93,80 @@ export async function action({request, context}: LoaderArgs) {
     : null;
 
   switch (cartAction) {
-    case 'ADD_TO_CART':
+    case 'ADD_TO_CART': {
       const lines = formData.get('lines')
         ? JSON.parse(String(formData.get('lines')))
         : [];
 
-      if (!cartId) {
-        result = await cartCreate(
-          countryCode
-            ? {lines, buyerIdentity: {countryCode: countryCode as CountryCode}}
-            : {lines},
-          storefront,
-        );
+      let resolvedCartId = cartId;
+      let existingCartForAttrs: {attributes?: CartAttribute[] | null} | null =
+        null;
+
+      if (resolvedCartId) {
+        const {cart: cartForAttrs} = await storefront.query<{
+          cart: {attributes?: CartAttribute[] | null} | null;
+        }>(CART_ATTRIBUTES_QUERY, {
+          variables: {
+            cartId: resolvedCartId,
+            country: storefront.i18n.country,
+            language: storefront.i18n.language,
+          },
+          cache: storefront.CacheNone(),
+        });
+        if (!cartForAttrs) {
+          resolvedCartId = undefined;
+        } else {
+          existingCartForAttrs = cartForAttrs;
+        }
+      }
+
+      if (!resolvedCartId) {
+        const input: CartInput = {
+          lines,
+          attributes: [{key: EPIR_SESSION_ATTR_KEY, value: epirSessionId}],
+        };
+        if (countryCode) {
+          input.buyerIdentity = {countryCode: countryCode as CountryCode};
+        }
+        result = await cartCreate(input, storefront);
       } else {
-        result = await cartAdd(cartId, lines, storefront);
+        const currentAttrs = existingCartForAttrs?.attributes;
+        const existingEpir = getEpirSessionFromCartAttributes(currentAttrs);
+        const targetAttrs = mergeEpirSessionIntoAttributes(
+          currentAttrs ?? [],
+          epirSessionId,
+        );
+
+        const needsAttributeUpdate = existingEpir !== epirSessionId;
+
+        if (needsAttributeUpdate) {
+          const updateResult = await cartUpdateAttributes(
+            resolvedCartId,
+            targetAttrs,
+            storefront,
+          );
+          result = updateResult;
+          resolvedCartId = updateResult.cart.id;
+        }
+
+        const addResult = await cartAdd(resolvedCartId, lines, storefront);
+        result = addResult;
       }
 
       cartId = result.cart.id;
       break;
+    }
     case 'REMOVE_FROM_CART':
+      if (!cartId) {
+        return json(
+          {error: 'Brak identyfikatora koszyka w sesji', cart: null, errors: []},
+          {
+            status: 400,
+            headers: {'Set-Cookie': await session.commit()},
+          },
+        );
+      }
+
       const lineIds = formData.get('linesIds')
         ? JSON.parse(String(formData.get('linesIds')))
         : [];
@@ -163,6 +262,32 @@ export async function cartAdd(
 }
 
 /**
+ * Aktualizuje atrybuty koszyka (np. scalenie `_epir_session_id` z istniejącymi tagami).
+ */
+export async function cartUpdateAttributes(
+  cartId: string,
+  attributes: AttributeInput[],
+  storefront: Storefront,
+) {
+  const {cartAttributesUpdate} = await storefront.mutate(
+    CART_ATTRIBUTES_UPDATE_MUTATION,
+    {
+      variables: {
+        cartId,
+        attributes,
+        country: storefront.i18n.country,
+        language: storefront.i18n.language,
+      },
+    },
+  );
+
+  if (!cartAttributesUpdate) {
+    throw new Error('No data returned from cartAttributesUpdate');
+  }
+  return cartAttributesUpdate;
+}
+
+/**
  * Create a cart with line(s) mutation
  * @param cartId the current cart id
  * @param lineIds
@@ -209,6 +334,40 @@ const LINES_CART_FRAGMENT = `#graphql
     id
     totalQuantity
   }
+`;
+
+/** Tylko atrybuty — lekki odczyt przed scaleniem (bez zmiany ~/queries/cart.ts). */
+const CART_ATTRIBUTES_QUERY = `#graphql
+  query CartAttributes($cartId: ID!, $country: CountryCode, $language: LanguageCode)
+  @inContext(country: $country, language: $language) {
+    cart(id: $cartId) {
+      id
+      attributes {
+        key
+        value
+      }
+    }
+  }
+`;
+
+const CART_ATTRIBUTES_UPDATE_MUTATION = `#graphql
+  mutation CartAttributesUpdate(
+    $cartId: ID!
+    $attributes: [AttributeInput!]!
+    $country: CountryCode
+    $language: LanguageCode
+  ) @inContext(country: $country, language: $language) {
+    cartAttributesUpdate(cartId: $cartId, attributes: $attributes) {
+      cart {
+        ...CartLinesFragment
+      }
+      errors: userErrors {
+        ...ErrorFragment
+      }
+    }
+  }
+  ${LINES_CART_FRAGMENT}
+  ${USER_ERROR_FRAGMENT}
 `;
 
 //! @see: https://shopify.dev/api/storefront/{api_version}/mutations/cartcreate
