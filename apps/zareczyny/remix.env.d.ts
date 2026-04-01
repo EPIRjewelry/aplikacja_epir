@@ -21,8 +21,10 @@ declare global {
     PRIVATE_STOREFRONT_API_TOKEN: string;
     PUBLIC_STORE_DOMAIN: string;
     PUBLIC_STOREFRONT_ID: string;
-    /** Chat worker URL – defaults to https://asystent.epirbizuteria.pl/chat */
+    /** @deprecated — Hydrogen używa `/api/chat` (BFF). Zostawione dla starych env. */
     CHAT_API_URL?: string;
+    /** Ten sam sekret co `EPIR_CHAT_SHARED_SECRET` na workerze czatu — proxy S2S `/chat`. */
+    EPIR_CHAT_SHARED_SECRET?: string;
   }
 }
 

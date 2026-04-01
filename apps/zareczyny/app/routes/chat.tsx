@@ -1,6 +1,7 @@
 import {json, useLoaderData} from '@remix-run/react';
 import type {LoaderArgs} from '@remix-run/cloudflare';
 import {ChatWidget} from '~/components/ChatWidget';
+import {resolveChatApiUrl} from '~/lib/resolve-chat-api-url';
 
 export function meta() {
   return [
@@ -9,16 +10,12 @@ export function meta() {
   ];
 }
 
-const DEFAULT_CHAT_API_URL = 'https://epirbizuteria.pl/apps/assistant/chat';
-
 export async function loader({context, request}: LoaderArgs) {
   const configuredChatApiUrl = context.env.CHAT_API_URL as string | undefined;
-  const chatApiUrl =
-    configuredChatApiUrl && configuredChatApiUrl.includes('/apps/assistant/chat')
-      ? configuredChatApiUrl
-      : DEFAULT_CHAT_API_URL;
+  const chatApiUrl = resolveChatApiUrl(configuredChatApiUrl);
   const cartId = await context.session.get('cartId');
   const brand = (context.env.BRAND as string) || 'zareczyny';
+  const route = new URL(request.url).pathname;
 
   return json({
     chatApiUrl,
@@ -26,11 +23,13 @@ export async function loader({context, request}: LoaderArgs) {
     brand,
     storefrontId: 'zareczyny',
     channel: 'hydrogen-zareczyny',
+    route,
   });
 }
 
 export default function ChatPage() {
-  const {chatApiUrl, cartId, brand, storefrontId, channel} = useLoaderData<typeof loader>();
+  const {chatApiUrl, cartId, brand, storefrontId, channel, route} =
+    useLoaderData<typeof loader>();
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -44,6 +43,7 @@ export default function ChatPage() {
         brand={brand}
         storefrontId={storefrontId}
         channel={channel}
+        route={route}
       />
     </div>
   );

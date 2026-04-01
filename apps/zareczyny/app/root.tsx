@@ -16,6 +16,7 @@ import {Seo, Storefront} from '@shopify/hydrogen';
 import type {LinksFunction, LoaderArgs} from '@remix-run/cloudflare';
 import {CART_QUERY} from '~/queries/cart';
 import {defer} from '@remix-run/cloudflare';
+import {resolveChatApiUrl} from '~/lib/resolve-chat-api-url';
 
 export const links: LinksFunction = () => {
   return [
@@ -33,27 +34,25 @@ export const links: LinksFunction = () => {
   ];
 };
 
-const DEFAULT_CHAT_API_URL = 'https://epirbizuteria.pl/apps/assistant/chat';
-
 export async function loader({context, request}: LoaderArgs) {
   const cartId = await context.session.get('cartId');
   const configuredChatApiUrl = context.env.CHAT_API_URL as string | undefined;
-  const chatApiUrl =
-    configuredChatApiUrl && configuredChatApiUrl.includes('/apps/assistant/chat')
-      ? configuredChatApiUrl
-      : DEFAULT_CHAT_API_URL;
+  const chatApiUrl = resolveChatApiUrl(configuredChatApiUrl);
   const brand = (context.env.BRAND as string) || 'zareczyny';
   const filter = context.env.COLLECTION_FILTER;
   const allowedHandles = filter
-    ? filter.split(',').map((h: string) => h.trim()).filter(Boolean)
+    ? filter
+        .split(',')
+        .map((h: string) => h.trim())
+        .filter(Boolean)
     : null;
   const route = new URL(request.url).pathname;
 
   const [layout, collectionsResult] = await Promise.all([
     context.storefront.query<{shop: Shop}>(LAYOUT_QUERY),
-    context.storefront.query<{collections: {nodes: {id: string; title: string; handle: string}[]}}>(
-      COLLECTIONS_QUERY,
-    ),
+    context.storefront.query<{
+      collections: {nodes: {id: string; title: string; handle: string}[]};
+    }>(COLLECTIONS_QUERY),
   ]);
 
   const nodes = allowedHandles?.length

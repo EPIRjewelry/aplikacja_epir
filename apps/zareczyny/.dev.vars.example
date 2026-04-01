@@ -19,4 +19,5 @@ SHOP_ID=55145660472
 PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID=your-client-id
 
 # Chat worker – dev: localhost, prod: asystent.epirbizuteria.pl
-CHAT_API_URL=http://localhost:8787/api/chat
+# Proxy czatu (to samo co na workerze): wrangler secret list w workers/chat
+EPIR_CHAT_SHARED_SECRET=twoj-shared-secret

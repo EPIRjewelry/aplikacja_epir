@@ -1,37 +1,16 @@
 /**
- * Chat API resource route – POST /api/chat
- * Mock echo bot, same as in `apps/kazka`.
+ * BFF: przeglądarka → POST /api/chat (same origin) → S2S POST na worker `/chat`.
+ * Wymaga sekretu `EPIR_CHAT_SHARED_SECRET` (Pages) = ten sam co na workerze `wrangler secret put EPIR_CHAT_SHARED_SECRET`.
  */
 import {json, type ActionArgs, type LoaderArgs} from '@remix-run/cloudflare';
 
-type ChatRequestBody = {
-  message: string;
-  anonymousId?: string;
-  cartId?: string;
-};
-
-type ChatResponseBody = {
-  reply: string;
-  suggestedProducts?: {id: string; title: string}[];
-};
-
-function getMockReply(message: string): string {
-  if (message.toLowerCase().includes('buty')) {
-    return 'Polecam nasze najnowsze buty sportowe. Sprawdź kolekcję w dziale obuwie!';
-  }
-  return `Dziękuję za pytanie: ${message} (tu można podpiąć model AI)`;
-}
-
-const MOCK_SUGGESTED_PRODUCTS: {id: string; title: string}[] = [
-  {id: 'gid://shopify/Product/1234567890', title: 'Przykładowy produkt 1'},
-  {id: 'gid://shopify/Product/1234567891', title: 'Przykładowy produkt 2'},
-];
+const CHAT_S2S_URL = 'https://asystent.epirbizuteria.pl/chat';
 
 export async function loader({request}: LoaderArgs) {
   if (request.method !== 'GET') {
     return json({error: 'Method not allowed'}, {status: 405});
   }
-  return json({error: 'Use POST to send messages'}, {status: 405});
+  return json({ok: true, hint: 'POST JSON body to chat'});
 }
 
 export async function action({request, context}: ActionArgs) {
@@ -39,26 +18,41 @@ export async function action({request, context}: ActionArgs) {
     return json({error: 'Method not allowed'}, {status: 405});
   }
 
-  let body: ChatRequestBody;
-  try {
-    const text = await request.text();
-    body = text ? JSON.parse(text) : {};
-  } catch {
-    return json({error: 'Invalid JSON body'}, {status: 400});
+  const secret = context.env.EPIR_CHAT_SHARED_SECRET?.trim();
+  if (!secret) {
+    return json(
+      {
+        error:
+          'Chat proxy: brak EPIR_CHAT_SHARED_SECRET w Cloudflare Pages (ten sam sekret co na workerze czatu).',
+      },
+      {status: 503},
+    );
   }
 
-  const {message, anonymousId, cartId} = body;
-
-  if (!message || typeof message !== 'string') {
-    return json({error: 'message is required'}, {status: 400});
+  const bodyText = await request.text();
+  if (!bodyText) {
+    return json({error: 'Empty body'}, {status: 400});
   }
 
-  const reply = getMockReply(message);
+  const upstream = await fetch(CHAT_S2S_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-EPIR-SHARED-SECRET': secret,
+      'X-EPIR-STOREFRONT-ID': 'zareczyny',
+      'X-EPIR-CHANNEL': 'hydrogen-zareczyny',
+    },
+    body: bodyText,
+  });
 
-  const response: ChatResponseBody = {
-    reply,
-    suggestedProducts: MOCK_SUGGESTED_PRODUCTS,
-  };
+  const outHeaders = new Headers();
+  const ct = upstream.headers.get('content-type');
+  if (ct) outHeaders.set('content-type', ct);
+  const cc = upstream.headers.get('cache-control');
+  if (cc) outHeaders.set('cache-control', cc);
 
-  return json(response);
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: outHeaders,
+  });
 }

@@ -35,18 +35,28 @@ export type ChatWidgetProps = {
   chatApiUrl: string;
   cartId?: string | null;
   brand?: string;
+  /** Kontekst headless / motywu — worker (analytics, profil sklepu) */
+  storefrontId?: string;
+  channel?: string;
+  route?: string;
 };
 
 function ChatWidgetFallback({
   chatApiUrl,
   cartId,
   brand = 'epir',
+  storefrontId,
+  channel,
+  route,
   isOpen,
   onToggle,
 }: {
   chatApiUrl: string;
   cartId?: string | null;
   brand?: string;
+  storefrontId?: string;
+  channel?: string;
+  route?: string;
   isOpen: boolean;
   onToggle: () => void;
 }) {
@@ -92,6 +102,9 @@ function ChatWidgetFallback({
           cart_id: cartId ?? undefined,
           brand,
           stream: true,
+          ...(storefrontId ? {storefrontId} : {}),
+          ...(channel ? {channel} : {}),
+          ...(route ? {route} : {}),
         };
 
         const res = await fetch(chatApiUrl, {
@@ -177,7 +190,7 @@ function ChatWidgetFallback({
         inputRef.current?.focus();
       }
     },
-    [chatApiUrl, cartId, brand, isLoading],
+    [chatApiUrl, cartId, brand, storefrontId, channel, route, isLoading],
   );
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -257,6 +270,9 @@ export function ChatWidget({
   chatApiUrl,
   cartId,
   brand = 'epir',
+  storefrontId,
+  channel,
+  route,
 }: ChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -265,6 +281,9 @@ export function ChatWidget({
       chatApiUrl={chatApiUrl}
       cartId={cartId}
       brand={brand}
+      storefrontId={storefrontId}
+      channel={channel}
+      route={route}
       isOpen={isOpen}
       onToggle={() => setIsOpen((o) => !o)}
     />

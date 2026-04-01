@@ -22,12 +22,12 @@ SHOP_ID = "55145660472"
 # PUBLIC_STOREFRONT_API_VERSION – Storefront API (np. 2025-10). Fallback w server.ts: 2025-10
 PUBLIC_STOREFRONT_API_VERSION = "2025-10"
 
-# CHAT_API_URL – wspólny endpoint czatu (Shopify App Proxy)
-# W dev (.dev.vars): CHAT_API_URL=http://localhost:8787/api/chat
-CHAT_API_URL = "https://epirbizuteria.pl/apps/assistant/chat"
+# Czat Hydrogen: POST /api/chat → S2S na worker. Ustaw sekret (Pages + .dev.vars):
+# EPIR_CHAT_SHARED_SECRET — identyczny jak: cd workers/chat && wrangler secret put EPIR_CHAT_SHARED_SECRET
 
 # Secrets (Cloudflare Pages -> Settings -> Variables and Secrets -> Secrets):
 # - SESSION_SECRET
+# - EPIR_CHAT_SHARED_SECRET
 # - PUBLIC_STOREFRONT_API_TOKEN
 # - PRIVATE_STOREFRONT_API_TOKEN
 # - PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID
