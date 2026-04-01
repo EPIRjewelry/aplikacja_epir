@@ -33,6 +33,7 @@ Te pliki są commitowane do repo, więc nowy klon dostaje ten sam kontekst start
 
 - [`../KROKI_URUCHOMIENIA.md`](../KROKI_URUCHOMIENIA.md) — szybka sekwencja uruchomienia i deployu
 - [`DEPLOYMENT_EPIR.md`](DEPLOYMENT_EPIR.md) — wdrożenie
+- [`DEPLOYMENT_CROSS_SESSION_MEMORY_PRODUCTION.md`](DEPLOYMENT_CROSS_SESSION_MEMORY_PRODUCTION.md) — **produkcja:** migracja D1 `person_memory`, deploy chat workera, smoke testy (bez etapu dev)
 - [`SEKRETY_I_MIGRACJE.md`](SEKRETY_I_MIGRACJE.md) — sekrety i migracje
 - [`PODSUMOWANIE_WDROZENIA.md`](PODSUMOWANIE_WDROZENIA.md) — podsumowanie wdrożenia
 
@@ -43,6 +44,8 @@ Te pliki są commitowane do repo, więc nowy klon dostaje ten sam kontekst start
 - [`ANALIZA_RAPORTU_DUPLIKACJI.md`](ANALIZA_RAPORTU_DUPLIKACJI.md)
 - [`CLEAN_CODE_BASELINE_PLAN.md`](CLEAN_CODE_BASELINE_PLAN.md)
 - [`RAPORT_NAPRAWY_CZATU.md`](RAPORT_NAPRAWY_CZATU.md)
+- [`NOTEBOOKLM_EPIR_CHAT_INGRESS.md`](NOTEBOOKLM_EPIR_CHAT_INGRESS.md) — czat kupującego, App Proxy, Ingress, S2S (skrót pod RAG / NotebookLM)
+- [`MVP_CROSS_SESSION_MEMORY_READING_LIST.md`](MVP_CROSS_SESSION_MEMORY_READING_LIST.md) — mapa plików `workers/chat` przed MVP pamięci międzysesyjnej (Ingress → handleChat → SessionDO → D1)
 
 ## Zasada porządku
 

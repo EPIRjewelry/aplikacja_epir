@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import worker, { SessionDO, parseChatRequestBody } from '../src/index';
 import type { Env } from '../src/config/bindings';
 
+const noopCtx = { waitUntil() {} } as unknown as ExecutionContext;
+
 function makeDurableStateStub(storage = new Map<string, any>()) {
   return {
     storage: {
@@ -113,6 +115,7 @@ describe('S2S ingress for /chat', () => {
         'X-EPIR-CHANNEL': 'hydrogen-zareczyny',
       }),
       env,
+      noopCtx,
     );
 
     expect(response.status).toBe(401);
@@ -128,6 +131,7 @@ describe('S2S ingress for /chat', () => {
         'X-EPIR-CHANNEL': 'hydrogen-zareczyny',
       }),
       env,
+      noopCtx,
     );
 
     expect(response.status).toBe(401);
@@ -142,6 +146,7 @@ describe('S2S ingress for /chat', () => {
         'X-EPIR-CHANNEL': 'hydrogen-zareczyny',
       }),
       env,
+      noopCtx,
     );
 
     expect(response.status).toBe(400);
@@ -156,6 +161,7 @@ describe('S2S ingress for /chat', () => {
         'X-EPIR-STOREFRONT-ID': 'zareczyny',
       }),
       env,
+      noopCtx,
     );
 
     expect(response.status).toBe(400);
@@ -171,6 +177,7 @@ describe('S2S ingress for /chat', () => {
         'X-EPIR-CHANNEL': 'hydrogen-zareczyny',
       }),
       env,
+      noopCtx,
     );
 
     expect(response.status).toBe(200);

@@ -48,7 +48,9 @@ function mergeEpirSessionIntoAttributes(
 function getEpirSessionFromCartAttributes(
   attributes: readonly CartAttribute[] | null | undefined,
 ): string | undefined {
-  const raw = (attributes ?? []).find((a) => a?.key === EPIR_SESSION_ATTR_KEY)?.value;
+  const raw = (attributes ?? []).find(
+    (a) => a?.key === EPIR_SESSION_ATTR_KEY,
+  )?.value;
   return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
 }
 
@@ -156,10 +158,14 @@ export async function action({request, context}: LoaderArgs) {
       cartId = result.cart.id;
       break;
     }
-    case 'REMOVE_FROM_CART':
+    case 'REMOVE_FROM_CART': {
       if (!cartId) {
         return json(
-          {error: 'Brak identyfikatora koszyka w sesji', cart: null, errors: []},
+          {
+            error: 'Brak identyfikatora koszyka w sesji',
+            cart: null,
+            errors: [],
+          },
           {
             status: 400,
             headers: {'Set-Cookie': await session.commit()},
@@ -179,6 +185,7 @@ export async function action({request, context}: LoaderArgs) {
 
       cartId = result.cart.id;
       break;
+    }
     default:
       throw new Error('Invalid cart action');
   }

@@ -33,6 +33,7 @@ declare global {
  */
 declare module '@remix-run/cloudflare' {
   export interface AppLoadContext {
+    cloudflare?: EventContext<Env, string, unknown>;
     session: HydrogenCloudflareSession;
     storefront: Storefront;
     env: Env;

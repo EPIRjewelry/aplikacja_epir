@@ -33,7 +33,10 @@ type LoaderData = {
 export async function loader({context}: LoaderArgs): Promise<LoaderData> {
   const filter = context.env.COLLECTION_FILTER;
   const allowedHandles = filter
-    ? filter.split(',').map((h) => h.trim()).filter(Boolean)
+    ? filter
+        .split(',')
+        .map((h) => h.trim())
+        .filter(Boolean)
     : null;
 
   // Prefer explicit storefront-specific route handle.
@@ -55,7 +58,9 @@ export async function loader({context}: LoaderArgs): Promise<LoaderData> {
 
       return {route: null};
     })(),
-    context.storefront.query<{collections: CollectionConnection}>(COLLECTIONS_QUERY),
+    context.storefront.query<{collections: CollectionConnection}>(
+      COLLECTIONS_QUERY,
+    ),
   ]);
 
   // Debug: raw result from Storefront for route content
@@ -128,7 +133,10 @@ function FallbackView({collections}: {collections: CollectionConnection}) {
 
 export default function Index() {
   const {route, collections} = useLoaderData<LoaderData>();
-  const heroCount = route?.sections?.references?.nodes?.length ?? route?.sections?.nodes?.length ?? 0;
+  const heroCount =
+    route?.sections?.references?.nodes?.length ??
+    route?.sections?.nodes?.length ??
+    0;
   const collectionsCount =
     route?.featured_collections?.references?.nodes?.length ??
     route?.featured_collections?.nodes?.length ??
@@ -137,16 +145,31 @@ export default function Index() {
     route?.featured_products?.references?.nodes?.length ??
     route?.featured_products?.nodes?.length ??
     0;
-  const hasRouteSections = (heroCount > 0 || collectionsCount > 0 || productsCount > 0) && route;
+  const hasRouteSections =
+    (heroCount > 0 || collectionsCount > 0 || productsCount > 0) && route;
 
   // Debug: what the component receives and how it computes counts
-  console.log('COMPONENT_ROUTE_DEBUG', JSON.stringify({
-    route: route ? { id: route.id, sections: route.sections, featured_collections: route.featured_collections, featured_products: route.featured_products } : null,
-    heroCount,
-    collectionsCount,
-    productsCount,
-    hasRouteSections,
-  }, null, 2));
+  console.log(
+    'COMPONENT_ROUTE_DEBUG',
+    JSON.stringify(
+      {
+        route: route
+          ? {
+              id: route.id,
+              sections: route.sections,
+              featured_collections: route.featured_collections,
+              featured_products: route.featured_products,
+            }
+          : null,
+        heroCount,
+        collectionsCount,
+        productsCount,
+        hasRouteSections,
+      },
+      null,
+      2,
+    ),
+  );
 
   if (hasRouteSections) {
     return (

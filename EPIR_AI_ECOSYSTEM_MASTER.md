@@ -479,6 +479,7 @@ musisz czytać **również** `EPIR_AI_BIBLE.md`.
 ## Dokumenty powiązane
 
 - `EPIR_AI_BIBLE.md` — orthodoksja, guardrails, zasady nienegocjowalne
+- `docs/NOTEBOOKLM_EPIR_CHAT_INGRESS.md` — kontrakt techniczny czatu kupującego (App Proxy, HMAC, S2S); w **§8** — *Historia konwersacji vs historia zamówień vs obietnice promptu* (sesja w SessionDO vs past orders vs spójność z `luxury-system-prompt.ts`). MASTER nie powiela tej sekcji — przy audycie ESOG odwołuj się do niej przy pytaniach o „pamięć” i zamówienia.
 - `docs/README.md` — punkt startowy i mapa dokumentacji
 - `KROKI_URUCHOMIENIA.md` — operacyjna checklista uruchomienia i deployu
 - `docs/DEPLOYMENT_EPIR.md` — dokumentacja wdrożeniowa

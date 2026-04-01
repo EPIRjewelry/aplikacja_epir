@@ -75,6 +75,12 @@ import { ProfileService } from './profile';
 import { AnalyticsService } from './analytics-service';
 import { DASHBOARD_HTML } from './dashboard-html';
 import { buildAIProfilePrompt, fetchAIProfile } from './ai-profile';
+import {
+  loadPersonMemory,
+  upsertPersonMemory,
+  historyToPlainText,
+  mergeSessionIntoPersonSummary,
+} from './person-memory';
 
 // Importy RAG (teraz używane tylko przez narzędzia, a nie przez index.ts)
 import {
@@ -215,8 +221,16 @@ function timingSafeEqualText(expected: string, provided: string): boolean {
 }
 
 function verifyS2SChatRequest(request: Request, env: Env): S2SChatAuthorizationResult {
-  const expectedSharedSecret =
-    typeof env.EPIR_CHAT_SHARED_SECRET === 'string' ? env.EPIR_CHAT_SHARED_SECRET.trim() : '';
+  const expectedSharedSecret = (() => {
+    if (typeof env.EPIR_CHAT_SHARED_SECRET === 'string' && env.EPIR_CHAT_SHARED_SECRET.trim().length > 0) {
+      return env.EPIR_CHAT_SHARED_SECRET.trim();
+    }
+    const legacy = env['X-EPIR-SHARED-SECRET'];
+    if (typeof legacy === 'string' && legacy.trim().length > 0) {
+      return legacy.trim();
+    }
+    return '';
+  })();
   if (!expectedSharedSecret) {
     return {
       ok: false,
@@ -670,6 +684,7 @@ async function handleChat(
   request: Request,
   env: Env,
   contextOverride?: ChatContextOverride,
+  executionCtx?: ExecutionContext,
 ): Promise<Response> {
   const xBrand = request.headers.get('X-Brand');
   const raw = await request.json().catch(() => null);
@@ -835,7 +850,7 @@ async function handleChat(
     channel: payload.channel,
     route: payload.route,
     collectionHandle: payload.collectionHandle,
-  });
+  }, customerId, executionCtx);
 }
 
 // ============================================================================
@@ -858,7 +873,10 @@ async function streamAssistantResponse(
   customerToken?: string,
   brand?: string,
   imageBase64?: string,
-  storefrontContext?: StorefrontContext
+  storefrontContext?: StorefrontContext,
+  /** Shopify customer id z query App Proxy (`logged_in_customer_id`) — pamięć międzysesyjna tylko gdy ustawione */
+  shopifyCustomerId?: string | null,
+  executionCtx?: ExecutionContext,
 ): Promise<Response> {
   const { readable, writable } = new TransformStream();
   const encoder = new TextEncoder();
@@ -893,6 +911,35 @@ async function streamAssistantResponse(
       const cartIdResp = await stub.fetch('https://session/cart-id');
       const cartIdData = (await cartIdResp.json().catch(() => ({ cart_id: null }))) as { cart_id?: string | null };
       const cartId = cartIdData.cart_id;
+
+      let crossSessionSummary: string | null = null;
+      if (shopifyCustomerId && env.DB_CHATBOT) {
+        try {
+          crossSessionSummary = await loadPersonMemory(env.DB_CHATBOT, shopifyCustomerId);
+        } catch (e) {
+          console.warn('[person_memory] load failed:', e);
+        }
+      }
+
+      const maybeRefreshPersonMemory = () => {
+        if (!shopifyCustomerId || !env.DB_CHATBOT || !executionCtx) return;
+        executionCtx.waitUntil(
+          (async () => {
+            try {
+              const histResp = await stub.fetch('https://session/history');
+              const historyData = await histResp.json().catch(() => []);
+              const hist = ensureHistoryArray(historyData);
+              const snippet = historyToPlainText(hist);
+              if (!snippet.trim()) return;
+              const prev = await loadPersonMemory(env.DB_CHATBOT!, shopifyCustomerId);
+              const merged = await mergeSessionIntoPersonSummary(env, prev, snippet);
+              await upsertPersonMemory(env.DB_CHATBOT!, shopifyCustomerId, merged);
+            } catch (e) {
+              console.error('[person_memory] refresh failed:', e);
+            }
+          })(),
+        );
+      };
 
       // 🔴 KROK 3: ZBUDUJ WIADOMOŚCI DLA AI (Z LOGIKĄ RAG WORKER)
       
@@ -966,6 +1013,13 @@ async function streamAssistantResponse(
         messages.push({ role: 'system', content: `Kontekst storefrontu: ${ctxParts.join(', ')}` });
       }
 
+      if (crossSessionSummary) {
+        messages.push({
+          role: 'system',
+          content: `Kontekst systemowy — zapamiętane z wcześniejszych wizyt (skrót): ${crossSessionSummary}`,
+        });
+      }
+
       // 🔴 KROK 3b: ZDELEGUJ LOGIKĘ RAG DO RAG_WORKER
       // Zamiast błędnie wykonywać RAG tutaj, pozwalamy AI zdecydować, czy go potrzebuje.
       // Jeśli AI wywoła `search_shop_catalog` lub `search_shop_policies_and_faqs`,
@@ -1007,6 +1061,14 @@ async function streamAssistantResponse(
         const visionMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
           { role: 'system', content: LUXURY_SYSTEM_PROMPT },
           ...(aiProfilePrompt ? [{ role: 'system' as const, content: aiProfilePrompt }] : []),
+          ...(crossSessionSummary
+            ? [
+                {
+                  role: 'system' as const,
+                  content: `Kontekst systemowy — zapamiętane z wcześniejszych wizyt (skrót): ${crossSessionSummary}`,
+                },
+              ]
+            : []),
           { role: 'user', content: userMessage },
         ];
         const visionStream = await streamVisionEvents(visionMessages, imageBase64, env);
@@ -1026,6 +1088,7 @@ async function streamAssistantResponse(
             body: JSON.stringify({ role: 'assistant', content: visionText, ts: now() } as HistoryEntry),
           });
         }
+        maybeRefreshPersonMemory();
         return;
       }
 
@@ -1197,6 +1260,8 @@ async function streamAssistantResponse(
         });
       }
 
+      maybeRefreshPersonMemory();
+
     } catch (err) {
       console.error('Error in streamAssistantResponse:', err);
       try {
@@ -1225,7 +1290,7 @@ async function streamAssistantResponse(
 // GŁÓWNY EXPORT WORKERA
 // ============================================================================
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const pathname = url.pathname;
     const method = request.method.toUpperCase();
@@ -1347,7 +1412,7 @@ export default {
 
     // Endpoint czatu (zabezpieczony przez App Proxy)
     if (url.pathname === '/apps/assistant/chat' && request.method === 'POST') {
-      return handleChat(request, env);
+      return handleChat(request, env, undefined, ctx);
     }
 
     // Endpoint czatu headless / BFF – zabezpieczony shared secret + headers kontekstowe
@@ -1356,7 +1421,7 @@ export default {
       if (!s2sResult.ok) {
         return s2sResult.response;
       }
-      return handleChat(request, env, s2sResult.contextOverride);
+      return handleChat(request, env, s2sResult.contextOverride, ctx);
     }
 
     // Endpoint serwera MCP (JSON-RPC 2.0)

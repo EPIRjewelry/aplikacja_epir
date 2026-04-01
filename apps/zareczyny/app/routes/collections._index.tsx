@@ -16,7 +16,10 @@ const COLLECTIONS_QUERY = `#graphql
 export async function loader({context}: LoaderArgs) {
   const filter = context.env.COLLECTION_FILTER;
   const allowedHandles = filter
-    ? filter.split(',').map((h) => h.trim()).filter(Boolean)
+    ? filter
+        .split(',')
+        .map((h) => h.trim())
+        .filter(Boolean)
     : null;
 
   const {collections} = await context.storefront.query<{

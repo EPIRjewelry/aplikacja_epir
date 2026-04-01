@@ -476,12 +476,14 @@ export const __test = { createGroqStreamTransform };
  */
 export async function getGroqResponse(
   messages: GroqMessage[],
-  env: Env
+  env: Env,
+  options?: { max_tokens?: number },
 ): Promise<string> {
+  const maxOut = options?.max_tokens ?? MODEL_PARAMS.max_tokens;
   if (useWorkersAI(env)) {
     const result = await env.AI!.run(WORKERS_AI_MODEL_ID, {
       messages: messages.map((m) => ({ role: m.role, content: m.content ?? '' })),
-      max_tokens: MODEL_PARAMS.max_tokens,
+      max_tokens: maxOut,
     }) as { response?: string };
     const content = result?.response;
     if (!content) throw new Error('Workers AI returned empty response');
@@ -496,7 +498,7 @@ export async function getGroqResponse(
     messages,
     stream: false,
     temperature: MODEL_PARAMS.temperature,
-    max_tokens: MODEL_PARAMS.max_tokens,
+    max_tokens: maxOut,
     top_p: MODEL_PARAMS.top_p,
   };
 

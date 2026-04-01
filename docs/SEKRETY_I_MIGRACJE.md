@@ -80,14 +80,28 @@ Bez tego `shopify app deploy` nie zadziała. **Client secret** (SHOPIFY_APP_SECR
 
 ### Czym jest migracja D1
 
-Migracje to pliki SQL (np. `001_*.sql`, `002_*.sql`), które tworzą tabele w bazie D1 w Cloudflare. Trzeba je wykonać **przed pierwszym deployem** workera, który z tej bazy korzysta.
+Migracje to pliki SQL (np. `001_*.sql` … `004_*.sql` w katalogu chatu), które tworzą lub zmieniają schemat bazy D1 w Cloudflare. Trzeba je wykonać **przed pierwszym deployem** workera, który z tej bazy korzysta.
 
 ### Gdzie są migracje
 
-| Baza                         | Ścieżka migracji                     | Pliki                                                                                                                 |
-| ---------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| **ai-assistant-sessions-db** | `workers/chat/migrations/`           | 001_create_analytics_schema.sql (sessions, messages, tool_calls, usage_stats, cart_activity), 002_client_profiles.sql |
-| **jewelry-analytics-db**     | `workers/bigquery-batch/migrations/` | 003_batch_exports.sql                                                                                                 |
+**Źródło spójne z tabelą czasu:** [`DEPLOYMENT_EPIR.md`](DEPLOYMENT_EPIR.md) §7.2. Nazwa bazy w CLI Wranglera to `database_name` z `wrangler.toml` (np. `ai-assistant-sessions-db`); binding `DB_CHATBOT` jest tylko w kodzie workera.
+
+#### `ai-assistant-sessions-db` — `workers/chat/migrations/`
+
+| Plik | Zawartość |
+| ---- | --------- |
+| `001_create_analytics_schema.sql` | sessions, messages, tool_calls, usage_stats, cart_activity |
+| `002_client_profiles.sql` | client_profiles |
+| `003_storefront_messages.sql` | `messages`: kolumny `storefront_id`, `channel` (segmentacja storefront / kanał) |
+| `004_person_memory.sql` | `person_memory` — cross-session memory MVP (`shopify_customer_id`, `summary`, `updated_at`). Wdrożenie produkcyjne: [`DEPLOYMENT_CROSS_SESSION_MEMORY_PRODUCTION.md`](DEPLOYMENT_CROSS_SESSION_MEMORY_PRODUCTION.md) |
+
+#### `jewelry-analytics-db` — `workers/bigquery-batch/migrations/`
+
+| Plik | Zawartość |
+| ---- | --------- |
+| `003_batch_exports.sql` | batch_exports |
+
+Numer **003** w nazwie pliku dotyczy **osobnych** baz — nie mylić `003_storefront_messages.sql` (chat) z `003_batch_exports.sql` (analytics).
 
 ### Kolejność wykonania
 

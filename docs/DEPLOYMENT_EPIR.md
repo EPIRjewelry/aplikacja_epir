@@ -56,17 +56,21 @@ Migracje są rozdzielone między dwie bazy. **Kolejność ma znaczenie.**
 
 ### Baza: ai-assistant-sessions-db
 
-Migracje: `001`, `002` (w `workers/chat/migrations/`)
+Migracje: `001`–`004` (w `workers/chat/migrations/`)
 
 ```bash
 cd workers/chat
 wrangler d1 migrations apply ai-assistant-sessions-db --remote
 ```
 
-| Migracja | Tabele                                                     |
-| -------- | ---------------------------------------------------------- |
+| Migracja | Tabele / zmiany |
+| -------- | ----------------- |
 | 001      | sessions, messages, tool_calls, usage_stats, cart_activity |
-| 002      | client_profiles                                            |
+| 002      | client_profiles |
+| 003      | `messages`: kolumny `storefront_id`, `channel` |
+| 004      | person_memory (cross-session MVP) |
+
+Szczegółowa **checklista tylko dla produkcji** (`person_memory` + deploy + smoke): [`DEPLOYMENT_CROSS_SESSION_MEMORY_PRODUCTION.md`](DEPLOYMENT_CROSS_SESSION_MEMORY_PRODUCTION.md).
 
 ### Baza: jewelry-analytics-db
 

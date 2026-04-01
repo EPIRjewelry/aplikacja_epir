@@ -22,7 +22,10 @@ export async function loader({context, params, request}: LoaderArgs) {
   if (!collection) {
     const filter = context.env.COLLECTION_FILTER;
     const allowedHandles = filter
-      ? filter.split(',').map((h) => h.trim()).filter(Boolean)
+      ? filter
+          .split(',')
+          .map((h) => h.trim())
+          .filter(Boolean)
       : null;
     const {collections} = await context.storefront.query<{
       collections: {nodes: {handle: string}[]};

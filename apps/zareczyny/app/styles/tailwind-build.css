@@ -514,6 +514,9 @@ video {
   padding-right: 1.5rem;
   padding-bottom: 1rem;
 }
+.pointer-events-none {
+  pointer-events: none;
+}
 .fixed {
   position: fixed;
 }
@@ -568,6 +571,9 @@ video {
 }
 .-z-10 {
   z-index: -10;
+}
+.-z-20 {
+  z-index: -20;
 }
 .z-10 {
   z-index: 10;
@@ -1198,6 +1204,9 @@ video {
 }
 .opacity-60 {
   opacity: 0.6;
+}
+.mix-blend-overlay {
+  mix-blend-mode: overlay;
 }
 .shadow {
   --tw-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);

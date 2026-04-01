@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import worker, { SessionDO } from '../src/index';
 import type { Env } from '../src/config/bindings';
 
+const noopCtx = { waitUntil() {} } as unknown as ExecutionContext;
+
 function canonicalizeParams(params: URLSearchParams): string {
   const excluded = new Set(['signature', 'hmac', 'shopify_hmac']);
   const entries = [...params.entries()]
@@ -73,11 +75,11 @@ function makeSessionNamespace() {
               input instanceof Request
                 ? input
                 : new Request(
-                    typeof input === 'string' && input.startsWith('/')
-                      ? `https://session${input}`
-                      : input,
-                    init,
-                  );
+                  typeof input === 'string' && input.startsWith('/')
+                    ? `https://session${input}`
+                    : input,
+                  init,
+                );
             return session!.instance.fetch(request);
           },
         } as DurableObjectStub;
@@ -142,6 +144,7 @@ describe('App Proxy ingress HMAC (/apps/assistant/chat)', () => {
         body: payloadString(),
       }),
       env,
+      noopCtx,
     );
 
     expect(response.status).toBe(401);
@@ -164,6 +167,7 @@ describe('App Proxy ingress HMAC (/apps/assistant/chat)', () => {
         body,
       }),
       env,
+      noopCtx,
     );
 
     expect([401, 403]).toContain(response.status);
@@ -185,6 +189,7 @@ describe('App Proxy ingress HMAC (/apps/assistant/chat)', () => {
         body,
       }),
       env,
+      noopCtx,
     );
 
     expect(response.status).toBe(200);
