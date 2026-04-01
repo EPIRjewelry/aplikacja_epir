@@ -12,6 +12,6 @@
   },
   "devDependencies": {
     "@shopify/hydrogen": "^2024.10.0",
-    "typescript": "^5.2.2"
+    "typescript": "^6.0.2"
   }
 }
