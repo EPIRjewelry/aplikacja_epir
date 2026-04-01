@@ -9,7 +9,7 @@
     "./styles/base.css": "./styles/base.css"
   },
   "peerDependencies": {
-    "@headlessui/react": "^1.7.15",
+    "@headlessui/react": "^2.2.9",
     "@remix-run/react": "^2.15.0",
     "@shopify/hydrogen": "^2024.10.0",
     "@shopify/hydrogen-react": "^2024.10.0",
@@ -17,12 +17,12 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@headlessui/react": "^1.7.15",
+    "@headlessui/react": "^2.2.9",
     "@remix-run/react": "^2.15.0",
-    "@types/react": "^18.2.22",
-    "@types/react-dom": "^18.2.7",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "typescript": "^5.2.2"
+    "typescript": "^6.0.2"
   }
 }
