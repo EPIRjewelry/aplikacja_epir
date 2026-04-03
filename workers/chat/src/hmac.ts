@@ -83,11 +83,14 @@ export async function verifyHmac(
   }
 
   try {
-    // Compute expected signature
+    let providedHex: string;
+    try {
+      providedHex = parseSignature(headerSig.trim());
+    } catch {
+      return false;
+    }
     const expectedSig = await computeHmac(secret, message);
-
-    // Constant-time comparison
-    return constantTimeCompare(headerSig, expectedSig);
+    return constantTimeCompare(providedHex, expectedSig);
   } catch (error) {
     console.error('HMAC verification error:', error);
     return false;
@@ -173,6 +176,37 @@ export function canonicalizeParams(
     .sort((a, b) => a[0].localeCompare(b[0]));
 
   return entries.map(([key, value]) => `${key}=${value}`).join('');
+}
+
+const DEFAULT_PROXY_EXCLUDE = new Set(['signature', 'hmac', 'shopify_hmac']);
+
+/**
+ * Canonical string for Shopify App Proxy `signature` (query param, hex).
+ * Matches Shopify docs: merge duplicate keys with ",", sort each `key=value` string lexicographically, concatenate with no separator.
+ *
+ * @see https://shopify.dev/docs/apps/build/online-store/app-proxies/authenticate-app-proxies
+ */
+export function shopifyAppProxyCanonicalString(
+  params: URLSearchParams,
+  excludeKeys: Iterable<string> = DEFAULT_PROXY_EXCLUDE
+): string {
+  const excluded = new Set(excludeKeys);
+  const byKey = new Map<string, string[]>();
+  for (const [key, value] of params.entries()) {
+    if (excluded.has(key)) continue;
+    let list = byKey.get(key);
+    if (!list) {
+      list = [];
+      byKey.set(key, list);
+    }
+    list.push(value);
+  }
+  const pieces: string[] = [];
+  for (const [key, values] of byKey.entries()) {
+    pieces.push(`${key}=${values.join(',')}`);
+  }
+  pieces.sort((a, b) => a.localeCompare(b));
+  return pieces.join('');
 }
 
 /**

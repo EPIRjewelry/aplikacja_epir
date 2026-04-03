@@ -94,6 +94,11 @@ export default function App() {
         {/* TODO: If chat runs on separate Worker, add its domain to CSP via createContentSecurityPolicy from @shopify/hydrogen */}
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <script
+          type="module"
+          src="https://cdn.shopify.com/shopifycloud/polaris.js"
+          async
+        />
         <Seo />
         <Meta />
         <Links />
@@ -116,6 +121,8 @@ export default function App() {
           chatApiUrl={data.chatApiUrl}
           cartId={data.cartId}
           brand={data.brand}
+          storefrontId="kazka"
+          channel="hydrogen-kazka"
         />
         <ScrollRestoration />
         <Scripts />

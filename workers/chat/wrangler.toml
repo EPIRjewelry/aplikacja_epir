@@ -93,6 +93,8 @@ WORKER_ORIGIN = "https://asystent.epirbizuteria.pl"
 # Per-storefront public Storefront API tokens ustawiane jako secrets/vars na poziomie Workera:
 # - PUBLIC_STOREFRONT_API_TOKEN_KAZKA
 # - PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY
+# Per-storefront private tokens (metaobject / ai_profile reads):
+# - PRIVATE_STOREFRONT_API_TOKEN_ZARECZYNY
 # AI Gateway (opcjonalne) - gdy ustawione, requesty Groq idą przez gateway
 # AI_GATEWAY_ACCOUNT_ID = "your-account-id"
 # AI_GATEWAY_NAME = "epir-chat-gateway"

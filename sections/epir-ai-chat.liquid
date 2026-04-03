@@ -1,0 +1,116 @@
+{% liquid
+  assign default_title = 'Zapytaj Doradcę EPIR'
+  assign default_greeting = 'Witaj! Jestem Twoim doradcą AI. Napisz, czego szukasz, a pomogę Ci dobrać biżuterię.'
+  assign default_placeholder = 'Wpisz wiadomość...'
+  assign storefront_id = section.settings.storefront_id | default: 'kazka'
+%}
+
+<section
+  id="epir-ai-chat-section-{{ section.id }}"
+  class="epir-ai-chat"
+  data-storefront-id="{{ storefront_id | escape }}"
+>
+  <link rel="stylesheet" href="{{ 'assistant.css' | asset_url }}">
+
+  <div
+    id="epir-assistant-section"
+    class="epir-assistant epir-assistant-section epir-assistant--bottom-right"
+    aria-live="polite"
+    data-shop-domain="{{ shop.myshopify_domain }}"
+    data-logged-in-customer-id="{{ customer.id | default: '' }}"
+    data-worker-endpoint="/apps/assistant/chat"
+    data-brand="{{ storefront_id | escape }}"
+    data-storefront-id="{{ storefront_id | escape }}"
+    data-start-closed="true"
+    data-stream-render="dots"
+  >
+    <div class="assistant-container">
+      <div class="assistant-header" role="heading" aria-level="3">
+        <h3>{{ default_title }}</h3>
+        <button id="assistant-close-button" class="assistant-close-btn" aria-label="Zamknij panel czatu">
+          ✕
+        </button>
+      </div>
+
+      <div id="assistant-content" class="assistant-content is-closed">
+        <div id="assistant-messages" class="assistant-messages" role="log" aria-atomic="false" aria-live="polite">
+          <div class="msg msg-assistant welcome-message" role="status">
+            {{ default_greeting }}
+          </div>
+        </div>
+
+        <form id="assistant-form" class="assistant-form" onsubmit="return false;" action="javascript:void(0)">
+          <label for="assistant-input" class="sr-only">Wpisz wiadomość do doradcy</label>
+          <input
+            id="assistant-input"
+            type="text"
+            placeholder="{{ default_placeholder }}"
+            autocomplete="off"
+            required
+            maxlength="256"
+            aria-required="true"
+          >
+          <button type="button" id="assistant-send-button" aria-label="Wyślij wiadomość">
+            Wyślij
+          </button>
+        </form>
+
+        <div id="assistant-status" class="assistant-status" role="status" aria-live="polite"></div>
+        <div id="assistant-loader" class="assistant-loader" style="display:none" aria-live="polite" aria-label="Oczekiwanie na odpowiedź">
+          <span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
+        </div>
+      </div>
+    </div>
+
+    <button
+      id="assistant-launcher"
+      class="epir-assistant-launcher"
+      aria-expanded="false"
+      aria-controls="assistant-content"
+      aria-label="{{ default_title }}"
+    >
+      🗣
+    </button>
+  </div>
+</section>
+
+<script>
+  (function () {
+    var storefrontId = {{ storefront_id | json }};
+    var assistantRoot = document.getElementById('epir-assistant-section');
+
+    if (assistantRoot) {
+      assistantRoot.dataset.storefrontId = storefrontId;
+      assistantRoot.dataset.brand = storefrontId;
+    }
+
+    if (!window.__EPIR_ASSISTANT_LOADER_ATTACHED__) {
+      window.__EPIR_ASSISTANT_LOADER_ATTACHED__ = true;
+
+      var script = document.createElement('script');
+      script.src = {{ 'assistant.js' | asset_url | json }};
+      script.defer = true;
+      document.head.appendChild(script);
+    }
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "EPIR AI Chat",
+  "class": "epir-ai-chat",
+  "presets": [
+    {
+      "name": "EPIR AI Chat"
+    }
+  ],
+  "settings": [
+    {
+      "type": "text",
+      "id": "storefront_id",
+      "label": "Storefront ID",
+      "default": "kazka"
+    }
+  ]
+}
+{% endschema %}

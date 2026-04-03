@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { shopifyAppProxyCanonicalString } from '../src/hmac';
 import worker, { SessionDO } from '../src/index';
 import type { Env } from '../src/config/bindings';
 
@@ -133,6 +134,12 @@ function signRequest(url: URL, body: string, secret: string): string {
   return signHex(secret, canonical + body);
 }
 
+/** Jak Shopify: HMAC tylko nad parametrami query (bez `signature`). */
+function signShopifyAppProxyQuery(url: URL, secret: string): string {
+  const canonical = shopifyAppProxyCanonicalString(url.searchParams);
+  return signHex(secret, canonical);
+}
+
 describe('App Proxy ingress HMAC (/apps/assistant/chat)', () => {
   it('returns 401 when signature is missing', async () => {
     const { env } = makeEnv();
@@ -194,6 +201,29 @@ describe('App Proxy ingress HMAC (/apps/assistant/chat)', () => {
 
     expect(response.status).toBe(200);
     const data = (await response.json()) as { reply?: string; session_id?: string };
+    expect(data.reply).toContain('Witaj');
+    expect(data.session_id).toBeTruthy();
+  });
+
+  it('returns 200 when signature is in query (Shopify App Proxy), body ignored for HMAC', async () => {
+    const { env } = makeEnv();
+    const url = buildBaseUrl();
+    const body = payloadString();
+    const signature = signShopifyAppProxyQuery(url, env.SHOPIFY_APP_SECRET);
+    url.searchParams.set('signature', signature);
+
+    const response = await worker.fetch(
+      new Request(url.toString(), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body,
+      }),
+      env,
+      noopCtx,
+    );
+
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as {reply?: string; session_id?: string};
     expect(data.reply).toContain('Witaj');
     expect(data.session_id).toBeTruthy();
   });

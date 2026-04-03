@@ -3,55 +3,53 @@
 // Uwaga: dostosuj nazwy headerów/parametrów do finalnej specyfikacji projektu.
 // Nie umieszczaj tajnych kluczy w kodzie — używaj ENV (wrangler secrets).
 
-import { verifyHmac, parseSignature, canonicalizeParams, verifyTimestamp } from './hmac';
+import { verifyHmac, shopifyAppProxyCanonicalString, verifyTimestamp } from './hmac';
 
 export async function verifyAppProxyHmac(request: Request<any, any>, secret: string): Promise<{ ok: boolean; reason?: string }> {
   try {
-    // 1) Pobierz podpis (header lub query param)
-    const headerSig = request.headers.get('x-shopify-hmac-sha256') ?? undefined;
     const url = new URL(request.url);
-    const querySig = url.searchParams.get('signature') ?? url.searchParams.get('hmac') ?? undefined;
-    const signatureRaw = headerSig ?? querySig;
+    const querySig =
+      url.searchParams.get('signature') ?? url.searchParams.get('hmac') ?? undefined;
+    const headerSig = request.headers.get('x-shopify-hmac-sha256') ?? undefined;
+
+    // Shopify App Proxy: `signature` (hex) w query — HMAC tylko nad parametrami URL, bez body.
+    // Nagłówek X-Shopify-Hmac-Sha256: używany w testach / niestandardowych klientach — message = canonical + raw body.
+    const signatureRaw = querySig ?? headerSig;
     if (!signatureRaw) return { ok: false, reason: 'missing_signature' };
 
-    // 2) Sprawdź timestamp (opcjonalnie) - chroni przed replay
     const tsParam = url.searchParams.get('timestamp');
     if (tsParam) {
       const ts = Number(tsParam);
       if (!Number.isFinite(ts) || ts <= 0) {
         return { ok: false, reason: 'invalid_timestamp' };
       }
-      // Verify timestamp is within 5 minute window
       const isValid = verifyTimestamp(ts, 300);
       if (!isValid) {
         return { ok: false, reason: 'timestamp_out_of_range' };
       }
     }
 
-    // 3) Zbuduj canonical string z paramów (usuń signature/hmac/shopify_hmac)
-    const canonical = canonicalizeParams(url.searchParams, ['signature', 'hmac', 'shopify_hmac']);
+    const canonical = shopifyAppProxyCanonicalString(url.searchParams);
 
-    // 4) Pobierz raw body jako ArrayBuffer
-    const cloned = request.clone();
-    const bodyBuffer = await cloned.arrayBuffer();
-    const bodyBytes = new Uint8Array(bodyBuffer);
-    const bodyStr = new TextDecoder().decode(bodyBytes);
+    let message: string;
+    if (querySig) {
+      message = canonical;
+    } else {
+      const cloned = request.clone();
+      const bodyBuffer = await cloned.arrayBuffer();
+      const bodyStr = new TextDecoder().decode(bodyBuffer);
+      message = canonical + bodyStr;
+    }
 
-    // 5) Połącz params + body
-    const message = canonical + bodyStr;
-
-    // 6) Verify HMAC using constant-time comparison from hmac.ts
     const verified = await verifyHmac(signatureRaw, secret, message);
-    
+
     if (!verified) {
       console.error('HMAC verification failed: invalid');
       return { ok: false, reason: 'hmac_mismatch' };
     }
 
-    // 8) (Opcjonalnie) Replay protection: odnotuj signature/timestamp w Durable Object (nie tutaj).
     return { ok: true };
   } catch (err) {
-    // Nie logujemy secretów ani raw signature
     console.error('verifyAppProxyHmac error', (err as Error).message);
     return { ok: false, reason: 'internal_error' };
   }

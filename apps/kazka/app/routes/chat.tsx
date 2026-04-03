@@ -29,7 +29,13 @@ export default function ChatPage() {
       <p className="mb-8 text-gray-600">
         Zadaj pytanie o produkty lub usługi. Jesteśmy tu, aby pomóc.
       </p>
-      <ChatWidget chatApiUrl={chatApiUrl} cartId={cartId} brand={brand} />
+      <ChatWidget
+        chatApiUrl={chatApiUrl}
+        cartId={cartId}
+        brand={brand}
+        storefrontId="kazka"
+        channel="hydrogen-kazka"
+      />
     </div>
   );
 }

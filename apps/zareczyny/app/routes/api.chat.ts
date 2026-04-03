@@ -68,16 +68,28 @@ export async function action({request, context}: ActionArgs) {
     return json({error: 'Empty body'}, {status: 400});
   }
 
-  const upstream = await fetch(CHAT_S2S_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-EPIR-SHARED-SECRET': secret,
-      'X-EPIR-STOREFRONT-ID': 'zareczyny',
-      'X-EPIR-CHANNEL': 'hydrogen-zareczyny',
-    },
-    body: bodyText,
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(CHAT_S2S_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-EPIR-SHARED-SECRET': secret,
+        'X-EPIR-STOREFRONT-ID': 'zareczyny',
+        'X-EPIR-CHANNEL': 'hydrogen-zareczyny',
+      },
+      body: bodyText,
+    });
+  } catch (err) {
+    console.error('[api.chat] Upstream fetch failed', err);
+    return json(
+      {
+        error:
+          'Chat proxy: nie udało się połączyć z serwerem asystenta. Spróbuj ponownie za chwilę.',
+      },
+      {status: 502},
+    );
+  }
 
   const outHeaders = new Headers();
   const ct = upstream.headers.get('content-type');

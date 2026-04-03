@@ -71,7 +71,10 @@ export async function fetchAIProfile(
   }
 
   try {
+    console.log('[ai-profile] resolved GID:', gid);
+    console.log('[ai-profile] token (8 chars):', storefrontApiToken?.slice(0, 8));
     const data = await callStorefrontAPI<AIProfileQueryResponse>(shopDomain, storefrontApiToken, AI_PROFILE_QUERY, { id: gid });
+    console.log('[ai-profile] metaobject result:', JSON.stringify(data?.metaobject));
     const profile = normalizeAIProfile(data.metaobject?.fields);
 
     if (!data.metaobject) {

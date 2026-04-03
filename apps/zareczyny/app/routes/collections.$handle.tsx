@@ -1,7 +1,108 @@
 import {useLoaderData} from '@remix-run/react';
 import {SeoHandleFunction} from '@shopify/hydrogen';
-import {ProductGrid} from '@epir/ui';
+import {
+  CollectionEnhancedHero,
+  type CollectionEnhancedFlat,
+  ProductGrid,
+} from '@epir/ui';
 import {json, redirect, LoaderArgs} from '@remix-run/cloudflare';
+
+type CollectionEnhancedFieldReference = {
+  mediaContentType?: string | null;
+  sources?: {url?: string | null; mimeType?: string | null}[] | null;
+  image?: {url?: string | null; altText?: string | null} | null;
+};
+
+type CollectionEnhancedField = {
+  key?: string | null;
+  value?: string | null;
+  reference?: CollectionEnhancedFieldReference | null;
+  references?: {
+    nodes?: Array<{
+      image?: {url?: string | null} | null;
+    } | null> | null;
+  } | null;
+};
+
+type CollectionEnhancedMetaobject = {
+  fields?: CollectionEnhancedField[] | null;
+};
+
+function trimOrNull(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  return t.length > 0 ? t : null;
+}
+
+/**
+ * Mapuje tablicę `fields` z metaobject (Storefront API) na płaski obiekt dla UI.
+ */
+export function mapCollectionEnhancedData(
+  reference: CollectionEnhancedMetaobject | null | undefined,
+): CollectionEnhancedFlat | null {
+  const fields = reference?.fields;
+  if (!Array.isArray(fields) || fields.length === 0) return null;
+
+  const out: CollectionEnhancedFlat = {
+    name: null,
+    philosophy: null,
+    accentColor: null,
+    heroVideoUrl: null,
+    textureOverlayUrl: null,
+    lookbookImages: [],
+  };
+
+  for (const field of fields) {
+    switch (field.key) {
+      case 'name':
+        out.name = trimOrNull(field.value);
+        break;
+      case 'philosophy':
+        out.philosophy = trimOrNull(field.value);
+        break;
+      case 'accent_color':
+        out.accentColor = trimOrNull(field.value);
+        break;
+      case 'hero_video': {
+        const sources = field.reference?.sources;
+        const first =
+          Array.isArray(sources) && sources.length > 0
+            ? sources.find((s) => typeof s?.url === 'string' && s.url.length > 0)
+            : undefined;
+        out.heroVideoUrl = first?.url ?? null;
+        break;
+      }
+      case 'texture_overlay': {
+        const url = field.reference?.image?.url;
+        out.textureOverlayUrl = typeof url === 'string' && url.length > 0 ? url : null;
+        break;
+      }
+      case 'lookbook_images': {
+        const nodes = field.references?.nodes;
+        if (!Array.isArray(nodes)) break;
+        const urls: string[] = [];
+        for (const node of nodes) {
+          const u = node?.image?.url;
+          if (typeof u === 'string' && u.length > 0) urls.push(u);
+        }
+        out.lookbookImages = urls;
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  const empty =
+    !out.name &&
+    !out.philosophy &&
+    !out.accentColor &&
+    !out.heroVideoUrl &&
+    !out.textureOverlayUrl &&
+    out.lookbookImages.length === 0;
+
+  return empty ? null : out;
+}
 
 export async function loader({context, params, request}: LoaderArgs) {
   const {handle} = params;
@@ -46,27 +147,26 @@ export async function loader({context, params, request}: LoaderArgs) {
     return redirect('/', 302);
   }
 
+  const enhancedData = mapCollectionEnhancedData(
+    collection.metafield?.reference as CollectionEnhancedMetaobject | null | undefined,
+  );
+
   return json({
     collection,
+    enhancedData,
   });
 }
 
 export default function Collection() {
-  const {collection} = useLoaderData();
+  const {collection, enhancedData} = useLoaderData<typeof loader>();
 
   return (
     <section className="w-full gap-8">
-      <header className="grid w-full gap-6 py-6 md:py-8 fadeIn">
-        <h1 className="text-3xl md:text-4xl font-bold text-[rgb(var(--color-primary))]">
-          {collection.title}
-        </h1>
-
-        {collection.description && (
-          <p className="max-w-2xl text-[rgb(var(--color-primary))]/70 whitespace-pre-wrap">
-            {collection.description}
-          </p>
-        )}
-      </header>
+      <CollectionEnhancedHero
+        collectionTitle={collection.title}
+        collectionDescription={collection.description ?? undefined}
+        enhancedData={enhancedData}
+      />
 
       <div className="fadeIn" style={{animationDelay: '100ms'}}>
         {collection.products?.nodes?.length ? (
@@ -94,6 +194,40 @@ const COLLECTION_QUERY = `#graphql
       title
       description
       handle
+      metafield(namespace: "custom", key: "collection_enhanced") {
+        reference {
+          ... on Metaobject {
+            fields {
+              key
+              value
+              reference {
+                ... on Video {
+                  mediaContentType
+                  sources {
+                    url
+                    mimeType
+                  }
+                }
+                ... on MediaImage {
+                  image {
+                    url
+                    altText
+                  }
+                }
+              }
+              references(first: 24) {
+                nodes {
+                  ... on MediaImage {
+                    image {
+                      url
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
       products(first: 12, after: $cursor) {
         pageInfo {
           hasNextPage

@@ -125,17 +125,21 @@ interface ChatRequestBody {
   collectionHandle?: string;
 }
 
-type StorefrontTokenEnvKey = 'PUBLIC_STOREFRONT_API_TOKEN_KAZKA' | 'PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY';
+type PublicStorefrontTokenEnvKey = 'PUBLIC_STOREFRONT_API_TOKEN_KAZKA' | 'PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY';
+type PrivateStorefrontTokenEnvKey = 'PRIVATE_STOREFRONT_API_TOKEN_ZARECZYNY';
+type StorefrontTokenEnvKey = PublicStorefrontTokenEnvKey;
 
 type StaticStorefrontConfig = {
   storefrontId: string;
   channel: string;
   aiProfileGid?: string;
   apiTokenEnvKey?: StorefrontTokenEnvKey;
+  privateTokenEnvKey?: PrivateStorefrontTokenEnvKey;
 };
 
 type ResolvedStorefrontConfig = StaticStorefrontConfig & {
   apiToken?: string;
+  privateToken?: string;
 };
 
 type ChatContextOverride = {
@@ -157,8 +161,55 @@ const EPIR_SHARED_SECRET_HEADER = 'X-EPIR-SHARED-SECRET';
 const EPIR_STOREFRONT_HEADER = 'X-EPIR-STOREFRONT-ID';
 const EPIR_CHANNEL_HEADER = 'X-EPIR-CHANNEL';
 
+function hasAppProxySignature(request: Request, url: URL): boolean {
+  return Boolean(
+    request.headers.get('x-shopify-hmac-sha256') ||
+      url.searchParams.get('signature') ||
+      url.searchParams.get('hmac')
+  );
+}
+
+async function authorizeAppProxyRequest(request: Request, env: Env): Promise<Response | null> {
+  if (!env.SHOPIFY_APP_SECRET) {
+    return new Response('Server misconfigured', { status: 500, headers: cors(env, request) });
+  }
+
+  const result = await verifyAppProxyHmac(request.clone(), env.SHOPIFY_APP_SECRET);
+  if (!result.ok) {
+    console.warn('HMAC verification failed:', result.reason);
+    return new Response('Unauthorized: Invalid HMAC signature', {
+      status: 401,
+      headers: cors(env, request),
+    });
+  }
+
+  // [BEZPIECZEŃSTWO] Replay protection
+  const url = new URL(request.url);
+  const signature = url.searchParams.get('signature') ?? request.headers.get('x-shopify-hmac-sha256') ?? '';
+  const timestamp = url.searchParams.get('timestamp') ?? '';
+  if (signature && timestamp) {
+    const doId = env.SESSION_DO.idFromName('replay-protection-global');
+    const stub = env.SESSION_DO.get(doId);
+    const replayResult = await replayCheck(stub, signature, timestamp);
+    if (!replayResult.ok) {
+      console.warn('Replay check failed:', replayResult.reason);
+      return new Response('Unauthorized: Signature already used', {
+        status: 401,
+        headers: cors(env, request),
+      });
+    }
+  }
+
+  return null;
+}
+
 /** Mapowanie aliasów storefrontów na konfigurację. Na drucie używamy aliasu (np. "kazka"), wewnątrz MCP – rzeczywisty Storefront ID. */
 const STOREFRONTS: Record<string, StaticStorefrontConfig> = {
+  'online-store': {
+    storefrontId: 'gid://shopify/Storefront/1000013955',
+    channel: 'online-store',
+    aiProfileGid: 'gid://shopify/Metaobject/2153911189836',
+  },
   kazka: {
     storefrontId: 'gid://shopify/Storefront/1000013955', // Zastąp faktycznym ID z Headless sales channel
     channel: 'hydrogen-kazka',
@@ -171,6 +222,7 @@ const STOREFRONTS: Record<string, StaticStorefrontConfig> = {
     /** Typ Admin: `ai_profile`, handle: zareczyny — opublikuj wpis (Active), inaczej Storefront zwróci null */
     aiProfileGid: 'gid://shopify/Metaobject/2117458166092',
     apiTokenEnvKey: 'PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY',
+    privateTokenEnvKey: 'PRIVATE_STOREFRONT_API_TOKEN_ZARECZYNY',
   },
 };
 
@@ -183,6 +235,9 @@ function resolveStorefrontConfig(env: Env, storefrontKey?: string): ResolvedStor
     apiToken: config.apiTokenEnvKey
       ? env[config.apiTokenEnvKey] ?? env.SHOPIFY_STOREFRONT_TOKEN
       : env.SHOPIFY_STOREFRONT_TOKEN,
+    privateToken: config.privateTokenEnvKey
+      ? env[config.privateTokenEnvKey] ?? env.PRIVATE_STOREFRONT_API_TOKEN
+      : env.PRIVATE_STOREFRONT_API_TOKEN,
   };
 }
 
@@ -311,8 +366,13 @@ function parseChatRequestBody(
   const image_base64 = rawImage ? normalizeImageBase64(rawImage) : undefined;
   const storefrontIdFromBody = typeof maybe.storefrontId === 'string' && maybe.storefrontId.trim().length > 0 ? maybe.storefrontId.trim() : undefined;
   const channelFromBody = typeof maybe.channel === 'string' && maybe.channel.trim().length > 0 ? maybe.channel.trim() : undefined;
-  const storefrontId = contextOverride?.storefrontId ?? storefrontIdFromBody;
-  const channel = contextOverride?.channel ?? channelFromBody;
+  const storefrontFromBrand =
+    !contextOverride?.storefrontId && !storefrontIdFromBody && brand && STOREFRONTS[brand]
+      ? brand
+      : undefined;
+  const storefrontId = contextOverride?.storefrontId ?? storefrontIdFromBody ?? storefrontFromBrand;
+  const inferredChannel = storefrontFromBrand ? STOREFRONTS[storefrontFromBrand]?.channel : undefined;
+  const channel = contextOverride?.channel ?? channelFromBody ?? inferredChannel;
   const route = typeof maybe.route === 'string' && maybe.route.trim().length > 0 ? maybe.route.trim() : undefined;
   const collectionHandle = typeof maybe.collectionHandle === 'string' && maybe.collectionHandle.trim().length > 0 ? maybe.collectionHandle.trim() : undefined;
   return {
@@ -404,6 +464,21 @@ function cors(env: Env, request?: Request): Record<string, string> {
       EPIR_CHANNEL_HEADER,
     ].join(','),
   };
+}
+
+function withCorsHeaders(baseHeaders: HeadersInit | undefined, env: Env, request: Request): Headers {
+  const headers = new Headers(baseHeaders);
+  const corsHeaders = cors(env, request);
+  for (const [key, value] of Object.entries(corsHeaders)) {
+    headers.set(key, value);
+  }
+  const vary = headers.get('Vary');
+  headers.set('Vary', vary ? `${vary}, Origin` : 'Origin');
+  return headers;
+}
+
+function isPixelPath(pathname: string): boolean {
+  return pathname === '/pixel' || pathname.startsWith('/pixel/');
 }
 
 // ============================================================================
@@ -969,9 +1044,10 @@ async function streamAssistantResponse(
 
       const toolSchemaString = JSON.stringify(toolDefinitions, null, 2);
       const activeStorefrontConfig = resolveStorefrontConfig(env, storefrontContext?.storefrontId);
+      const aiProfileToken = activeStorefrontConfig?.privateToken ?? activeStorefrontConfig?.apiToken;
       const aiProfile = await fetchAIProfile(
         activeStorefrontConfig?.aiProfileGid,
-        activeStorefrontConfig?.apiToken,
+        aiProfileToken,
         env.SHOP_DOMAIN
       );
       const aiProfilePrompt = aiProfile ? buildAIProfilePrompt(aiProfile) : null;
@@ -1296,43 +1372,39 @@ export default {
     const method = request.method.toUpperCase();
 
     // 1. Proxy /pixel – na początku, przed routingiem czatu (Gateway pattern)
-    if (pathname === '/pixel' || pathname.endsWith('/pixel') || pathname.startsWith('/pixel/')) {
+    if (isPixelPath(pathname)) {
       // OPTIONS (preflight CORS) – zwróć CORS headers
       if (method === 'OPTIONS') {
         return new Response(null, {
-          status: 200,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-          },
+          status: 204,
+          headers: withCorsHeaders(undefined, env, request),
         });
       }
 
-      // POST (i GET) – proxy do ANALYTICS_WORKER z oryginalnym requestem
-      if (env.ANALYTICS_WORKER) {
-        const proxied = await env.ANALYTICS_WORKER.fetch(request);
-        const headers = new Headers(proxied.headers);
-        headers.set('Access-Control-Allow-Origin', '*');
-        headers.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-        headers.set('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+      try {
+        // Utrzymujemy ścieżkę `/pixel*`, ale podmieniamy host na upstream analytics.
+        const analyticsUrl = `https://analytics.internal${pathname}${url.search}`;
+        const upstreamRequest = new Request(analyticsUrl, request);
+
+        const proxied = env.ANALYTICS_WORKER
+          ? await env.ANALYTICS_WORKER.fetch(upstreamRequest)
+          : await fetch(
+              `https://epir-analityc-worker.krzysztofdzugaj.workers.dev${pathname}${url.search}`,
+              upstreamRequest,
+            );
+
         return new Response(proxied.body, {
           status: proxied.status,
           statusText: proxied.statusText,
-          headers,
+          headers: withCorsHeaders(proxied.headers, env, request),
+        });
+      } catch (error) {
+        console.error('[worker] /pixel proxy failed', error);
+        return new Response(JSON.stringify({ ok: false, error: 'pixel_proxy_unavailable' }), {
+          status: 502,
+          headers: withCorsHeaders({ 'Content-Type': 'application/json' }, env, request),
         });
       }
-
-      // Fallback: zewnętrzny fetch gdy brak service binding
-      const fallbackUrl = `https://epir-analityc-worker.krzysztofdzugaj.workers.dev${pathname}${url.search}`;
-      const proxied = await fetch(fallbackUrl, request);
-      const headers = new Headers(proxied.headers);
-      headers.set('Access-Control-Allow-Origin', '*');
-      return new Response(proxied.body, {
-        status: proxied.status,
-        statusText: proxied.statusText,
-        headers,
-      });
     }
 
     // Global OPTIONS (dla pozostałych ścieżek)
@@ -1386,27 +1458,9 @@ export default {
 
     // [BEZPIECZEŃSTWO] Globalny strażnik HMAC dla App Proxy
     if (url.pathname.startsWith('/apps/assistant/') && request.method === 'POST') {
-      if (!env.SHOPIFY_APP_SECRET) {
-        return new Response('Server misconfigured', { status: 500, headers: cors(env, request) });
-      }
-      
-      const result = await verifyAppProxyHmac(request.clone(), env.SHOPIFY_APP_SECRET);
-      if (!result.ok) {
-        console.warn('HMAC verification failed:', result.reason);
-        return new Response('Unauthorized: Invalid HMAC signature', { status: 401, headers: cors(env, request) });
-      }
-
-      // [BEZPIECZEŃSTWO] Replay protection
-      const signature = url.searchParams.get('signature') ?? request.headers.get('x-shopify-hmac-sha256') ?? '';
-      const timestamp = url.searchParams.get('timestamp') ?? '';
-      if (signature && timestamp) {
-        const doId = env.SESSION_DO.idFromName('replay-protection-global');
-        const stub = env.SESSION_DO.get(doId);
-        const replayResult = await replayCheck(stub, signature, timestamp);
-        if (!replayResult.ok) {
-          console.warn('Replay check failed:', replayResult.reason);
-          return new Response('Unauthorized: Signature already used', { status: 401, headers: cors(env, request) });
-        }
+      const appProxyAuthError = await authorizeAppProxyRequest(request, env);
+      if (appProxyAuthError) {
+        return appProxyAuthError;
       }
     }
 
@@ -1415,8 +1469,18 @@ export default {
       return handleChat(request, env, undefined, ctx);
     }
 
-    // Endpoint czatu headless / BFF – zabezpieczony shared secret + headers kontekstowe
+    // Endpoint czatu headless / BFF – zabezpieczony shared secret + headers kontekstowe.
+    // Uwaga: Shopify App Proxy przekazuje /apps/assistant/chat jako /chat do backendu
+    // i dodaje podpis HMAC w query/headerach.
     if (url.pathname === '/chat' && request.method === 'POST') {
+      if (hasAppProxySignature(request, url)) {
+        const appProxyAuthError = await authorizeAppProxyRequest(request, env);
+        if (appProxyAuthError) {
+          return appProxyAuthError;
+        }
+        return handleChat(request, env, undefined, ctx);
+      }
+
       const s2sResult = verifyS2SChatRequest(request, env);
       if (!s2sResult.ok) {
         return s2sResult.response;

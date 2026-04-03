@@ -2,6 +2,7 @@ import {json, useLoaderData} from '@remix-run/react';
 import type {LoaderArgs} from '@remix-run/cloudflare';
 import {ChatWidget} from '~/components/ChatWidget';
 import {resolveChatApiUrl} from '~/lib/resolve-chat-api-url';
+import {ZARECZYNY_CHANNEL, ZARECZYNY_STOREFRONT_ID} from '~/lib/chat-widget-context';
 
 export function meta() {
   return [
@@ -21,8 +22,8 @@ export async function loader({context, request}: LoaderArgs) {
     chatApiUrl,
     cartId,
     brand,
-    storefrontId: 'zareczyny',
-    channel: 'hydrogen-zareczyny',
+    storefrontId: ZARECZYNY_STOREFRONT_ID,
+    channel: ZARECZYNY_CHANNEL,
     route,
   });
 }

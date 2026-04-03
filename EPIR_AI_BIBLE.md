@@ -401,6 +401,7 @@ const STOREFRONTS = {
   zareczyny: {
     storefrontId: 'gid://shopify/Storefront/YYYY',
     apiToken: env.PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY,
+    privateToken: env.PRIVATE_STOREFRONT_API_TOKEN_ZARECZYNY, // używany do odczytu metaobject `ai_profile`
     // profil RAG, metaobject profile, itp.
   },
 };

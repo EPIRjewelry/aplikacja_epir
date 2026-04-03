@@ -87,8 +87,12 @@ function makeEnv(overrides: Partial<Env> = {}) {
   return { env, sessions: sessionNamespace.sessions };
 }
 
-function makeChatRequest(headers: HeadersInit = {}, body?: Record<string, unknown>) {
-  return new Request('https://asystent.epirbizuteria.pl/chat', {
+function makeChatRequest(
+  headers: HeadersInit = {},
+  body?: Record<string, unknown>,
+  url = 'https://asystent.epirbizuteria.pl/chat',
+) {
+  return new Request(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -120,6 +124,23 @@ describe('S2S ingress for /chat', () => {
 
     expect(response.status).toBe(401);
     expect(await response.text()).toContain('missing X-EPIR-SHARED-SECRET');
+  });
+
+  it('routes signed /chat requests through App Proxy auth (without requiring S2S secret)', async () => {
+    const { env } = makeEnv();
+    const nowTs = Math.floor(Date.now() / 1000);
+    const response = await worker.fetch(
+      makeChatRequest(
+        {},
+        undefined,
+        `https://asystent.epirbizuteria.pl/chat?shop=epir-art-silver-jewellery.myshopify.com&timestamp=${nowTs}&signature=dummy-signature`,
+      ),
+      env,
+      noopCtx,
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.text()).toContain('Invalid HMAC signature');
   });
 
   it('rejects request with invalid shared secret', async () => {
@@ -209,5 +230,16 @@ describe('parseChatRequestBody', () => {
     expect(payload).not.toBeNull();
     expect(payload?.storefrontId).toBe('zareczyny');
     expect(payload?.channel).toBe('hydrogen-zareczyny');
+  });
+
+  it('infers storefront and channel from brand when body does not provide storefront context', () => {
+    const payload = parseChatRequestBody({
+      message: 'hej',
+      brand: 'online-store',
+    });
+
+    expect(payload).not.toBeNull();
+    expect(payload?.storefrontId).toBe('online-store');
+    expect(payload?.channel).toBe('online-store');
   });
 });

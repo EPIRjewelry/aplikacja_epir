@@ -633,17 +633,99 @@ async function markChatActivated(
   }
 }
 
+type NormalizedPixelPayload = {
+  type: string;
+  data: unknown;
+};
+
+function tryParseJson(value: string): unknown | null {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+async function parseRawPixelPayload(request: Request): Promise<unknown | null> {
+  const rawText = await request.text().catch((err) => {
+    console.error('[ANALYTICS_WORKER] ❌ Failed to read request body:', err);
+    return '';
+  });
+  const trimmed = rawText.trim();
+  if (!trimmed) return null;
+
+  const contentType = (request.headers.get('Content-Type') || '').toLowerCase();
+
+  if (contentType.includes('application/x-www-form-urlencoded')) {
+    const params = new URLSearchParams(trimmed);
+    const embeddedPayload = params.get('payload') ?? params.get('data');
+    if (embeddedPayload) {
+      const embeddedParsed = tryParseJson(embeddedPayload);
+      if (embeddedParsed !== null) return embeddedParsed;
+    }
+    return {
+      type: params.get('type') ?? params.get('event') ?? params.get('event_type'),
+      data: Object.fromEntries(params.entries()),
+    };
+  }
+
+  const parsed = tryParseJson(trimmed);
+  if (parsed !== null) return parsed;
+
+  // Ograniczony fallback: payload=<json> przesłany jako text/plain.
+  if (trimmed.includes('=')) {
+    const params = new URLSearchParams(trimmed);
+    const embeddedPayload = params.get('payload') ?? params.get('data');
+    if (embeddedPayload) {
+      const embeddedParsed = tryParseJson(embeddedPayload);
+      if (embeddedParsed !== null) return embeddedParsed;
+    }
+  }
+
+  return null;
+}
+
+function normalizePixelPayload(raw: unknown): NormalizedPixelPayload | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+
+  const typeCandidate = [obj.type, obj.event_type, obj.event].find(
+    (value): value is string => typeof value === 'string' && value.trim().length > 0,
+  );
+  if (!typeCandidate) return null;
+
+  let data: unknown = obj.data;
+  if (typeof data === 'string') {
+    data = tryParseJson(data) ?? data;
+  }
+
+  if (data === undefined) {
+    const shallowCopy: Record<string, unknown> = {...obj};
+    delete shallowCopy.type;
+    delete shallowCopy.event_type;
+    delete shallowCopy.event;
+    data = shallowCopy;
+  }
+
+  return {
+    type: typeCandidate.trim(),
+    data: data ?? {},
+  };
+}
+
 async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   console.log('[ANALYTICS_WORKER] 📥 Received POST /pixel request');
-  
-  const body = (await request.json().catch((err) => {
-    console.error('[ANALYTICS_WORKER] ❌ Failed to parse request body:', err);
-    return null;
-  })) as { type?: string; data?: unknown } | null;
-  
-  if (!body || typeof body.type !== 'string') {
-    console.error('[ANALYTICS_WORKER] ❌ Invalid payload - body:', body);
-    return json({ ok: false, error: 'Invalid payload' }, 400, corsHeaders(request, env));
+
+  const rawPayload = await parseRawPixelPayload(request);
+  const body = normalizePixelPayload(rawPayload);
+
+  if (!body) {
+    console.error('[ANALYTICS_WORKER] ❌ Invalid payload - normalized parse failed');
+    return json(
+      { ok: false, error: 'Invalid payload', expected: '{ type: string, data: object }' },
+      400,
+      corsHeaders(request, env),
+    );
   }
   
   console.log('[ANALYTICS_WORKER] 📊 Event type:', body.type);
@@ -991,7 +1073,9 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
     // Normalize identifiers (avoid NULLs in D1 schemas)
     const normalizedCustomerId = customerId ?? 'anonymous';
     const normalizedSessionId = sessionId ?? `session_${timestamp}_${Math.random().toString(36).slice(2, 8)}`;
-    const eventId = crypto.randomUUID();
+    // Kompatybilność legacy: część środowisk ma `id INTEGER PRIMARY KEY` zamiast `TEXT`.
+    // Używamy liczby, która działa dla obu schematów.
+    const eventId = timestamp * 1000 + Math.floor(Math.random() * 1000);
 
     console.log('[ANALYTICS_WORKER] 💾 Preparing INSERT with values:', {
       eventType,
@@ -1448,7 +1532,7 @@ export default {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders(request, env) });
     }
-    return new Response('Not Found', { status: 404 });
+    return new Response('Not Found', { status: 404, headers: corsHeaders(request, env) });
   },
 };
 
