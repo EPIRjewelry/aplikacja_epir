@@ -215,6 +215,11 @@ const STOREFRONTS: Record<string, StaticStorefrontConfig> = {
     channel: 'online-store',
     aiProfileGid: 'gid://shopify/Metaobject/2153911189836',
   },
+  'epir-liquid': {
+    storefrontId: 'gid://shopify/Storefront/1000013955',
+    channel: 'online-store',
+    aiProfileGid: 'gid://shopify/Metaobject/2153911189836',
+  },
   kazka: {
     storefrontId: 'gid://shopify/Storefront/1000013955', // Zastąp faktycznym ID z Headless sales channel
     channel: 'hydrogen-kazka',

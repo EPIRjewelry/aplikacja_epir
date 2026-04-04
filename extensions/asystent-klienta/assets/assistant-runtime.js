@@ -1,13 +1,25 @@
 window.__EPIR_ASSISTANT_RUNTIME_LOADED__=true;
 // Przywrócona wersja z backupu (UTF-8, poprawne polskie znaki)
 // extensions/asystent-klienta/assets/assistant.js
-// Shopify-recommended default for storefront: App Proxy endpoint.
-// Can be overridden via block/app-embed setting "worker_endpoint".
+// Shopify canonical storefront ingress: always use App Proxy endpoint.
 var EPIR_CHAT_WORKER_ENDPOINT = '/apps/assistant/chat';
-/** Ostatnio wybrany obraz (base64 bez prefiksu data:), po wyborze pliku */
-let epirPendingAttachment = null;
+/** Ostatnio wybrany obraz, izolowany per formularz czatu. */
+var epirPendingAttachmentByForm = new WeakMap();
 /** Maksymalny rozmiar załącznika obrazu (4 MB po stronie klienta przed base64). */
 const EPIR_MAX_ATTACH_BYTES = 4 * 1024 * 1024;
+
+function getPendingAttachment(form) {
+  return form ? (epirPendingAttachmentByForm.get(form) || null) : null;
+}
+
+function setPendingAttachment(form, attachment) {
+  if (!form) return;
+  if (attachment) {
+    epirPendingAttachmentByForm.set(form, attachment);
+  } else {
+    epirPendingAttachmentByForm.delete(form);
+  }
+}
 
 /**
  * Wyświetla krótki komunikat błędu w elemencie statusu najbliższym formularza.
@@ -66,13 +78,13 @@ function ensureAssistantFileControls() {
       const f = fileInput.files && fileInput.files[0];
       fileInput.value = '';
       if (!f || !f.type || f.type.indexOf('image/') !== 0) {
-        epirPendingAttachment = null;
+        setPendingAttachment(form, null);
         attachBtn.classList.remove('assistant-attach-btn--active');
         attachBtn.title = '';
         return;
       }
       if (f.size > EPIR_MAX_ATTACH_BYTES) {
-        epirPendingAttachment = null;
+        setPendingAttachment(form, null);
         attachBtn.classList.remove('assistant-attach-btn--active');
         attachBtn.title = '';
         showAttachError(form, 'Zdjęcie jest za duże (max 4 MB). Wybierz mniejszy plik.');
@@ -82,20 +94,20 @@ function ensureAssistantFileControls() {
       reader.onload = function () {
         const raw = reader.result;
         if (typeof raw !== 'string') {
-          epirPendingAttachment = null;
+          setPendingAttachment(form, null);
           attachBtn.classList.remove('assistant-attach-btn--active');
           attachBtn.title = '';
           return;
         }
-        epirPendingAttachment = {
+        setPendingAttachment(form, {
           data: stripDataUrlPrefix(raw),
           mediaType: f.type || 'image/jpeg',
-        };
+        });
         attachBtn.classList.add('assistant-attach-btn--active');
         attachBtn.title = f.name || 'Zdjęcie gotowe do wysłania';
       };
       reader.onerror = function () {
-        epirPendingAttachment = null;
+        setPendingAttachment(form, null);
         attachBtn.classList.remove('assistant-attach-btn--active');
         attachBtn.title = '';
       };
@@ -258,24 +270,8 @@ function getAssistantSection() {
 }
 
 // Canonicalize endpoint so storefront always uses a single source of truth.
-function normalizeAssistantEndpoint(endpoint) {
-  if (!endpoint || typeof endpoint !== 'string') return EPIR_CHAT_WORKER_ENDPOINT;
-  const trimmed = endpoint.trim();
-  if (!trimmed) return EPIR_CHAT_WORKER_ENDPOINT;
-  if (trimmed === '/apps/assistant/chat') return trimmed;
-
-  try {
-    const parsed = new URL(trimmed, window.location.origin);
-    const isLegacyDirectWorker =
-      parsed.hostname === 'asystent.epirbizuteria.pl' && parsed.pathname === '/chat';
-
-    if (isLegacyDirectWorker) {
-      return '/apps/assistant/chat';
-    }
-    return trimmed;
-  } catch (_e) {
-    return trimmed;
-  }
+function normalizeAssistantEndpoint() {
+  return EPIR_CHAT_WORKER_ENDPOINT;
 }
 
 // Teleport: przenosi widżet do body, aby position:fixed działał (sekcje mają transform/overflow)
@@ -804,7 +800,8 @@ function doSendFromForm(form, input) {
   const sectionEl = form.closest('#epir-assistant-embed') || form.closest('#epir-assistant-section') || getAssistantSection();
   const messagesEl = sectionEl && (sectionEl.querySelector('#assistant-messages') || sectionEl.querySelector('#assistant-messages-embed'));
   const text = (input && input.value && input.value.trim()) || '';
-  if ((!text && !epirPendingAttachment) || !messagesEl) return;
+  const pendingAttachment = getPendingAttachment(form);
+  if ((!text && !pendingAttachment) || !messagesEl) return;
   input.value = '';
   const controller = new AbortController();
   const setLoading = function(b) {
@@ -813,8 +810,7 @@ function doSendFromForm(form, input) {
   };
   (async function() {
     try {
-      let endpoint = (sectionEl && sectionEl.dataset && sectionEl.dataset.workerEndpoint) || EPIR_CHAT_WORKER_ENDPOINT;
-      endpoint = normalizeAssistantEndpoint(endpoint);
+      let endpoint = normalizeAssistantEndpoint();
       const shop = (sectionEl && sectionEl.dataset && sectionEl.dataset.shopDomain) || '';
       const customerId = (sectionEl && sectionEl.dataset && sectionEl.dataset.loggedInCustomerId) || '';
       if (shop || customerId) {
@@ -823,8 +819,8 @@ function doSendFromForm(form, input) {
         if (customerId) params.set('logged_in_customer_id', customerId);
         endpoint = endpoint + (endpoint.includes('?') ? '&' : '?') + params.toString();
       }
-      var attachmentSnap = epirPendingAttachment;
-      epirPendingAttachment = null;
+      var attachmentSnap = pendingAttachment;
+      setPendingAttachment(form, null);
       // Reset visual indicator on attach button(s) when attachment is consumed
       form.querySelectorAll('.assistant-attach-btn--active').forEach(function(btn) {
         btn.classList.remove('assistant-attach-btn--active');
