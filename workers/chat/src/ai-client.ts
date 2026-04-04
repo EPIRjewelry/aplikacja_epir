@@ -81,11 +81,23 @@ export function shouldUseWorkersAi(env: Env): boolean {
   return useWorkersAI(env);
 }
 
+const WORKERS_AI_SESSION_ID_MAX_LENGTH = 64;
+const WORKERS_AI_SESSION_ID_SAFE_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+function normalizeWorkersAiSessionId(sessionId?: string): string | undefined {
+  const trimmed = sessionId?.trim();
+  if (!trimmed) return undefined;
+  const normalized = trimmed.slice(0, WORKERS_AI_SESSION_ID_MAX_LENGTH);
+  if (!WORKERS_AI_SESSION_ID_SAFE_PATTERN.test(normalized)) return undefined;
+  return normalized;
+}
+
 export function workersAiRunOptions(sessionId?: string): { headers?: Record<string, string> } | undefined {
-  if (!sessionId?.trim()) return undefined;
+  const normalizedSessionId = normalizeWorkersAiSessionId(sessionId);
+  if (!normalizedSessionId) return undefined;
   return {
     headers: {
-      'x-session-affinity': `ses_${sessionId.trim()}`,
+      'x-session-affinity': `ses_${normalizedSessionId}`,
     },
   };
 }

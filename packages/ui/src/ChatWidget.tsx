@@ -36,19 +36,24 @@ export function getOrCreateAnonymousId(): string {
 
 const SESSION_ID_KEY = 'epir-assistant-session';
 
+function createFileReadError(details?: string): Error {
+  const baseMessage = 'Nie udało się odczytać załączonego pliku. Spróbuj ponownie.';
+  return new Error(details ? `${baseMessage} Szczegóły: ${details}` : baseMessage);
+}
+
 function readFileAsBase64Data(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const r = reader.result;
       if (typeof r !== 'string') {
-        reject(new Error('read failed'));
+        reject(createFileReadError());
         return;
       }
       const i = r.indexOf(',');
       resolve(i >= 0 ? r.slice(i + 1) : r);
     };
-    reader.onerror = () => reject(reader.error ?? new Error('read failed'));
+    reader.onerror = () => reject(createFileReadError(reader.error?.message));
     reader.readAsDataURL(file);
   });
 }

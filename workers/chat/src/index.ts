@@ -31,6 +31,7 @@ import {
   streamVisionEvents,
   getGroqResponse,
   GroqMessage,
+  KimiContentPart,
   shouldUseWorkersAi,
   injectKimiMultimodalUserContent,
 } from './ai-client';
@@ -1339,6 +1340,17 @@ async function streamAssistantResponse(
           }
           
           // Kontynuuj pętlę for, aby ponownie wywołać AI
+          // Usuń image_url z wiadomości – obraz wysyłamy tylko w pierwszej iteracji
+          if (shouldUseWorkersAi(env) && imageBase64) {
+            currentMessages = currentMessages.map((m) => {
+              if (!Array.isArray(m.content)) return m;
+              const textParts = (m.content as KimiContentPart[]).filter(
+                (p): p is { type: 'text'; text: string } => p.type === 'text',
+              );
+              const textContent = textParts.map((p) => p.text).join('');
+              return { ...m, content: textContent };
+            });
+          }
           continue; 
 
         } else {
