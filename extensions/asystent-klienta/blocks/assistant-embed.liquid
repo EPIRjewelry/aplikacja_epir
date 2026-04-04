@@ -59,6 +59,18 @@
       "label": "URL workera czatu",
       "info": "Endpoint czatu (zalecane Shopify App Proxy: /apps/assistant/chat)",
       "default": "/apps/assistant/chat"
+    },
+    {
+      "type": "text",
+      "id": "storefront_id",
+      "label": "Storefront ID (kontekst workera)",
+      "default": "epir-liquid"
+    },
+    {
+      "type": "text",
+      "id": "channel",
+      "label": "Kanał (kontekst workera)",
+      "default": "online-store"
     }
   ],
   "default": {
@@ -66,7 +78,9 @@
       "title": "Zapytaj Doradcę EPIR-ART",
       "greeting_message": "Witaj w EPIR-ART. Jestem Twoim osobistym doradcą AI, gotowym pomóc w wyborze idealnej biżuterii.",
       "start_closed": true,
-      "worker_endpoint": "/apps/assistant/chat"
+      "worker_endpoint": "/apps/assistant/chat",
+      "storefront_id": "epir-liquid",
+      "channel": "online-store"
     }
   }
 }
@@ -79,6 +93,8 @@
   data-shop-domain="{{ shop.myshopify_domain }}"
   data-logged-in-customer-id="{{ customer.id | default: '' }}"
   data-worker-endpoint="{{ block.settings.worker_endpoint | default: '/apps/assistant/chat' }}"
+  data-storefront-id="{{ block.settings.storefront_id | default: 'epir-liquid' }}"
+  data-channel="{{ block.settings.channel | default: 'online-store' }}"
   data-brand="epir"
   data-start-closed="{{ block.settings.start_closed | default: default_start_closed }}"
   data-stream-render="dots"
@@ -117,9 +133,7 @@
             type="text"
             placeholder="{{ block.settings.input_placeholder | default: default_placeholder }}"
             autocomplete="off"
-            required
             maxlength="256"
-            aria-required="true"
           />
           <button type="button" id="assistant-send-button-embed" aria-label="Wyślij wiadomość">
             Wyślij

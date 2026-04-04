@@ -4,6 +4,83 @@ window.__EPIR_ASSISTANT_RUNTIME_LOADED__=true;
 // Shopify-recommended default for storefront: App Proxy endpoint.
 // Can be overridden via block/app-embed setting "worker_endpoint".
 var EPIR_CHAT_WORKER_ENDPOINT = '/apps/assistant/chat';
+/** Ostatnio wybrany obraz (base64 bez prefiksu data:), po wyborze pliku */
+var epirPendingAttachment = null;
+
+function stripDataUrlPrefix(dataUrl) {
+  if (typeof dataUrl !== 'string') return '';
+  var comma = dataUrl.indexOf(',');
+  return comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+}
+
+/**
+ * Ukryty input file + przycisk spinacza przy formularzu czatu (embed / sekcja).
+ */
+function ensureAssistantFileControls() {
+  var forms = document.querySelectorAll('#assistant-form-embed, #assistant-form');
+  for (var fi = 0; fi < forms.length; fi++) {
+    var form = forms[fi];
+    if (form.dataset.epirFileControlsInit === '1') continue;
+    form.dataset.epirFileControlsInit = '1';
+
+    var fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.setAttribute('aria-hidden', 'true');
+    fileInput.style.position = 'absolute';
+    fileInput.style.width = '0';
+    fileInput.style.height = '0';
+    fileInput.style.opacity = '0';
+    fileInput.style.pointerEvents = 'none';
+    fileInput.id = form.id === 'assistant-form-embed' ? 'assistant-file-input-embed' : 'assistant-file-input-section';
+
+    var attachBtn = document.createElement('button');
+    attachBtn.type = 'button';
+    attachBtn.setAttribute('aria-label', 'Dodaj zdjęcie');
+    attachBtn.className = 'assistant-attach-btn';
+    attachBtn.textContent = '📎';
+
+    fileInput.addEventListener('change', function () {
+      var f = fileInput.files && fileInput.files[0];
+      fileInput.value = '';
+      if (!f || !f.type || f.type.indexOf('image/') !== 0) {
+        epirPendingAttachment = null;
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function () {
+        var raw = reader.result;
+        if (typeof raw !== 'string') {
+          epirPendingAttachment = null;
+          return;
+        }
+        epirPendingAttachment = {
+          data: stripDataUrlPrefix(raw),
+          mediaType: f.type || 'image/jpeg',
+        };
+      };
+      reader.onerror = function () {
+        epirPendingAttachment = null;
+      };
+      reader.readAsDataURL(f);
+    });
+
+    attachBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      fileInput.click();
+    });
+
+    var sendBtn = form.querySelector('#assistant-send-button-embed') || form.querySelector('#assistant-send-button');
+    if (sendBtn) {
+      form.insertBefore(fileInput, sendBtn);
+      form.insertBefore(attachBtn, sendBtn);
+    } else {
+      form.appendChild(fileInput);
+      form.appendChild(attachBtn);
+    }
+  }
+}
+
 // Lekki, poprawiony klient czatu z obsługą streaming SSE/JSON + fallback.
 // Kompiluj do JS (np. tsc) przed użyciem w Theme App Extension.
 
@@ -455,7 +532,8 @@ async function sendMessageToWorker(
   sessionIdKey,
   messagesEl,
   setLoading,
-  controller
+  controller,
+  attachment
 ) {
   // Small UX helpers: global loader below messages (block or embed)
   const globalLoader = document.getElementById('assistant-loader') || document.getElementById('assistant-loader-embed');
@@ -470,7 +548,7 @@ async function sendMessageToWorker(
 
   setLoading(true);
   showGlobalLoader();
-  createUserMessage(messagesEl, text);
+  createUserMessage(messagesEl, text || '(załącznik obrazu)');
   const { id: msgId, el: msgEl } = createAssistantMessage(messagesEl);
   let accumulated = '';
   let lastParsedActions = null;
@@ -485,6 +563,31 @@ async function sendMessageToWorker(
     console.log('[Assistant] Cart ID:', cartId);
     
     const brand = (sectionEl && sectionEl.dataset && sectionEl.dataset.brand) || 'epir';
+    const storefrontId = (sectionEl && sectionEl.dataset && sectionEl.dataset.storefrontId) || '';
+    const channel = (sectionEl && sectionEl.dataset && sectionEl.dataset.channel) || '';
+    const parts = [];
+    if (text && String(text).trim()) {
+      parts.push({ type: 'text', text: String(text).trim() });
+    }
+    if (attachment && attachment.data) {
+      parts.push({
+        type: 'file',
+        data: attachment.data,
+        mediaType: attachment.mediaType || 'image/jpeg',
+      });
+    }
+    const body = {
+      storefrontId: storefrontId,
+      channel: channel,
+      message: (text && String(text).trim()) || (attachment ? '' : ''),
+      session_id: (() => { try { return sessionStorage.getItem(sessionIdKey); } catch { return null; } })(),
+      cart_id: cartId,
+      brand,
+      stream: true,
+    };
+    if (parts.length > 0) {
+      body.parts = parts;
+    }
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -492,13 +595,7 @@ async function sendMessageToWorker(
         Accept: 'text/event-stream, application/json',
       },
       credentials: 'include',
-      body: JSON.stringify({
-        message: text,
-        session_id: (() => { try { return sessionStorage.getItem(sessionIdKey); } catch { return null; } })(),
-        cart_id: cartId, // Wyślij cart_id w sesji
-        brand,
-        stream: true,
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
 
@@ -670,7 +767,7 @@ function doSendFromForm(form, input) {
   const sectionEl = form.closest('#epir-assistant-embed') || form.closest('#epir-assistant-section') || getAssistantSection();
   const messagesEl = sectionEl && (sectionEl.querySelector('#assistant-messages') || sectionEl.querySelector('#assistant-messages-embed'));
   const text = (input && input.value && input.value.trim()) || '';
-  if (!text || !messagesEl) return;
+  if ((!text && !epirPendingAttachment) || !messagesEl) return;
   input.value = '';
   const controller = new AbortController();
   const setLoading = function(b) {
@@ -689,15 +786,25 @@ function doSendFromForm(form, input) {
         if (customerId) params.set('logged_in_customer_id', customerId);
         endpoint = endpoint + (endpoint.includes('?') ? '&' : '?') + params.toString();
       }
-      await sendMessageToWorker(text, endpoint, 'epir-assistant-session', messagesEl, setLoading, controller);
+      var attachmentSnap = epirPendingAttachment;
+      epirPendingAttachment = null;
+      await sendMessageToWorker(text, endpoint, 'epir-assistant-session', messagesEl, setLoading, controller, attachmentSnap);
     } catch (err) {
       console.error('Fetch error:', err);
     }
   })();
 }
 
+function initAssistantFileControlsDeferred() {
+  ensureAssistantFileControls();
+}
+
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initAssistantSubmitHandler, { once: true });
+  document.addEventListener('DOMContentLoaded', function () {
+    initAssistantSubmitHandler();
+    initAssistantFileControlsDeferred();
+  }, { once: true });
 } else {
   initAssistantSubmitHandler();
+  initAssistantFileControlsDeferred();
 }
