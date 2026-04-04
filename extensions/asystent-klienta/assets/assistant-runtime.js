@@ -18,12 +18,12 @@ function stripDataUrlPrefix(dataUrl) {
  */
 function ensureAssistantFileControls() {
   var forms = document.querySelectorAll('#assistant-form-embed, #assistant-form');
-  for (var fi = 0; fi < forms.length; fi++) {
-    var form = forms[fi];
+  for (let fi = 0; fi < forms.length; fi++) {
+    const form = forms[fi];
     if (form.dataset.epirFileControlsInit === '1') continue;
     form.dataset.epirFileControlsInit = '1';
 
-    var fileInput = document.createElement('input');
+    const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = 'image/*';
     fileInput.setAttribute('aria-hidden', 'true');
@@ -34,33 +34,41 @@ function ensureAssistantFileControls() {
     fileInput.style.pointerEvents = 'none';
     fileInput.id = form.id === 'assistant-form-embed' ? 'assistant-file-input-embed' : 'assistant-file-input-section';
 
-    var attachBtn = document.createElement('button');
+    const attachBtn = document.createElement('button');
     attachBtn.type = 'button';
     attachBtn.setAttribute('aria-label', 'Dodaj zdjęcie');
     attachBtn.className = 'assistant-attach-btn';
     attachBtn.textContent = '📎';
 
     fileInput.addEventListener('change', function () {
-      var f = fileInput.files && fileInput.files[0];
+      const f = fileInput.files && fileInput.files[0];
       fileInput.value = '';
       if (!f || !f.type || f.type.indexOf('image/') !== 0) {
         epirPendingAttachment = null;
+        attachBtn.classList.remove('assistant-attach-btn--active');
+        attachBtn.title = '';
         return;
       }
-      var reader = new FileReader();
+      const reader = new FileReader();
       reader.onload = function () {
-        var raw = reader.result;
+        const raw = reader.result;
         if (typeof raw !== 'string') {
           epirPendingAttachment = null;
+          attachBtn.classList.remove('assistant-attach-btn--active');
+          attachBtn.title = '';
           return;
         }
         epirPendingAttachment = {
           data: stripDataUrlPrefix(raw),
           mediaType: f.type || 'image/jpeg',
         };
+        attachBtn.classList.add('assistant-attach-btn--active');
+        attachBtn.title = f.name || 'Zdjęcie gotowe do wysłania';
       };
       reader.onerror = function () {
         epirPendingAttachment = null;
+        attachBtn.classList.remove('assistant-attach-btn--active');
+        attachBtn.title = '';
       };
       reader.readAsDataURL(f);
     });
@@ -70,7 +78,7 @@ function ensureAssistantFileControls() {
       fileInput.click();
     });
 
-    var sendBtn = form.querySelector('#assistant-send-button-embed') || form.querySelector('#assistant-send-button');
+    const sendBtn = form.querySelector('#assistant-send-button-embed') || form.querySelector('#assistant-send-button');
     if (sendBtn) {
       form.insertBefore(fileInput, sendBtn);
       form.insertBefore(attachBtn, sendBtn);
@@ -788,6 +796,11 @@ function doSendFromForm(form, input) {
       }
       var attachmentSnap = epirPendingAttachment;
       epirPendingAttachment = null;
+      // Reset visual indicator on attach button(s) when attachment is consumed
+      form.querySelectorAll('.assistant-attach-btn--active').forEach(function(btn) {
+        btn.classList.remove('assistant-attach-btn--active');
+        btn.title = '';
+      });
       await sendMessageToWorker(text, endpoint, 'epir-assistant-session', messagesEl, setLoading, controller, attachmentSnap);
     } catch (err) {
       console.error('Fetch error:', err);
