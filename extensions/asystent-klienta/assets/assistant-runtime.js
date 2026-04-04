@@ -5,7 +5,29 @@ window.__EPIR_ASSISTANT_RUNTIME_LOADED__=true;
 // Can be overridden via block/app-embed setting "worker_endpoint".
 var EPIR_CHAT_WORKER_ENDPOINT = '/apps/assistant/chat';
 /** Ostatnio wybrany obraz (base64 bez prefiksu data:), po wyborze pliku */
-var epirPendingAttachment = null;
+let epirPendingAttachment = null;
+/** Maksymalny rozmiar załącznika obrazu (4 MB po stronie klienta przed base64). */
+const EPIR_MAX_ATTACH_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Wyświetla krótki komunikat błędu w elemencie statusu najbliższym formularza.
+ * Komunikat znika po 4 sekundach.
+ */
+function showAttachError(form, message) {
+  var statusEl = document.getElementById(
+    form.id === 'assistant-form-embed' ? 'assistant-status-embed' : 'assistant-status'
+  );
+  if (!statusEl) return;
+  statusEl.textContent = message;
+  statusEl.style.color = '#c0392b';
+  clearTimeout(statusEl._epirErrTimer);
+  statusEl._epirErrTimer = setTimeout(function () {
+    if (statusEl.textContent === message) {
+      statusEl.textContent = '';
+      statusEl.style.color = '';
+    }
+  }, 4000);
+}
 
 function stripDataUrlPrefix(dataUrl) {
   if (typeof dataUrl !== 'string') return '';
@@ -47,6 +69,13 @@ function ensureAssistantFileControls() {
         epirPendingAttachment = null;
         attachBtn.classList.remove('assistant-attach-btn--active');
         attachBtn.title = '';
+        return;
+      }
+      if (f.size > EPIR_MAX_ATTACH_BYTES) {
+        epirPendingAttachment = null;
+        attachBtn.classList.remove('assistant-attach-btn--active');
+        attachBtn.title = '';
+        showAttachError(form, 'Zdjęcie jest za duże (max 4 MB). Wybierz mniejszy plik.');
         return;
       }
       const reader = new FileReader();
