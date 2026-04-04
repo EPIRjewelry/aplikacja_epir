@@ -23,16 +23,21 @@ export type GroqToolCallDefinition = {
   };
 };
 
-export type GroqMessage = { 
-  role: 'system' | 'user' | 'assistant' | 'tool'; 
-  content: string | null;
+/** Fragmenty treści użytkownika zgodne z Workers AI / Kimi (OpenAI-compatible multimodal). */
+export type KimiContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail?: string } };
+
+export type GroqMessage = {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | KimiContentPart[] | null;
   tool_calls?: Array<{
     id: string;
     type: 'function';
     function: { name: string; arguments: string };
   }>;
-  tool_call_id?: string;  // Opcjonalne dla wiadomości 'tool'
-  name?: string;           // Opcjonalne dla wiadomości 'tool'
+  tool_call_id?: string;
+  name?: string;
 };
 
 export type GroqStreamEvent =
@@ -41,8 +46,14 @@ export type GroqStreamEvent =
   | { type: 'usage'; prompt_tokens: number; completion_tokens: number }
   | { type: 'done'; finish_reason?: string };
 
-/** AI binding - Workers AI (Cloudflare) */
-type AIBinding = { run: (model: string, input: unknown, options?: unknown) => Promise<unknown> };
+/** AI binding - Workers AI (Cloudflare); trzeci argument: nagłówki (np. prefix caching). */
+type AIBinding = {
+  run: (
+    model: string,
+    input: unknown,
+    options?: { headers?: Record<string, string> },
+  ) => Promise<unknown>;
+};
 
 /**
  * Interfejs dla środowiska Cloudflare Worker.
@@ -63,6 +74,55 @@ interface Env {
 function useWorkersAI(env: Env): boolean {
   const v = env.USE_WORKERS_AI?.trim().toLowerCase();
   return (v === '1' || v === 'true') && !!env.AI?.run;
+}
+
+/** Eksport dla routingu w index.ts (Kimi vs osobny model vision). */
+export function shouldUseWorkersAi(env: Env): boolean {
+  return useWorkersAI(env);
+}
+
+export function workersAiRunOptions(sessionId?: string): { headers?: Record<string, string> } | undefined {
+  if (!sessionId?.trim()) return undefined;
+  return {
+    headers: {
+      'x-session-affinity': `ses_${sessionId.trim()}`,
+    },
+  };
+}
+
+function mapMessageForWorkersAI(m: GroqMessage): { role: string; content: string | KimiContentPart[] } {
+  const c = m.content;
+  if (c === null || c === undefined) {
+    return { role: m.role, content: '' };
+  }
+  if (typeof c === 'string') {
+    return { role: m.role, content: c };
+  }
+  if (Array.isArray(c)) {
+    return { role: m.role, content: c };
+  }
+  return { role: m.role, content: '' };
+}
+
+/**
+ * Ostatnia wiadomość użytkownika (tekst) + obraz jako image_url (data URI) dla Kimi.
+ */
+export function injectKimiMultimodalUserContent(
+  messages: GroqMessage[],
+  imageDataUri: string,
+): GroqMessage[] {
+  const out = messages.map((m) => ({ ...m }));
+  for (let i = out.length - 1; i >= 0; i--) {
+    if (out[i].role === 'user' && typeof out[i].content === 'string') {
+      const text = out[i].content ?? '';
+      const parts: KimiContentPart[] = [];
+      if (text.trim()) parts.push({ type: 'text', text: text.trim() });
+      parts.push({ type: 'image_url', image_url: { url: imageDataUri } });
+      out[i] = {...out[i], content: parts};
+      break;
+    }
+  }
+  return out;
 }
 
 function getApiUrl(env: Env): string {
@@ -109,14 +169,19 @@ interface GroqPayload {
  */
 export async function streamGroqResponse(
   messages: GroqMessage[],
-  env: Env
+  env: Env,
+  sessionId?: string,
 ): Promise<ReadableStream<string>> {
   if (useWorkersAI(env)) {
-    const stream = await env.AI!.run(WORKERS_AI_MODEL_ID, {
-      messages: messages.map((m) => ({ role: m.role, content: m.content ?? '' })),
-      stream: true,
-      max_tokens: MODEL_PARAMS.max_tokens,
-    }) as ReadableStream<Uint8Array>;
+    const stream = (await env.AI!.run(
+      WORKERS_AI_MODEL_ID,
+      {
+        messages: messages.map(mapMessageForWorkersAI),
+        stream: true,
+        max_tokens: MODEL_PARAMS.max_tokens,
+      },
+      workersAiRunOptions(sessionId),
+    )) as ReadableStream<Uint8Array>;
     if (stream && typeof stream.getReader === 'function') {
       let buf = '';
       return stream
@@ -378,15 +443,20 @@ function createGroqStreamTransform(): TransformStream<string, GroqStreamEvent> {
 export async function streamGroqEvents(
   messages: GroqMessage[],
   env: Env,
-  tools?: GroqToolCallDefinition[]
+  tools?: GroqToolCallDefinition[],
+  sessionId?: string,
 ): Promise<ReadableStream<GroqStreamEvent>> {
   if (useWorkersAI(env)) {
-    const stream = await env.AI!.run(WORKERS_AI_MODEL_ID, {
-      messages: messages.map((m) => ({ role: m.role, content: m.content ?? '' })),
-      stream: true,
-      max_tokens: MODEL_PARAMS.max_tokens,
-      tools: tools,
-    }) as ReadableStream<Uint8Array>;
+    const stream = (await env.AI!.run(
+      WORKERS_AI_MODEL_ID,
+      {
+        messages: messages.map(mapMessageForWorkersAI),
+        stream: true,
+        max_tokens: MODEL_PARAMS.max_tokens,
+        tools: tools,
+      },
+      workersAiRunOptions(sessionId),
+    )) as ReadableStream<Uint8Array>;
     if (stream && typeof stream.getReader === 'function') {
       return stream
         .pipeThrough(new TextDecoderStream() as unknown as TransformStream<Uint8Array, string>)
@@ -444,18 +514,23 @@ export async function streamGroqEvents(
 export async function streamVisionEvents(
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
   imageDataUri: string,
-  env: Env
+  env: Env,
+  sessionId?: string,
 ): Promise<ReadableStream<GroqStreamEvent>> {
   if (!env.AI?.run) {
     throw new Error('Vision requires Workers AI binding (env.AI). Set [ai] binding in wrangler.toml.');
   }
-  const stream = (await env.AI.run(WORKERS_AI_VISION_MODEL_ID, {
-    messages,
-    image: imageDataUri,
-    stream: true,
-    max_tokens: MODEL_PARAMS.max_tokens,
-    temperature: MODEL_PARAMS.temperature,
-  })) as ReadableStream<Uint8Array>;
+  const stream = (await env.AI.run(
+    WORKERS_AI_VISION_MODEL_ID,
+    {
+      messages,
+      image: imageDataUri,
+      stream: true,
+      max_tokens: MODEL_PARAMS.max_tokens,
+      temperature: MODEL_PARAMS.temperature,
+    },
+    workersAiRunOptions(sessionId),
+  )) as ReadableStream<Uint8Array>;
   if (!stream || typeof stream.getReader !== 'function') {
     throw new Error('Workers AI vision did not return a stream');
   }
@@ -477,14 +552,18 @@ export const __test = { createGroqStreamTransform };
 export async function getGroqResponse(
   messages: GroqMessage[],
   env: Env,
-  options?: { max_tokens?: number },
+  options?: { max_tokens?: number; sessionId?: string },
 ): Promise<string> {
   const maxOut = options?.max_tokens ?? MODEL_PARAMS.max_tokens;
   if (useWorkersAI(env)) {
-    const result = await env.AI!.run(WORKERS_AI_MODEL_ID, {
-      messages: messages.map((m) => ({ role: m.role, content: m.content ?? '' })),
-      max_tokens: maxOut,
-    }) as { response?: string };
+    const result = (await env.AI!.run(
+      WORKERS_AI_MODEL_ID,
+      {
+        messages: messages.map(mapMessageForWorkersAI),
+        max_tokens: maxOut,
+      },
+      workersAiRunOptions(options?.sessionId),
+    )) as { response?: string };
     const content = result?.response;
     if (!content) throw new Error('Workers AI returned empty response');
     return String(content);

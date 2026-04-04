@@ -31,6 +31,8 @@ import {
   streamVisionEvents,
   getGroqResponse,
   GroqMessage,
+  shouldUseWorkersAi,
+  injectKimiMultimodalUserContent,
 } from './ai-client';
 import { GROQ_MODEL_ID } from './config/model-params';
 import { LUXURY_SYSTEM_PROMPT } from './prompts/luxury-system-prompt'; // 🟢 Używa nowego promptu v2
@@ -113,6 +115,8 @@ interface ChatRequestBody {
   cart_id?: string;
   brand?: string;
   stream?: boolean;
+  /** Multimodal (workers-ai-provider / widget): text + opcjonalny plik */
+  parts?: Array<{ type: string; text?: string; data?: string; mediaType?: string }>;
   /** Obraz w base64 – gdy obecny, używany jest model vision (Workers AI) zamiast Groq */
   image_base64?: string;
   /** Alias storefrontu (np. "kazka") – MCP mapuje na Storefront ID */
@@ -348,6 +352,28 @@ function verifyS2SChatRequest(request: Request, env: Env): S2SChatAuthorizationR
   };
 }
 
+/** Parsuje tablicę `parts` (AI SDK v6 / widget): text + opcjonalny file (base64). */
+function extractFromPartsArray(parts: unknown): { text: string; imageRaw?: string; mediaType?: string } | null {
+  if (!Array.isArray(parts) || parts.length === 0) return null;
+  let text = '';
+  let imageRaw: string | undefined;
+  let mediaType: string | undefined;
+  for (const p of parts) {
+    if (typeof p !== 'object' || p === null) continue;
+    const o = p as Record<string, unknown>;
+    if (o.type === 'text' && typeof o.text === 'string') {
+      text += o.text;
+    }
+    if (o.type === 'file' && typeof o.data === 'string' && o.data.trim().length > 0) {
+      imageRaw = o.data.trim();
+      mediaType = typeof o.mediaType === 'string' && o.mediaType.trim().length > 0 ? o.mediaType.trim() : 'image/jpeg';
+    }
+  }
+  const textTrim = text.trim();
+  if (!textTrim && !imageRaw) return null;
+  return { text: textTrim, imageRaw, mediaType };
+}
+
 function parseChatRequestBody(
   input: unknown,
   xBrand?: string | null,
@@ -355,15 +381,33 @@ function parseChatRequestBody(
 ): ChatRequestBody | null {
   if (typeof input !== 'object' || input === null) return null;
   const maybe = input as Record<string, unknown>;
-  if (!isNonEmptyString(maybe.message)) return null;
+  const fromParts = extractFromPartsArray(maybe.parts);
+  const messageField = isNonEmptyString(maybe.message) ? String(maybe.message).trim() : '';
+  const messageText = messageField.length > 0 ? messageField : (fromParts?.text ?? '');
+  const hasLegacyImage =
+    typeof maybe.image_base64 === 'string' && maybe.image_base64.trim().length > 0;
+  if (!messageText && !fromParts?.imageRaw && !hasLegacyImage) {
+    return null;
+  }
   const sessionId = typeof maybe.session_id === 'string' && maybe.session_id.length > 0 ? maybe.session_id : undefined;
   const cartId = typeof maybe.cart_id === 'string' && maybe.cart_id.length > 0 ? maybe.cart_id : undefined;
   const stream = typeof maybe.stream === 'boolean' ? maybe.stream : true; // Domyślnie włączamy stream
   const brandFromBody = typeof maybe.brand === 'string' && maybe.brand.trim().length > 0 ? maybe.brand.trim().toLowerCase() : undefined;
   const brand = brandFromBody ?? (typeof xBrand === 'string' && xBrand.trim().length > 0 ? xBrand.trim().toLowerCase() : undefined);
-  // image_base64: surowy base64 lub data URI (data:image/...;base64,...)
-  const rawImage = typeof maybe.image_base64 === 'string' && maybe.image_base64.trim().length > 0 ? maybe.image_base64.trim() : undefined;
-  const image_base64 = rawImage ? normalizeImageBase64(rawImage) : undefined;
+  const rawImageLegacy = hasLegacyImage ? String(maybe.image_base64).trim() : undefined;
+  const rawFromParts = fromParts?.imageRaw;
+  const rawImage = rawImageLegacy ?? rawFromParts;
+  let image_base64: string | undefined;
+  if (rawImage) {
+    if (rawImage.startsWith('data:image/')) {
+      image_base64 = rawImage;
+    } else if (rawFromParts && fromParts?.mediaType && fromParts.mediaType.startsWith('image/')) {
+      image_base64 = `data:${fromParts.mediaType};base64,${rawImage}`;
+    } else {
+      image_base64 = normalizeImageBase64(rawImage);
+    }
+  }
+  const resolvedMessage = messageText || (image_base64 ? '(załącznik obrazu)' : '');
   const storefrontIdFromBody = typeof maybe.storefrontId === 'string' && maybe.storefrontId.trim().length > 0 ? maybe.storefrontId.trim() : undefined;
   const channelFromBody = typeof maybe.channel === 'string' && maybe.channel.trim().length > 0 ? maybe.channel.trim() : undefined;
   const storefrontFromBrand =
@@ -376,7 +420,7 @@ function parseChatRequestBody(
   const route = typeof maybe.route === 'string' && maybe.route.trim().length > 0 ? maybe.route.trim() : undefined;
   const collectionHandle = typeof maybe.collectionHandle === 'string' && maybe.collectionHandle.trim().length > 0 ? maybe.collectionHandle.trim() : undefined;
   return {
-    message: String(maybe.message),
+    message: resolvedMessage,
     session_id: sessionId,
     cart_id: cartId,
     brand,
@@ -1126,14 +1170,23 @@ async function streamAssistantResponse(
       
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log(`[streamAssistant] Rozpoczynam pętlę AI. Sesja: ${sessionId}`);
-      console.log('[streamAssistant] 🤖 Model:', imageBase64 ? 'Workers AI Vision' : (env.USE_WORKERS_AI ? 'Workers AI (A/B)' : GROQ_MODEL_ID));
+      console.log(
+        '[streamAssistant] 🤖 Model:',
+        imageBase64 && shouldUseWorkersAi(env)
+          ? 'Workers AI Kimi K2.5 (multimodal)'
+          : imageBase64
+            ? 'Workers AI Vision (legacy)'
+            : shouldUseWorkersAi(env)
+              ? 'Workers AI Kimi K2.5'
+              : GROQ_MODEL_ID,
+      );
       console.log('[streamAssistant] 📜 System Prompt length:', LUXURY_SYSTEM_PROMPT.length + (aiProfilePrompt?.length ?? 0), 'chars');
       console.log('[streamAssistant] 📚 History entries (before truncation):', aiHistory.length);
       console.log('[streamAssistant] 📨 Total messages (after truncation):', truncatedMessages.length);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-      // 🟢 ŚCIEŻKA VISION: gdy image_base64, używamy Workers AI vision (bez tool_calls)
-      if (imageBase64 && env.AI?.run) {
+      // 🟢 ŚCIEŻKA VISION (legacy): Llama vision — tylko gdy USE_WORKERS_AI=0 (Kimi obsługuje obraz w głównej pętli)
+      if (imageBase64 && env.AI?.run && !shouldUseWorkersAi(env)) {
         const visionMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
           { role: 'system', content: LUXURY_SYSTEM_PROMPT },
           ...(aiProfilePrompt ? [{ role: 'system' as const, content: aiProfilePrompt }] : []),
@@ -1147,7 +1200,7 @@ async function streamAssistantResponse(
             : []),
           { role: 'user', content: userMessage },
         ];
-        const visionStream = await streamVisionEvents(visionMessages, imageBase64, env);
+        const visionStream = await streamVisionEvents(visionMessages, imageBase64, env, sessionId);
         const visionReader = visionStream.getReader();
         let visionText = '';
         while (true) {
@@ -1172,21 +1225,24 @@ async function streamAssistantResponse(
         throw new Error('Vision requires Workers AI binding. Add [ai] binding in wrangler.toml.');
       }
 
-      // Weryfikacja klucza Groq
+      // Weryfikacja klucza Groq (Workers AI / Kimi może działać bez Groq)
       const groqKey = typeof env.GROQ_API_KEY === 'string' ? env.GROQ_API_KEY.trim() : '';
-      if (!groqKey) {
+      if (!groqKey && !(shouldUseWorkersAi(env) && env.AI?.run)) {
         throw new Error('AI service temporarily unavailable (Missing GROQ_API_KEY)');
       }
 
       // 🔴 KROK 4: PĘTLA WYWOŁAŃ NARZĘDZI (native tool_calls)
-      let currentMessages: GroqMessage[] = truncatedMessages; // 🟢 Używamy obciętej historii
+      let currentMessages: GroqMessage[] =
+        shouldUseWorkersAi(env) && imageBase64
+          ? injectKimiMultimodalUserContent(truncatedMessages, imageBase64)
+          : truncatedMessages;
       const MAX_TOOL_CALLS = 5;
       
       // 🔴 FIX: accumulatedResponse poza pętlą - nie resetuj w każdej iteracji
       let finalTextResponse = ''; 
 
       for (let i = 0; i < MAX_TOOL_CALLS; i++) {
-        const groqStream = await streamGroqEvents(currentMessages, env, toolDefinitions);
+        const groqStream = await streamGroqEvents(currentMessages, env, toolDefinitions, sessionId);
         const reader = groqStream.getReader();
         let iterationText = ''; // Tymczasowy buffer dla tej iteracji
         const pendingToolCalls = new Map<string, { id: string; name: string; arguments: string }>();
@@ -1302,7 +1358,7 @@ async function streamAssistantResponse(
       if (!finalTextResponse.trim()) {
         console.warn('[streamAssistant] ⚠️ Brak finalnego tekstu po pętli tool_calls. Uruchamiam fallback getGroqResponse().');
         try {
-          const recoveryText = await getGroqResponse(currentMessages, env);
+          const recoveryText = await getGroqResponse(currentMessages, env, { sessionId });
           if (typeof recoveryText === 'string' && recoveryText.trim()) {
             finalTextResponse = recoveryText;
             await sendDelta(finalTextResponse);
