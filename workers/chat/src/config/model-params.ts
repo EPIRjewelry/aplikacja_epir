@@ -16,14 +16,13 @@
 export const GROQ_MODEL_ID = 'llama-3.3-70b-versatile' as const;
 
 /**
- * Workers AI model ID - dla A/B testu (USE_WORKERS_AI=1).
- * Llama 3.3 70B fp8-fast - function calling, batch.
+ * Workers AI — jeden model multimodalny (tekst + obraz + narzędzia przy USE_WORKERS_AI=1).
+ * @see https://developers.cloudflare.com/workers-ai/models/kimi-k2.5/
  */
-export const WORKERS_AI_MODEL_ID = '@cf/meta/llama-3.3-70b-instruct-fp8-fast' as const;
+export const WORKERS_AI_MODEL_ID = '@cf/moonshotai/kimi-k2.5' as const;
 
 /**
- * Workers AI Vision model - używany gdy wiadomość zawiera image_base64.
- * Llama 3.2 11B Vision - multimodal (tekst + obraz).
+ * Workers AI Vision — ścieżka awaryjna gdy USE_WORKERS_AI=0 a klient wysłał obraz (bez Groq vision).
  */
 export const WORKERS_AI_VISION_MODEL_ID = '@cf/meta/llama-3.2-11b-vision-instruct' as const;
 

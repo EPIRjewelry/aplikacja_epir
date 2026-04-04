@@ -1,7 +1,7 @@
 /**
  * Chat widget – fixed panel in bottom-right corner.
  * Zawsze używa fetch() do chatApiUrl (Remix /api/chat lub Worker).
- * Gdy CHAT_API_URL wskazuje na Worker – czat działa przez Workers AI.
+ * Gdy CHAT_API_URL wskazuje na Worker – czat działa przez Workers AI (Kimi K2.5 multimodal).
  * TODO: Add canTrack / cookie consent check when integrating analytics.
  */
 import {useState, useCallback, useRef, useEffect} from 'react';
@@ -17,6 +17,11 @@ type ChatResponseBody = {
   suggestedProducts?: {id: string; title: string}[];
 };
 
+/** Fragmenty zgodne z workers-ai-provider / worker (parse `parts` po stronie serwera). */
+export type ChatRequestPart =
+  | {type: 'text'; text: string}
+  | {type: 'file'; data: string; mediaType: string};
+
 const ANONYMOUS_ID_KEY = 'chat-anonymous-id';
 
 export function getOrCreateAnonymousId(): string {
@@ -31,13 +36,36 @@ export function getOrCreateAnonymousId(): string {
 
 const SESSION_ID_KEY = 'epir-assistant-session';
 
+function createFileReadError(details?: string): Error {
+  const baseMessage = 'Nie udało się odczytać załączonego pliku. Spróbuj ponownie.';
+  return new Error(details ? `${baseMessage} Szczegóły: ${details}` : baseMessage);
+}
+
+function readFileAsBase64Data(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const r = reader.result;
+      if (typeof r !== 'string') {
+        reject(createFileReadError());
+        return;
+      }
+      const i = r.indexOf(',');
+      resolve(i >= 0 ? r.slice(i + 1) : r);
+    };
+    reader.onerror = () => reject(createFileReadError(reader.error?.message));
+    reader.readAsDataURL(file);
+  });
+}
+
 export type ChatWidgetProps = {
   chatApiUrl: string;
   cartId?: string | null;
   brand?: string;
-  /** Kontekst headless / motywu — worker (analytics, profil sklepu) */
-  storefrontId?: string;
-  channel?: string;
+  /** Z loadera kanału headless — zawsze w body POST (worker / analytics). */
+  storefrontId: string;
+  /** Z loadera kanału headless — zawsze w body POST. */
+  channel: string;
   route?: string;
 };
 
@@ -54,8 +82,8 @@ function ChatWidgetFallback({
   chatApiUrl: string;
   cartId?: string | null;
   brand?: string;
-  storefrontId?: string;
-  channel?: string;
+  storefrontId: string;
+  channel: string;
   route?: string;
   isOpen: boolean;
   onToggle: () => void;
@@ -64,8 +92,10 @@ function ChatWidgetFallback({
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
+  const [pendingImage, setPendingImage] = useState<{file: File; previewUrl: string} | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({behavior: 'smooth'});
@@ -75,37 +105,62 @@ function ChatWidgetFallback({
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
+  useEffect(() => {
+    return () => {
+      if (pendingImage?.previewUrl) {
+        URL.revokeObjectURL(pendingImage.previewUrl);
+      }
+    };
+  }, [pendingImage?.previewUrl]);
+
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || isLoading) return;
+      const attachment = pendingImage;
+      if ((!trimmed && !attachment) || isLoading) return;
 
       const userMessage: ChatMessage = {
         id: `user-${Date.now()}`,
         role: 'user',
-        text: trimmed,
+        text: trimmed || (attachment ? '(załącznik obrazu)' : ''),
       };
       setMessages((prev) => [...prev, userMessage]);
       setInputValue('');
+      if (attachment?.previewUrl) {
+        URL.revokeObjectURL(attachment.previewUrl);
+      }
+      setPendingImage(null);
       setIsLoading(true);
       setErrorMessage(null);
 
-      // Worker (asystent.epirbizuteria.pl/chat) zawsze zwraca SSE – używamy tego samego formatu
-      // niezależnie od URL (zarówno /chat jak /apps/assistant/chat)
       const sessionId =
         typeof window !== 'undefined' ? sessionStorage.getItem(SESSION_ID_KEY) : null;
 
       try {
-        const body = {
-          message: trimmed,
+        const parts: ChatRequestPart[] = [];
+        if (trimmed) parts.push({type: 'text', text: trimmed});
+        if (attachment) {
+          const data = await readFileAsBase64Data(attachment.file);
+          parts.push({
+            type: 'file',
+            data,
+            mediaType: attachment.file.type || 'image/jpeg',
+          });
+        }
+
+        const body: Record<string, unknown> = {
+          storefrontId: storefrontId ?? '',
+          channel: channel ?? '',
+          message: trimmed || (attachment ? '' : ''),
           session_id: sessionId || undefined,
           cart_id: cartId ?? undefined,
           brand,
           stream: true,
-          ...(storefrontId ? {storefrontId} : {}),
-          ...(channel ? {channel} : {}),
           ...(route ? {route} : {}),
         };
+        if (parts.length > 0) {
+          body.parts = parts;
+        }
 
         const res = await fetch(chatApiUrl, {
           method: 'POST',
@@ -190,13 +245,15 @@ function ChatWidgetFallback({
         inputRef.current?.focus();
       }
     },
-    [chatApiUrl, cartId, brand, storefrontId, channel, route, isLoading],
+    [chatApiUrl, cartId, brand, storefrontId, channel, route, isLoading, pendingImage],
   );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    sendMessage(inputValue);
+    void sendMessage(inputValue);
   };
+
+  const canSend = (inputValue.trim().length > 0 || !!pendingImage) && !isLoading;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2">
@@ -234,6 +291,41 @@ function ChatWidgetFallback({
             <div ref={messagesEndRef} />
           </div>
           <form onSubmit={handleSubmit} className="border-t border-gray-200 p-2">
+            {pendingImage && (
+              <div className="mb-2 flex items-center gap-2">
+                <img
+                  src={pendingImage.previewUrl}
+                  alt=""
+                  className="h-14 w-14 rounded border border-gray-200 object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    URL.revokeObjectURL(pendingImage.previewUrl);
+                    setPendingImage(null);
+                  }}
+                  className="text-xs text-gray-600 underline"
+                >
+                  Usuń zdjęcie
+                </button>
+              </div>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              aria-hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (!file || !file.type.startsWith('image/')) return;
+                setPendingImage((prev) => {
+                  if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+                  return {file, previewUrl: URL.createObjectURL(file)};
+                });
+              }}
+            />
             <div className="flex gap-2">
               <input
                 ref={inputRef}
@@ -245,8 +337,17 @@ function ChatWidgetFallback({
                 className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
               />
               <button
+                type="button"
+                disabled={isLoading}
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:bg-gray-100"
+                aria-label="Dodaj zdjęcie"
+              >
+                📎
+              </button>
+              <button
                 type="submit"
-                disabled={isLoading || !inputValue.trim()}
+                disabled={!canSend}
                 className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
                 Wyślij
