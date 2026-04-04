@@ -51,6 +51,8 @@ W projektowaniu architektury świadomie wykorzystujemy wzorce z oficjalnej dokum
 - Custom storefronts / headless — architektura wielokanałowa
 - Storefront API i headless stack
 
+Aktualne kontrakty platformy dla **Admin API `2026-04+`** (limity `json` metafields, app-owned metaobjects bez dodatkowych scope’ów, zakres rozszerzeń w repo) są zebrane w [`docs/SHOPIFY_PLATFORM_2026_04.md`](docs/SHOPIFY_PLATFORM_2026_04.md) i uzupełniają zasady z `EPIR_AI_BIBLE.md`.
+
 ---
 
 ## CZĘŚĆ 1: Architektura systemu

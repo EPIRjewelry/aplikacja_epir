@@ -31,6 +31,7 @@ Te pliki są commitowane do repo, więc nowy klon dostaje ten sam kontekst start
 
 ## Dokumenty operacyjne
 
+- [`SHOPIFY_PLATFORM_2026_04.md`](SHOPIFY_PLATFORM_2026_04.md) — **Shopify Admin API 2026-04+**: limity `json` metafields, app-owned metaobjects i scope’y, audit rozszerzeń w repo, notatka o Dependabocie
 - [`../KROKI_URUCHOMIENIA.md`](../KROKI_URUCHOMIENIA.md) — szybka sekwencja uruchomienia i deployu
 - [`DEPLOYMENT_EPIR.md`](DEPLOYMENT_EPIR.md) — wdrożenie
 - [`DEPLOYMENT_CROSS_SESSION_MEMORY_PRODUCTION.md`](DEPLOYMENT_CROSS_SESSION_MEMORY_PRODUCTION.md) — **produkcja:** migracja D1 `person_memory`, deploy chat workera, smoke testy (bez etapu dev)

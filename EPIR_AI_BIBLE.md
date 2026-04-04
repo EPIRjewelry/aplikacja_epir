@@ -318,6 +318,19 @@ MUST:
   - frontend rekonstruuje UI na podstawie `GET /history` z MCP,
   - jeśli cokolwiek się nie zgadza, stan backendu jest nadrzędny.
 
+### 3.5. Kontrakty Shopify Admin API `2026-04+` (metafields / metaobjects)
+
+MUST (zgodnie z oficjalną dokumentacją Shopify):
+
+- Przy **zapisach** metafields typu `json` przez Admin API w wersji **`2026-04` i nowszej** obowiązuje limit **128 KB** na wartość. Nie projektuj monolitycznych konfiguracji JSON na produktach powyżej tego progu — używaj **metaobjects** i referencji.
+- **App-owned metaobjects** (typy `$app:…`, w tym deklaratywne definicje) od **`2026-04+`** mogą być odczytywane i zapisywane przez owning app **bez dodatkowych access scopes**. **Merchant-owned** metaobjects nadal wymagają właściwych scope'ów.
+
+Szczegóły i linki do changelogów: [`docs/SHOPIFY_PLATFORM_2026_04.md`](docs/SHOPIFY_PLATFORM_2026_04.md).
+
+SHOULD:
+
+- Przy każdej nowej integracji zapisującej duże JSON-y do metafields zweryfikuj rozmiar i model danych.
+
 ---
 
 ## 4. Kazka – osobna baza wiedzy
