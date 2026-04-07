@@ -17,6 +17,11 @@ import type {LinksFunction, LoaderArgs} from '@remix-run/cloudflare';
 import {CART_QUERY} from '~/queries/cart';
 import {defer} from '@remix-run/cloudflare';
 import {resolveChatApiUrl} from '~/lib/resolve-chat-api-url';
+import {
+  ZARECZYNY_CHANNEL,
+  ZARECZYNY_STOREFRONT_ID,
+} from '~/lib/chat-widget-context';
+import {loadZareczynyPersonaUi} from '~/lib/persona-ui.server';
 
 export const links: LinksFunction = () => {
   return [
@@ -48,11 +53,12 @@ export async function loader({context, request}: LoaderArgs) {
     : null;
   const route = new URL(request.url).pathname;
 
-  const [layout, collectionsResult] = await Promise.all([
+  const [layout, collectionsResult, personaUi] = await Promise.all([
     context.storefront.query<{shop: Shop}>(LAYOUT_QUERY),
     context.storefront.query<{
       collections: {nodes: {id: string; title: string; handle: string}[]};
     }>(COLLECTIONS_QUERY),
+    loadZareczynyPersonaUi(context.env),
   ]);
 
   const nodes = allowedHandles?.length
@@ -68,8 +74,9 @@ export async function loader({context, request}: LoaderArgs) {
     chatApiUrl,
     cartId,
     brand,
-    storefrontId: 'zareczyny',
-    channel: 'hydrogen-zareczyny',
+    personaUi,
+    storefrontId: ZARECZYNY_STOREFRONT_ID,
+    channel: ZARECZYNY_CHANNEL,
     route,
   });
 }
@@ -126,6 +133,7 @@ export default function App() {
           chatApiUrl={data.chatApiUrl}
           cartId={data.cartId}
           brand={data.brand}
+          personaUi={data.personaUi}
           storefrontId={data.storefrontId}
           channel={data.channel}
           route={data.route}

@@ -16,6 +16,9 @@ import {Seo, Storefront} from '@shopify/hydrogen';
 import type {LinksFunction, LoaderArgs} from '@remix-run/cloudflare';
 import {CART_QUERY} from '~/queries/cart';
 import {defer} from '@remix-run/cloudflare';
+import {resolveChatApiUrl} from '~/lib/resolve-chat-api-url';
+import {KAZKA_CHANNEL, KAZKA_STOREFRONT_ID} from '~/lib/chat-widget-context';
+import {loadKazkaPersonaUi} from '~/lib/persona-ui.server';
 
 export const links: LinksFunction = () => {
   return [
@@ -33,23 +36,23 @@ export const links: LinksFunction = () => {
   ];
 };
 
-const DEFAULT_CHAT_API_URL = 'https://asystent.epirbizuteria.pl/chat';
-
 export async function loader({context, request}: LoaderArgs) {
   const cartId = await context.session.get('cartId');
-  const chatApiUrl =
-    (context.env.CHAT_API_URL as string | undefined) || DEFAULT_CHAT_API_URL;
+  const configuredChatApiUrl = context.env.CHAT_API_URL as string | undefined;
+  const chatApiUrl = resolveChatApiUrl(configuredChatApiUrl);
   const brand = (context.env.BRAND as string) || 'epir';
   const filter = context.env.COLLECTION_FILTER;
   const allowedHandles = filter
     ? filter.split(',').map((h: string) => h.trim()).filter(Boolean)
     : null;
+  const route = new URL(request.url).pathname;
 
-  const [layout, collectionsResult] = await Promise.all([
+  const [layout, collectionsResult, personaUi] = await Promise.all([
     context.storefront.query<{shop: Shop}>(LAYOUT_QUERY),
     context.storefront.query<{collections: {nodes: {id: string; title: string; handle: string}[]}}>(
       COLLECTIONS_QUERY,
     ),
+    loadKazkaPersonaUi(context.env),
   ]);
 
   const nodes = allowedHandles?.length
@@ -65,6 +68,10 @@ export async function loader({context, request}: LoaderArgs) {
     chatApiUrl,
     cartId,
     brand,
+    personaUi,
+    storefrontId: KAZKA_STOREFRONT_ID,
+    channel: KAZKA_CHANNEL,
+    route,
   });
 }
 
@@ -121,8 +128,10 @@ export default function App() {
           chatApiUrl={data.chatApiUrl}
           cartId={data.cartId}
           brand={data.brand}
-          storefrontId="kazka"
-          channel="hydrogen-kazka"
+          personaUi={data.personaUi}
+          storefrontId={data.storefrontId}
+          channel={data.channel}
+          route={data.route}
         />
         <ScrollRestoration />
         <Scripts />

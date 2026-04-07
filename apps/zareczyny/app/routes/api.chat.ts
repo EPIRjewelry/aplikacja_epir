@@ -4,6 +4,10 @@
  */
 import {json, type ActionArgs, type LoaderArgs} from '@remix-run/cloudflare';
 import {getEpirChatSharedSecret} from '~/lib/chat-proxy-secret';
+import {
+  ZARECZYNY_CHANNEL,
+  ZARECZYNY_STOREFRONT_ID,
+} from '~/lib/chat-widget-context';
 
 const CHAT_S2S_URL = 'https://asystent.epirbizuteria.pl/chat';
 const MISSING_SECRET_ERROR =
@@ -75,8 +79,8 @@ export async function action({request, context}: ActionArgs) {
       headers: {
         'Content-Type': 'application/json',
         'X-EPIR-SHARED-SECRET': secret,
-        'X-EPIR-STOREFRONT-ID': 'zareczyny',
-        'X-EPIR-CHANNEL': 'hydrogen-zareczyny',
+        'X-EPIR-STOREFRONT-ID': ZARECZYNY_STOREFRONT_ID,
+        'X-EPIR-CHANNEL': ZARECZYNY_CHANNEL,
       },
       body: bodyText,
     });

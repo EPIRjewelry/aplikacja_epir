@@ -1,39 +1,36 @@
 /**
- * Chat API resource route – POST /api/chat
- * Mock echo bot. Architecture ready for LLM integration.
+ * BFF: przeglądarka → POST /api/chat (same origin) → S2S POST na worker `/chat`.
+ * Wymaga sekretu `EPIR_CHAT_SHARED_SECRET` w Cloudflare Pages.
  */
 import {json, type ActionArgs, type LoaderArgs} from '@remix-run/cloudflare';
+import {getEpirChatSharedSecret} from '~/lib/chat-proxy-secret';
+import {KAZKA_CHANNEL, KAZKA_STOREFRONT_ID} from '~/lib/chat-widget-context';
 
-type ChatRequestBody = {
-  message: string;
-  anonymousId?: string;
-  cartId?: string;
-};
+const CHAT_S2S_URL = 'https://asystent.epirbizuteria.pl/chat';
+const MISSING_SECRET_ERROR =
+  'Chat proxy: brak EPIR_CHAT_SHARED_SECRET w Cloudflare Pages (Production env).';
 
-type ChatResponseBody = {
-  reply: string;
-  suggestedProducts?: {id: string; title: string}[];
-};
-
-// TODO: Replace with real LLM (OpenAI, Anthropic, etc.) when integrating
-function getMockReply(message: string): string {
-  if (message.toLowerCase().includes('buty')) {
-    return 'Polecam nasze najnowsze buty sportowe. Sprawdź kolekcję w dziale obuwie!';
+function getEnvFromActionContext(
+  context: ActionArgs['context'],
+): Record<string, unknown> {
+  const raw = context as unknown as Record<string, unknown> | undefined;
+  const envDirect = raw?.env;
+  if (envDirect && typeof envDirect === 'object') {
+    return envDirect as Record<string, unknown>;
   }
-  return `Dziękuję za pytanie: ${message} (tu można podpiąć model AI)`;
+  const cloudflare = raw?.cloudflare as Record<string, unknown> | undefined;
+  const envNested = cloudflare?.env;
+  if (envNested && typeof envNested === 'object') {
+    return envNested as Record<string, unknown>;
+  }
+  return {};
 }
-
-// TODO: Replace with Storefront API product recommendations when integrating
-const MOCK_SUGGESTED_PRODUCTS: {id: string; title: string}[] = [
-  {id: 'gid://shopify/Product/1234567890', title: 'Przykładowy produkt 1'},
-  {id: 'gid://shopify/Product/1234567891', title: 'Przykładowy produkt 2'},
-];
 
 export async function loader({request}: LoaderArgs) {
   if (request.method !== 'GET') {
     return json({error: 'Method not allowed'}, {status: 405});
   }
-  return json({error: 'Use POST to send messages'}, {status: 405});
+  return json({ok: true, hint: 'POST JSON body to chat'});
 }
 
 export async function action({request, context}: ActionArgs) {
@@ -41,34 +38,79 @@ export async function action({request, context}: ActionArgs) {
     return json({error: 'Method not allowed'}, {status: 405});
   }
 
-  let body: ChatRequestBody;
+  const env = getEnvFromActionContext(context);
+  const secret = getEpirChatSharedSecret(env);
+  if (!secret) {
+    const hasMainKey = Object.prototype.hasOwnProperty.call(
+      env,
+      'EPIR_CHAT_SHARED_SECRET',
+    );
+    const hasLegacyKey = Object.prototype.hasOwnProperty.call(
+      env,
+      'CHAT_SHARED_SECRET',
+    );
+    const hasHeaderNamedKey = Object.prototype.hasOwnProperty.call(
+      env,
+      'X-EPIR-SHARED-SECRET',
+    );
+    console.error('[api.chat] Missing shared secret in Pages runtime', {
+      hasMainKey,
+      hasLegacyKey,
+      hasHeaderNamedKey,
+      envKeysCount: Object.keys(env).length,
+    });
+    return json(
+      {
+        error: MISSING_SECRET_ERROR,
+        hint:
+          'Ustaw sekret EPIR_CHAT_SHARED_SECRET (albo X-EPIR-SHARED-SECRET) w Cloudflare Pages -> kazka-hydrogen-pages -> Variables and Secrets -> Production i Preview, a potem wykonaj redeploy.',
+        debug: {
+          hasEpirChatSharedSecretKey: hasMainKey,
+          hasChatSharedSecretKey: hasLegacyKey,
+          hasXEpirSharedSecretKey: hasHeaderNamedKey,
+          envKeysCount: Object.keys(env).length,
+        },
+      },
+      {status: 503},
+    );
+  }
+
+  const bodyText = await request.text();
+  if (!bodyText) {
+    return json({error: 'Empty body'}, {status: 400});
+  }
+
+  let upstream: Response;
   try {
-    const text = await request.text();
-    body = text ? JSON.parse(text) : {};
-  } catch {
-    return json({error: 'Invalid JSON body'}, {status: 400});
+    upstream = await fetch(CHAT_S2S_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-EPIR-SHARED-SECRET': secret,
+        'X-EPIR-STOREFRONT-ID': KAZKA_STOREFRONT_ID,
+        'X-EPIR-CHANNEL': KAZKA_CHANNEL,
+      },
+      body: bodyText,
+    });
+  } catch (err) {
+    console.error('[api.chat] Upstream fetch failed', err);
+    return json(
+      {
+        error:
+          'Chat proxy: nie udało się połączyć z serwerem asystenta. Spróbuj ponownie za chwilę.',
+      },
+      {status: 502},
+    );
   }
 
-  const {message, anonymousId, cartId} = body;
+  const outHeaders = new Headers();
+  const ct = upstream.headers.get('content-type');
+  if (ct) outHeaders.set('content-type', ct);
+  const cc = upstream.headers.get('cache-control');
+  if (cc) outHeaders.set('cache-control', cc);
 
-  if (!message || typeof message !== 'string') {
-    return json({error: 'message is required'}, {status: 400});
-  }
-
-  // Log for debugging (optional – remove in production if not needed)
-  if (anonymousId) {
-    // anonymousId can be used for session tracking
-  }
-  if (cartId) {
-    // TODO: Use cartId with Storefront API for cart-aware recommendations
-  }
-
-  const reply = getMockReply(message);
-
-  const response: ChatResponseBody = {
-    reply,
-    suggestedProducts: MOCK_SUGGESTED_PRODUCTS,
-  };
-
-  return json(response);
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: outHeaders,
+  });
 }

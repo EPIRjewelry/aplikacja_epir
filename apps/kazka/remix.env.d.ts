@@ -21,8 +21,11 @@ declare global {
     PRIVATE_STOREFRONT_API_TOKEN: string;
     PUBLIC_STORE_DOMAIN: string;
     PUBLIC_STOREFRONT_ID: string;
-    /** Chat worker URL – defaults to https://asystent.epirbizuteria.pl/chat */
+    /** Optional chat config; runtime resolver uses same-origin `/api/chat`. */
     CHAT_API_URL?: string;
+    EPIR_CHAT_SHARED_SECRET?: string;
+    CHAT_SHARED_SECRET?: string;
+    'X-EPIR-SHARED-SECRET'?: string;
   }
 }
 

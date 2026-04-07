@@ -25,6 +25,8 @@ declare global {
     CHAT_API_URL?: string;
     /** Ten sam sekret co `EPIR_CHAT_SHARED_SECRET` na workerze czatu — proxy S2S `/chat`. */
     EPIR_CHAT_SHARED_SECRET?: string;
+    CHAT_SHARED_SECRET?: string;
+    'X-EPIR-SHARED-SECRET'?: string;
   }
 }
 
