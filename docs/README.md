@@ -46,6 +46,7 @@ Te pliki są commitowane do repo, więc nowy klon dostaje ten sam kontekst start
 - [`CLEAN_CODE_BASELINE_PLAN.md`](CLEAN_CODE_BASELINE_PLAN.md)
 - [`RAPORT_NAPRAWY_CZATU.md`](RAPORT_NAPRAWY_CZATU.md)
 - [`NOTEBOOKLM_EPIR_CHAT_INGRESS.md`](NOTEBOOKLM_EPIR_CHAT_INGRESS.md) — czat kupującego, App Proxy, Ingress, S2S (skrót pod RAG / NotebookLM)
+- [`PERSONA_UI_SSOT.md`](PERSONA_UI_SSOT.md) — kontrakt `PersonaUi` (Gemma) vs prompt systemowy; Hydrogen + TAE
 - [`MVP_CROSS_SESSION_MEMORY_READING_LIST.md`](MVP_CROSS_SESSION_MEMORY_READING_LIST.md) — mapa plików `workers/chat` przed MVP pamięci międzysesyjnej (Ingress → handleChat → SessionDO → D1)
 
 ## Zasada porządku

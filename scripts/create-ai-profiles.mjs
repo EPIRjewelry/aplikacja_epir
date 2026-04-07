@@ -11,7 +11,12 @@ import { fileURLToPath } from 'url';
 
 function loadFromDevVars() {
   const dir = dirname(fileURLToPath(import.meta.url));
-  const paths = [join(dir, '../.dev.vars'), join(dir, './.dev.vars'), join(dir, '../apps/.dev.vars')];
+  const paths = [
+    join(dir, '../.dev.vars'),
+    join(dir, './.dev.vars'),
+    join(dir, '../apps/kazka/.dev.vars'),
+    join(dir, '../apps/zareczyny/.dev.vars'),
+  ];
   for (const p of paths) {
     if (existsSync(p)) {
       const content = readFileSync(p, 'utf8');
@@ -49,6 +54,7 @@ const mutation = `mutation CreateMetaobject($input: MetaobjectInput!) {
   }
 }`;
 
+/** Pola UI — wymagają wpisów w definicji metaobject (single_line_text); najpierw: node scripts/migrate-ai-profile-ui-fields.mjs */
 const profiles = [
   {
     type: 'kazka_ai_profile',
@@ -57,6 +63,10 @@ const profiles = [
       { key: 'core_values', value: 'Craftsmanship, natural beauty, storytelling through gemstones, sustainable luxury, personal connection.' },
       { key: 'faq_theme', value: 'Gemstone education, custom jewelry process, shipping & care' },
       { key: 'promotion_rules', value: 'Free shipping over 500 PLN. Gift wrapping available. Custom orders require 2-3 week lead time.' },
+      { key: 'assistant_display_name', value: 'Gemma' },
+      { key: 'chat_title', value: 'Czat z Gemmą' },
+      { key: 'empty_state_headline', value: 'Napisz wiadomość' },
+      { key: 'empty_state_body', value: 'aby rozpocząć rozmowę z doradczynią.' },
     ],
   },
   {
@@ -66,6 +76,10 @@ const profiles = [
       { key: 'core_values', value: 'Craftsmanship, natural beauty, storytelling through gemstones, sustainable luxury, personal connection.' },
       { key: 'faq_theme', value: 'Gemstone education, custom jewelry process, shipping & care' },
       { key: 'promotion_rules', value: 'Free shipping over 500 PLN. Gift wrapping available. Custom orders require 2-3 week lead time.' },
+      { key: 'assistant_display_name', value: 'Gemma' },
+      { key: 'chat_title', value: 'Czat z Gemmą' },
+      { key: 'empty_state_headline', value: 'Napisz wiadomość' },
+      { key: 'empty_state_body', value: 'aby rozpocząć rozmowę z doradczynią.' },
     ],
   },
 ];

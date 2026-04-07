@@ -29,11 +29,26 @@ Aktualnie `shopify.app.toml` wskazuje wyłącznie:
 
 ## Audit repozytorium (json metafields — zapis)
 
-Przeszukanie kodu pod kątem mutacji Admin API zapisujących metafields typu `json` **nie wykazało** wywołań w stylu `metafieldsSet` / `metafieldCreate` z typem `json` w plikach źródłowych TypeScript/GraphQL w scope EPIR.
+### `metafieldsSet` / zapis metafields (Admin API)
 
-Storefronty odczytują metafields (np. `collection_enhanced` jako referencja) — to **odczyt**, nie podlega limitowi zapisu `128 KB` w tym samym sensie co mutacje Admin API.
+- Przeszukanie (`*.ts`, `*.tsx`, `*.graphql`, `*.gql` w `workers/`, `packages/`, `apps/`) **nie wykazało** mutacji `metafieldsSet` ani `metafieldCreate`.
+- `workers/chat/src/graphql.ts`: Admin API używane wyłącznie do **odczytu** (`product` → `metafields` / `products` query) — bez mutacji zapisu metafields.
+- Zapis dużych blobów JSON przez Admin API **nie występuje** w kodzie źródłowym; limit **128 KB** na zapis `json` (2026-04+) nie dotyczy obecnej ścieżki kodu, dopóki nie dodasz takich mutacji.
+
+### Storefront API (`cartMetafieldsSet` itd.)
+
+- W kodzie źródłowym aplikacji **brak** wywołań `cartMetafieldsSet` / `cartMetafieldDelete` (Hydrogen: `cart.tsx` — wyłącznie koszyk: `cartCreate`, `cartLinesAdd`, itd.).
+- Pojedyncze wzmianki w zbundlowanym `apps/*/functions/[[path]].js` to wyłącznie komentarze/kod narzędziowy SDK, nie ścieżka biznesowa zapisu konfiguracji JSON do zasobów Admin.
+
+### Odczyt storefrontów
+
+Storefronty odczytują metafields (np. `collection_enhanced` jako referencja do metaobject) — to **odczyt**, nie podlega limitowi zapisu `128 KB` w tym samym sensie co mutacje Admin API.
 
 **Rekomendacja:** przy każdej nowej integracji zapisującej duże JSON-y do metafields zweryfikuj rozmiar i rozważ metaobjects.
+
+### `shopify.app.toml` a scope’y
+
+- Uprawnienia aplikacji utrzymywane są w minimalnym zestawie (Customer Account + `unauthenticated_read_product_listings`); **nie** dodajemy `read_metaobjects` / `write_metaobjects` wyłącznie po to, by obsłużyć **app-owned** metaobjects — patrz sekcja „App-owned metaobjects” powyżej.
 
 ## Dependabot a zmiany architektoniczne Shopify
 
