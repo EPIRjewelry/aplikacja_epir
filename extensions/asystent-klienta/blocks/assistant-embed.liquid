@@ -1,15 +1,9 @@
-{% comment %}
-  App Embed – Asystent Klienta AI (target: body).
-  Pojawia się w "App embeds", wstrzykiwany do body na wszystkich stronach.
-  Używa tych samych assetów co blok sekcji.
-{% endcomment %}
-
 {% liquid
-  assign default_title = 'Zapytaj Doradcę EPIR-ART'
-  assign default_greeting = 'Witaj w EPIR-ART. Jestem Twoim osobistym doradcą AI, gotowym pomóc w wyborze idealnej biżuterii.'
-  assign default_placeholder = 'Wpisz wiadomość, np. „Pokaż mi pierścionki zaręczynowe z szafirem”'
+  assign default_title = 'Czat z Gemmą'
+  assign default_greeting = 'Witaj! Jestem Gemmą, doradczynią EPIR Art Jewellery. Jak mogę pomóc w wyborze biżuterii?'
+  assign default_placeholder = 'Napisz wiadomość, np. „Pokaż pierścionki zaręczynowe z szafirem”'
   assign default_start_closed = true
-  assign app_version = 'v1.1.6-launcher-inside-section-2026-03-29'
+  assign app_version = 'v1.2.0-persona-ui-ssot-2026-04-05'
 %}
 
 {% schema %}
@@ -21,25 +15,25 @@
   "settings": [
     {
       "type": "header",
-      "content": "Ustawienia Ogólne Widgetu"
+      "content": "Ustawienia ogólne widgetu"
     },
     {
       "type": "text",
       "id": "title",
-      "label": "Tytuł Widgetu",
-      "default": "Zapytaj Doradcę EPIR-ART"
+      "label": "Tytuł panelu (PersonaUi.chatTitle)",
+      "default": "Czat z Gemmą"
     },
     {
       "type": "text",
       "id": "greeting_message",
-      "label": "Wiadomość Powitalna",
-      "default": "Witaj w EPIR-ART. Jestem Twoim osobistym doradcą AI, gotowym pomóc w wyborze idealnej biżuterii."
+      "label": "Wiadomość powitalna (pierwszy komunikat w panelu)",
+      "default": "Witaj! Jestem Gemmą, doradczynią EPIR Art Jewellery. Jak mogę pomóc w wyborze biżuterii?"
     },
     {
       "type": "text",
       "id": "input_placeholder",
       "label": "Tekst w polu wprowadzania",
-      "default": "Wpisz wiadomość, np. „Pokaż mi pierścionki zaręczynowe z szafirem”"
+      "default": "Napisz wiadomość, np. „Pokaż pierścionki zaręczynowe z szafirem”"
     },
     {
       "type": "checkbox",
@@ -50,7 +44,7 @@
     {
       "type": "color",
       "id": "accent_color",
-      "label": "Kolor Akcentujący (Przycisk)",
+      "label": "Kolor akcentujący (przycisk)",
       "default": "#8B7D6A"
     },
     {
@@ -68,11 +62,13 @@
   ],
   "default": {
     "settings": {
-      "title": "Zapytaj Doradcę EPIR-ART",
-      "greeting_message": "Witaj w EPIR-ART. Jestem Twoim osobistym doradcą AI, gotowym pomóc w wyborze idealnej biżuterii.",
+      "title": "Czat z Gemmą",
+      "greeting_message": "Witaj! Jestem Gemmą, doradczynią EPIR Art Jewellery. Jak mogę pomóc w wyborze biżuterii?",
+      "input_placeholder": "Napisz wiadomość, np. „Pokaż pierścionki zaręczynowe z szafirem”",
       "start_closed": true,
       "storefront_id": "epir-liquid",
-      "channel": "online-store"
+      "channel": "online-store",
+      "accent_color": "#8B7D6A"
     }
   }
 }
@@ -93,13 +89,35 @@
 >
   <style>
     #epir-assistant-embed .assistant-form button {
-        background-color: {{ block.settings.accent_color | default: '#8B7D6A' }};
+      background-color: {{ block.settings.accent_color | default: '#8B7D6A' }};
     }
     #epir-assistant-embed .assistant-status {
-        color: {{ block.settings.accent_color | default: '#8B7D6A' }};
+      color: {{ block.settings.accent_color | default: '#8B7D6A' }};
     }
     #epir-assistant-embed #assistant-input-embed:focus {
-        border-color: {{ block.settings.accent_color | default: '#8B7D6A' }};
+      border-color: {{ block.settings.accent_color | default: '#8B7D6A' }};
+    }
+    #epir-assistant-embed .epir-assistant-launcher {
+      background-color: {{ block.settings.accent_color | default: '#8B7D6A' }};
+    }
+    #epir-assistant-embed .assistant-loader {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 32px;
+      font-size: 2em;
+      color: {{ block.settings.accent_color | default: '#8B7D6A' }};
+      margin-top: 8px;
+    }
+    #epir-assistant-embed .assistant-loader .dot {
+      animation: epir-blink 1.4s infinite both;
+      margin: 0 2px;
+    }
+    #epir-assistant-embed .assistant-loader .dot:nth-child(2) { animation-delay: 0.2s; }
+    #epir-assistant-embed .assistant-loader .dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes epir-blink {
+      0%, 80%, 100% { opacity: 0; }
+      40% { opacity: 1; }
     }
   </style>
 
@@ -111,60 +129,43 @@
       </button>
     </div>
 
-  <div id="assistant-content-embed" class="assistant-content is-closed">
-        <div id="assistant-messages-embed" class="assistant-messages" role="log" aria-atomic="false" aria-live="polite">
-          <div class="msg msg-assistant welcome-message" role="status">
-            {{ block.settings.greeting_message | default: default_greeting }}
-          </div>
+    <div id="assistant-content-embed" class="assistant-content is-closed">
+      <div id="assistant-messages-embed" class="assistant-messages" role="log" aria-atomic="false" aria-live="polite">
+        <div class="msg msg-assistant welcome-message" role="status">
+          {{ block.settings.greeting_message | default: default_greeting }}
         </div>
+      </div>
 
-        <form id="assistant-form-embed" class="assistant-form" onsubmit="return false;" action="javascript:void(0)">
-          <label for="assistant-input-embed" class="sr-only">Wpisz wiadomość do doradcy</label>
-          <input
-            id="assistant-input-embed"
-            type="text"
-            placeholder="{{ block.settings.input_placeholder | default: default_placeholder }}"
-            autocomplete="off"
-            maxlength="256"
-          />
-          <button type="button" id="assistant-send-button-embed" aria-label="Wyślij wiadomość">
-            Wyślij
-          </button>
-        </form>
-        <div id="assistant-status-embed" class="assistant-status" role="status" aria-live="polite"></div>
-        <div id="assistant-loader-embed" class="assistant-loader" style="display:none" aria-live="polite" aria-label="Oczekiwanie na odpowiedź">
-          <span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
-        </div>
+      <form id="assistant-form-embed" class="assistant-form" onsubmit="return false;" action="javascript:void(0)">
+        <label for="assistant-input-embed" class="sr-only">Wpisz wiadomość do Gemmy</label>
+        <input
+          id="assistant-input-embed"
+          type="text"
+          placeholder="{{ block.settings.input_placeholder | default: default_placeholder }}"
+          autocomplete="off"
+          required
+          maxlength="256"
+          aria-required="true"
+        >
+        <button type="button" id="assistant-send-button-embed" aria-label="Wyślij wiadomość">
+          Wyślij
+        </button>
+      </form>
+
+      <div id="assistant-status-embed" class="assistant-status" role="status" aria-live="polite"></div>
+      <div id="assistant-loader-embed" class="assistant-loader" style="display:none" aria-live="polite" aria-label="Oczekiwanie na odpowiedź">
+        <span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
+      </div>
     </div>
+
+    <button
+      id="assistant-launcher-embed"
+      class="epir-assistant-launcher"
+      aria-expanded="false"
+      aria-controls="assistant-content-embed"
+      aria-label="{{ block.settings.title | default: default_title }}"
+    >
+      Czat
+    </button>
   </div>
-
-  <style>
-    #epir-assistant-embed .epir-assistant-launcher {
-      background-color: {{ block.settings.accent_color | default: '#8B7D6A' }};
-    }
-    .assistant-loader {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 32px;
-      font-size: 2em;
-      color: {{ block.settings.accent_color | default: '#8B7D6A' }};
-      margin-top: 8px;
-    }
-    .assistant-loader .dot {
-      animation: blink 1.4s infinite both;
-      margin: 0 2px;
-    }
-    .assistant-loader .dot:nth-child(2) { animation-delay: 0.2s; }
-    .assistant-loader .dot:nth-child(3) { animation-delay: 0.4s; }
-    @keyframes blink {
-      0%, 80%, 100% { opacity: 0; }
-      40% { opacity: 1; }
-    }
-  </style>
-
-  <!-- Launcher musi być wewnątrz #epir-assistant-embed — runtime szuka go przez section.querySelector -->
-  <button id="assistant-launcher-embed" class="epir-assistant-launcher" aria-expanded="false" aria-controls="assistant-content-embed" aria-label="{{ block.settings.title | default: default_title }}">
-    🗣
-  </button>
 </section>

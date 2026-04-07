@@ -293,26 +293,35 @@ function initAssistantUIForSection(section) {
     const launcher = section.querySelector('#assistant-launcher') || section.querySelector('#assistant-launcher-embed');
     const closeBtn = section.querySelector('#assistant-close-button') || section.querySelector('#assistant-close-button-embed');
     const content = section.querySelector('#assistant-content') || section.querySelector('#assistant-content-embed');
-    if (!launcher || !closeBtn) return;
-    section.dataset.assistantUiInit = '1';
-    
-    // Launcher: otwiera panel
-    launcher.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (content) {
-        content.classList.remove('is-closed');
-        launcher.setAttribute('aria-expanded', 'true');
-      }
-    });
-    
-    // Close button: zamyka panel i wraca do launchera
-    closeBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (content) {
-        content.classList.add('is-closed');
-        launcher.setAttribute('aria-expanded', 'false');
-      }
-    });
+    if (!content) return;
+
+    const inline =
+      section.dataset.inlineAssistant === '1' ||
+      (section.id === 'epir-assistant-section' && !launcher);
+
+    if (inline) {
+      content.classList.remove('is-closed');
+      section.dataset.assistantUiInit = '1';
+    } else {
+      if (!launcher || !closeBtn) return;
+      section.dataset.assistantUiInit = '1';
+
+      launcher.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (content) {
+          content.classList.remove('is-closed');
+          launcher.setAttribute('aria-expanded', 'true');
+        }
+      });
+
+      closeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (content) {
+          content.classList.add('is-closed');
+          launcher.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
 
     // --- Powitanie klienta imieniem z localStorage/sessionStorage ---
     const messagesEl = section.querySelector('#assistant-messages') || section.querySelector('#assistant-messages-embed');

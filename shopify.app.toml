@@ -16,10 +16,10 @@ extension_directories = [
 ]
 
 [webhooks]
-api_version = "2026-01"
+api_version = "2026-04"
 
 [access_scopes]
-scopes = "customer_read_customers,customer_read_orders,customer_read_store_credit_account_transactions,customer_read_store_credit_accounts,unauthenticated_read_product_listings"
+scopes = "customer_read_customers,customer_read_orders,customer_read_store_credit_accounts,unauthenticated_read_product_listings"
 
 [auth]
 redirect_urls = [
