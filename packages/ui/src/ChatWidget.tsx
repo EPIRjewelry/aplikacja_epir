@@ -5,6 +5,7 @@
  * TODO: Add canTrack / cookie consent check when integrating analytics.
  */
 import {useState, useCallback, useRef, useEffect} from 'react';
+import {DEFAULT_PERSONA_UI, type PersonaUi} from './persona-ui';
 
 export type ChatMessage = {
   id: string;
@@ -62,6 +63,8 @@ export type ChatWidgetProps = {
   chatApiUrl: string;
   cartId?: string | null;
   brand?: string;
+  /** Z loadera — teksty persony do wyświetlenia (bez promptu systemowego). */
+  personaUi?: PersonaUi;
   /** Z loadera kanału headless — zawsze w body POST (worker / analytics). */
   storefrontId: string;
   /** Z loadera kanału headless — zawsze w body POST. */
@@ -73,6 +76,7 @@ function ChatWidgetFallback({
   chatApiUrl,
   cartId,
   brand = 'epir',
+  personaUi,
   storefrontId,
   channel,
   route,
@@ -82,6 +86,7 @@ function ChatWidgetFallback({
   chatApiUrl: string;
   cartId?: string | null;
   brand?: string;
+  personaUi: PersonaUi;
   storefrontId: string;
   channel: string;
   route?: string;
@@ -260,11 +265,13 @@ function ChatWidgetFallback({
       {isOpen && (
         <div className="flex h-80 w-96 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
           <div className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium">
-            Czat z asystentem
+            {personaUi.chatTitle}
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {messages.length === 0 && (
-              <p className="text-sm text-gray-500">Napisz wiadomość, aby rozpocząć.</p>
+              <p className="text-sm text-gray-500">
+                {personaUi.emptyState ?? DEFAULT_PERSONA_UI.emptyState}
+              </p>
             )}
             {messages.map((m) => (
               <div
@@ -371,17 +378,20 @@ export function ChatWidget({
   chatApiUrl,
   cartId,
   brand = 'epir',
+  personaUi: personaUiProp,
   storefrontId,
   channel,
   route,
 }: ChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const personaUi = {...DEFAULT_PERSONA_UI, ...personaUiProp};
 
   return (
     <ChatWidgetFallback
       chatApiUrl={chatApiUrl}
       cartId={cartId}
       brand={brand}
+      personaUi={personaUi}
       storefrontId={storefrontId}
       channel={channel}
       route={route}

@@ -24,3 +24,5 @@ export {
   type ChatWidgetProps,
   type ChatRequestPart,
 } from './ChatWidget';
+export type {PersonaUi} from './persona-ui';
+export {DEFAULT_PERSONA_UI} from './persona-ui';
