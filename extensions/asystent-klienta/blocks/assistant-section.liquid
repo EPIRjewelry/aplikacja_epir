@@ -1,0 +1,129 @@
+{% liquid
+  assign default_title = 'Czat z Gemmą'
+  assign default_greeting = 'Witaj! Jestem Gemmą, doradczynią EPIR Art Jewellery. Jak mogę pomóc w wyborze biżuterii?'
+  assign default_placeholder = 'Napisz wiadomość, np. „Pokaż pierścionki zaręczynowe z szafirem”'
+  assign app_version = 'v1.2.0-persona-ui-ssot-2026-04-05'
+%}
+
+{% schema %}
+{
+  "name": "Asystent EPIR (sekcja)",
+  "target": "section",
+  "stylesheet": "assistant.css",
+  "javascript": "assistant.js",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Ustawienia ogólne widgetu"
+    },
+    {
+      "type": "text",
+      "id": "title",
+      "label": "Tytuł panelu (PersonaUi.chatTitle)",
+      "default": "Czat z Gemmą"
+    },
+    {
+      "type": "text",
+      "id": "greeting_message",
+      "label": "Wiadomość powitalna (pierwszy komunikat w panelu)",
+      "default": "Witaj! Jestem Gemmą, doradczynią EPIR Art Jewellery. Jak mogę pomóc w wyborze biżuterii?"
+    },
+    {
+      "type": "text",
+      "id": "input_placeholder",
+      "label": "Tekst w polu wprowadzania",
+      "default": "Napisz wiadomość, np. „Pokaż pierścionki zaręczynowe z szafirem”"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Kolor akcentujący (przycisk)",
+      "default": "#8B7D6A"
+    },
+    {
+      "type": "text",
+      "id": "worker_endpoint",
+      "label": "URL workera czatu",
+      "info": "Endpoint czatu (zalecane Shopify App Proxy: /apps/assistant/chat)",
+      "default": "/apps/assistant/chat"
+    }
+  ]
+}
+{% endschema %}
+
+<section id="epir-assistant-section"
+  class="epir-assistant epir-assistant-section"
+  aria-live="polite"
+  data-app-version="{{ app_version }}"
+  data-shop-domain="{{ shop.myshopify_domain }}"
+  data-logged-in-customer-id="{{ customer.id | default: '' }}"
+  data-worker-endpoint="{{ block.settings.worker_endpoint | default: '/apps/assistant/chat' }}"
+  data-brand="epir"
+  data-inline-assistant="1"
+  data-start-closed="false"
+  data-stream-render="dots"
+>
+  <style>
+    #epir-assistant-section .assistant-form button {
+      background-color: {{ block.settings.accent_color | default: '#8B7D6A' }};
+    }
+    #epir-assistant-section .assistant-status {
+      color: {{ block.settings.accent_color | default: '#8B7D6A' }};
+    }
+    #epir-assistant-section #assistant-input:focus {
+      border-color: {{ block.settings.accent_color | default: '#8B7D6A' }};
+    }
+    #epir-assistant-section .assistant-loader {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 32px;
+      font-size: 2em;
+      color: {{ block.settings.accent_color | default: '#8B7D6A' }};
+      margin-top: 8px;
+    }
+    #epir-assistant-section .assistant-loader .dot {
+      animation: epir-blink-section 1.4s infinite both;
+      margin: 0 2px;
+    }
+    #epir-assistant-section .assistant-loader .dot:nth-child(2) { animation-delay: 0.2s; }
+    #epir-assistant-section .assistant-loader .dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes epir-blink-section {
+      0%, 80%, 100% { opacity: 0; }
+      40% { opacity: 1; }
+    }
+  </style>
+
+  <div class="assistant-container">
+    <div class="assistant-header" role="heading" aria-level="3">
+      <h3>{{ block.settings.title | default: default_title }}</h3>
+    </div>
+
+    <div id="assistant-content" class="assistant-content">
+      <div id="assistant-messages" class="assistant-messages" role="log" aria-atomic="false" aria-live="polite">
+        <div class="msg msg-assistant welcome-message" role="status">
+          {{ block.settings.greeting_message | default: default_greeting }}
+        </div>
+      </div>
+
+      <form id="assistant-form" class="assistant-form" onsubmit="return false;" action="javascript:void(0)">
+        <label for="assistant-input" class="sr-only">Wpisz wiadomość do Gemmy</label>
+        <input
+          id="assistant-input"
+          type="text"
+          placeholder="{{ block.settings.input_placeholder | default: default_placeholder }}"
+          autocomplete="off"
+          maxlength="256"
+        >
+        <button type="button" id="assistant-send-button" aria-label="Wyślij wiadomość">
+          Wyślij
+        </button>
+      </form>
+
+      <div id="assistant-status" class="assistant-status" role="status" aria-live="polite"></div>
+      <div id="assistant-loader" class="assistant-loader" style="display:none" aria-live="polite" aria-label="Oczekiwanie na odpowiedź">
+        <span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
+      </div>
+    </div>
+  </div>
+</section>
