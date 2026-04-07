@@ -1,33 +1,16 @@
 /**
  * worker/src/config/model-params.ts
  *
- * Centralna konfiguracja parametrów modelu AI.
- * Ekstrahowane z ai-client.ts dla łatwego zarządzania i A/B testingu.
- *
- * Model: llama-3.3-70b-versatile (Groq)
- * - 70B parameters, długo kontekstu ~128k
- * - Natywne tool_calls (OpenAI-compatible)
- * - Optymalizowany pod niskie opóźnienia na infrastrukturze Groq
+ * Centralna konfiguracja modelu AI dla chat workera.
+ * EPIR używa jednego modelu tekstowo-obrazowego dla całego strumienia:
+ * `@cf/moonshotai/kimi-k2.5`.
  */
 
 /**
- * Model ID używany w całym workerze (Groq).
- */
-export const GROQ_MODEL_ID = 'llama-3.3-70b-versatile' as const;
-
-/**
- * Workers AI — jeden model multimodalny (tekst + obraz + narzędzia przy USE_WORKERS_AI=1).
+ * Kanoniczny model inference dla Workera (tekst + obraz + tool calls).
  * @see https://developers.cloudflare.com/workers-ai/models/kimi-k2.5/
  */
-export const WORKERS_AI_MODEL_ID = '@cf/moonshotai/kimi-k2.5' as const;
-
-/**
- * Workers AI Vision — ścieżka awaryjna gdy USE_WORKERS_AI=0 a klient wysłał obraz (bez Groq vision).
- */
-export const WORKERS_AI_VISION_MODEL_ID = '@cf/meta/llama-3.2-11b-vision-instruct' as const;
-
-// Compile-time verification that GROQ_MODEL_ID is not accidentally changed
-const _MODEL_VERIFICATION: 'llama-3.3-70b-versatile' = GROQ_MODEL_ID;
+export const CHAT_MODEL_ID = '@cf/moonshotai/kimi-k2.5' as const;
 
 /**
  * Model parameters for chat completions
@@ -37,7 +20,7 @@ const _MODEL_VERIFICATION: 'llama-3.3-70b-versatile' = GROQ_MODEL_ID;
  * - max_tokens: Maximum response length (3000 = ~2000 words)
  * - top_p: Nucleus sampling threshold (0.9 = high quality, diverse responses)
  * 
- * For A/B testing: Create new config file (model-params-v2.ts) instead of modifying this
+ * For future tuning: create a new config file instead of mutating callers ad hoc.
  */
 export const MODEL_PARAMS = {
   /**
@@ -80,11 +63,6 @@ export const MODEL_PARAMS = {
     include_usage: true,
   },
 } as const;
-
-/**
- * Groq API endpoint (DO NOT CHANGE)
- */
-export const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions' as const;
 
 /**
  * Type-safe export of model parameters

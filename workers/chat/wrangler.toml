@@ -45,7 +45,7 @@ new_sqlite_classes = ["TokenVaultDO"]
 [ai]
 binding = "AI"
 
-# AI worker removed - main worker uses ai-client.ts (direct Groq) per Cloudflare architecture plan
+# Inference: `src/ai-client.ts` → Workers AI `env.AI` (`@cf/moonshotai/kimi-k2.5`).
 
 # Headless / BFF S2S ingress secret (must be set via secret, never in [vars]):
 # wrangler secret put EPIR_CHAT_SHARED_SECRET
@@ -90,14 +90,15 @@ MCP_ENDPOINT = "https://epir-art-silver-jewellery.myshopify.com/api/mcp"
 # W produkcji: https://asystent.epirbizuteria.pl
 # W dev: https://asystent-epir.YOUR-NAME.workers.dev
 WORKER_ORIGIN = "https://asystent.epirbizuteria.pl"
-# Per-storefront public Storefront API tokens ustawiane jako secrets/vars na poziomie Workera:
-# - PUBLIC_STOREFRONT_API_TOKEN_KAZKA
-# - PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY
-# Per-storefront private tokens (metaobject / ai_profile reads):
-# - PRIVATE_STOREFRONT_API_TOKEN_ZARECZYNY
-# AI Gateway (opcjonalne) - gdy ustawione, requesty Groq idą przez gateway
-# AI_GATEWAY_ACCOUNT_ID = "your-account-id"
-# AI_GATEWAY_NAME = "epir-chat-gateway"
-# A/B test Workers AI vs Groq - ustaw USE_WORKERS_AI=1 aby użyć @cf/meta/llama-3.3-70b-instruct-fp8-fast
-# USE_WORKERS_AI = "0"
+# --- Sekrety Storefront (ustaw ręcznie: wrangler secret put <NAZWA>; NIE commituj wartości) ---
+# Fallback dla kanału online-store / aliasów `epir` i `epirbizuteria.pl` (App Proxy, TAE data-brand=epir):
+#   wrangler secret put SHOPIFY_STOREFRONT_TOKEN
+# Zareczyny (Hydrogen + odczyt ai_profile — public + private zgodnie z workers/chat resolveStorefrontConfig):
+#   wrangler secret put PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY
+#   wrangler secret put PRIVATE_STOREFRONT_API_TOKEN_ZARECZYNY
+# Kazka:
+#   wrangler secret put PUBLIC_STOREFRONT_API_TOKEN_KAZKA
+# Opcjonalny fallback prywatnego tokenu (gdy brak per-zareczyny):
+#   wrangler secret put PRIVATE_STOREFRONT_API_TOKEN
+# Chat worker używa wyłącznie Workers AI `@cf/moonshotai/kimi-k2.5`.
 

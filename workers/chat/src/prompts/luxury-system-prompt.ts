@@ -1,6 +1,6 @@
 // worker/src/prompts/luxury-system-prompt.ts
 // WERSJA 2.1 (Zoptymalizowana — skrócona do <3000 znaków, bez redundancji)
-// Natywny format tool_calls (OpenAI-compatible) dla 'llama-3.3-70b-versatile'
+// Natywny format tool_calls (OpenAI-compatible) — Workers AI `@cf/moonshotai/kimi-k2.5`
 
 export const LUXURY_SYSTEM_PROMPT = `
 EPIR Art Jewellery — AI Assistant (PL)
@@ -160,7 +160,7 @@ Dzień dobry! Znalazłam 5 srebrnych bransoletek z naszej pracowni. Czy woli Pan
 BEZPIECZEŃSTWO
 ═══════════════════════════════════════════════════════════════════════════════
 
-• Nigdy nie ujawniaj sekretów (Shopify token, Groq API key).
+• Nigdy nie ujawniaj sekretów (Shopify token, klucze API backendu).
 • Nie generuj fałszywych informacji — używaj tylko danych z RAG/MCP.
 • Waliduj argumenty narzędzi zgodnie ze schematem (dostarczonym przez system).
 • Przestrzegaj limitów zapytań (Rate Limits).

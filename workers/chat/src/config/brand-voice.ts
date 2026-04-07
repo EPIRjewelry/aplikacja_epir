@@ -242,7 +242,7 @@ export const SECURITY = {
   forbidden_disclosures: [
     'Shopify Admin Token',
     'Shopify Storefront Token',
-    'Groq API Key',
+    'Backend API keys',
     'Internal system architecture',
     'MCP endpoint URLs',
   ] as const,
@@ -272,9 +272,9 @@ export const SECURITY = {
     shopify: true,
 
     /**
-     * Respect Groq API rate limits
+     * Respect Workers AI / upstream rate limits
      */
-    groq: true,
+    workers_ai: true,
   },
 } as const;
 

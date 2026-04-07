@@ -41,7 +41,7 @@ export function historyToPlainText(
 }
 
 /**
- * Łączy poprzedni skrót z nową rozmową (jedno wywołanie Groq, krótki output).
+ * Łączy poprzedni skrót z nową rozmową (jedno wywołanie modelu, krótki output).
  */
 export async function mergeSessionIntoPersonSummary(
   env: Env,

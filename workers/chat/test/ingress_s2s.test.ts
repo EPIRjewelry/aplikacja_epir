@@ -79,7 +79,6 @@ function makeEnv(overrides: Partial<Env> = {}) {
     EPIR_CHAT_SHARED_SECRET: 'shared-secret',
     ALLOWED_ORIGIN: 'https://epirbizuteria.pl',
     ALLOWED_ORIGINS: 'https://epirbizuteria.pl,https://zareczyny.epirbizuteria.pl',
-    GROQ_API_KEY: 'test-groq-key',
     SHOP_DOMAIN: 'epir-art-silver-jewellery.myshopify.com',
     ...overrides,
   };

@@ -33,7 +33,7 @@ import {
   formatRagForPrompt,
   hasHighConfidenceResults,
 } from './domain/formatter';
-import { VectorizeIndex, AIBinding } from './services/vectorize';
+import { VectorizeIndex, AIBinding, upsertDocuments } from './services/vectorize';
 
 /**
  * Cloudflare Worker environment bindings
@@ -63,6 +63,11 @@ export interface Env {
    * Canonical MCP URL (from wrangler.toml vars)
    */
   CANONICAL_MCP_URL?: string;
+  
+  /**
+   * Admin token for protected endpoints (set via wrangler.toml vars)
+   */
+  ADMIN_TOKEN?: string;
 }
 
 /**
@@ -246,6 +251,44 @@ export default {
       // ========================================
       // 404 Not Found
       // ========================================
+      // ========================================
+      // POST /admin/upsert - Admin-only upsert to Vectorize
+      // Body: { docs: [{ id: string, text: string, metadata?: any }, ...] }
+      // Protected via header: X-ADMIN-TOKEN must match env.ADMIN_TOKEN
+      // ========================================
+      if (url.pathname === '/admin/upsert' && request.method === 'POST') {
+        const adminToken = (request.headers.get('x-admin-token') || request.headers.get('X-ADMIN-TOKEN') || '').trim();
+        if (!env.ADMIN_TOKEN || adminToken !== env.ADMIN_TOKEN) {
+          return new Response(
+            JSON.stringify({ error: 'Unauthorized' }),
+            { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+          );
+        }
+
+        const body = await request.json().catch(() => null);
+        if (!body || !Array.isArray(body.docs) || body.docs.length === 0) {
+          return new Response(
+            JSON.stringify({ error: 'Missing docs array' }),
+            { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+          );
+        }
+
+        try {
+          // Upsert documents (worker will generate embeddings via env.AI)
+          await upsertDocuments(body.docs, env.VECTOR_INDEX, env.AI as AIBinding);
+          return new Response(
+            JSON.stringify({ ok: true, upserted: body.docs.length }),
+            { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+          );
+        } catch (err: any) {
+          console.error('[RAG_WORKER] Admin upsert failed:', err);
+          return new Response(
+            JSON.stringify({ error: 'Upsert failed', message: err?.message || String(err) }),
+            { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+          );
+        }
+      }
+
       return new Response(
         JSON.stringify({
           error: 'Not Found',

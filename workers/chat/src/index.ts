@@ -28,14 +28,13 @@ import { TokenVaultDO, TokenVault } from './token-vault';
 // Importy AI i Narzędzi (BEZPOŚREDNIO z ai-client.ts)
 import {
   streamGroqEvents,
-  streamVisionEvents,
   getGroqResponse,
   GroqMessage,
   KimiContentPart,
   shouldUseWorkersAi,
   injectKimiMultimodalUserContent,
 } from './ai-client';
-import { GROQ_MODEL_ID } from './config/model-params';
+import { CHAT_MODEL_ID } from './config/model-params';
 import { LUXURY_SYSTEM_PROMPT } from './prompts/luxury-system-prompt'; // 🟢 Używa nowego promptu v2
 import { TOOL_SCHEMAS } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2
 import { truncateWithSummary, type Message as HistoryMessage } from './utils/history'; // 🔵 History truncation
@@ -118,7 +117,7 @@ interface ChatRequestBody {
   stream?: boolean;
   /** Multimodal (workers-ai-provider / widget): text + opcjonalny plik */
   parts?: Array<{ type: string; text?: string; data?: string; mediaType?: string }>;
-  /** Obraz w base64 – gdy obecny, używany jest model vision (Workers AI) zamiast Groq */
+  /** Obraz w base64 — multimodal w tym samym modelu Kimi K2.5 */
   image_base64?: string;
   /** Alias storefrontu (np. "kazka") – MCP mapuje na Storefront ID */
   storefrontId?: string;
@@ -216,6 +215,21 @@ const STOREFRONTS: Record<string, StaticStorefrontConfig> = {
     aiProfileGid: 'gid://shopify/Metaobject/2153911189836',
   },
   'epir-liquid': {
+    storefrontId: 'gid://shopify/Storefront/1000013955',
+    channel: 'online-store',
+    aiProfileGid: 'gid://shopify/Metaobject/2153911189836',
+  },
+  /**
+   * Theme App Extension / sklep klasyczny: `assistant-runtime.js` wysyła `brand: "epir"` (data-brand).
+   * Bez tego aliasu worker nie dobierał aiProfileGid ani tokenu Storefront → 401 przy odczycie metaobject.
+   */
+  epir: {
+    storefrontId: 'gid://shopify/Storefront/1000013955',
+    channel: 'online-store',
+    aiProfileGid: 'gid://shopify/Metaobject/2153911189836',
+  },
+  /** Opcjonalny alias hosta (np. przyszłe nagłówki / body z identyfikatorem domeny). */
+  'epirbizuteria.pl': {
     storefrontId: 'gid://shopify/Storefront/1000013955',
     channel: 'online-store',
     aiProfileGid: 'gid://shopify/Metaobject/2153911189836',
@@ -439,7 +453,7 @@ function parseChatRequestBody(
   };
 }
 
-/** Normalizuje base64 do formatu data URI wymaganego przez Workers AI vision */
+/** Normalizuje base64 do formatu data URI wymaganego przez Workers AI (multimodal Kimi) */
 function normalizeImageBase64(raw: string): string {
   if (raw.startsWith('data:image/')) return raw;
   return `data:image/png;base64,${raw}`;
@@ -935,7 +949,7 @@ async function handleChat(
     });
   }
 
-  // [GREETING PREFILTER] Bez zmian - dobra optymalizacja (pomijamy gdy jest obraz – vision path)
+  // [GREETING PREFILTER] Bez zmian - dobra optymalizacja (pomijamy gdy jest obraz – ścieżka multimodalna)
   const greetingCheck = payload.message.toLowerCase().trim();
   const greetingPattern = /^(cześć|czesc|hej|witaj|witam|dzień dobry|dzien dobry|dobry wieczór|dobry wieczor|hi|hello|hey)$/i;
   const isShortGreeting = !payload.image_base64 && greetingCheck.length < 15 && greetingPattern.test(greetingCheck);
@@ -1176,72 +1190,20 @@ async function streamAssistantResponse(
       
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log(`[streamAssistant] Rozpoczynam pętlę AI. Sesja: ${sessionId}`);
-      console.log(
-        '[streamAssistant] 🤖 Model:',
-        imageBase64 && shouldUseWorkersAi(env)
-          ? 'Workers AI Kimi K2.5 (multimodal)'
-          : imageBase64
-            ? 'Workers AI Vision (legacy)'
-            : shouldUseWorkersAi(env)
-              ? 'Workers AI Kimi K2.5'
-              : GROQ_MODEL_ID,
-      );
+      console.log('[streamAssistant] 🤖 Model:', imageBase64 ? `${CHAT_MODEL_ID} (multimodal)` : CHAT_MODEL_ID);
       console.log('[streamAssistant] 📜 System Prompt length:', LUXURY_SYSTEM_PROMPT.length + (aiProfilePrompt?.length ?? 0), 'chars');
       console.log('[streamAssistant] 📚 History entries (before truncation):', aiHistory.length);
       console.log('[streamAssistant] 📨 Total messages (after truncation):', truncatedMessages.length);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-      // 🟢 ŚCIEŻKA VISION (legacy): Llama vision — tylko gdy USE_WORKERS_AI=0 (Kimi obsługuje obraz w głównej pętli)
-      if (imageBase64 && env.AI?.run && !shouldUseWorkersAi(env)) {
-        const visionMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-          { role: 'system', content: LUXURY_SYSTEM_PROMPT },
-          ...(aiProfilePrompt ? [{ role: 'system' as const, content: aiProfilePrompt }] : []),
-          ...(crossSessionSummary
-            ? [
-                {
-                  role: 'system' as const,
-                  content: `Kontekst systemowy — zapamiętane z wcześniejszych wizyt (skrót): ${crossSessionSummary}`,
-                },
-              ]
-            : []),
-          { role: 'user', content: userMessage },
-        ];
-        const visionStream = await streamVisionEvents(visionMessages, imageBase64, env, sessionId);
-        const visionReader = visionStream.getReader();
-        let visionText = '';
-        while (true) {
-          const { done, value: event } = await visionReader.read();
-          if (done) break;
-          if (event.type === 'text') visionText += event.delta;
-        }
-        if (visionText) await sendDelta(visionText);
-        await writer.write(encoder.encode('data: [DONE]\n\n'));
-        if (visionText.trim()) {
-          await stub.fetch('https://session/append', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ role: 'assistant', content: visionText, ts: now() } as HistoryEntry),
-          });
-        }
-        maybeRefreshPersonMemory();
-        return;
-      }
-
-      if (imageBase64 && !env.AI?.run) {
-        throw new Error('Vision requires Workers AI binding. Add [ai] binding in wrangler.toml.');
-      }
-
-      // Weryfikacja klucza Groq (Workers AI / Kimi może działać bez Groq)
-      const groqKey = typeof env.GROQ_API_KEY === 'string' ? env.GROQ_API_KEY.trim() : '';
-      if (!groqKey && !(shouldUseWorkersAi(env) && env.AI?.run)) {
-        throw new Error('AI service temporarily unavailable (Missing GROQ_API_KEY)');
+      if (!shouldUseWorkersAi(env)) {
+        throw new Error('Workers AI binding missing. Add [ai] binding in wrangler.toml.');
       }
 
       // 🔴 KROK 4: PĘTLA WYWOŁAŃ NARZĘDZI (native tool_calls)
-      let currentMessages: GroqMessage[] =
-        shouldUseWorkersAi(env) && imageBase64
-          ? injectKimiMultimodalUserContent(truncatedMessages, imageBase64)
-          : truncatedMessages;
+      let currentMessages: GroqMessage[] = imageBase64
+        ? injectKimiMultimodalUserContent(truncatedMessages, imageBase64)
+        : truncatedMessages;
       const MAX_TOOL_CALLS = 5;
       
       // 🔴 FIX: accumulatedResponse poza pętlą - nie resetuj w każdej iteracji
@@ -1346,7 +1308,7 @@ async function streamAssistantResponse(
           
           // Kontynuuj pętlę for, aby ponownie wywołać AI
           // Usuń image_url z wiadomości – obraz wysyłamy tylko w pierwszej iteracji
-          if (shouldUseWorkersAi(env) && imageBase64) {
+          if (imageBase64) {
             currentMessages = currentMessages.map((m) => {
               if (!Array.isArray(m.content)) return m;
               const textParts = (m.content as KimiContentPart[]).filter(

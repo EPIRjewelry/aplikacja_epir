@@ -34,3 +34,5 @@ invocation_logs = true
 [vars]
 SHOP_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
 CANONICAL_MCP_URL = "https://epir-art-silver-jewellery.myshopify.com/api/mcp"
+# Admin token for protected endpoints (set in production via Cloudflare dashboard, do NOT commit real secrets)
+ADMIN_TOKEN = "REPLACE_ME_ADMIN_TOKEN"

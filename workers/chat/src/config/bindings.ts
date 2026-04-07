@@ -35,12 +35,6 @@ export interface Env {
   PRIVATE_STOREFRONT_API_TOKEN?: string;
   PRIVATE_STOREFRONT_API_TOKEN_ZARECZYNY?: string;
 
-  GROQ_API_KEY: string;
-  GROQ_PRICE_INPUT_PER_M?: number;
-  GROQ_PRICE_OUTPUT_PER_M?: number;
-  AI_GATEWAY_ACCOUNT_ID?: string;
-  AI_GATEWAY_NAME?: string;
-  USE_WORKERS_AI?: string;
   AI?: AIBinding;
 
   DEV_BYPASS?: string;
@@ -55,7 +49,7 @@ export interface Env {
   ADMIN_KEY?: string;
 }
 
-export const REQUIRED_SECRETS = ['GROQ_API_KEY'] as const;
+export const REQUIRED_SECRETS = [] as const;
 
 export const OPTIONAL_SECRETS = [
   'SHOPIFY_STOREFRONT_TOKEN',
