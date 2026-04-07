@@ -251,31 +251,21 @@ npm run deploy        # Deploy to Cloudflare
 
 ## Schema Migration
 
-<<<<<<< HEAD
-The worker auto-creates tables using the schema defined in `src/index.ts`, but you can also run migrations manually:
+The worker auto-creates tables using the schema defined in `src/index.ts` (aligned with `schema-pixel-events-base.sql`). You can also run migrations manually.
 
 **Complete schema (includes all heatmap v3 columns):**
-```bash
-wrangler d1 execute epir_art_jewellery --file=./schema-pixel-events-base.sql
-```
 
-**Note:** The file `schema-pixel-events-v3-heatmap.sql` is now DEPRECATED. All columns (including heatmap v3) are now defined in `schema-pixel-events-base.sql` to match the D1 schema in `src/index.ts`.
-=======
-**Current Schema (v3 - Unified):**
-The worker auto-creates tables using the unified schema defined in `schema-pixel-events-base.sql`.
-
-**Manual Migration (if needed):**
-
-1. **Base schema (recommended):**
+1. **Local (development):**
    ```bash
    wrangler d1 execute epir_art_jewellery --local --file=./schema-pixel-events-base.sql
    ```
 
-2. **For production:**
+2. **Remote (production):**
    ```bash
    wrangler d1 execute epir_art_jewellery --remote --file=./schema-pixel-events-base.sql
    ```
->>>>>>> origin/main
+
+**Note:** The file `schema-pixel-events-v3-heatmap.sql` is DEPRECATED. All columns (including heatmap v3) are defined in `schema-pixel-events-base.sql` to match the D1 schema in `src/index.ts`.
 
 3. **Verify schema:**
    ```bash
