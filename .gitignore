@@ -7,7 +7,7 @@ dist
 **/service-account.json
 .shopify
 **/public/build
-/package-lock.json
+# Root package-lock.json jest wymagany przez CI (npm ci w .github/workflows/deploy-pages.yml).
 
 # Sekrety – nigdy nie commitować
 *-secrets.txt
