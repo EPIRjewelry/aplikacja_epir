@@ -37,8 +37,30 @@ function safeArgsSummary(args: any) {
 function normalizeSearchArgs(raw: any) {
   const args = { ...raw };
   args.first = typeof args.first === 'number' ? args.first : 5;
+  if (typeof args.query === 'string') {
+    args.query = args.query.trim();
+  }
   args.context = typeof args.context === 'string' && args.context.trim().length > 0 ? args.context : 'biżuteria';
   return args;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function validateNormalizedArgs(toolName: string, args: Record<string, any>): void {
+  if (toolName === 'search_shop_catalog' && !isNonEmptyString(args.query)) {
+    throw new Error('Invalid params: non-empty "query" required for search_shop_catalog');
+  }
+  if (toolName === 'search_shop_policies_and_faqs' && !isNonEmptyString(args.query)) {
+    throw new Error('Invalid params: non-empty "query" required for search_shop_policies_and_faqs');
+  }
+  if (toolName === 'get_cart' && !isNonEmptyString(args.cart_id)) {
+    throw new Error('Invalid params: non-empty "cart_id" required for get_cart');
+  }
+  if (toolName === 'update_cart' && (!Array.isArray(args.lines) || args.lines.length === 0)) {
+    throw new Error('Invalid params: non-empty "lines" required for update_cart');
+  }
 }
 
 /**
@@ -61,6 +83,7 @@ export async function callShopifyMcpTool(
   }
 
   const normalizedArgs = toolName === 'search_shop_catalog' ? normalizeSearchArgs(args) : args ?? {};
+  validateNormalizedArgs(toolName, normalizedArgs);
 
   const request: McpRequest = {
     jsonrpc: '2.0',

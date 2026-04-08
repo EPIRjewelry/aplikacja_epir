@@ -61,6 +61,11 @@ export async function fetchAIProfile(
   shopDomain: string | undefined
 ): Promise<AIProfile | null> {
   if (!gid || !storefrontApiToken || !shopDomain) {
+    console.warn('[ai-profile] unavailable (pre-flight)', {
+      hasGid: Boolean(gid),
+      hasStorefrontToken: Boolean(storefrontApiToken),
+      hasShopDomain: Boolean(shopDomain),
+    });
     return null;
   }
 

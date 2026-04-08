@@ -4,6 +4,11 @@ compatibility_date = "2025-09-30"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = false
 
+# Domyślnie na Free Worker limit subrequestów jest niski; pętla narzędzi + MCP powinna mieć 1 wywołanie na turę po poprawnym scalaniu streamu tool_calls.
+# Zwiększenie (np. przy wielu narzędziach w jednej turze): https://developers.cloudflare.com/workers/wrangler/configuration/#limits
+# [limits]
+# subrequests = 1000
+
 [build]
 command = ""
 
@@ -101,4 +106,9 @@ WORKER_ORIGIN = "https://asystent.epirbizuteria.pl"
 # Opcjonalny fallback prywatnego tokenu (gdy brak per-zareczyny):
 #   wrangler secret put PRIVATE_STOREFRONT_API_TOKEN
 # Chat worker używa wyłącznie Workers AI `@cf/moonshotai/kimi-k2.5`.
+#
+# Weryfikacja profilu AI (log: "AI profile unavailable"):
+# - W Cloudflare: ustawione powyższe sekrety dla danego kanału (fallback: SHOPIFY_STOREFRONT_TOKEN).
+# - W Shopify Admin: metaobject typu ai_profile — wpis dla handle (np. zareczyny) opublikowany (Storefront), pola brand_voice itd. niepuste.
+# - W logach: [ai-profile] unavailable (pre-flight) = brak GID/tokenu/domeny; Metaobject not found = zły GID lub brak publikacji.
 

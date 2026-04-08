@@ -73,15 +73,66 @@ function safeArgsSummary(args: any) {
   return summary;
 }
 
+/** Liczy produkty w odpowiedzi MCP search_shop_catalog (JSON w content[0].text). */
+function summarizeSearchCatalogResult(result: unknown): { productCount: number | null; parseError?: boolean } {
+  if (!result || typeof result !== 'object') return { productCount: null };
+  const content = (result as { content?: Array<{ type?: string; text?: string }> }).content;
+  const text = Array.isArray(content) ? content[0]?.text : undefined;
+  if (typeof text !== 'string' || !text.trim()) return { productCount: null };
+  try {
+    const parsed = JSON.parse(text) as { products?: unknown };
+    const products = parsed?.products;
+    if (!Array.isArray(products)) return { productCount: null, parseError: true };
+    return { productCount: products.length };
+  } catch {
+    return { productCount: null, parseError: true };
+  }
+}
+
 function normalizeSearchArgs(raw: any, brand?: string) {
   const args = { ...raw };
   args.first = typeof args.first === 'number' ? args.first : 5;
+  if (typeof args.query === 'string') {
+    args.query = args.query.trim();
+  }
   let baseContext = typeof args.context === 'string' && args.context.trim().length > 0 ? args.context : 'biżuteria';
   if (brand === 'kazka') {
     baseContext = baseContext + ' z kolekcji Kazka Jewelry';
   }
   args.context = baseContext;
   return args;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function validateNormalizedToolArgs(toolName: string, args: any): { code: number; message: string } | null {
+  if (toolName === 'search_shop_catalog' && !isNonEmptyString(args?.query)) {
+    return {
+      code: -32602,
+      message: 'Invalid params: non-empty "query" required for search_shop_catalog',
+    };
+  }
+  if (toolName === 'search_shop_policies_and_faqs' && !isNonEmptyString(args?.query)) {
+    return {
+      code: -32602,
+      message: 'Invalid params: non-empty "query" required for search_shop_policies_and_faqs',
+    };
+  }
+  if (toolName === 'get_cart' && !isNonEmptyString(args?.cart_id)) {
+    return {
+      code: -32602,
+      message: 'Invalid params: non-empty "cart_id" required for get_cart',
+    };
+  }
+  if (toolName === 'update_cart' && (!Array.isArray(args?.lines) || args.lines.length === 0)) {
+    return {
+      code: -32602,
+      message: 'Invalid params: non-empty "lines" required for update_cart',
+    };
+  }
+  return null;
 }
 
 /**
@@ -153,6 +204,11 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
     args = rawArgs ?? {};
   }
 
+  const validationError = validateNormalizedToolArgs(toolName, args);
+  if (validationError) {
+    return { error: validationError };
+  }
+
   const rpc: JsonRpcRequest = {
     jsonrpc: '2.0',
     method: 'tools/call',
@@ -172,7 +228,17 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
       signal: controller.signal
     });
 
-    console.log('[mcp] call', { tool: toolName, status: res.status, args: safeArgsSummary(args), timestamp: new Date().toISOString() });
+    const queryPreview =
+      toolName === 'search_shop_catalog' && typeof args?.query === 'string'
+        ? args.query.slice(0, 240)
+        : undefined;
+    console.log('[mcp] call', {
+      tool: toolName,
+      status: res.status,
+      args: safeArgsSummary(args),
+      queryPreview,
+      timestamp: new Date().toISOString(),
+    });
 
     if (!res.ok) {
       // Plan B: Safe fallback for search_shop_catalog on network/service errors
@@ -195,7 +261,15 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
     if ((json as any).error) {
       return { error: (json as any).error };
     }
-    return { result: (json as any).result ?? json };
+    const resultPayload = (json as any).result ?? json;
+    if (toolName === 'search_shop_catalog') {
+      const { productCount, parseError } = summarizeSearchCatalogResult(resultPayload);
+      console.log('[mcp] search_shop_catalog outcome', {
+        productCount,
+        parseError: parseError ?? false,
+      });
+    }
+    return { result: resultPayload };
   } catch (err: any) {
     const isAbortError = err instanceof Error && err.name === 'AbortError';
     const isNetworkError = err instanceof TypeError;

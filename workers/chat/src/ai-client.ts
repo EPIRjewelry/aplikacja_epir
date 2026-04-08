@@ -186,9 +186,99 @@ export async function streamGroqResponse(
     );
 }
 
+/** Klucz scalania fragmentów tool_calls ze strumienia (Workers AI / OpenAI): `index` lub pozycja w tablicy — NIE `call_${n}` przy braku id. */
+function toolCallSlotKey(call: { index?: number }, positionInBatch: number): string {
+  if (typeof call.index === 'number' && Number.isFinite(call.index)) return `slot:${call.index}`;
+  return `slot:${positionInBatch}`;
+}
+
+function mergeToolCallDelta(
+  existing: GroqToolCall | undefined,
+  call: {
+    id?: string;
+    index?: number;
+    function?: { name?: string; arguments?: string };
+  },
+  slotKey: string,
+): GroqToolCall {
+  const argDelta = typeof call.function?.arguments === 'string' ? call.function.arguments : '';
+  const prev = existing ?? { id: '', name: '', arguments: '' };
+  const id = (call.id && String(call.id).trim()) || (prev.id && prev.id.trim()) || slotKey;
+  const name = (call.function?.name && String(call.function.name)) || prev.name || '';
+  return {
+    id,
+    name,
+    arguments: `${prev.arguments}${argDelta}`,
+  };
+}
+
+/** Po zakończeniu narzędzi w turze: jedno zdarzenie na slot (unika dziesiątek fałszywych wywołań MCP). */
+function emitMergedToolCalls(
+  toolBuffers: Map<string, GroqToolCall>,
+  controller: TransformStreamDefaultController<GroqStreamEvent>,
+) {
+  const sorted = [...toolBuffers.entries()].sort((a, b) => {
+    const na = Number(String(a[0].replace('slot:', '')));
+    const nb = Number(String(b[0].replace('slot:', '')));
+    return (Number.isFinite(na) ? na : 0) - (Number.isFinite(nb) ? nb : 0);
+  });
+  for (const [, call] of sorted) {
+    if (!call.name && !call.arguments.trim()) continue;
+    controller.enqueue({ type: 'tool_call', call: { ...call } });
+  }
+}
+
 function createGroqStreamTransform(): TransformStream<string, GroqStreamEvent> {
   let buffer = '';
   const toolBuffers = new Map<string, GroqToolCall>();
+
+  const processParsedLine = (
+    parsed: any,
+    controller: TransformStreamDefaultController<GroqStreamEvent>,
+    isFlush: boolean,
+  ) => {
+    const choice = parsed?.choices?.[0];
+    const finishReason = choice?.finish_reason as string | undefined;
+
+    const deltaText = choice?.delta?.content;
+    const msgContent = choice?.message?.content;
+    const text =
+      typeof deltaText === 'string' ? deltaText : typeof msgContent === 'string' ? msgContent : '';
+    if (text) controller.enqueue({ type: 'text', delta: text });
+
+    const toolCalls = choice?.delta?.tool_calls || choice?.message?.tool_calls;
+    if (Array.isArray(toolCalls)) {
+      for (let i = 0; i < toolCalls.length; i++) {
+        const call = toolCalls[i];
+        const slotKey = toolCallSlotKey(call, i);
+        const merged = mergeToolCallDelta(toolBuffers.get(slotKey), call, slotKey);
+        toolBuffers.set(slotKey, merged);
+      }
+    }
+
+    if (finishReason === 'tool_calls' || finishReason === 'stop') {
+      if (toolBuffers.size > 0) {
+        emitMergedToolCalls(toolBuffers, controller);
+        toolBuffers.clear();
+      }
+    }
+
+    if (finishReason) {
+      controller.enqueue({ type: 'done', finish_reason: finishReason });
+    }
+
+    const usage = parsed?.usage;
+    if (usage && typeof usage === 'object') {
+      const p = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0);
+      const c = Number(usage.completion_tokens ?? usage.output_tokens ?? 0);
+      controller.enqueue({ type: 'usage', prompt_tokens: p, completion_tokens: c });
+    }
+
+    if (isFlush && toolBuffers.size > 0) {
+      emitMergedToolCalls(toolBuffers, controller);
+      toolBuffers.clear();
+    }
+  };
 
   return new TransformStream<string, GroqStreamEvent>({
     start() {
@@ -203,6 +293,10 @@ function createGroqStreamTransform(): TransformStream<string, GroqStreamEvent> {
         const line = raw.trim();
         if (!line) continue;
         if (line === 'data: [DONE]' || line === '[DONE]') {
+          if (toolBuffers.size > 0) {
+            emitMergedToolCalls(toolBuffers, controller);
+            toolBuffers.clear();
+          }
           controller.enqueue({ type: 'done', finish_reason: 'stop' });
           continue;
         }
@@ -215,81 +309,28 @@ function createGroqStreamTransform(): TransformStream<string, GroqStreamEvent> {
           continue;
         }
 
-        const choice = parsed?.choices?.[0];
-        if (choice?.finish_reason) {
-          controller.enqueue({ type: 'done', finish_reason: choice.finish_reason });
-        }
-
-        const deltaText = choice?.delta?.content;
-        const msgContent = choice?.message?.content;
-        const text =
-          typeof deltaText === 'string' ? deltaText : typeof msgContent === 'string' ? msgContent : '';
-        if (text) controller.enqueue({ type: 'text', delta: text });
-
-        const toolCalls = choice?.delta?.tool_calls || choice?.message?.tool_calls;
-        if (Array.isArray(toolCalls)) {
-          for (const call of toolCalls) {
-            const id = call.id || `call_${toolBuffers.size + 1}`;
-            const name = call.function?.name || toolBuffers.get(id)?.name || '';
-            const argDelta =
-              typeof call.function?.arguments === 'string' ? call.function.arguments : '';
-            const existing = toolBuffers.get(id) || { id, name, arguments: '' };
-            const merged: GroqToolCall = {
-              id,
-              name: name || existing.name,
-              arguments: `${existing.arguments}${argDelta || ''}`,
-            };
-            toolBuffers.set(id, merged);
-            controller.enqueue({ type: 'tool_call', call: merged });
-          }
-        }
-
-        const usage = parsed?.usage;
-        if (usage && typeof usage === 'object') {
-          const p = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0);
-          const c = Number(usage.completion_tokens ?? usage.output_tokens ?? 0);
-          controller.enqueue({ type: 'usage', prompt_tokens: p, completion_tokens: c });
-        }
+        processParsedLine(parsed, controller, false);
       }
     },
     flush(controller) {
-      if (!buffer.trim()) return;
-      const payload = buffer.trim().startsWith('data:') ? buffer.trim().slice(5).trim() : buffer.trim();
+      const trimmed = buffer.trim();
+      if (!trimmed) {
+        if (toolBuffers.size > 0) {
+          emitMergedToolCalls(toolBuffers, controller);
+          toolBuffers.clear();
+        }
+        return;
+      }
+      const payload = trimmed.startsWith('data:') ? trimmed.slice(5).trim() : trimmed;
       try {
         const parsed = JSON.parse(payload);
-        const choice = parsed?.choices?.[0];
-        if (choice?.finish_reason) {
-          controller.enqueue({ type: 'done', finish_reason: choice.finish_reason });
+        processParsedLine(parsed, controller, true);
+      } catch (_) {
+        if (toolBuffers.size > 0) {
+          emitMergedToolCalls(toolBuffers, controller);
+          toolBuffers.clear();
         }
-        const deltaText = choice?.delta?.content;
-        const msgContent = choice?.message?.content;
-        const text =
-          typeof deltaText === 'string' ? deltaText : typeof msgContent === 'string' ? msgContent : '';
-        if (text) controller.enqueue({ type: 'text', delta: text });
-        const toolCalls = choice?.delta?.tool_calls || choice?.message?.tool_calls;
-        if (Array.isArray(toolCalls)) {
-          for (const call of toolCalls) {
-            const id = call.id || `call_${toolBuffers.size + 1}`;
-            const name = call.function?.name || toolBuffers.get(id)?.name || '';
-            const argDelta =
-              typeof call.function?.arguments === 'string' ? call.function.arguments : '';
-            const existing = toolBuffers.get(id) || { id, name, arguments: '' };
-            const merged: GroqToolCall = {
-              id,
-              name: name || existing.name,
-              arguments: `${existing.arguments}${argDelta || ''}`,
-            };
-            toolBuffers.set(id, merged);
-            controller.enqueue({ type: 'tool_call', call: merged });
-          }
-        }
-        const usage = parsed?.usage;
-        if (usage && typeof usage === 'object') {
-          const p = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0);
-          const c = Number(usage.completion_tokens ?? usage.output_tokens ?? 0);
-          controller.enqueue({ type: 'usage', prompt_tokens: p, completion_tokens: c });
-        }
-      } catch (_) {}
+      }
     },
   });
 }

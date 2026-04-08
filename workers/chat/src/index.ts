@@ -40,6 +40,7 @@ import { LUXURY_SYSTEM_PROMPT } from './prompts/luxury-system-prompt'; // 🟢 U
 import { TOOL_SCHEMAS } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2
 import { truncateWithSummary, type Message as HistoryMessage } from './utils/history'; // 🔵 History truncation
 import { stripLeakedToolCallsLiterals } from './utils/stripLeakedToolCallsLiterals';
+import { executeToolWithParsedArguments } from './utils/tool-call-args';
 import { callMcpToolDirect, handleMcpRequest } from './mcp_server';
 
 /** Wywołanie run_analytics_query – tylko gdy channel=internal-dashboard (BIGQUERY_BATCH + ADMIN_KEY) */
@@ -1133,6 +1134,11 @@ async function streamAssistantResponse(
       const toolSchemaString = JSON.stringify(toolDefinitions, null, 2);
       const activeStorefrontConfig = resolveStorefrontConfig(env, storefrontContext?.storefrontId);
       const aiProfileToken = activeStorefrontConfig?.privateToken ?? activeStorefrontConfig?.apiToken;
+      if (activeStorefrontConfig?.aiProfileGid && !aiProfileToken) {
+        console.warn('[streamAssistant] AI profile skipped: no Storefront token in env for this storefront alias', {
+          storefrontId: storefrontContext?.storefrontId ?? null,
+        });
+      }
       const aiProfile = await fetchAIProfile(
         activeStorefrontConfig?.aiProfileGid,
         aiProfileToken,
@@ -1142,7 +1148,7 @@ async function streamAssistantResponse(
 
       if (activeStorefrontConfig?.aiProfileGid && !aiProfile) {
         console.warn(
-          `[streamAssistant] AI profile unavailable for storefront ${storefrontContext?.storefrontId ?? 'unknown'}; fallback to base prompt`
+          `[streamAssistant] AI profile unavailable for storefront ${storefrontContext?.storefrontId ?? 'unknown'}; fallback to base prompt (check pre-flight logs, metaobject publish, token scope)`
         );
       }
 
@@ -1241,6 +1247,7 @@ async function streamAssistantResponse(
         let iterationText = ''; // Tymczasowy buffer dla tej iteracji
         const pendingToolCalls = new Map<string, { id: string; name: string; arguments: string }>();
         let finishReason: string | null = null;
+        let usageTotals = { prompt_tokens: 0, completion_tokens: 0 };
 
         while (true) {
           const { done, value: event } = await reader.read();
@@ -1257,7 +1264,10 @@ async function streamAssistantResponse(
               break;
 
             case 'usage':
-              console.log(`[streamAssistant] 📊 Statystyki użycia: ${JSON.stringify(event)}`);
+              // Nie sumuj wielu zdarzeń usage w jednej turze: Workers AI może powtarzać chunki
+              // z tym samym lub rosnącym skumulowanym usage — sumowanie zawyżało metryki w logach.
+              usageTotals.prompt_tokens = event.prompt_tokens;
+              usageTotals.completion_tokens = event.completion_tokens;
               break;
 
             case 'done':
@@ -1265,6 +1275,22 @@ async function streamAssistantResponse(
               break;
           }
         } // koniec while(reader)
+
+        console.log(
+          JSON.stringify({
+            tag: 'chat.stream.turn',
+            model: CHAT_MODEL_ID,
+            session_id: sessionId,
+            storefrontId: storefrontContext?.storefrontId ?? null,
+            channel: storefrontContext?.channel ?? null,
+            customer_token_present: Boolean(customerToken),
+            shopify_customer_id_present: Boolean(shopifyCustomerId),
+            finish_reason: finishReason,
+            tool_calls_count: pendingToolCalls.size,
+            usage_prompt_tokens: usageTotals.prompt_tokens,
+            usage_completion_tokens: usageTotals.completion_tokens,
+          }),
+        );
 
         const detectedToolCalls = Array.from(pendingToolCalls.values());
 
@@ -1296,23 +1322,29 @@ async function streamAssistantResponse(
           await sendSSE('status', { message: `Używam narzędzia: ${toolCallEntries.map((t) => t.function.name).join(', ')}...` });
 
           for (const call of detectedToolCalls) {
-            let parsedArgs: any = {};
-            try {
-              parsedArgs = call.arguments ? JSON.parse(call.arguments) : {};
-            } catch (e) {
-              console.warn('[streamAssistant] ⚠️ Nie udało się sparsować argumentów narzędzia, używam pustego obiektu', { error: e, raw: call.arguments });
-              parsedArgs = {};
-            }
+            const { toolResult, parsedArgs, skippedExecution } = await executeToolWithParsedArguments(
+              call.name,
+              call.arguments,
+              async (safeArgs) => {
+                console.log(`[streamAssistant] 🛠️ Wykonuję narzędzie: ${call.name} z argumentami:`, safeArgs);
+                if (call.name === 'run_analytics_query') {
+                  return runAnalyticsQuery(env, safeArgs as { queryId?: string; dateFrom?: number; dateTo?: number });
+                }
+                const brandForMcp = (storefrontContext?.storefrontId === 'kazka' || storefrontContext?.storefrontId === 'zareczyny')
+                  ? storefrontContext.storefrontId
+                  : brand;
+                return callMcpToolDirect(env, call.name, safeArgs, brandForMcp);
+              },
+            );
 
-            console.log(`[streamAssistant] 🛠️ Wykonuję narzędzie: ${call.name} z argumentami:`, parsedArgs);
-            let toolResult: { result?: unknown; error?: unknown };
-            if (call.name === 'run_analytics_query') {
-              toolResult = await runAnalyticsQuery(env, parsedArgs);
+            if (skippedExecution) {
+              console.warn('[streamAssistant] ⚠️ Nie udało się sparsować argumentów narzędzia — pomijam wywołanie MCP', {
+                tool: call.name,
+                raw: call.arguments,
+                error: (toolResult as any)?.error,
+              });
             } else {
-              const brandForMcp = (storefrontContext?.storefrontId === 'kazka' || storefrontContext?.storefrontId === 'zareczyny')
-                ? storefrontContext.storefrontId
-                : brand;
-              toolResult = await callMcpToolDirect(env, call.name, parsedArgs, brandForMcp);
+              console.log(`[streamAssistant] ✅ Narzędzie ${call.name} wykonane`, { args: parsedArgs ?? {} });
             }
             const toolResultString = JSON.stringify(toolResult.error ? toolResult : toolResult.result);
 
