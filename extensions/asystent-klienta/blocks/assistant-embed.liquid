@@ -3,14 +3,13 @@
   assign default_greeting = 'Witaj! Jestem Gemmą, doradczynią EPIR Art Jewellery. Jak mogę pomóc w wyborze biżuterii?'
   assign default_placeholder = 'Napisz wiadomość, np. „Pokaż pierścionki zaręczynowe z szafirem”'
   assign default_start_closed = true
-  assign app_version = 'v1.2.0-persona-ui-ssot-2026-04-05'
+  assign app_version = 'v1.4.0-panel-wrapper-2026-04-07'
 %}
 
 {% schema %}
 {
   "name": "Asystent EPIR embed",
   "target": "body",
-  "stylesheet": "assistant.css",
   "javascript": "assistant.js",
   "settings": [
     {
@@ -122,14 +121,18 @@
   </style>
 
   <div class="assistant-container">
-    <div class="assistant-header" role="heading" aria-level="3">
-      <h3>{{ block.settings.title | default: default_title }}</h3>
-      <button id="assistant-close-button-embed" class="assistant-close-btn" aria-label="Zamknij panel czatu">
-        ✕
-      </button>
-    </div>
+    <div
+      id="assistant-panel-embed"
+      class="assistant-panel{% unless block.settings.start_closed == false %} is-closed{% endunless %}"
+    >
+      <div class="assistant-header" role="heading" aria-level="3">
+        <h3>{{ block.settings.title | default: default_title }}</h3>
+        <button id="assistant-close-button-embed" class="assistant-close-btn" aria-label="Zamknij panel czatu">
+          ✕
+        </button>
+      </div>
 
-    <div id="assistant-content-embed" class="assistant-content is-closed">
+      <div id="assistant-content-embed" class="assistant-content">
       <div id="assistant-messages-embed" class="assistant-messages" role="log" aria-atomic="false" aria-live="polite">
         <div class="msg msg-assistant welcome-message" role="status">
           {{ block.settings.greeting_message | default: default_greeting }}
@@ -156,16 +159,20 @@
       <div id="assistant-loader-embed" class="assistant-loader" style="display:none" aria-live="polite" aria-label="Oczekiwanie na odpowiedź">
         <span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
       </div>
+      </div>
     </div>
 
     <button
       id="assistant-launcher-embed"
       class="epir-assistant-launcher"
       aria-expanded="false"
-      aria-controls="assistant-content-embed"
+      aria-controls="assistant-panel-embed"
       aria-label="{{ block.settings.title | default: default_title }}"
     >
       Czat
     </button>
   </div>
 </section>
+
+{{ 'assistant.css' | asset_url | stylesheet_tag }}
+<script src="{{ 'assistant.js' | asset_url }}" defer></script>

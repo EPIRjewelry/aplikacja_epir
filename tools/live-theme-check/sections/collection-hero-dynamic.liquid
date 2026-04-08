@@ -1,0 +1,136 @@
+{% comment %}
+  Dynamic Collection Hero - CZYSZTA WERSJA HERO
+  - Uses metaobject reference: collection.metafields.custom.collection_enhanced
+  - Falls back to default layout when metaobject is missing
+{% endcomment %}
+
+{% assign collection_meta = collection.metafields.custom.collection_enhanced %}
+
+{% if collection_meta and collection_meta.value %}
+  
+  <div class="collection-hero__content container">
+    <h1 class="collection-hero__title">{{ collection.title }}</h1>
+
+    {% if collection_meta.value.philosophy != blank %}
+      <div class="collection-hero__philosophy">
+        {{ collection_meta.value.philosophy | metafield_tag }}
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="collection-hero collection-hero--enhanced"
+       style="background-color: {{ collection_meta.value.accent_color | default: '#000000' }}">
+
+    {% if collection_meta.value.hero_video %}
+      <div class="collection-hero__video">
+        <video autoplay loop muted playsinline>
+          <source src="{{ collection_meta.value.hero_video | file_url }}" type="video/mp4">
+        </video>
+      </div>
+    {% endif %}
+
+    {% if collection_meta.value.texture_overlay %}
+      <div class="collection-hero__texture"
+           style="background-image: url({{ collection_meta.value.texture_overlay | image_url: width: 1920 }})">
+      </div>
+    {% endif %}
+
+  </div>
+{% else %}
+  <div class="collection-hero collection-hero--default">
+    {% if collection.image %}
+      <div class="collection-hero__image">
+        {{ collection.image | image_url: width: 2400 | image_tag: alt: collection.title, loading: 'eager' }}
+      </div>
+    {% endif %}
+
+    <div class="collection-hero__content container">
+      <h1 class="collection-hero__title">{{ collection.title }}</h1>
+      {% if collection.description != blank %}
+        <div class="collection-hero__philosophy">{{ collection.description }}</div>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
+
+<style>
+.collection-hero--enhanced {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  margin-bottom: 60px;
+}
+.collection-hero__video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+.collection-hero__video video {
+  width: 100%;
+  height: auto;
+  object-fit: unset;
+  opacity: 0.6;
+}
+.collection-hero__texture {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+  opacity: 0.3;
+  z-index: 2;
+  mix-blend-mode: overlay;
+}
+.collection-hero__content {
+  text-align: center;
+  color: #2a2a2a;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+.collection-hero__title {
+  font-size: 3rem;
+  margin-bottom: 1.5rem;
+  font-weight: 600;
+}
+.collection-hero__philosophy {
+  font-size: 1.125rem;
+  line-height: 1.6;
+  margin-bottom: 2rem;
+}
+.collection-hero--default {
+  margin-bottom: 60px;
+}
+.collection-hero__image {
+  height: 400px;
+  overflow: hidden;
+}
+.collection-hero__image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+@media (max-width: 768px) {
+  .collection-hero__title {
+    font-size: 2rem;
+  }
+}
+</style>
+
+{% schema %}
+{
+  "name": "Collection Hero Dynamic",
+  "class": "section-collection-hero-dynamic",
+  "presets": [
+    {
+      "name": "Collection Hero Dynamic"
+    }
+  ]
+}
+{% endschema %}

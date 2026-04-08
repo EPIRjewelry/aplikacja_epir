@@ -1,0 +1,71 @@
+/*
+ * ------------------------------------------------------------
+ * IMPORTANT: The contents of this file are auto-generated.
+ *
+ * This file may be updated by the Shopify admin theme editor
+ * or related systems. Please exercise caution as any changes
+ * made to this file may be overwritten.
+ * ------------------------------------------------------------
+ */
+{
+  "sections": {
+    "main": {
+      "type": "page-contact",
+      "settings": {
+        "container": "container"
+      }
+    },
+    "contact-form": {
+      "type": "contact-form",
+      "blocks": {
+        "text-block-1": {
+          "type": "textblock",
+          "settings": {
+            "title": "Adres",
+            "content": "<p>50-419 Wrocław, ul. Traugutta 123/5-6</p>"
+          }
+        },
+        "text-block-2": {
+          "type": "textblock",
+          "settings": {
+            "title": "Informacje",
+            "content": "<p>+48698718564</p><p>epir@epirbizuteria.pl</p>"
+          }
+        },
+        "text-block-3": {
+          "type": "socialmedia",
+          "settings": {
+            "title": "Social Media"
+          }
+        },
+        "text-block-4": {
+          "type": "textblock",
+          "disabled": true,
+          "settings": {
+            "title": "We're Open",
+            "content": "<p>Our store has re-opened for shopping, exchanges</p><p>Every day 11am to 7pm</p>"
+          }
+        }
+      },
+      "block_order": [
+        "text-block-1",
+        "text-block-2",
+        "text-block-3",
+        "text-block-4"
+      ],
+      "settings": {
+        "container": "container",
+        "title": "Zawsze jesteśmy w kontakcie",
+        "description": "<p>Chętnie odpowiemy na pytania zwiazane z nasza działalnością</p>",
+        "show_name": false,
+        "show_phone": false,
+        "show_signup_email": false,
+        "animations": "inherit"
+      }
+    }
+  },
+  "order": [
+    "main",
+    "contact-form"
+  ]
+}

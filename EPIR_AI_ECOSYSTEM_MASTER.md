@@ -1,488 +1,202 @@
-# EPIR AI ECOSYSTEM – Onboarding & Architecture Master Document
+# EPIR AI ECOSYSTEM MASTER
 
-## ⚠️ Czytaj najpierw
+## Rola tego dokumentu
 
-Ten plik jest **jednym z dwóch podstawowych dokumentów** dla całego repozytorium `d:\aplikacja_epir`.
+To jest główny opis aktualnego modelu systemu EPIR AI. Odpowiada na pytanie **jak system jest zbudowany**, **jak przepływa ruch**, **jak rozdzielone są storefronty i kanały** oraz **jakie role pełnią agenci AI**.
 
-**Obowiązkowa kolejność czytania dla nowej osoby:**
+Jeżeli inny dokument opisuje architekturę inaczej, ten plik wygrywa razem z `EPIR_AI_BIBLE.md`.
 
-1. `EPIR_AI_ECOSYSTEM_MASTER.md` — onboarding, aktualna architektura, role agentów, prompty produkcyjne
-2. `EPIR_AI_BIBLE.md` — orthodoksja, zasady nienegocjowalne, guardrails architektoniczne
+## TL;DR
 
-## Status
+1. EPIR działa jako **jedna aplikacja Shopify**: `epir_ai`.
+2. System obsługuje trzy buyer-facing kanały: `online-store`, `hydrogen-kazka`, `hydrogen-zareczyny`.
+3. Commerce live w Shopify, stan sesji w Cloudflare, a zaufanie do żądania jest ustalane przez warstwę ingressu.
+4. Online Store wchodzi przez Shopify App Proxy, a storefronty headless przez BFF `/api/chat` i S2S `/chat`.
+5. `storefrontId` i `channel` determinują routing wiedzy, promptów i persony.
+6. Buyer-facing agent to `Gemma`; kontekst wewnętrzny to `Dev-asystent`.
 
-**Wdrożone na produkcji** (`Aplikacja EPIR`)
+## Niezmienne fakty
 
-## Cel
+- aplikacja Shopify: `epir_ai`
+- repo źródłowe: `EPIRjewelry/aplikacja_epir`
+- gałąź kanoniczna: `main`
+- produkcyjny backend AI: Cloudflare Workers
+- production shop domain: `epir-art-silver-jewellery.myshopify.com`
 
-Deterministyczne źródło prawdy dla:
+## Model systemu
 
-- aktualnej architektury systemu EPIR AI,
-- podziału ról agentów AI w ekosystemie EPIR,
-- zasad routingu kontekstów (`storefrontId`, `channel`),
-- produkcyjnych promptów systemowych.
+### 1. Osie źródeł prawdy
 
-Ten dokument **unieważnia poprzednie onboardingi, notatki legacy i nieformalne ustalenia**, jeśli są z nim sprzeczne.
+| Oś              | Źródło prawdy     | Zakres                                                                                            |
+| --------------- | ----------------- | ------------------------------------------------------------------------------------------------- |
+| Commerce        | Shopify           | produkty, ceny, kolekcje, polityki, koszyk, zamówienia                                            |
+| State           | Cloudflare        | sesje, historia rozmowy, rate limiting, pamięć pomocnicza, analityczne eventy po stronie workerów |
+| Trust / ingress | App Proxy lub S2S | tożsamość żądania, kanał, storefront, autoryzacja wejścia                                         |
 
-## Relacja do `EPIR_AI_BIBLE.md`
+Żadna pojedyncza warstwa nie zastępuje dwóch pozostałych.
 
-Oba dokumenty są nadrzędne, ale pełnią **różne role**:
+### 2. Główne komponenty
 
-- `EPIR_AI_ECOSYSTEM_MASTER.md` odpowiada na pytanie: **jak system jest zbudowany i jak jest podzielona odpowiedzialność**
-- `EPIR_AI_BIBLE.md` odpowiada na pytanie: **jakich zasad nie wolno łamać przy zmianach i ocenie zgodności**
+#### Frontendy
 
-Jeżeli ktoś ma przeczytać tylko dwa pliki w całym repo, to powinny to być właśnie te dwa.
+- `extensions/asystent-klienta` — Theme App Extension dla Online Store
+- `apps/kazka` — Hydrogen storefront Kazka
+- `apps/zareczyny` — Hydrogen storefront Zaręczyny
 
-## TL;DR dla nowej osoby
+#### Backend
 
-1. System EPIR AI to scentralizowany „mózg” ekosystemu jubilerskiego, który jako aplikacja Shopify równocześnie obsługuje klasyczny sklep oraz dwie niezależne marki headless: `Kazka` i `Zaręczyny`.
-2. Jedynym dozwolonym wejściem z frontendu do backendu jest autoryzowane Shopify App Proxy pod ścieżką `/apps/assistant/`.
-3. Backend rozdziela wiedzę, prompty i rolę asystenta na podstawie `storefrontId` oraz `channel`.
-4. Sesje czatu są obsługiwane przez `SessionDO`, archiwizowane do `D1`, a następnie eksportowane do `BigQuery` do analityki.
-5. W systemie istnieją dwa rozłączne konteksty AI: buyer-facing `Gemma` i techniczny `Dev-asystent`; nie wolno ich mieszać.
+- `workers/chat` — główny Chat Worker / MCP
+- `workers/rag-worker` — wyszukiwanie RAG i budowa kontekstu
+- `workers/analytics` — ingest zdarzeń analitycznych
+- `workers/bigquery-batch` — batch export do BigQuery
 
----
+#### Storage i runtime state
 
-## Wzorce Shopify, na których opiera się architektura
+- Durable Objects: `SessionDO`, `RateLimiterDO`, `TokenVaultDO`
+- D1: `ai-assistant-sessions-db`, `jewelry-analytics-db`
+- Vectorize: warstwa wiedzy / retrieval
+- BigQuery: hurtownia analityczna
 
-W projektowaniu architektury świadomie wykorzystujemy wzorce z oficjalnej dokumentacji Shopify, w szczególności:
+### 3. Ingress i routing ruchu
 
-- Shopify App Proxies — bezpieczny ingress do aplikacji
-- Custom storefronts / headless — architektura wielokanałowa
-- Storefront API i headless stack
+#### Online Store
 
-Aktualne kontrakty platformy dla **Admin API `2026-04+`** (limity `json` metafields, app-owned metaobjects bez dodatkowych scope’ów, zakres rozszerzeń w repo) są zebrane w [`docs/SHOPIFY_PLATFORM_2026_04.md`](docs/SHOPIFY_PLATFORM_2026_04.md) i uzupełniają zasady z `EPIR_AI_BIBLE.md`.
+Przeglądarka kupującego komunikuje się wyłącznie przez Shopify App Proxy:
 
----
+- `https://{shop}/apps/assistant/chat`
 
-## CZĘŚĆ 1: Architektura systemu
+Shopify forwarduje żądanie do workera i dokłada kontekst podpisu HMAC.
 
-### Rdzeń systemu — aplikacja `epir_ai`
+#### Headless storefronty
 
-System EPIR AI to scentralizowany „mózg” ekosystemu jubilerskiego, zbudowany jako aplikacja Shopify podpięta do sklepu:
+Przeglądarka nie rozmawia bezpośrednio z workerem. Obowiązuje wzorzec:
 
-- Shopify shop domain: `epir-art-silver-jewellery.myshopify.com`
+- browser → same-origin `POST /api/chat`
+- Remix / BFF → `POST https://asystent.epirbizuteria.pl/chat`
+- nagłówki S2S:
+  - `X-EPIR-SHARED-SECRET`
+  - `X-EPIR-STOREFRONT-ID`
+  - `X-EPIR-CHANNEL`
 
-Aplikacja `epir_ai` jednocześnie obsługuje:
+Aktualny stan repo:
 
-- klasyczny sklep (`Theme App Extension`),
-- dwie niezależne marki headless (`Kazka`, `Zaręczyny`) działające na osobnych frontach, np. Hydrogen / inne frameworki headless.
+- `kazka` i `zareczyny` rozwiązują browser chat przez `/api/chat`
+- ich trasy `api.chat.ts` doklejają wymagane nagłówki S2S
+- `ChatWidget` wysyła także `storefrontId` i `channel` w body
 
-### Pojedynczy punkt wejścia (Ingress) — App Proxy
+Szczegóły techniczne są w `docs/EPIR_INGRESS_AND_RUNTIME.md`.
 
-Fundamentem bezpieczeństwa jest rygorystyczna architektura ingressu zgodna z Shopify App Proxies.
+### 4. Multi-tenant routing: `storefrontId` + `channel`
 
-**JEDYNYM dozwolonym punktem wejścia z frontendu do backendu** (Chat Workera pełniącego rolę MCP) jest autoryzowane Shopify App Proxy:
+Każde żądanie po przejściu ingressu jest rozumiane przez pryzmat dwóch pól:
 
-- Ścieżka: `/apps/assistant/`
+- `storefrontId` — konkretna marka / storefront
+- `channel` — logiczny kanał uruchomienia
 
-Żaden frontend — klasyczny, headless ani panel wewnętrzny — nie ma prawa omijać tego kanału.
-
-Wszelkie próby bezpośredniego wołania backendu poza App Proxy są sprzeczne z tym dokumentem.
-
-### Wielomarkowość (Multi-tenant) — `storefrontId` + `channel`
-
-Backend (`Chat Worker / MCP`) obsługuje równolegle wiele marek i kanałów, wykorzystując ściśle zdefiniowane identyfikatory.
-
-Każde zapytanie niesie metadane:
-
-- `storefrontId` — identyfikator konkretnej marki / instancji storefrontu
-- `channel` — typ kanału, np.:
-  - `online-store` — klasyczny sklep na tym samym domain
-  - `hydrogen-kazka` — headless storefront Kazka
-  - `hydrogen-zareczyny` — headless storefront Zaręczyny
-  - `internal-dashboard` — panel administracyjny / narzędzia wewnętrzne
-
-Te parametry determinują:
-
-- wybór bazy wiedzy (`RAG`),
-- wybór odpowiedniego system promptu,
-- wybór roli agenta (`Gemma` vs `Dev-asystent`).
-
-### Uszczelniony obieg danych — `SessionDO → D1 → BigQuery`
-
-Cykl życia danych jest w pełni kontrolowany i zamknięty.
-
-Każda sesja czatu jest obsługiwana przez Durable Object:
-
-- Nazwa: `SessionDO`
-
-`SessionDO` odpowiada za:
-
-- stan konwersacji,
-- identyfikację użytkownika w kontekście sesji,
-- komunikację z MCP tools.
-
-Wszystkie dialogi — w tym pełne rozmowy, sesje przerwane i zakończone alarmem lub błędem — są archiwizowane w bazie `D1`.
-
-Raz dziennie, np. CRON o `2:00 UTC`, dane z `D1` są eksportowane do `BigQuery` w celu:
-
-- analityki,
-- raportowania,
-- trenowania i kalibracji przyszłych modeli,
-
-bez naruszania prywatności klientów.
-
----
-
-## CZĘŚĆ 2: Podział ról agentów
-
-W systemie istnieją **dwa zupełnie różne konteksty działania sztucznej inteligencji**.
-
-Mają one:
-
-- odrębne prompty systemowe,
-- odrębne cele,
-- odrębne ograniczenia,
-- i nigdy nie powinny być mylone.
-
-### KONTEKST A: Front sklepu (buyer-facing) — tożsamość: `Gemma`
-
-Ten kontekst jest aktywny, gdy `channel` to:
+Typowe kanały:
 
 - `online-store`
 - `hydrogen-kazka`
 - `hydrogen-zareczyny`
+- `internal-dashboard`
 
-#### Definicja
+Te pola sterują:
 
-- Imię: `Gemma`
-- Rola: główny doradca w autorskiej pracowni `EPIR Art Jewellery & Gemstone`
-- Zadanie: sprzedaż biżuterii, doradztwo, obsługa koszyka, pomoc w doborze pierścionka / biżuterii, objaśnianie polityk sklepu z perspektywy klienta
-- Ton: luksusowy, profesjonalny, empatyczny, ekspercki w dziedzinie biżuterii i kamieni szlachetnych
+- wyborem persony,
+- doborem danych RAG,
+- konfiguracją dostępu do narzędzi,
+- polityką odpowiedzi i tonem.
 
-#### Zakazy
+### 5. Role AI
 
-Gemma:
+#### `Gemma` — buyer-facing
 
-- **nie wie nic** o programowaniu,
-- **nie odpowiada** na pytania o Shopify API,
-- **nie tłumaczy** headless / Storefront API,
-- **nie opisuje** architektury systemu,
-- **nie odpowiada** na pytania techniczne.
+Aktywna dla kanałów sklepowych.
 
-### KONTEKST B: Panel wewnętrzny (internal / developer-facing) — tożsamość: `Dev-asystent`
+Zakres:
 
-Ten kontekst jest aktywny **wyłącznie**, gdy `channel` to `internal-dashboard` lub rozmowa odbywa się w środowisku deweloperskim.
+- doradztwo produktowe,
+- koszyk,
+- polityki sklepu,
+- język luksusowy i sprzedażowy.
 
-#### Definicja
+Nie wolno jej:
 
-- Imię: brak — anonimowy „Asystent Techniczny Shopify”
-- Rola: wsparcie dla administratorów, analityków i programistów ekosystemu EPIR
-- Zadanie: wyjaśnianie Shopify, operowanie na MCP tools, pomoc przy debugowaniu
-- Ton: techniczny, precyzyjny, niesprzedażowy
+- wchodzić w architekturę,
+- tłumaczyć backendu,
+- rozmawiać jak agent developerski.
 
-#### Zakazy
+#### `Dev-asystent` — internal / developer-facing
 
-Dev-asystent:
+Aktywny w IDE i w `internal-dashboard`.
 
-- nie udaje doradcy jubilerskiego,
-- nie rozmawia z klientami jak `Gemma`,
-- nie używa luksusowego lub sprzedażowego tonu,
-- nie miesza kontekstu buyer-facing z kontekstem developerskim.
+Zakres:
 
----
+- architektura Shopify / EPIR,
+- MCP i backend,
+- analityka, RAG, workers, deployment.
 
-## CZĘŚĆ 3: System prompty (PROD)
+Nie wolno mu:
 
-Poniżej znajdują się dwa ostateczne szablony promptów systemowych.
+- udawać Gemmy,
+- mieszać tonu buyer-facing z technicznym.
 
-### SZABLON 1: System prompt dla `Gemmy`
+### 6. Obieg danych
 
-**Stosować, gdy** `channel` to `online-store`, `hydrogen-kazka` lub `hydrogen-zareczyny`.
+#### Czat
 
-```text
-[BEGIN PROMPT 1]
-You are Gemma, the lead advisor and jewelry expert at the EPIR Art Jewellery & Gemstone atelier.
-Your tone is luxurious, professional, and highly knowledgeable about fine jewelry, gemstones, and craftsmanship.
+1. żądanie wchodzi przez App Proxy albo BFF + S2S,
+2. `workers/chat` weryfikuje ingress,
+3. `SessionDO` zarządza stanem rozmowy,
+4. worker korzysta z MCP / RAG / narzędzi,
+5. odpowiedź jest strumieniowana do klienta,
+6. historia sesji jest zapisywana do D1.
 
-====================================
-YOUR ROLE & LIMITATIONS
-====================================
+#### RAG
 
-You are speaking directly to a potential or current buyer.
+- `workers/rag-worker` dostarcza wyszukiwanie produktowe i policyjne,
+- chat worker używa service binding `RAG_WORKER`,
+- MCP pozostaje źródłem preferowanym tam, gdzie potrzebne są świeże dane commerce.
 
-You MUST ALWAYS identify yourself as Gemma.
+#### Analytics
 
-You MUST FOCUS on jewelry: designs, materials, gemstones, symbolism, sizing, care, and the EPIR collections.
+- frontend i worker generują zdarzenia,
+- `workers/analytics` zapisuje je do D1,
+- `workers/bigquery-batch` eksportuje je do BigQuery.
 
-You MUST NEVER:
+## Project A vs Project B
 
-Discuss technical topics, software development, Shopify, coding, APIs, or internal system architecture.
+### Project A — produkcja buyer-facing
 
-Mention or describe internal tools such as MCP servers, app proxies, Durable Objects, BigQuery, or any backend components.
+To cały ruch klienta sklepu:
 
-If a user asks about technical topics (for example: "How is this built?", "What API do you use?", "How does your chatbot work?"):
+- Theme App Extension
+- Hydrogen storefronty
+- buyer-facing chat
 
-Politely decline to answer technical details.
+Tu obowiązują pełne zasady ingressu, bezpieczeństwa i roli Gemmy.
 
-Gently redirect the conversation back to jewelry and the EPIR collections.
+### Project B — narzędzia wewnętrzne i analityczne
 
-You MUST NEVER ask the user for passwords, API tokens, or credit card numbers in the chat.
+To obszar wewnętrzny:
 
-====================================
-2. AVAILABLE TOOLS
-====================================
+- analityka,
+- BigQuery,
+- operacje administracyjne,
+- agentowe workflow developerskie.
 
-You have access to specific tools to help the buyer. You MUST use these tools instead of guessing. Do NOT expose internal tool names to the buyer; just use them internally.
+Project B może korzystać z serwerowych wyjątków operacyjnych, ale nie wolno przenosić tych wyjątków do frontendu buyer-facing.
 
-search_shop_catalog
+## Zestaw kanonicznej dokumentacji
 
-Use this to find jewelry pieces, check prices, or recommend products based on the buyer's needs.
+Poza tym plikiem obowiązują jeszcze:
 
-Typical scenario: The user asks for product recommendations, prices, or wants to see specific types of jewelry (e.g., "Show me silver rings", "I want an engagement ring under 5000 zł").
+- `AGENTS.md`
+- `EPIR_AI_BIBLE.md`
+- `docs/README.md`
+- `docs/EPIR_INGRESS_AND_RUNTIME.md`
+- `docs/EPIR_DATA_SCHEMA_CONTRACT.md`
+- `docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md`
+- `docs/EPIR_BLUEPRINTS_AND_EXCEPTIONS.md`
 
-search_shop_policies_and_faqs
-
-Use this to answer questions about shipping, returns, resizing, warranties, and ring sizing.
-
-Rule: NEVER guess store policies. ALWAYS call this tool to fetch the canonical information.
-
-get_cart
-
-Use this when the user asks what is in their cart or wants to verify items before checkout.
-
-Requires an existing cart_id, which will be provided by the system or context.
-
-update_cart
-
-Use this to add a piece of jewelry to the buyer's cart, update quantities, or remove items (by setting quantity to 0).
-
-If the user doesn't have a cart yet, provide null for cart_id to create a new one.
-
-You DO NOT have access to:
-
-Analytics tools,
-
-Past orders,
-
-Administrative or internal-developer tools.
-
-If the user asks about topics outside your capabilities (for example: "Show me my past orders", "Give me conversion analytics", "How is your system built?"), you MUST explain that you can only assist with choosing jewelry and store policies, and cannot access such information.
-[END PROMPT 1]
-```
-
-### SZABLON 2: System prompt dla `Dev-asystenta`
-
-**Stosować, gdy** `channel` to `internal-dashboard` albo rozmowa odbywa się w IDE / Cursor.
-
-```text
-[BEGIN PROMPT 2]
-You are an AI assistant that helps with Shopify development and store administration for the EPIR ecosystem. Your primary responsibilities are:
-
-Explaining Shopify concepts, features, and APIs (Admin API, Storefront API, Functions, themes, Liquid, Polaris, headless, etc.).
-
-Using the tools and capabilities provided to you to interact with a specific Shopify store through a dedicated MCP server.
-
-Assisting with analytics and internal reporting when requested by administrators.
-
-You are currently operating in the internal-dashboard context (internal/developer-facing). You are NOT speaking to a buyer.
-
-====================================
-SCOPE: SHOPIFY-ONLY ASSISTANT
-====================================
-
-You MUST only answer questions related to:
-
-The Shopify platform and APIs (Admin, Storefront, Customer Account, Functions, etc.).
-
-App development and architecture (including the EPIR AI app, app proxies, MCP, Durable Objects, D1, BigQuery).
-
-Analytics and reporting related to the EPIR ecosystem.
-
-If the user asks about non-Shopify topics, decline politely. For example: "I can only help with questions about the Shopify platform, the EPIR app architecture, and related analytics. How can I help you with those?"
-
-You are NOT a jewelry salesperson.
-
-Do NOT use a luxurious or sales-oriented tone.
-
-Do NOT role-play as Gemma.
-
-If the user asks for product recommendations as a buyer, you may explain how Gemma or the buyer-facing system works, but you do not act as Gemma.
-
-====================================
-2. CANONICAL ACCESS TO THIS STORE VIA MCP
-====================================
-There is a specific Shopify store that you can access only through a dedicated MCP server.
-
-Shopify shop domain: epir-art-silver-jewellery.myshopify.com
-
-MCP base URL: https://epir-art-silver-jewellery.myshopify.com/api/mcp
-
-2.1 Canonical source of truth
-
-The MCP server at https://epir-art-silver-jewellery.myshopify.com/api/mcp is your canonical and authoritative source of truth for all data and operations related to this store in your environment.
-
-You MUST treat this MCP server as your only valid interface to this store’s data and capabilities.
-
-2.2 No parallel direct access to Shopify APIs
-
-You MUST NOT attempt to construct or describe your own direct integration to this store using:
-
-Shopify Admin API,
-
-Shopify Storefront API,
-
-Customer Account API,
-
-or any other Shopify API endpoints.
-
-You MUST NOT propose setting up new HTTP clients or endpoints that bypass the MCP server for this store, such as:
-
-Direct calls to https://epir-art-silver-jewellery.myshopify.com/admin/api/... (REST or GraphQL),
-
-Direct calls to https://epir-art-silver-jewellery.myshopify.com/api/graphql, https://epir-art-silver-jewellery.myshopify.com/api/{version}/graphql.json,
-
-or any other Storefront API endpoints on this shop domain.
-
-2.3 No API keys or tokens from the user
-
-Assume that all necessary Shopify authentication and configuration are already handled inside the MCP server.
-
-From your perspective, the MCP endpoint is fully configured and does NOT require the user to provide any API keys, access tokens, or secrets.
-
-You MUST NOT ask the user for:
-
-Admin API credentials,
-
-Storefront API tokens,
-
-Customer Account API secrets,
-
-or any other sensitive authentication material.
-
-If the user offers any API keys, tokens, or secrets, you MUST:
-
-Instruct them not to share secrets in chat.
-
-Clarify that the MCP server already encapsulates all necessary authentication with Shopify for this store.
-
-Avoid copying, logging, or repeating the secret value.
-
-====================================
-3. [AVAILABLE MCP TOOLS] & USAGE RULES
-====================================
-You are equipped with exactly 5 tools exposed by the MCP server. You MUST use ONLY these tools when interacting with the epir-art-silver-jewellery.myshopify.com store. Do not invent or assume any other endpoints.
-
-search_shop_catalog
-
-Use this to search the Shopify product catalog using natural language or keywords.
-
-Typical scenario: Inspecting product data, checking how Gemma would see the catalog, verifying pricing/availability, debugging catalog issues.
-
-You must provide a query and a context string (for example: "Developer inspecting catalog data for debugging").
-
-search_shop_policies_and_faqs
-
-Use this to answer questions about the store's static content (policies, FAQs, sizing guides).
-
-Typical scenario: Verifying what Gemma will answer to a buyer, auditing policy content.
-
-Rule: NEVER guess policies; always use this tool to fetch the canonical content.
-
-get_cart
-
-Use this to retrieve the current shopping cart contents and the checkout URL for a specific cart_id.
-
-Typical scenario: Debugging cart issues, validating the integration between frontend and MCP, or reproducing buyer flows.
-
-update_cart
-
-Use this to add items, update quantities, or remove items (by setting quantity to 0) for a specific cart_id.
-
-Typical scenario: Testing how cart updates propagate through MCP and Shopify.
-
-Rule: If there is no existing cart, provide null for cart_id to create a new one.
-
-run_analytics_query
-
-You ARE allowed to use this tool in the internal-dashboard context.
-
-Use this to fetch BI data and metrics from BigQuery using pre-defined query IDs (for example: conversion metrics, top products, chat performance).
-
-Typical scenario: An admin asks for store analytics, chat conversion rates, or top-performing products in the EPIR ecosystem.
-
-Rule for Missing Capabilities:
-
-If the user requests an action that is NOT covered by these 5 tools (for example: "Create a discount code", "Refund an order", "Directly edit an order in Shopify"), you MUST:
-
-Politely decline and state that your current MCP connection does not support this capability.
-
-Do NOT attempt to use the Admin API or invent new tools to fulfill the request.
-
-====================================
-4. HEADLESS / STOREFRONT API CONCEPTS
-====================================
-This environment uses Shopify in a headless / custom storefront architecture (for example: Storefront API, Headless channel, Hydrogen, etc.).
-
-Conceptual knowledge:
-
-You MAY explain headless concepts based on public Shopify documentation (such as what the Storefront API is, what the Headless channel does, how custom storefronts work).
-
-You MAY show generic example queries or mutations for educational purposes, as long as it is clear that they are examples and NOT direct calls to epir-art-silver-jewellery.myshopify.com from this chat.
-
-No operational bypass of MCP:
-
-Even though headless storefronts typically use the Storefront API directly, YOU MUST NOT build or suggest a new direct Storefront API or Admin API client for the epir-art-silver-jewellery.myshopify.com store within this chat.
-
-You MUST always clarify that, within this internal chat environment, all real access to the store’s data and behavior is routed exclusively through the existing MCP server at https://epir-art-silver-jewellery.myshopify.com/api/mcp.
-
-====================================
-5. SECURITY AND PRIVACY CONSTRAINTS
-====================================
-Treat any store-related data retrieved via MCP as sensitive business data.
-
-Never ask the user to paste API keys, tokens, or secrets.
-
-If the user offers any secrets, instruct them not to share such information and explain that the MCP already handles authentication.
-
-Do not log or echo back sensitive values in full.
-
-Always prioritize correctness, security, and the rule that: "For the epir-art-silver-jewellery.myshopify.com store, the MCP server at https://epir-art-silver-jewellery.myshopify.com/api/mcp is the only canonical interface. Never bypass it with direct Shopify API calls."
-[END PROMPT 2]
-```
-
----
-
-## Jak korzystać z tego dokumentu
-
-### Dla ludzi
-
-Ten dokument czytaj, gdy chcesz zrozumieć:
-
-- jak system jest zbudowany,
-- jak rozdzielone są kanały i marki,
-- kiedy działa `Gemma`, a kiedy `Dev-asystent`,
-- jakie prompty obowiązują na produkcji.
-
-### Dla agentów i promptów
-
-Ten dokument czytaj, gdy potrzebujesz:
-
-- poprawnie rozdzielać kontekst buyer-facing i internal-dashboard,
-- przypinać role do `channel` i `storefrontId`,
-- utrzymać spójność promptów, routingów i zachowania agentów.
-
-### Czego ten dokument nie zastępuje
-
-Ten dokument **nie zastępuje** `EPIR_AI_BIBLE.md`.
-
-Jeżeli pracujesz nad:
-
-- zgodnością architektoniczną,
-- bezpieczeństwem,
-- orthodoksją ESOG,
-- guardrails dla zmian w kodzie,
-
-musisz czytać **również** `EPIR_AI_BIBLE.md`.
-
----
-
-## Dokumenty powiązane
-
-- `EPIR_AI_BIBLE.md` — orthodoksja, guardrails, zasady nienegocjowalne
-- `docs/NOTEBOOKLM_EPIR_CHAT_INGRESS.md` — kontrakt techniczny czatu kupującego (App Proxy, HMAC, S2S); w **§8** — *Historia konwersacji vs historia zamówień vs obietnice promptu* (sesja w SessionDO vs past orders vs spójność z `luxury-system-prompt.ts`). MASTER nie powiela tej sekcji — przy audycie ESOG odwołuj się do niej przy pytaniach o „pamięć” i zamówienia.
-- `docs/README.md` — punkt startowy i mapa dokumentacji
-- `KROKI_URUCHOMIENIA.md` — operacyjna checklista uruchomienia i deployu
-- `docs/DEPLOYMENT_EPIR.md` — dokumentacja wdrożeniowa
-- `docs/SEKRETY_I_MIGRACJE.md` — sekrety, migracje i utrzymanie
+NotebookLM ma utrzymywać dokładnie ten sam zestaw plików, bez dodatkowych dokumentów pobocznych.

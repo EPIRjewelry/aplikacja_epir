@@ -1,0 +1,163 @@
+{% comment %}
+  Stone Profile Embed Section
+  Reads stone_profile from collection_enhanced metaobject reference
+{% endcomment %}
+
+{%- liquid
+  assign collection_enhanced = collection.metafields.custom.collection_enhanced_reference.value
+  assign stone = nil
+  if collection_enhanced != blank
+    assign stone = collection_enhanced.stone_profile_reference.value
+  endif
+-%}
+
+{% if stone != blank %}
+<div class="stone-profile-embed" style="background:#faf8f5;padding:80px 0;font-family:inherit;">
+  <div class="stone-profile-embed__inner" style="max-width:1100px;margin:0 auto;padding:0 24px;">
+
+    <div class="stone-profile-embed__hero" style="display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;margin-bottom:64px;">
+
+      {% if stone.zdjecie_makro != blank %}
+      <div class="stone-profile-embed__image">
+        <img
+          src="{{ stone.zdjecie_makro.value | image_url: width: 900 }}"
+          alt="{{ stone.stone_name.value }}"
+          width="900"
+          loading="lazy"
+          style="width:100%;height:520px;object-fit:cover;border-radius:2px;"
+        >
+      </div>
+      {% endif %}
+
+      <div class="stone-profile-embed__intro">
+        <p style="font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#9c8a72;margin:0 0 16px;">Kamień kolekcji</p>
+
+        <h2 style="font-size:clamp(2rem,4vw,3.2rem);font-weight:300;color:#2c2416;margin:0 0 8px;line-height:1.1;">
+          {{ stone.stone_name.value }}
+        </h2>
+
+        {% if stone.jaki_to_zwiazek != blank %}
+        <p style="font-size:14px;font-style:italic;color:#9c8a72;margin:0 0 32px;">
+          {{ stone.jaki_to_zwiazek.value }}
+        </p>
+        {% endif %}
+
+        <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:32px;">
+
+          {% if stone.hardness != blank %}
+          <div style="background:#fff;border:1px solid #e8e0d4;border-radius:2px;padding:10px 16px;">
+            <div style="font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:#9c8a72;margin-bottom:4px;">Twardość</div>
+            <div style="font-size:15px;color:#2c2416;">{{ stone.hardness.value }}</div>
+          </div>
+          {% endif %}
+
+          {% if stone.chakra != blank %}
+          <div style="background:#fff;border:1px solid #e8e0d4;border-radius:2px;padding:10px 16px;">
+            <div style="font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:#9c8a72;margin-bottom:4px;">Czakra</div>
+            <div style="font-size:15px;color:#2c2416;">{{ stone.chakra.value }}</div>
+          </div>
+          {% endif %}
+
+          {% if stone.birthstone_month != blank %}
+          <div style="background:#fff;border:1px solid #e8e0d4;border-radius:2px;padding:10px 16px;">
+            <div style="font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:#9c8a72;margin-bottom:4px;">Kamień urodzinowy</div>
+            <div style="font-size:15px;color:#2c2416;">{{ stone.birthstone_month.value }}</div>
+          </div>
+          {% endif %}
+
+          {% if stone.paleta_kolorow_kamienia != blank %}
+          <div style="background:#fff;border:1px solid #e8e0d4;border-radius:2px;padding:10px 16px;">
+            <div style="font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:#9c8a72;margin-bottom:4px;">Barwa</div>
+            <div style="font-size:15px;color:#2c2416;">{{ stone.paleta_kolorow_kamienia.value | newline_to_br }}</div>
+          </div>
+          {% endif %}
+
+          {% if stone.refractive_index != blank %}
+          <div style="background:#fff;border:1px solid #e8e0d4;border-radius:2px;padding:10px 16px;">
+            <div style="font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:#9c8a72;margin-bottom:4px;">Wsp. załamania</div>
+            <div style="font-size:15px;color:#2c2416;">{{ stone.refractive_index.value }}</div>
+          </div>
+          {% endif %}
+
+        </div>
+      </div>
+    </div>
+
+    <hr style="border:none;border-top:1px solid #e8e0d4;margin:0 0 64px;">
+
+    <div class="stone-profile-embed__content" style="display:grid;grid-template-columns:1fr 1fr;gap:48px 80px;">
+
+      {% if stone.mythology != blank %}
+      <div>
+        <h3 style="font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#9c8a72;margin:0 0 16px;">Mitologia i symbolika</h3>
+        <div style="font-size:15px;line-height:1.8;color:#4a3f30;">{{ stone.mythology.value }}</div>
+      </div>
+      {% endif %}
+
+      {% if stone.historia_kamienia != blank %}
+      <div>
+        <h3 style="font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#9c8a72;margin:0 0 16px;">Pochodzenie</h3>
+        <div style="font-size:15px;line-height:1.8;color:#4a3f30;">{{ stone.historia_kamienia.value }}</div>
+      </div>
+      {% endif %}
+
+      {% if stone.care_instructions != blank %}
+      <div>
+        <h3 style="font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#9c8a72;margin:0 0 16px;">Pielęgnacja</h3>
+        <div style="font-size:15px;line-height:1.8;color:#4a3f30;">{{ stone.care_instructions.value }}</div>
+      </div>
+      {% endif %}
+
+      {% if stone.epir_technique != blank %}
+      <div>
+        <h3 style="font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#9c8a72;margin:0 0 16px;">Technika EPIR</h3>
+        <div style="font-size:15px;line-height:1.8;color:#4a3f30;">{{ stone.epir_technique.value }}</div>
+      </div>
+      {% endif %}
+
+      {% if stone.komu_dedykowany_jest_ten_kamien != blank %}
+      <div>
+        <h3 style="font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#9c8a72;margin:0 0 16px;">Dla kogo</h3>
+        <div style="font-size:15px;line-height:1.8;color:#4a3f30;">{{ stone.komu_dedykowany_jest_ten_kamien.value }}</div>
+      </div>
+      {% endif %}
+
+      {% if stone.design_challenge != blank %}
+      <div>
+        <h3 style="font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#9c8a72;margin:0 0 16px;">Wyzwanie projektowe</h3>
+        <div style="font-size:15px;line-height:1.8;color:#4a3f30;">{{ stone.design_challenge.value | newline_to_br }}</div>
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+
+<style>
+  @media (max-width: 768px) {
+    .stone-profile-embed__hero,
+    .stone-profile-embed__content {
+      grid-template-columns: 1fr !important;
+      gap: 32px !important;
+    }
+    .stone-profile-embed__image img {
+      height: 320px !important;
+    }
+  }
+</style>
+
+{% endif %}
+
+{% schema %}
+{
+  "name": "Stone Profile",
+  "tag": "section",
+  "class": "stone-profile-embed",
+  "settings": [],
+  "presets": [
+    {
+      "name": "Stone Profile"
+    }
+  ]
+}
+{% endschema %}

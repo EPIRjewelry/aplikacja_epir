@@ -175,6 +175,43 @@ async function getShopifyCartId() {
 }
 
 /**
+ * Usuwa z treści literalny śmieć `tool_calls: [...]` (model czasem powiela przykłady z promptu).
+ */
+function stripLeakedToolCallsLiterals(text) {
+  if (!text || typeof text !== 'string') return '';
+  var out = text;
+  for (var guard = 0; guard < 12; guard++) {
+    var m = /\btool_calls\s*:/i.exec(out);
+    if (!m) break;
+    var start = m.index;
+    var i = start + m[0].length;
+    while (i < out.length && /\s/.test(out[i])) i++;
+    if (out[i] !== '[') {
+      out = out.slice(0, start) + out.slice(i);
+      continue;
+    }
+    var depth = 0;
+    var j = i;
+    for (; j < out.length; j++) {
+      var c = out[j];
+      if (c === '[') depth++;
+      else if (c === ']') {
+        depth--;
+        if (depth === 0) {
+          out = out.slice(0, start) + out.slice(j + 1);
+          break;
+        }
+      }
+    }
+    if (j >= out.length) {
+      out = out.slice(0, start).replace(/\s+$/,'');
+      break;
+    }
+  }
+  return out.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
  * Parsuje odpowiedź asystenta i wyodrębnia specjalne akcje
  * Zwraca obiekt z parsed text + extracted actions
  */
@@ -189,6 +226,9 @@ function parseAssistantResponse(text) {
   };
   
   let cleanedText = text;
+
+  // Model czasem wypisuje literalny tekst `tool_calls: [...]` (powielenie przykładów z promptu) zamiast użyć API — ukryj przed klientem
+  cleanedText = stripLeakedToolCallsLiterals(cleanedText);
   
   // Wyczyść ewentualne markery Harmony/tool_call (fallback) zanim pokażemy userowi
   cleanedText = cleanedText
@@ -245,9 +285,13 @@ function renderCheckoutButton(checkoutUrl, messageEl) {
 
 function reportUiExtensionError(error, context = {}) {
   try {
-    const publish = typeof Shopify !== 'undefined' && Shopify?.analytics && typeof Shopify.analytics.publish === 'function'
-      ? Shopify.analytics.publish
-      : null;
+    const publish =
+      typeof Shopify !== 'undefined' &&
+      Shopify &&
+      Shopify.analytics &&
+      typeof Shopify.analytics.publish === 'function'
+        ? Shopify.analytics.publish
+        : null;
     if (!publish) return;
 
     const safeError = error instanceof Error ? error : new Error(String(error));
@@ -293,34 +337,51 @@ function initAssistantUIForSection(section) {
     const launcher = section.querySelector('#assistant-launcher') || section.querySelector('#assistant-launcher-embed');
     const closeBtn = section.querySelector('#assistant-close-button') || section.querySelector('#assistant-close-button-embed');
     const content = section.querySelector('#assistant-content') || section.querySelector('#assistant-content-embed');
+    const panel = section.querySelector('#assistant-panel') || section.querySelector('#assistant-panel-embed');
     if (!content) return;
+
+    /** Panel wraps header + body; is-closed toggles whole floating card (not inner content only). */
+    const toggleTarget = panel || content;
 
     const inline =
       section.dataset.inlineAssistant === '1' ||
       (section.id === 'epir-assistant-section' && !launcher);
 
     if (inline) {
-      content.classList.remove('is-closed');
+      toggleTarget.classList.remove('is-closed');
       section.dataset.assistantUiInit = '1';
     } else {
-      if (!launcher || !closeBtn) return;
+      if (!launcher) return;
       section.dataset.assistantUiInit = '1';
+      if (!closeBtn) {
+        try {
+          console.warn(
+            '[EPIR Assistant] Brak przycisku zamknięcia (#assistant-close-button / #assistant-close-button-embed) — otwieranie działa; zamykanie z nagłówka może być niedostępne.'
+          );
+        } catch (e) {}
+      }
 
       launcher.addEventListener('click', (e) => {
         e.preventDefault();
-        if (content) {
-          content.classList.remove('is-closed');
+        if (toggleTarget) {
+          toggleTarget.classList.remove('is-closed');
           launcher.setAttribute('aria-expanded', 'true');
         }
       });
 
-      closeBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        if (content) {
-          content.classList.add('is-closed');
-          launcher.setAttribute('aria-expanded', 'false');
-        }
-      });
+      if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (toggleTarget) {
+            toggleTarget.classList.add('is-closed');
+            launcher.setAttribute('aria-expanded', 'false');
+          }
+        });
+      }
+
+      if (toggleTarget && !toggleTarget.classList.contains('is-closed')) {
+        launcher.setAttribute('aria-expanded', 'true');
+      }
     }
 
     // --- Powitanie klienta imieniem z localStorage/sessionStorage ---
@@ -353,14 +414,15 @@ function initAssistantUIForSection(section) {
       console.log('[EPIR Assistant] 🚀 Proactive chat activation triggered:', event.detail);
       
       // Auto-open chat if closed
-      if (content && content.classList.contains('is-closed')) {
-        content.classList.remove('is-closed');
+      const shell = section.querySelector('#assistant-panel') || section.querySelector('#assistant-panel-embed') || content;
+      if (shell && shell.classList.contains('is-closed')) {
+        shell.classList.remove('is-closed');
         if (launcher) launcher.setAttribute('aria-expanded', 'true');
         console.log('[EPIR Assistant] ✅ Chat opened proactively');
       }
       
       // Optional: Add proactive greeting message
-      if (messagesEl && event.detail?.reason) {
+      if (messagesEl && event.detail && event.detail.reason) {
         const proactiveMsg = document.createElement('div');
         proactiveMsg.className = 'msg msg-assistant proactive-greeting';
         proactiveMsg.setAttribute('role', 'status');
@@ -380,8 +442,6 @@ function initAllAssistantSections() {
   const sectionBlock = document.getElementById('epir-assistant-section');
   const sectionEmbed = document.getElementById('epir-assistant-embed');
 
-  // Prevent duplicate UIs when both block and embed are enabled.
-  // Embed is preferred because it is global and consistent across pages.
   if (sectionBlock && sectionEmbed) {
     sectionBlock.style.display = 'none';
     sectionBlock.setAttribute('data-assistant-disabled-duplicate', 'true');

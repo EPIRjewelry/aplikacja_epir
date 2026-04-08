@@ -35,9 +35,11 @@ import {
   injectKimiMultimodalUserContent,
 } from './ai-client';
 import { CHAT_MODEL_ID } from './config/model-params';
+import { INTERNAL_DASHBOARD_SYSTEM_PROMPT } from './prompts/internal-dashboard-system-prompt';
 import { LUXURY_SYSTEM_PROMPT } from './prompts/luxury-system-prompt'; // 🟢 Używa nowego promptu v2
 import { TOOL_SCHEMAS } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2
 import { truncateWithSummary, type Message as HistoryMessage } from './utils/history'; // 🔵 History truncation
+import { stripLeakedToolCallsLiterals } from './utils/stripLeakedToolCallsLiterals';
 import { callMcpToolDirect, handleMcpRequest } from './mcp_server';
 
 /** Wywołanie run_analytics_query – tylko gdy channel=internal-dashboard (BIGQUERY_BATCH + ADMIN_KEY) */
@@ -149,6 +151,7 @@ type ResolvedStorefrontConfig = StaticStorefrontConfig & {
 type ChatContextOverride = {
   storefrontId?: string;
   channel?: string;
+  brand?: string;
 };
 
 type S2SChatAuthorizationResult =
@@ -164,6 +167,17 @@ type S2SChatAuthorizationResult =
 const EPIR_SHARED_SECRET_HEADER = 'X-EPIR-SHARED-SECRET';
 const EPIR_STOREFRONT_HEADER = 'X-EPIR-STOREFRONT-ID';
 const EPIR_CHANNEL_HEADER = 'X-EPIR-CHANNEL';
+const APP_PROXY_CHAT_CONTEXT_OVERRIDE: Required<ChatContextOverride> = {
+  storefrontId: 'online-store',
+  channel: 'online-store',
+  brand: 'epir',
+};
+
+function getSystemPromptForChannel(channel?: string): string {
+  return channel === 'internal-dashboard'
+    ? INTERNAL_DASHBOARD_SYSTEM_PROMPT
+    : LUXURY_SYSTEM_PROMPT;
+}
 
 function hasAppProxySignature(request: Request, url: URL): boolean {
   return Boolean(
@@ -189,9 +203,15 @@ async function authorizeAppProxyRequest(request: Request, env: Env): Promise<Res
 
   // [BEZPIECZEŃSTWO] Replay protection
   const url = new URL(request.url);
-  const signature = url.searchParams.get('signature') ?? request.headers.get('x-shopify-hmac-sha256') ?? '';
+  const querySignature = url.searchParams.get('signature');
+  const signature = querySignature ?? request.headers.get('x-shopify-hmac-sha256') ?? '';
   const timestamp = url.searchParams.get('timestamp') ?? '';
-  if (signature && timestamp) {
+  const isShopifyQuerySignature = Boolean(querySignature);
+
+  // Shopify App Proxy signatures (query `signature`) can legitimately repeat across requests.
+  // Enforcing one-time replay for query signature causes false-positive 401 in normal storefront chat usage.
+  // Keep replay protection for header-based signatures only.
+  if (signature && timestamp && !isShopifyQuerySignature) {
     const doId = env.SESSION_DO.idFromName('replay-protection-global');
     const stub = env.SESSION_DO.get(doId);
     const replayResult = await replayCheck(stub, signature, timestamp);
@@ -413,7 +433,9 @@ function parseChatRequestBody(
   const cartId = typeof maybe.cart_id === 'string' && maybe.cart_id.length > 0 ? maybe.cart_id : undefined;
   const stream = typeof maybe.stream === 'boolean' ? maybe.stream : true; // Domyślnie włączamy stream
   const brandFromBody = typeof maybe.brand === 'string' && maybe.brand.trim().length > 0 ? maybe.brand.trim().toLowerCase() : undefined;
-  const brand = brandFromBody ?? (typeof xBrand === 'string' && xBrand.trim().length > 0 ? xBrand.trim().toLowerCase() : undefined);
+  const brand = contextOverride?.brand
+    ?? brandFromBody
+    ?? (typeof xBrand === 'string' && xBrand.trim().length > 0 ? xBrand.trim().toLowerCase() : undefined);
   const rawImageLegacy = hasLegacyImage ? String(maybe.image_base64).trim() : undefined;
   const rawFromParts = fromParts?.imageRaw;
   const rawImage = rawImageLegacy ?? rawFromParts;
@@ -653,7 +675,7 @@ export class SessionDO {
       return new Response('ok');
     }
 
-    // POST /set-storefront-context (ANALYTICS_KB: storefront_id + channel for messages_raw)
+    // POST /set-storefront-context (kanoniczny kontrakt danych: storefront_id + channel dla messages_raw)
     if (method === 'POST' && pathname.endsWith('/set-storefront-context')) {
       const payload = (await request.json().catch(() => null)) as { storefront_id?: string; channel?: string } | null;
       if (payload) {
@@ -936,7 +958,7 @@ async function handleChat(
     });
   }
 
-  // Zapisz storefront_id i channel w DO (ANALYTICS_KB: dla messages_raw)
+  // Zapisz storefront_id i channel w DO (kanoniczny kontrakt danych: dla messages_raw)
   if (payload.storefrontId || payload.channel) {
     const sfConfig = resolveStorefrontConfig(env, payload.storefrontId);
     await stub.fetch('https://session/set-storefront-context', {
@@ -955,11 +977,13 @@ async function handleChat(
   const isShortGreeting = !payload.image_base64 && greetingCheck.length < 15 && greetingPattern.test(greetingCheck);
 
   if (isShortGreeting) {
-    const greetingReply = (payload.storefrontId === 'kazka' || payload.brand === 'kazka')
-      ? 'Witaj! Jestem Aura, doradca marki Kazka Jewelry. Jak mogę Ci dzisiaj pomóc? ✨'
-      : (payload.storefrontId === 'zareczyny' || payload.brand === 'zareczyny')
-        ? 'Witaj! Jestem Aura, doradca pierścionków zaręczynowych EPIR. Jak mogę Ci dzisiaj pomóc? 💍'
-        : 'Witaj! Jestem Aura, doradca z pracowni EPIR Art Jewellery. Jak mogę Ci dzisiaj pomóc? 🌟';
+    const greetingReply = payload.channel === 'internal-dashboard'
+      ? 'Witaj! Jestem Dev-asystent EPIR. Mogę pomóc w architekturze, analytics i operacjach systemu. 🛠️'
+      : (payload.storefrontId === 'kazka' || payload.brand === 'kazka')
+        ? 'Witaj! Jestem Gemma, doradca marki Kazka Jewelry. Jak mogę Ci dzisiaj pomóc? ✨'
+        : (payload.storefrontId === 'zareczyny' || payload.brand === 'zareczyny')
+          ? 'Witaj! Jestem Gemma, doradca pierścionków zaręczynowych EPIR. Jak mogę Ci dzisiaj pomóc? 💍'
+          : 'Witaj! Jestem Gemma, doradca z pracowni EPIR Art Jewellery. Jak mogę Ci dzisiaj pomóc? 🌟';
     await stub.fetch('https://session/append', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1122,8 +1146,10 @@ async function streamAssistantResponse(
         );
       }
 
+      const baseSystemPrompt = getSystemPromptForChannel(storefrontContext?.channel);
+
       const messages: GroqMessage[] = [
-        { role: 'system', content: LUXURY_SYSTEM_PROMPT },
+        { role: 'system', content: baseSystemPrompt },
         ...(aiProfilePrompt ? [{ role: 'system' as const, content: aiProfilePrompt }] : []),
         { role: 'system', content: `Oto dostępne schematy narzędzi:\n${toolSchemaString}` },
       ];
@@ -1322,11 +1348,10 @@ async function streamAssistantResponse(
 
         } else {
           // NIE - To była finalna odpowiedź tekstowa (bez wywołań narzędzi)
-          // Wysyłamy akumulowany tekst do klienta i ustawiamy jako finalny.
-          finalTextResponse = iterationText;
-          if (iterationText) {
-            // Prześlij cały tekst tej iteracji (delta) do klienta w jednym evencie.
-            await sendDelta(iterationText);
+          // Model czasem powiela z promptu literalny tekst `tool_calls: [...]` — nie pokazuj tego klientowi.
+          finalTextResponse = stripLeakedToolCallsLiterals(iterationText);
+          if (finalTextResponse) {
+            await sendDelta(finalTextResponse);
           }
           break; // Wyjdź z pętli for
         }
@@ -1339,8 +1364,8 @@ async function streamAssistantResponse(
         try {
           const recoveryText = await getGroqResponse(currentMessages, env, { sessionId });
           if (typeof recoveryText === 'string' && recoveryText.trim()) {
-            finalTextResponse = recoveryText;
-            await sendDelta(finalTextResponse);
+            finalTextResponse = stripLeakedToolCallsLiterals(recoveryText);
+            if (finalTextResponse) await sendDelta(finalTextResponse);
           }
         } catch (recoveryErr) {
           console.error('[streamAssistant] ❌ Fallback getGroqResponse failed:', recoveryErr);
@@ -1501,7 +1526,7 @@ export default {
 
     // Endpoint czatu (zabezpieczony przez App Proxy)
     if (url.pathname === '/apps/assistant/chat' && request.method === 'POST') {
-      return handleChat(request, env, undefined, ctx);
+      return handleChat(request, env, APP_PROXY_CHAT_CONTEXT_OVERRIDE, ctx);
     }
 
     // Endpoint czatu headless / BFF – zabezpieczony shared secret + headers kontekstowe.
@@ -1513,7 +1538,7 @@ export default {
         if (appProxyAuthError) {
           return appProxyAuthError;
         }
-        return handleChat(request, env, undefined, ctx);
+        return handleChat(request, env, APP_PROXY_CHAT_CONTEXT_OVERRIDE, ctx);
       }
 
       const s2sResult = verifyS2SChatRequest(request, env);
@@ -1545,6 +1570,7 @@ export {
   ensureHistoryArray,
   cors,
   handleChat,
+  getSystemPromptForChannel,
   verifyAppProxyHmac,
   handleMcpRequest,
   getGroqResponse,

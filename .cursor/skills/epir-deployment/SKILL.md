@@ -9,13 +9,13 @@ Specjalista od wdrożenia aplikacji EPIR. Zna pełną procedurę instalacji i de
 
 ## Wymagania (przed deployem)
 
-| Narzędzie | Weryfikacja | Instalacja |
-|-----------|-------------|------------|
-| Node.js 18+ | `node -v` | https://nodejs.org |
-| npm | `npm -v` | Z Node.js |
-| Wrangler | `wrangler --version` | `npm install -g wrangler` |
-| Shopify CLI | `shopify version` | `npm install -g @shopify/cli@latest` |
-| Cloudflare login | `wrangler whoami` | `wrangler login` |
+| Narzędzie                 | Weryfikacja               | Instalacja                               |
+| ------------------------- | ------------------------- | ---------------------------------------- |
+| Node.js 18+               | `node -v`                 | https://nodejs.org                       |
+| npm                       | `npm -v`                  | Z Node.js                                |
+| Wrangler                  | `wrangler --version`      | `npm install -g wrangler`                |
+| Shopify CLI               | `shopify version`         | `npm install -g @shopify/cli@latest`     |
+| Cloudflare login          | `wrangler whoami`         | `wrangler login`                         |
 | Shopify (app + dev store) | `shopify app config link` | Powiązanie z apką w Partners i dev store |
 
 ## Kolejność deploymentu (wykonuj w tej kolejności)
@@ -68,6 +68,7 @@ shopify app config link
 ```
 
 CLI zapyta o:
+
 1. **Aplikację** – wybierz istniejącą (np. "epir_ai") lub utwórz nową. `client_id` w `shopify.app.toml` musi się zgadzać z apką w Partners.
 2. **Dev store** – wybierz development store (np. `epir-art-silver-jewellery.myshopify.com` lub inny dev store).
 
@@ -76,6 +77,7 @@ Po linku: `shopify app deploy` będzie wiedział, dokąd wgrywać extensions.
 ### Shopify (w ramach Fazy 1)
 
 `deploy.ps1` obejmuje pełny deploy aplikacji Shopify:
+
 - **shopify app build** – buduje extensions (asystent-klienta, my-web-pixel)
 - **shopify app deploy --allow-updates** – wgrywa extensions i konfigurację (App Proxy, webhooks) do Shopify Partners
 
@@ -104,11 +106,11 @@ wrangler pages deploy public --project-name=zareczyny-hydrogen-pages
 
 ## Ścieżki projektu
 
-| Element | Ścieżka |
-|---------|---------|
-| Główny projekt | `d:\aplikacja_epir` |
-| RAG worker | `d:\aplikacja_epir\workers\rag-worker` |
-| Dokumentacja | `docs/DEPLOYMENT_EPIR.md`, `docs/PODSUMOWANIE_WDROZENIA.md` |
+| Element        | Ścieżka                                                                      |
+| -------------- | ---------------------------------------------------------------------------- |
+| Główny projekt | `d:\aplikacja_epir`                                                          |
+| RAG worker     | `d:\aplikacja_epir\workers\rag-worker`                                       |
+| Dokumentacja   | `docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md`, `docs/EPIR_INGRESS_AND_RUNTIME.md` |
 
 ## Zachowanie agenta
 

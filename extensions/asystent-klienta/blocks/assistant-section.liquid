@@ -2,14 +2,14 @@
   assign default_title = 'Czat z Gemmą'
   assign default_greeting = 'Witaj! Jestem Gemmą, doradczynią EPIR Art Jewellery. Jak mogę pomóc w wyborze biżuterii?'
   assign default_placeholder = 'Napisz wiadomość, np. „Pokaż pierścionki zaręczynowe z szafirem”'
-  assign app_version = 'v1.2.0-persona-ui-ssot-2026-04-05'
+  assign default_start_closed = true
+  assign app_version = 'v1.4.0-panel-wrapper-2026-04-07'
 %}
 
 {% schema %}
 {
   "name": "Asystent EPIR (sekcja)",
   "target": "section",
-  "stylesheet": "assistant.css",
   "javascript": "assistant.js",
   "settings": [
     {
@@ -35,6 +35,12 @@
       "default": "Napisz wiadomość, np. „Pokaż pierścionki zaręczynowe z szafirem”"
     },
     {
+      "type": "checkbox",
+      "id": "start_closed",
+      "label": "Start jako launcher – panel otwiera się po kliknięciu (jak App Embed)",
+      "default": true
+    },
+    {
       "type": "color",
       "id": "accent_color",
       "label": "Kolor akcentujący (przycisk)",
@@ -46,21 +52,35 @@
       "label": "URL workera czatu",
       "info": "Endpoint czatu (zalecane Shopify App Proxy: /apps/assistant/chat)",
       "default": "/apps/assistant/chat"
+    },
+    {
+      "type": "text",
+      "id": "storefront_id",
+      "label": "Storefront ID (kontekst workera)",
+      "default": "epir-liquid"
+    },
+    {
+      "type": "text",
+      "id": "channel",
+      "label": "Kanał (kontekst workera)",
+      "default": "online-store"
     }
   ]
 }
 {% endschema %}
 
-<section id="epir-assistant-section"
-  class="epir-assistant epir-assistant-section"
+<section
+  id="epir-assistant-section"
+  class="epir-assistant epir-assistant-section epir-assistant--bottom-right"
   aria-live="polite"
   data-app-version="{{ app_version }}"
   data-shop-domain="{{ shop.myshopify_domain }}"
   data-logged-in-customer-id="{{ customer.id | default: '' }}"
   data-worker-endpoint="{{ block.settings.worker_endpoint | default: '/apps/assistant/chat' }}"
+  data-storefront-id="{{ block.settings.storefront_id | default: 'epir-liquid' }}"
+  data-channel="{{ block.settings.channel | default: 'online-store' }}"
   data-brand="epir"
-  data-inline-assistant="1"
-  data-start-closed="false"
+  data-start-closed="{{ block.settings.start_closed | default: default_start_closed }}"
   data-stream-render="dots"
 >
   <style>
@@ -72,6 +92,9 @@
     }
     #epir-assistant-section #assistant-input:focus {
       border-color: {{ block.settings.accent_color | default: '#8B7D6A' }};
+    }
+    #epir-assistant-section .epir-assistant-launcher {
+      background-color: {{ block.settings.accent_color | default: '#8B7D6A' }};
     }
     #epir-assistant-section .assistant-loader {
       display: flex;
@@ -95,11 +118,18 @@
   </style>
 
   <div class="assistant-container">
-    <div class="assistant-header" role="heading" aria-level="3">
-      <h3>{{ block.settings.title | default: default_title }}</h3>
-    </div>
+    <div
+      id="assistant-panel"
+      class="assistant-panel{% unless block.settings.start_closed == false %} is-closed{% endunless %}"
+    >
+      <div class="assistant-header" role="heading" aria-level="3">
+        <h3>{{ block.settings.title | default: default_title }}</h3>
+        <button id="assistant-close-button" type="button" class="assistant-close-btn" aria-label="Zamknij panel czatu">
+          ✕
+        </button>
+      </div>
 
-    <div id="assistant-content" class="assistant-content">
+      <div id="assistant-content" class="assistant-content">
       <div id="assistant-messages" class="assistant-messages" role="log" aria-atomic="false" aria-live="polite">
         <div class="msg msg-assistant welcome-message" role="status">
           {{ block.settings.greeting_message | default: default_greeting }}
@@ -124,6 +154,21 @@
       <div id="assistant-loader" class="assistant-loader" style="display:none" aria-live="polite" aria-label="Oczekiwanie na odpowiedź">
         <span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
       </div>
+      </div>
     </div>
+
+    <button
+      id="assistant-launcher"
+      type="button"
+      class="epir-assistant-launcher"
+      aria-expanded="false"
+      aria-controls="assistant-panel"
+      aria-label="{{ block.settings.title | default: default_title }}"
+    >
+      Czat
+    </button>
   </div>
 </section>
+
+{{ 'assistant.css' | asset_url | stylesheet_tag }}
+<script src="{{ 'assistant.js' | asset_url }}" defer></script>

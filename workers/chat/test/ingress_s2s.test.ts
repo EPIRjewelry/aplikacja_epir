@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import worker, { SessionDO, parseChatRequestBody } from '../src/index';
 import type { Env } from '../src/config/bindings';
+import { computeHmac, shopifyAppProxyCanonicalString } from '../src/hmac';
 
 const noopCtx = { waitUntil() {} } as unknown as ExecutionContext;
 
@@ -57,7 +58,9 @@ function makeSessionNamespace() {
 
         return {
           fetch(input: RequestInfo | URL, init?: RequestInit) {
-            const request = input instanceof Request ? input : new Request(input, init);
+            const request = input instanceof Request
+              ? input
+              : new Request(new URL(String(input), 'https://session').toString(), init);
             return session!.instance.fetch(request);
           },
         } as DurableObjectStub;
@@ -106,6 +109,37 @@ function makeChatRequest(
         brand: 'zareczyny',
       },
     ),
+  });
+}
+
+async function makeSignedAppProxyRequest(url: string, body: Record<string, unknown>) {
+  const parsed = new URL(url);
+  const canonical = shopifyAppProxyCanonicalString(parsed.searchParams);
+  const signature = await computeHmac('shopify-app-secret', canonical);
+  parsed.searchParams.set('signature', signature);
+
+  return makeChatRequest(
+    {
+      accept: 'application/json, text/event-stream',
+    },
+    body,
+    parsed.toString(),
+  );
+}
+
+async function makeSignedJsonRequest(url: string, body: unknown) {
+  const parsed = new URL(url);
+  const canonical = shopifyAppProxyCanonicalString(parsed.searchParams);
+  const signature = await computeHmac('shopify-app-secret', canonical);
+  parsed.searchParams.set('signature', signature);
+
+  return new Request(parsed.toString(), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      accept: 'application/json, text/event-stream',
+    },
+    body: JSON.stringify(body),
   });
 }
 
@@ -208,6 +242,101 @@ describe('S2S ingress for /chat', () => {
     const session = sessions.get(String(payload.session_id));
     expect(session?.storage.get('storefront_id')).toBe('zareczyny');
     expect(session?.storage.get('channel')).toBe('hydrogen-zareczyny');
+  });
+
+  it('uses Dev-asystent greeting for internal-dashboard channel', async () => {
+    const { env } = makeEnv();
+    const response = await worker.fetch(
+      makeChatRequest(
+        {
+          'X-EPIR-SHARED-SECRET': 'shared-secret',
+          'X-EPIR-STOREFRONT-ID': 'online-store',
+          'X-EPIR-CHANNEL': 'internal-dashboard',
+        },
+        {
+          message: 'hej',
+          stream: false,
+          storefrontId: 'body-storefront',
+          channel: 'body-channel',
+          brand: 'epir',
+        },
+      ),
+      env,
+      noopCtx,
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { reply?: string; session_id?: string };
+    expect(payload.reply).toContain('Dev-asystent EPIR');
+    expect(payload.session_id).toBeTruthy();
+  });
+
+  it('forces online-store context for signed App Proxy requests even if body tampers channel and brand', async () => {
+    const { env, sessions } = makeEnv();
+    const nowTs = Math.floor(Date.now() / 1000);
+    const request = await makeSignedAppProxyRequest(
+      `https://asystent.epirbizuteria.pl/chat?shop=epir-art-silver-jewellery.myshopify.com&timestamp=${nowTs}`,
+      {
+        message: 'hej',
+        stream: false,
+        storefrontId: 'body-storefront',
+        channel: 'internal-dashboard',
+        brand: 'kazka',
+      },
+    );
+
+    const response = await worker.fetch(request, env, noopCtx);
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { reply?: string; session_id?: string };
+    expect(payload.reply).toContain('Jestem Gemma');
+    expect(payload.reply).not.toContain('Dev-asystent');
+    expect(payload.reply).not.toContain('Kazka Jewelry');
+
+    const session = sessions.get(String(payload.session_id));
+    expect(session?.storage.get('storefront_id')).toBe('online-store');
+    expect(session?.storage.get('channel')).toBe('online-store');
+  });
+
+  it('accepts signed App Proxy MCP tools/list with the same canonical verifier', async () => {
+    const { env } = makeEnv();
+    const nowTs = Math.floor(Date.now() / 1000);
+    const request = await makeSignedJsonRequest(
+      `https://asystent.epirbizuteria.pl/apps/assistant/mcp?shop=epir-art-silver-jewellery.myshopify.com&timestamp=${nowTs}`,
+      {
+        jsonrpc: '2.0',
+        method: 'tools/list',
+        id: 1,
+      },
+    );
+
+    const response = await worker.fetch(request, env, noopCtx);
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { result?: { tools?: unknown[] } };
+    expect(Array.isArray(payload.result?.tools)).toBe(true);
+    expect(payload.result?.tools?.length).toBeGreaterThan(0);
+  });
+
+  it('rejects invalid App Proxy signature for /apps/assistant/mcp', async () => {
+    const { env } = makeEnv();
+    const nowTs = Math.floor(Date.now() / 1000);
+    const request = new Request(
+      `https://asystent.epirbizuteria.pl/apps/assistant/mcp?shop=epir-art-silver-jewellery.myshopify.com&timestamp=${nowTs}&signature=bad-signature`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          accept: 'application/json, text/event-stream',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'tools/list', id: 1 }),
+      },
+    );
+
+    const response = await worker.fetch(request, env, noopCtx);
+
+    expect(response.status).toBe(401);
+    expect(await response.text()).toContain('Invalid HMAC signature');
   });
 });
 

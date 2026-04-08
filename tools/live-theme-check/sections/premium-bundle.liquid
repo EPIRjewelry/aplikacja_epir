@@ -1,0 +1,315 @@
+{{ "component-card.css" | asset_url | stylesheet_tag }}
+{{ "component-price.css" | asset_url | stylesheet_tag }}
+
+<style>
+  .section-{{ section.id }}-padding {
+    padding-top: {{ section.settings.padding_top | times: 0.75 | round: 0 }}px;
+    padding-bottom: {{ section.settings.padding_bottom | times: 0.75 | round: 0 }}px;
+    background-color: {{ section.settings.bg_color }};
+  }
+
+  @media screen and (min-width: 750px) {
+    .section-{{ section.id }}-padding {
+      padding-top: {{ section.settings.padding_top }}px;
+      padding-bottom: {{ section.settings.padding_bottom }}px;
+    }
+  }
+
+  .bundle-container { max-width: 1200px; margin: 0 auto; padding: 0 1.5rem; }
+  .bundle-card { background: white; border: 1px solid #e1e3e5; border-radius: 12px; padding: 20px; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+  .bundle-layout { display: flex; flex-direction: column; align-items: center; gap: 15px; }
+  @media screen and (min-width: 990px) {
+    .bundle-layout { flex-direction: row; justify-content: space-between; align-items: center; }
+  }
+  .bundle-item { display: flex; align-items: center; gap: 15px; flex: 1; text-decoration: none; color: inherit; transition: opacity 0.2s; }
+  .bundle-item:hover { opacity: 0.8; }
+  .bundle-image-wrapper { width: 80px; height: 80px; border-radius: 8px; overflow: hidden; flex-shrink: 0; border: 1px solid #f0f0f0; }
+  .bundle-image-wrapper img { width: 100%; height: 100%; object-fit: cover; }
+  .bundle-info h3 { margin: 0 0 5px 0; font-size: 1rem; font-weight: 600; }
+  .bundle-price-regular { color: #666; text-decoration: line-through; font-size: 0.9rem; margin-right: 8px; }
+  .bundle-operator { font-size: 24px; color: #ccc; font-weight: 300; margin: 0 10px; }
+  .bundle-cta { background-color: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center; min-width: 250px; border: 1px dashed {{ section.settings.accent_color }}; }
+  .bundle-total-price { display: block; font-size: 1.4rem; font-weight: bold; color: {{ section.settings.accent_color }}; margin-bottom: 5px; }
+  .bundle-saved-badge { display: inline-block; background-color: {{ section.settings.accent_color }}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .bundle-btn { width: 100%; background-color: #000; color: white; border: none; padding: 12px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+  .bundle-btn:hover { opacity: 0.8; } .bundle-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .bundle-feedback { font-size: 0.9rem; margin-top: 8px; color: #c62828; min-height: 1.2em; }
+  .desktop-only { display: none; } @media screen and (min-width: 990px) { .desktop-only { display: block; } }
+</style>
+
+{% comment %}
+Opcjonalny debug (włącz w ustawieniach sekcji: Debug = true)
+{% endcomment %}
+
+{%- if product != blank -%}
+  {%- assign complete_set_products = product.metafields.custom.do_kompletu.value -%}
+  {%- assign discount_percent = section.settings.discount_amount | divided_by: 100.0 -%}
+  {%- assign multiplier = 1.0 | minus: discount_percent -%}
+
+  {%- if complete_set_products != blank and complete_set_products.size > 0 -%}
+    <div class="section-{{ section.id }}-padding">
+      <div class="bundle-container">
+        {%- if section.settings.heading != blank -%}
+          <h2 class="h2" style="text-align: center; margin-bottom: 30px;">{{ section.settings.heading }}</h2>
+        {%- endif -%}
+
+        {%- for accessory in complete_set_products limit: section.settings.products_to_show -%}
+          {%- if accessory != blank and accessory.available and product.available -%}
+            {%- assign main_variant = product.selected_or_first_available_variant -%}
+            {%- assign accessory_variant = accessory.selected_or_first_available_variant -%}
+            {%- assign main_price = main_variant.price -%}
+            {%- assign accessory_price = accessory_variant.price -%}
+            {%- assign total_regular = main_price | plus: accessory_price -%}
+            {%- assign total_discounted = total_regular | times: multiplier | round: 0 -%}
+
+            {%- if main_variant and accessory_variant -%}
+              <div class="bundle-card">
+                <div class="bundle-layout">
+                  <a href="{{ product.url }}" class="bundle-item" aria-label="Główny produkt: {{ product.title }}">
+                    <div class="bundle-image-wrapper">
+                      {% if product.featured_image %}
+                        <img src="{{ product.featured_image | image_url: width: 200 }}" loading="lazy" width="200" height="200" alt="{{ product.title | escape }}">
+                      {% endif %}
+                    </div>
+                    <div class="bundle-info">
+                      <h3>{{ product.title | truncate: 30 }}</h3>
+                      <span class="price">{{ main_price | money }}</span>
+                    </div>
+                  </a>
+
+                  <div class="bundle-operator">+</div>
+
+                  <a href="{{ accessory.url }}" class="bundle-item" aria-label="Dodatek: {{ accessory.title }}">
+                    <div class="bundle-image-wrapper">
+                      {% if accessory.featured_image %}
+                        <img src="{{ accessory.featured_image | image_url: width: 200 }}" loading="lazy" width="200" height="200" alt="{{ accessory.title | escape }}">
+                      {% endif %}
+                    </div>
+                    <div class="bundle-info">
+                      <h3>{{ accessory.title | truncate: 30 }}</h3>
+                      <span class="price">{{ accessory_price | money }}</span>
+                    </div>
+                  </a>
+
+                  <div class="bundle-operator desktop-only">=</div>
+
+                  <div class="bundle-cta" aria-hidden="false">
+                    <span class="bundle-saved-badge">Oszczędzasz {{ section.settings.discount_amount }}%</span>
+                    <div class="bundle-prices" style="display:flex; align-items:center; justify-content:center; gap:8px;">
+                      <span class="bundle-price-regular">{{ total_regular | money }}</span>
+                      <span class="bundle-total-price">{{ total_discounted | money }}</span>
+                    </div>
+
+                    <button
+                      class="bundle-btn js-add-bundle"
+                      data-main-variant-id="{{ main_variant.id }}"
+                      data-addon-variant-id="{{ accessory_variant.id }}"
+                      aria-label="Dodaj zestaw: {{ product.title }} + {{ accessory.title }}"
+                    >
+                      Dodaj zestaw do koszyka
+                    </button>
+
+                    <div class="bundle-feedback" role="status" aria-live="polite" style="display:block;"></div>
+                  </div>
+                </div>
+              </div>
+            {%- endif -%}
+          {%- endif -%}
+        {%- endfor -%}
+      </div>
+    </div>
+  {%- endif -%}
+{%- endif -%}
+
+<script>
+  ;(function () {
+    if (window.bundleHandlerInitialized) return;
+    window.bundleHandlerInitialized = true;
+
+    function safeCartRoot() {
+      if (window.Shopify && window.Shopify.routes && window.Shopify.routes.root) {
+        return window.Shopify.routes.root;
+      }
+      return "/";
+    }
+
+    function setBtnState(btn, { disabled, text }) {
+      if (typeof text !== "undefined") {
+        btn.innerText = text;
+      }
+      btn.disabled = !!disabled;
+      btn.setAttribute("aria-disabled", !!disabled);
+    }
+
+    function showFeedback(el, message, isError) {
+      if (!el) return;
+      el.textContent = message || "";
+      el.style.color = isError ? "#c62828" : "#007a3d";
+    }
+
+    function initBundleButtons() {
+      const buttons = document.querySelectorAll(".js-add-bundle");
+      buttons.forEach(btn => {
+        if (btn.dataset.bundleBound) return;
+        btn.dataset.bundleBound = "1";
+
+        btn.addEventListener("click", async function () {
+          const feedbackEl = this.closest(".bundle-cta")?.querySelector(".bundle-feedback");
+          const originalText = this.innerText;
+
+          const mainId = parseInt(this.dataset.mainVariantId, 10);
+          const addonId = parseInt(this.dataset.addonVariantId, 10);
+
+          if (!mainId || isNaN(mainId) || !addonId || isNaN(addonId)) {
+            showFeedback(feedbackEl, "Błąd: brak poprawnych wariantów. Odśwież stronę.", true);
+            return;
+          }
+
+          setBtnState(this, { disabled: true, text: "Dodawanie..." });
+          showFeedback(feedbackEl, "");
+
+          const formData = {
+            items: [
+              { id: mainId, quantity: 1 },
+              { id: addonId, quantity: 1 }
+            ]
+          };
+
+          try {
+            const cartRoute = safeCartRoot();
+            const resp = await fetch(cartRoute + "cart/add.js", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+              },
+              body: JSON.stringify(formData)
+            });
+
+            if (!resp.ok) {
+              let errMessage = "Błąd dodawania do koszyka";
+              try {
+                const errJson = await resp.json();
+                if (errJson && (errJson.description || errJson.message || errJson.error)) {
+                  errMessage = errJson.description || errJson.message || errJson.error;
+                } else {
+                  errMessage = JSON.stringify(errJson);
+                }
+              } catch (e) {
+                try {
+                  errMessage = await resp.text();
+                } catch (e2) {}
+              }
+              throw new Error(errMessage);
+            }
+
+            showFeedback(feedbackEl, "Dodano do koszyka ✓", false);
+            setBtnState(this, { disabled: true, text: "Dodano! ✓" });
+
+            if (typeof window.dispatchEvent === "function") {
+              window.dispatchEvent(new CustomEvent("cart:updated"));
+              window.dispatchEvent(new CustomEvent("ajax-cart:updated"));
+            }
+
+            setTimeout(() => {
+              window.location.href = safeCartRoot() + "cart";
+            }, 700);
+          } catch (error) {
+            console.error("Bundle add error:", error);
+            showFeedback(feedbackEl, "Błąd! Spróbuj ponownie", true);
+            setBtnState(this, { disabled: false, text: "Spróbuj ponownie" });
+            setTimeout(() => {
+              setBtnState(this, { disabled: false, text: originalText });
+              showFeedback(feedbackEl, "");
+            }, 2500);
+          }
+        });
+      });
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initBundleButtons);
+    } else {
+      initBundleButtons();
+    }
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "Premium Bundle (Zestaw)",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Nagłówek sekcji",
+      "default": "Kup w zestawie i zyskaj"
+    },
+    {
+      "type": "range",
+      "id": "discount_amount",
+      "min": 5,
+      "max": 50,
+      "step": 5,
+      "unit": "%",
+      "label": "Wyświetlana zniżka (%)",
+      "default": 10,
+      "info": "Uwaga: To tylko wizualna zniżka. Aby zastosować rzeczywisty rabat, utwórz kod rabatowy w Shopify."
+    },
+    {
+      "type": "range",
+      "id": "products_to_show",
+      "min": 1,
+      "max": 20,
+      "step": 1,
+      "label": "Maksymalna liczba zestawów",
+      "default": 2
+    },
+    {
+      "type": "color",
+      "id": "bg_color",
+      "label": "Tło sekcji",
+      "default": "#ffffff"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Kolor akcentu (Zniżka)",
+      "default": "#d32f2f"
+    },
+    {
+      "type": "checkbox",
+      "id": "debug_mode",
+      "label": "Włącz tryb debug (pokazuje informacje o metafield)",
+      "default": false
+    },
+    {
+      "type": "header",
+      "content": "Odstępy"
+    },
+    {
+      "type": "range",
+      "id": "padding_top",
+      "min": 0,
+      "max": 100,
+      "step": 4,
+      "unit": "px",
+      "label": "Padding góra",
+      "default": 36
+    },
+    {
+      "type": "range",
+      "id": "padding_bottom",
+      "min": 0,
+      "max": 100,
+      "step": 4,
+      "unit": "px",
+      "label": "Padding dół",
+      "default": 36
+    }
+  ],
+  "presets": [
+    { "name": "Premium Bundle (Zestaw)" }
+  ]
+}
+{% endschema %}

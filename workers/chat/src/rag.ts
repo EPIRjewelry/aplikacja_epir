@@ -188,8 +188,9 @@ function extractKeywords(query: string): string {
  * Direct MCP tool call without HTTP - calls internal functions directly.
  * This replaces the HTTP fetch to avoid WORKER_ORIGIN configuration issues.
  * 
- * NOTE: For App Proxy calls from Shopify storefront, use /apps/assistant/mcp endpoint directly.
- * This function is for internal worker-to-worker calls within the same execution context.
+ * NOTE: `/apps/assistant/mcp` pozostaje podpisaną trasą kompatybilności dla narzędzi,
+ * ale nie jest kanonicznym buyer-facing ingress contract dla storefront chat.
+ * Ta funkcja służy do internal worker-to-worker calls w tym samym execution context.
  */
 export async function callMcpTool(env: any, toolName: string, args: any): Promise<any> {
   // Prefer the shop's canonical MCP endpoint (https://{SHOP_DOMAIN}/api/mcp) when available.

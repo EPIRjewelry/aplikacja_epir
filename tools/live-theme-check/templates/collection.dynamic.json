@@ -1,0 +1,85 @@
+/*
+ * ------------------------------------------------------------
+ * IMPORTANT: The contents of this file are auto-generated.
+ *
+ * This file may be updated by the Shopify admin theme editor
+ * or related systems. Please exercise caution as any changes
+ * made to this file may be overwritten.
+ * ------------------------------------------------------------
+ */
+{
+  "sections": {
+    "dynamic_hero": {
+      "type": "collection-hero-dynamic",
+      "settings": {}
+    },
+    "main": {
+      "type": "main-collection-product-grid",
+      "settings": {
+        "container": "container-full",
+        "grid_layout": "grid",
+        "grid_columns": "4",
+        "show_columns_switcher": true,
+        "pagination_limit": 12,
+        "paginate_type": "paginate",
+        "show_sorting": true,
+        "show_filter": true,
+        "filters_type": "storefront_filters",
+        "sidebar": "fixed",
+        "sidebar_title": "Filters",
+        "limit_height_widget": false,
+        "limit_height": 490,
+        "change_product_variant_on_fitlering": true,
+        "show_product_count": true,
+        "collapsed_groups": "Brand, Vendor, Size",
+        "color_swatches": "color,colour,couleur,farbe",
+        "color_swatches_design": "inline"
+      }
+    },
+    "recent_viewed": {
+      "type": "recent-viewed-products",
+      "settings": {
+        "container": "w-full",
+        "color_scheme": "",
+        "heading": "Ostatnio oglądane wyroby",
+        "heading_size": "h3",
+        "text_align": "left",
+        "limit": 8,
+        "columns": 5,
+        "column_gap": 30,
+        "pcard_layout": "",
+        "pcard_image_ratio": "",
+        "show_vendor": false,
+        "hide_title": false,
+        "enable_slider": true,
+        "show_pagination": false,
+        "show_navigation": false,
+        "mobile_disable_slider": false,
+        "use_scroll_mobile": true,
+        "item_gap_mobile": 16,
+        "padding_top": 0,
+        "padding_bottom": 0,
+        "custom_class": "",
+        "animations": "inherit"
+      }
+    },
+    "collection_lookbook_dynamic_QAKJfG": {
+      "type": "collection-lookbook-dynamic",
+      "name": "Collection Lookbook",
+      "settings": {
+        "heading": "Perełki z tej kolekcji",
+        "subheading": "Poszukujesz biżuterii w oryginalnej formie? Zapraszamy.",
+        "show_collection_name": true,
+        "columns": 3,
+        "padding_top": 36,
+        "padding_bottom": 36
+      }
+    }
+  },
+  "order": [
+    "dynamic_hero",
+    "main",
+    "recent_viewed",
+    "collection_lookbook_dynamic_QAKJfG"
+  ]
+}

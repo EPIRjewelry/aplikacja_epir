@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 
 const cfg = {
-  appProxyUrl:
-    process.env.EPIR_APP_PROXY_URL ?? 'https://asystent.epirbizuteria.pl/apps/assistant/chat',
-  // Powinien odpowiadać sekretowi SHOPIFY_APP_SECRET ustawionemu po stronie chat workera.
-  sharedSecret: process.env.SHOPIFY_APP_PROXY_SHARED_SECRET,
   shopDomain:
     process.env.SHOPIFY_SHOP_DOMAIN ?? 'epir-art-silver-jewellery.myshopify.com',
+  appProxyUrl:
+    process.env.EPIR_APP_PROXY_URL
+    ?? `https://${process.env.SHOPIFY_SHOP_DOMAIN ?? 'epir-art-silver-jewellery.myshopify.com'}/apps/assistant/chat`,
+  // Powinien odpowiadać sekretowi SHOPIFY_APP_SECRET ustawionemu po stronie chat workera.
+  sharedSecret: process.env.SHOPIFY_APP_PROXY_SHARED_SECRET,
   brand: process.env.EPIR_BRAND ?? 'zareczyny',
   timeoutMs: Number(process.env.EPIR_TIMEOUT_MS ?? '10000'),
 };
@@ -51,32 +52,25 @@ function previewBody(bodyText) {
 }
 
 async function sendRequest({
-  includeSignatureHeader,
+  includeSignature = true,
   signatureSecret,
-  tamperBodyAfterSigning = false,
 }) {
   const url = buildScenarioUrl();
-  const signedBody = JSON.stringify(buildPayload());
-  const canonical = canonicalizeParams(url.searchParams);
-  const signature = signHex(signatureSecret, canonical + signedBody);
-
-  const requestBody = tamperBodyAfterSigning
-    ? JSON.stringify({ ...buildPayload(), message: 'hej (tampered)' })
-    : signedBody;
+  if (includeSignature) {
+    const canonical = canonicalizeParams(url.searchParams);
+    const signature = signHex(signatureSecret, canonical);
+    url.searchParams.set('signature', signature);
+  }
 
   const headers = new Headers({
     'Content-Type': 'application/json',
     Accept: 'application/json, text/event-stream',
   });
 
-  if (includeSignatureHeader) {
-    headers.set('x-shopify-hmac-sha256', signature);
-  }
-
   const response = await fetch(url, {
     method: 'POST',
     headers,
-    body: requestBody,
+    body: JSON.stringify(buildPayload()),
     signal: AbortSignal.timeout(cfg.timeoutMs),
   });
 
@@ -104,26 +98,22 @@ const scenarios = [
     name: 'Brak sygnatury HMAC',
     expected: [401],
     params: {
-      includeSignatureHeader: false,
+      includeSignature: false,
       signatureSecret: 'unused-secret',
     },
   },
   {
-    name: 'Niezgodność kryptograficzna (zły sekret / manipulacja)',
+    name: 'Niezgodność kryptograficzna (zły sekret)',
     expected: [401, 403],
     params: {
-      includeSignatureHeader: true,
       signatureSecret: 'wrong-secret',
-      tamperBodyAfterSigning: false,
     },
   },
   {
-    name: 'Poprawna autoryzacja HMAC-SHA256',
+    name: 'Poprawna autoryzacja Shopify App Proxy signature',
     expected: [200],
     params: {
-      includeSignatureHeader: true,
       signatureSecret: cfg.sharedSecret,
-      tamperBodyAfterSigning: false,
     },
   },
 ];

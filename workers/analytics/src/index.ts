@@ -915,7 +915,7 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
       if (data.sessionId) {
         sessionId = String(data.sessionId);
       }
-      // Storefront & channel (from Web Pixel enriched payload - ANALYTICS_KB)
+      // Storefront & channel (zgodnie z kanonicznym kontraktem danych EPIR)
       if (typeof data.storefront_id === 'string') {
         storefrontId = data.storefront_id;
       }

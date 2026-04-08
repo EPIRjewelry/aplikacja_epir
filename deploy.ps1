@@ -34,13 +34,13 @@ wrangler deploy
 if ($LASTEXITCODE -ne 0) { throw "chat deploy failed" }
 
 # 4. Shopify app – build i deploy (extensions, app proxy)
-Write-Host "`n[6/7] shopify app build..." -ForegroundColor Yellow
+Write-Host "`n[6/7] shopify app build (repo @shopify/cli via npm script)..." -ForegroundColor Yellow
 Set-Location $root
-shopify app build
+npm run shopify:app:build
 if ($LASTEXITCODE -ne 0) { throw "shopify app build failed" }
 
 Write-Host "`n[7/7] shopify app deploy..." -ForegroundColor Yellow
-shopify app deploy --allow-updates
+npm run shopify:app:deploy
 if ($LASTEXITCODE -ne 0) { throw "shopify app deploy failed" }
 
 Write-Host "`n=== Deploy zakonczony ===" -ForegroundColor Green

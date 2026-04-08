@@ -1,4 +1,4 @@
--- Migration 003: Add storefront_id and channel to messages (ANALYTICS_KB)
+-- Migration 003: Add storefront_id and channel to messages (kanoniczny kontrakt danych EPIR)
 -- Purpose: Enable segmentacja kazka vs zareczyny in BigQuery messages_raw
 -- Run: wrangler d1 execute ai-assistant-sessions-db --remote --file=./migrations/003_storefront_messages.sql
 

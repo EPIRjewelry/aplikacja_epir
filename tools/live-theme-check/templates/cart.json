@@ -1,0 +1,108 @@
+/*
+ * ------------------------------------------------------------
+ * IMPORTANT: The contents of this file are auto-generated.
+ *
+ * This file may be updated by the Shopify admin theme editor
+ * or related systems. Please exercise caution as any changes
+ * made to this file may be overwritten.
+ * ------------------------------------------------------------
+ */
+{
+  "sections": {
+    "recent-viewed-products": {
+      "type": "recent-viewed-products",
+      "settings": {
+        "container": "container",
+        "color_scheme": "",
+        "heading": "Ostatnio oglądane wyroby",
+        "heading_size": "h3",
+        "text_align": "left",
+        "limit": 8,
+        "columns": 4,
+        "column_gap": 30,
+        "pcard_layout": "",
+        "pcard_image_ratio": "",
+        "show_vendor": false,
+        "hide_title": false,
+        "enable_slider": true,
+        "show_pagination": false,
+        "show_navigation": false,
+        "mobile_disable_slider": false,
+        "use_scroll_mobile": true,
+        "item_gap_mobile": 16,
+        "padding_top": 0,
+        "padding_bottom": 0,
+        "custom_class": "",
+        "animations": "inherit"
+      }
+    },
+    "main": {
+      "type": "cart-template",
+      "settings": {}
+    },
+    "empty_space_cbbPmh": {
+      "type": "empty-space",
+      "settings": {
+        "container": "container-fluid",
+        "color_scheme": "",
+        "show_divider_line": true,
+        "divider_style": "solid",
+        "divider_height": 1,
+        "padding_top": 0,
+        "padding_bottom": 0,
+        "custom_class": ""
+      }
+    },
+    "rich_text_ej3eq3": {
+      "type": "rich-text",
+      "blocks": {
+        "text_9ePBxi": {
+          "type": "text",
+          "settings": {
+            "text": "<p>Płatności w naszym sklepie obsługuje Tpay. Możliwe również raty Banku Pekao oraz płatności odroczone PayPo lub Twisto do 30 dni.</p>"
+          }
+        }
+      },
+      "block_order": [
+        "text_9ePBxi"
+      ],
+      "settings": {
+        "container": "container",
+        "color_scheme": "",
+        "content_alignment": "center",
+        "padding_top": 0,
+        "padding_bottom": 0,
+        "custom_class": "",
+        "animations": "inherit"
+      }
+    },
+    "custom_liquid_E6QEkm": {
+      "type": "custom-liquid",
+      "settings": {
+        "custom_liquid": "<a href=\"https://tpay.com/jak-to-dziala\" target=\"_blank\" title=\"Obsługujemy płatności internetowe przez system płatności online Tpay\"><img src=\"https://tpay.com/img/banners/tpay-820x45.svg\" style=\"border:0\" alt=\"Logo Tpay\" title=\"Logo Tpay\"/></a>",
+        "custom_class": ""
+      }
+    },
+    "empty_space_7zrpYk": {
+      "type": "empty-space",
+      "settings": {
+        "container": "container-fluid",
+        "color_scheme": "",
+        "show_divider_line": true,
+        "divider_style": "solid",
+        "divider_height": 5,
+        "padding_top": 6,
+        "padding_bottom": 6,
+        "custom_class": ""
+      }
+    }
+  },
+  "order": [
+    "recent-viewed-products",
+    "main",
+    "empty_space_cbbPmh",
+    "rich_text_ej3eq3",
+    "custom_liquid_E6QEkm",
+    "empty_space_7zrpYk"
+  ]
+}

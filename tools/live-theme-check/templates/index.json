@@ -1,0 +1,1015 @@
+/*
+ * ------------------------------------------------------------
+ * IMPORTANT: The contents of this file are auto-generated.
+ *
+ * This file may be updated by the Shopify admin theme editor
+ * or related systems. Please exercise caution as any changes
+ * made to this file may be overwritten.
+ * ------------------------------------------------------------
+ */
+{
+  "sections": {
+    "video_hero_atr8xm": {
+      "type": "video-hero",
+      "name": "Video hero",
+      "settings": {
+        "color_scheme": "",
+        "container": "w-full",
+        "hero_size": "adapt",
+        "video_ratio": "16/9",
+        "show_overlay": true,
+        "video_type": "external",
+        "video_url": "https://youtu.be/XYQG5hDB_3U",
+        "content_in_container": false,
+        "content_position": "right bottom",
+        "text_alignment": "center",
+        "text_size": "medium",
+        "text_color": "white",
+        "title": "Od ognia do pierścionka",
+        "subtitle": "",
+        "text": "",
+        "button_label": "ZOBACZ NASZE KOLEKCJE",
+        "button_link": "shopify://collections",
+        "button_style": "m-button--primary",
+        "button_size": "",
+        "button_label_2": "",
+        "button_link_2": "",
+        "button_style_2": "m-button--primary",
+        "button_size_2": "",
+        "use_content_above": false,
+        "custom_class": "",
+        "animations": "fade-in"
+      }
+    },
+    "empty_space_Xraa8N": {
+      "type": "empty-space",
+      "name": "Empty space",
+      "settings": {
+        "container": "container-fluid",
+        "color_scheme": "",
+        "show_divider_line": true,
+        "divider_style": "solid",
+        "divider_height": 9,
+        "padding_top": 10,
+        "padding_bottom": 0,
+        "custom_class": ""
+      }
+    },
+    "rich_text_HJnab7": {
+      "type": "rich-text",
+      "blocks": {
+        "text_dBhexN": {
+          "type": "text",
+          "disabled": true,
+          "settings": {
+            "text": ""
+          }
+        },
+        "button_MBzHgE": {
+          "type": "button",
+          "disabled": true,
+          "settings": {
+            "button_label": "",
+            "button_link": "",
+            "button_style": "m-button--link",
+            "button_size": ""
+          }
+        }
+      },
+      "block_order": [
+        "text_dBhexN",
+        "button_MBzHgE"
+      ],
+      "name": "Rich text",
+      "settings": {
+        "container": "container",
+        "color_scheme": "",
+        "content_alignment": "center",
+        "padding_top": 0,
+        "padding_bottom": 0,
+        "custom_class": "",
+        "animations": "inherit"
+      }
+    },
+    "empty_space_DUnaNE": {
+      "type": "empty-space",
+      "name": "Empty space",
+      "settings": {
+        "container": "container-fluid",
+        "color_scheme": "",
+        "show_divider_line": true,
+        "divider_style": "solid",
+        "divider_height": 1,
+        "padding_top": 4,
+        "padding_bottom": 8,
+        "custom_class": ""
+      }
+    },
+    "featured_collection_RVWigY": {
+      "type": "featured-collection",
+      "name": "Featured collection",
+      "settings": {
+        "heading": "NOWOŚCI",
+        "heading_size": "h2",
+        "subheading": "",
+        "description": "",
+        "header_alignment": "center",
+        "color_scheme": "",
+        "container": "container-fluid",
+        "collection": "nowosci-1",
+        "enable_flashsale": false,
+        "show_countdown": false,
+        "product_to_show": 12,
+        "items_per_row": 5,
+        "item_gap": 0,
+        "pcard_layout": "2",
+        "pcard_image_ratio": "",
+        "show_vendor": false,
+        "hide_title": false,
+        "enable_slider": true,
+        "show_pagination": true,
+        "show_navigation": true,
+        "show_button_on_header": false,
+        "button_type": "link",
+        "button_text": "zobacz więcej",
+        "button_style": "m-button--primary",
+        "button_size": "",
+        "infinite_load": false,
+        "max_page_load": 3,
+        "mobile_disable_slider": true,
+        "use_scroll_mobile": true,
+        "item_gap_mobile": 4,
+        "padding_top": 14,
+        "padding_bottom": 14,
+        "custom_class": "",
+        "animations": "inherit"
+      }
+    },
+    "empty_space_mmVH4d": {
+      "type": "empty-space",
+      "name": "Empty space",
+      "settings": {
+        "container": "container-fluid",
+        "color_scheme": "dark",
+        "show_divider_line": true,
+        "divider_style": "solid",
+        "divider_height": 1,
+        "padding_top": 4,
+        "padding_bottom": 6,
+        "custom_class": ""
+      }
+    },
+    "collection_list_pTq3VN": {
+      "type": "collection-list",
+      "blocks": {
+        "collection_block_b3D7Yt": {
+          "type": "collection_block",
+          "settings": {
+            "collection": "pierscionki-obraczki",
+            "title": "",
+            "item_image": "shopify://shop_images/pierscionki_srebrne.jpg"
+          }
+        },
+        "collection_block_rkTbHr": {
+          "type": "collection_block",
+          "settings": {
+            "collection": "kolczyki-kolczyki-srebrne",
+            "title": "",
+            "item_image": "shopify://shop_images/Kolczyk_srebrny_z_opalem_Galazka_1.jpg"
+          }
+        },
+        "collection_block_whmebC": {
+          "type": "collection_block",
+          "settings": {
+            "collection": "zlota-bizuteria",
+            "title": "",
+            "item_image": "shopify://shop_images/Zloty_pierscionek_z_ametystem_1.jpg"
+          }
+        },
+        "collection_block_Hy9BCd": {
+          "type": "collection_block",
+          "settings": {
+            "collection": "wisiory",
+            "title": "",
+            "item_image": "shopify://shop_images/Wisior_srebrny_z_prenitem_1.jpg"
+          }
+        },
+        "collection_block_byHUWJ": {
+          "type": "collection_block",
+          "settings": {
+            "collection": "bransoletki-bransoletki-srebrne",
+            "title": "",
+            "item_image": "shopify://shop_images/bransoletka_srebrna_z_opalem_Galazka.jpg"
+          }
+        },
+        "collection_block_mQELkW": {
+          "type": "collection_block",
+          "settings": {
+            "collection": "b-bizuteria-srebrna-z-akwamarynami",
+            "title": "",
+            "item_image": "shopify://shop_images/pierscionek_pozlacany_z_akwamarynem_1.jpg"
+          }
+        },
+        "collection_block_WGCf4N": {
+          "type": "collection_block",
+          "settings": {
+            "collection": "bizuteria-z-opalami",
+            "title": "",
+            "item_image": "shopify://shop_images/Srebrne_bransoletki_z_opalami.jpg"
+          }
+        },
+        "collection_block_ERBpEd": {
+          "type": "collection_block",
+          "settings": {
+            "collection": "bizuteria-z-ametystem-ametrynem",
+            "title": "",
+            "item_image": "shopify://shop_images/Pierscionek_z_ametystem_srebrna_Galazka.jpg"
+          }
+        },
+        "collection_block_K9DBwJ": {
+          "type": "collection_block",
+          "settings": {
+            "collection": "bizuteria-z-turmalinami",
+            "title": "",
+            "item_image": "shopify://shop_images/Zloty_pierscionek_z_duzym_turmalinem.jpg"
+          }
+        },
+        "collection_block_3TmW6U": {
+          "type": "collection_block",
+          "settings": {
+            "collection": "bizuteria-srebrna-z-granatami",
+            "title": "",
+            "item_image": "shopify://shop_images/DSC07908A.jpg"
+          }
+        },
+        "collection_block_a7A9QE": {
+          "type": "collection_block",
+          "settings": {
+            "collection": "bizuteria-srebrna-ze-szmaragdami",
+            "title": "",
+            "item_image": "shopify://shop_images/Srebrny_pozlacany_pierscionek_ze_szmaragdem.jpg"
+          }
+        },
+        "collection_block_T8x6NY": {
+          "type": "collection_block",
+          "settings": {
+            "collection": "bizuteria-srebrna-z-topazami",
+            "title": "",
+            "item_image": "shopify://shop_images/Zloty_pierscionek_z_topazem_na_reku.jpg"
+          }
+        }
+      },
+      "block_order": [
+        "collection_block_b3D7Yt",
+        "collection_block_rkTbHr",
+        "collection_block_whmebC",
+        "collection_block_Hy9BCd",
+        "collection_block_byHUWJ",
+        "collection_block_mQELkW",
+        "collection_block_WGCf4N",
+        "collection_block_ERBpEd",
+        "collection_block_K9DBwJ",
+        "collection_block_3TmW6U",
+        "collection_block_a7A9QE",
+        "collection_block_T8x6NY"
+      ],
+      "name": "Collection list",
+      "settings": {
+        "heading": "NASZE WSZYSTKIE KOLEKCJE",
+        "heading_size": "h3",
+        "subheading": "",
+        "description": "Poszukujesz biżuterii w oryginalnej , wyjątkowej formie, rzadkich kamieni szlachetnych, o niezwykłej urodzie? \n\nZapraszamy do krainy Epiru.",
+        "header_alignment": "center",
+        "color_scheme": "dark",
+        "container": "w-full",
+        "layout": "grid",
+        "expanded": true,
+        "card_style": "inside",
+        "text_alignment": "left",
+        "hover_effect": "scaling-down",
+        "show_product_count": true,
+        "count_inline_title": true,
+        "image_rounded": false,
+        "items_per_row": 5,
+        "item_gap": 4,
+        "enable_slider": true,
+        "show_pagination": true,
+        "show_navigation": true,
+        "autorotate": true,
+        "autorotate_speed": 5,
+        "mobile_disable_slider": false,
+        "use_scroll_mobile": true,
+        "mobile_gap": 4,
+        "hidden_slide_control_mobile": false,
+        "padding_top": 24,
+        "padding_bottom": 28,
+        "custom_class": "",
+        "animations": "inherit"
+      }
+    },
+    "banner_with_slider_Fc6Fj3": {
+      "type": "banner-with-slider",
+      "blocks": {
+        "item_slide_xwGR4L": {
+          "type": "item_slide",
+          "settings": {
+            "item_image": "shopify://shop_images/pierscionek_zloty_z_tanzanitem_1.jpg",
+            "color_scheme": "",
+            "content_text_color": "white",
+            "content_position": "right bottom",
+            "text_alignment": "right",
+            "subheading": "",
+            "heading": "Pierścionek złoty z tanzanitem",
+            "description": "",
+            "text_size": "h2",
+            "button_text": "BIŻUTERIA ZŁOTA",
+            "button_link": "shopify://collections/zlota-bizuteria",
+            "button_style": "m-button--primary",
+            "button_size": ""
+          }
+        },
+        "item_slide_D6TEKE": {
+          "type": "item_slide",
+          "settings": {
+            "item_image": "shopify://shop_images/DSC07931p1.jpg",
+            "color_scheme": "",
+            "content_text_color": "black",
+            "content_position": "left bottom",
+            "text_alignment": "left",
+            "subheading": "",
+            "heading": "Pierścionek złoty z topazem",
+            "description": "",
+            "text_size": "h3",
+            "button_text": "BIŻUTERIA ZŁOTA",
+            "button_link": "shopify://collections/zlota-bizuteria",
+            "button_style": "m-button--primary",
+            "button_size": ""
+          }
+        },
+        "item_slide_3C3Uwm": {
+          "type": "item_slide",
+          "settings": {
+            "item_image": "shopify://shop_images/pierscionek_zloty_z_turmalinem.jpg",
+            "color_scheme": "",
+            "content_text_color": "white",
+            "content_position": "right bottom",
+            "text_alignment": "right",
+            "subheading": "",
+            "heading": "Pierścionek złoty z turmalinem",
+            "description": "",
+            "text_size": "h2",
+            "button_text": "biżuteria złota",
+            "button_link": "shopify://collections/zlota-bizuteria",
+            "button_style": "m-button--primary",
+            "button_size": ""
+          }
+        }
+      },
+      "block_order": [
+        "item_slide_xwGR4L",
+        "item_slide_D6TEKE",
+        "item_slide_3C3Uwm"
+      ],
+      "name": "Image with slider 2",
+      "settings": {
+        "heading": "ZOBACZ NASZE AUTORSKIE WZORY  BIŻUTERII ZŁOTEJ",
+        "heading_size": "h3",
+        "subheading": "Zapraszamy do zapoznania się z naszą kolekcją biżuterii złotej. W tej kolekcji prezentujemy nasze autorskie wzory wykonane w złocie. Jest też w naszej firmie możliwość skąłdanai zamówień indywidualnych na biżuterięze złota.",
+        "header_alignment": "center",
+        "layout": "layout-2",
+        "container": "container",
+        "color_scheme": "default",
+        "slide_autoplay": true,
+        "pagination_position": "left",
+        "autorotate_speed": 5,
+        "use_scroll_mobile": true,
+        "banner_image_1": "shopify://shop_images/Pierscionekzlotyzmoissantem9x7mm_16.jpg",
+        "banner_image_mobile_1": "shopify://shop_images/Pierscionekzlotyzmoissantem9x7mm_18.jpg",
+        "button_text_1": "KUP TERAZ",
+        "button_link_1": "shopify://products/zloty-pierscionek-z-moissanitem-z-kolekcji-galazki",
+        "button_style_1": "m-button--primary",
+        "button_size_1": "m-button--small",
+        "banner_image_2": "shopify://shop_images/Pierscionekzlotyzmoissanitemirubinami_19.jpg",
+        "banner_image_mobile_2": "shopify://shop_images/Pierscionekzlotyzmoissanitemirubinami_5.jpg",
+        "button_text_2": "KUP TERAZ",
+        "button_link_2": "shopify://products/zloty-pierscionek-z-ametystem-epir",
+        "button_style_2": "m-button--primary",
+        "button_size_2": "m-button--small",
+        "banner_image_3": "shopify://shop_images/Zlota_galazka_pierscionek_z_topazem_1.jpg",
+        "button_text_3": "KUP TERAZ",
+        "button_link_3": "shopify://products/zloty-pierscionek-z-naturalnym-szafirem",
+        "button_style_3": "m-button--primary",
+        "button_size_3": "m-button--small",
+        "banner_image_4": "shopify://shop_images/zloty_pierscionek_z_szafirem.jpg",
+        "banner_image_mobile_4": "shopify://shop_images/gb.jpg",
+        "button_text_4": "KUP TERAZ",
+        "button_link_4": "",
+        "button_style_4": "m-button--primary",
+        "button_size_4": "m-button--small",
+        "padding_top": 26,
+        "padding_bottom": 20,
+        "custom_class": "",
+        "animations": "inherit"
+      }
+    },
+    "empty_space_TFpXDq": {
+      "type": "empty-space",
+      "name": "Empty space",
+      "settings": {
+        "container": "container-fluid",
+        "color_scheme": "dark",
+        "show_divider_line": true,
+        "divider_style": "solid",
+        "divider_height": 1,
+        "padding_top": 6,
+        "padding_bottom": 4,
+        "custom_class": ""
+      }
+    },
+    "lookbook_bfWfbP": {
+      "type": "lookbook",
+      "blocks": {
+        "lookbook_hero_EY8WqB": {
+          "type": "lookbook-hero",
+          "settings": {
+            "image": "shopify://shop_images/xxx_1_1.jpg",
+            "button_style": "dark",
+            "color_scheme_hovered": "",
+            "slider_offset_x": 10,
+            "top_1": 9,
+            "left_1": 32,
+            "m_top_1": 9,
+            "m_left_1": 22,
+            "product_1": "pierscionek-zloty-z-turmalinem",
+            "top_2": 26,
+            "left_2": 32,
+            "m_top_2": 26,
+            "m_left_2": 50,
+            "product_2": "delikatana-galazka-z-topazem-swiss-blue",
+            "top_3": 31,
+            "left_3": 30,
+            "m_top_3": 61,
+            "m_left_3": 48,
+            "product_3": "obraczka-kora-drzewa-z-granatem",
+            "top_4": 0,
+            "left_4": 0,
+            "m_top_4": 0,
+            "m_left_4": 0,
+            "product_4": "",
+            "top_5": 20,
+            "left_5": 0,
+            "m_top_5": 20,
+            "m_left_5": 0,
+            "product_5": "",
+            "show_pagination": true,
+            "show_navigation": true,
+            "pcard_layout": "",
+            "pcard_image_ratio": "",
+            "show_vendor": false,
+            "hide_title": false
+          }
+        },
+        "lookbook_slider_nfXdiF": {
+          "type": "lookbook-slider",
+          "settings": {
+            "color_scheme": "",
+            "sub_title": "",
+            "title": "Pierścionki zaręczynowe",
+            "heading_size": "h2",
+            "text": "<h5>Nasze pierścionki zaręczynowe to więcej niż biżuteria; to obietnica, zamknięta w formie, która odzwierciedla indywidualność i głębię uczuć. Od subtelnych, organicznych kształtów, po odważne, nowoczesne kompozycje – każdy z nich jest świadectwem miłości, która nie boi się wyróżniać i opowiadać własnej, niepowtarzalnej historii.<br/><br/></h5>",
+            "content_alignment": "center",
+            "text_color": "black",
+            "image": "shopify://shop_images/DSC07920p.jpg",
+            "image_position": "left",
+            "button_style": "light",
+            "color_scheme_hovered": "dark",
+            "top_1": 34,
+            "left_1": 32,
+            "product_1": "pierscionek-pozlacany-ze-szmaragdem",
+            "top_2": 31,
+            "left_2": 50,
+            "product_2": "zloty-pierscionek-galazka-z-mokaitem-ametystem-topazem",
+            "top_3": 31,
+            "left_3": 48,
+            "product_3": "zloty-pierscionek-z-ametystem-epir",
+            "top_4": 0,
+            "left_4": 0,
+            "product_4": "zloty-pierscionek-galazka-z-topazem-swiss-blue",
+            "top_5": 20,
+            "left_5": 0,
+            "product_5": "nowe-galazki-rafa-koralowa-z-czarnym-turmalinem",
+            "product_per_view": "2",
+            "show_pagination": true,
+            "pagination_style": "fraction",
+            "show_navigation": true,
+            "pcard_layout": "",
+            "pcard_image_ratio": "",
+            "show_vendor": false,
+            "hide_title": false
+          }
+        },
+        "lookbook_slider_aaiwLC": {
+          "type": "lookbook-slider",
+          "settings": {
+            "color_scheme": "",
+            "sub_title": "",
+            "title": "Obrączki ślubne",
+            "heading_size": "h2",
+            "text": "<p>Obrączki ślubne z EPIR Jewellery to symbol trwałości i nierozerwalnej więzi. Ręcznie kute bądź rzeźbione z dbałością o każdy detal, stają się materialnym świadectwem Waszej wspólnej drogi. Są to obrączki wykonane według autorskich wzorów. Są one inspirowane formami natury, ze świata roślinnego, falistymi liniami utrwalonymi w metalach szlachetnych tak złocie, jak i srebrze. Jest też możliwość personalizacji poprzez grawer lub indywidualny design.<br/><br/></p>",
+            "content_alignment": "center",
+            "text_color": "black",
+            "image": "shopify://shop_images/SLUB_2.jpg",
+            "image_position": "right",
+            "button_style": "light",
+            "color_scheme_hovered": "",
+            "top_1": 21,
+            "left_1": 63,
+            "product_1": "obraczki-slubne",
+            "top_2": 26,
+            "left_2": 50,
+            "product_2": "zlota-obraczka-galazka",
+            "top_3": 61,
+            "left_3": 48,
+            "product_3": "obraczki-slubne-kora-drzewa",
+            "top_4": 0,
+            "left_4": 0,
+            "product_4": "",
+            "top_5": 20,
+            "left_5": 0,
+            "product_5": "",
+            "product_per_view": "2",
+            "show_pagination": true,
+            "pagination_style": "fraction",
+            "show_navigation": true,
+            "pcard_layout": "",
+            "pcard_image_ratio": "",
+            "show_vendor": false,
+            "hide_title": false
+          }
+        }
+      },
+      "block_order": [
+        "lookbook_hero_EY8WqB",
+        "lookbook_slider_nfXdiF",
+        "lookbook_slider_aaiwLC"
+      ],
+      "name": "Lookbook",
+      "settings": {
+        "heading": "ZARĘCZYNY I ŚLUB",
+        "heading_size": "h2",
+        "subheading": "",
+        "description": "Moment zaręczyn i przysięga ślubna to jedne z najbardziej osobistych i wzruszających chwil w życiu. \n  W EPIR Jewellery wierzymy, że symbol Waszej miłości powinien być równie wyjątkowy i niepowtarzalny jak Wasza wspólna historia, dlatego w naszej pracowni tworzymy unikatowe pierścionki zaręczynowe i obrączki ślubne.\n  Każdy projekt to połączenie artystycznej wizji, mistrzowskiego rzemiosła i najwyższej jakości metali szlachetnych oraz kamieni.   Szukamy inspiracji w naturze, sztuce i architekturze.",
+        "header_alignment": "center",
+        "container": "container-fluid",
+        "color_scheme": "dark",
+        "image_aspect_ratio": "16/9",
+        "use_scroll_mobile": true,
+        "padding_top": 24,
+        "padding_bottom": 28,
+        "custom_class": "",
+        "animations": "inherit",
+        "enable_bg_zoom_effect": true
+      }
+    },
+    "empty_space_dFrBem": {
+      "type": "empty-space",
+      "name": "Empty space",
+      "settings": {
+        "container": "container-fluid",
+        "color_scheme": "",
+        "show_divider_line": true,
+        "divider_style": "solid",
+        "divider_height": 1,
+        "padding_top": 30,
+        "padding_bottom": 34,
+        "custom_class": ""
+      }
+    },
+    "featured_collection_9jekbn": {
+      "type": "featured-collection",
+      "name": "Featured collection",
+      "settings": {
+        "heading": "NASZE BESTSELLERY",
+        "heading_size": "h2",
+        "subheading": "",
+        "description": "Poznajcie nasze najlepiej sprzedające się obecnie produkty. Może znajdziesz tu cos dla siebie.",
+        "header_alignment": "center",
+        "color_scheme": "default",
+        "container": "container-fluid",
+        "collection": "bestsellery",
+        "enable_flashsale": false,
+        "show_countdown": false,
+        "product_to_show": 8,
+        "items_per_row": 4,
+        "item_gap": 0,
+        "pcard_layout": "",
+        "pcard_image_ratio": "",
+        "show_vendor": false,
+        "hide_title": false,
+        "enable_slider": true,
+        "show_pagination": true,
+        "show_navigation": true,
+        "show_button_on_header": false,
+        "button_type": "link",
+        "button_text": "BESTSELLERY",
+        "button_style": "m-button--primary",
+        "button_size": "m-button--large",
+        "infinite_load": false,
+        "max_page_load": 3,
+        "mobile_disable_slider": true,
+        "use_scroll_mobile": true,
+        "item_gap_mobile": 10,
+        "padding_top": 62,
+        "padding_bottom": 42,
+        "custom_class": "",
+        "animations": "inherit"
+      }
+    },
+    "empty_space_VrTami": {
+      "type": "empty-space",
+      "name": "Empty space",
+      "settings": {
+        "container": "container-fluid",
+        "color_scheme": "default",
+        "show_divider_line": true,
+        "divider_style": "solid",
+        "divider_height": 1,
+        "padding_top": 24,
+        "padding_bottom": 26,
+        "custom_class": ""
+      }
+    },
+    "rich_text_Q4kcqc": {
+      "type": "rich-text",
+      "blocks": {
+        "heading_KKcUPw": {
+          "type": "heading",
+          "settings": {
+            "heading": "Pracownia jubilerska EPIR",
+            "heading_size": "h2"
+          }
+        },
+        "text_bhJwbT": {
+          "type": "text",
+          "settings": {
+            "text": "<h5>Tworzymy autorską biżuterię artystyczną z pasją do tradycyjnego rzemiosła<strong>.</strong> Nasza wrocławska pracownia łączy srebro próby 925, złoto i kamienie naturalne w unikalne dzieła inspirowane naturą – od organicznych pierścionków po kolczyki z etiopskimi opalami. Każdy egzemplarz powstaje ręcznie, by opowiadać Waszą osobistą historię.</h5>"
+          }
+        },
+        "button_YRR4Un": {
+          "type": "button",
+          "disabled": true,
+          "settings": {
+            "button_label": "Shop Collection",
+            "button_link": "",
+            "button_style": "m-button--link",
+            "button_size": ""
+          }
+        }
+      },
+      "block_order": [
+        "heading_KKcUPw",
+        "text_bhJwbT",
+        "button_YRR4Un"
+      ],
+      "name": "Rich text",
+      "settings": {
+        "container": "container-fluid",
+        "color_scheme": "dark",
+        "content_alignment": "center",
+        "padding_top": 32,
+        "padding_bottom": 32,
+        "custom_class": "",
+        "animations": "inherit"
+      }
+    },
+    "video_hero_XmeQQb": {
+      "type": "video-hero",
+      "name": "Video hero",
+      "settings": {
+        "color_scheme": "default",
+        "container": "w-full",
+        "hero_size": "adapt",
+        "video_ratio": "16/9",
+        "show_overlay": true,
+        "video_type": "external",
+        "video_url": "https://youtu.be/dRFlD7yhPV0",
+        "content_in_container": false,
+        "content_position": "center bottom",
+        "text_alignment": "center",
+        "text_size": "medium",
+        "text_color": "white",
+        "title": "",
+        "subtitle": "",
+        "text": "",
+        "button_label": "O NAS",
+        "button_link": "shopify://pages/o-nas",
+        "button_style": "m-button--primary",
+        "button_size": "",
+        "button_label_2": "",
+        "button_link_2": "",
+        "button_style_2": "m-button--primary",
+        "button_size_2": "",
+        "use_content_above": true,
+        "custom_class": "",
+        "animations": "fade-in"
+      }
+    },
+    "empty_space_mjMte9": {
+      "type": "empty-space",
+      "name": "Empty space",
+      "settings": {
+        "container": "container-fluid",
+        "color_scheme": "dark",
+        "show_divider_line": true,
+        "divider_style": "solid",
+        "divider_height": 1,
+        "padding_top": 8,
+        "padding_bottom": 4,
+        "custom_class": ""
+      }
+    },
+    "image_with_text_AJ9wTN": {
+      "type": "image-with-text",
+      "name": "Image with text",
+      "settings": {
+        "heading": "",
+        "heading_size": "h3",
+        "subheading": "",
+        "container": "container",
+        "color_scheme": "default",
+        "item_gap": 100,
+        "item_gap_mobile": 30,
+        "layout": "left",
+        "image_column_size": "6",
+        "image_overlap": false,
+        "show_image_reverse": false,
+        "hover_effect": false,
+        "image_animation": "parallax",
+        "image": "shopify://shop_images/piescionek_na_zam_wienie.jpg",
+        "link": "",
+        "link_2": "",
+        "second_image_offset_top": 10,
+        "title": "Zamówienia indywidualne",
+        "sub_title": "",
+        "text": "<p>  Biżuteria srebrna czy złota jest od wieków uznawana za najlepszy sposób upamiętniania wyjątkowych momentów w życiu, jak i za najlepsze prezenty, ponieważ jest trwała i zostanie z wami na długo jako pamiątka tych szczególnych chwil. W naszej pracowni wykonujemy biżuterię na specjalne, indywidualne zamówienia: tak ze złota, jak i ze srebra. Jeżeli chcecie spełnić swoje biżuteryjne marzenia zapraszamy .</p>",
+        "text_size": "medium",
+        "content_alignment": "left",
+        "button_label": "Zamówienia indywidualne",
+        "button_link": "shopify://pages/zamowienia-indywidualne",
+        "button_style": "m-button--primary",
+        "button_size": "",
+        "padding_top": 68,
+        "padding_bottom": 28,
+        "custom_class": "",
+        "animations": "fade-in"
+      }
+    },
+    "empty_space_8ne43h": {
+      "type": "empty-space",
+      "name": "Empty space",
+      "settings": {
+        "container": "container-fluid",
+        "color_scheme": "",
+        "show_divider_line": true,
+        "divider_style": "solid",
+        "divider_height": 1,
+        "padding_top": 38,
+        "padding_bottom": 30,
+        "custom_class": ""
+      }
+    },
+    "collection_tabs_H3ThCx": {
+      "type": "collection-tabs",
+      "blocks": {
+        "collection_R7DiEd": {
+          "type": "collection",
+          "settings": {
+            "collection": "kolekcja-galazki",
+            "image": "shopify://shop_images/Lifestyle-_dziewczyna_z_wisiorem.jpg",
+            "heading": "",
+            "heading_size": "h4",
+            "text": ""
+          }
+        },
+        "collection_YqLmN3": {
+          "type": "collection",
+          "settings": {
+            "collection": "kolekcja-planety",
+            "image": "shopify://shop_images/DSC07898.jpg",
+            "heading": "",
+            "heading_size": "h4",
+            "text": ""
+          }
+        },
+        "collection_N6WNdC": {
+          "type": "collection",
+          "settings": {
+            "collection": "kolekcja-zywioly",
+            "heading": "",
+            "heading_size": "h4",
+            "text": ""
+          }
+        }
+      },
+      "block_order": [
+        "collection_R7DiEd",
+        "collection_YqLmN3",
+        "collection_N6WNdC"
+      ],
+      "name": "Collection tabs",
+      "settings": {
+        "container": "container-fluid",
+        "color_scheme": "default",
+        "header_alignment": "center",
+        "heading": "NASZE KOLEKCJE INSPIROWANE NATURĄ",
+        "heading_size": "h3",
+        "subheading": "",
+        "description": "",
+        "image_position": "left",
+        "image_ratio": "1/1",
+        "prefix_header": "ordinal_number",
+        "trigger_behavior": "hover",
+        "autoplay": false,
+        "autoplay_duration": 5,
+        "padding_top": 38,
+        "padding_bottom": 34,
+        "custom_class": "",
+        "animations": "fade-in-up"
+      }
+    },
+    "empty_space_XzXMjg": {
+      "type": "empty-space",
+      "name": "Empty space",
+      "settings": {
+        "container": "container-fluid",
+        "color_scheme": "dark",
+        "show_divider_line": true,
+        "divider_style": "solid",
+        "divider_height": 1,
+        "padding_top": 14,
+        "padding_bottom": 12,
+        "custom_class": ""
+      }
+    },
+    "cascading_collection_GKLEHj": {
+      "type": "cascading-collection",
+      "blocks": {
+        "collection_RdrGgw": {
+          "type": "collection",
+          "settings": {
+            "collection": "b-bizuteria-srebrna-z-akwamarynami",
+            "image": "shopify://shop_images/Pierscionek_srebrny_Roze_akwamarynem_2_1.jpg",
+            "collection_title": ""
+          }
+        },
+        "collection_i3KBRF": {
+          "type": "collection",
+          "settings": {
+            "collection": "bizuteria-z-opalami",
+            "image": "shopify://shop_images/Srebrne_bransoletki_z_opalami.jpg",
+            "collection_title": ""
+          }
+        },
+        "collection_CK9N8H": {
+          "type": "collection",
+          "settings": {
+            "collection": "bizuteria-srebrna-z-topazami",
+            "collection_title": ""
+          }
+        },
+        "collection_Ky9nhi": {
+          "type": "collection",
+          "settings": {
+            "collection": "bizuteria-z-ametystem-ametrynem",
+            "collection_title": ""
+          }
+        },
+        "collection_bjUyUP": {
+          "type": "collection",
+          "settings": {
+            "collection": "bizuteria-srebrna-ze-szmaragdami",
+            "collection_title": ""
+          }
+        },
+        "collection_N9WRYD": {
+          "type": "collection",
+          "settings": {
+            "collection": "bizuteria-srebrna-z-cytrynami",
+            "image": "shopify://shop_images/szeroka_obr_czka_z_cytrynem.jpg",
+            "collection_title": ""
+          }
+        }
+      },
+      "block_order": [
+        "collection_RdrGgw",
+        "collection_i3KBRF",
+        "collection_CK9N8H",
+        "collection_Ky9nhi",
+        "collection_bjUyUP",
+        "collection_N9WRYD"
+      ],
+      "disabled": true,
+      "name": "Cascading collection",
+      "settings": {
+        "color_scheme": "default",
+        "container": "container",
+        "heading": "KOLEKCJE BIŻUTERII Z KAMIENIAMI",
+        "heading_size": "h2",
+        "heading_alignment": "center",
+        "overlay_heading": false,
+        "spacing": "medium",
+        "variance": "medium",
+        "sequence": 1,
+        "column_gap": 75,
+        "cascade_enable_parallax": true,
+        "cascade_parallax_intensity": 50,
+        "padding_top": 30,
+        "padding_bottom": 42,
+        "custom_class": ""
+      }
+    },
+    "empty_space_8ri4C8": {
+      "type": "empty-space",
+      "name": "Empty space",
+      "settings": {
+        "container": "container-fluid",
+        "color_scheme": "",
+        "show_divider_line": true,
+        "divider_style": "solid",
+        "divider_height": 1,
+        "padding_top": 40,
+        "padding_bottom": 36,
+        "custom_class": ""
+      }
+    },
+    "17604257402851ec51": {
+      "type": "apps",
+      "settings": {
+        "heading": "",
+        "heading_size": "h3",
+        "subheading": "",
+        "header_alignment": "center",
+        "container": "container",
+        "background_color": "",
+        "padding_top": 0,
+        "padding_bottom": 0,
+        "custom_class": ""
+      }
+    },
+    "1766562485b1b6830c": {
+      "type": "apps",
+      "settings": {
+        "heading": "",
+        "heading_size": "h3",
+        "subheading": "",
+        "header_alignment": "center",
+        "container": "container",
+        "background_color": "",
+        "padding_top": 0,
+        "padding_bottom": 0,
+        "custom_class": ""
+      }
+    },
+    "17755705673909f49f": {
+      "type": "apps",
+      "settings": {
+        "heading": "",
+        "heading_size": "h3",
+        "subheading": "",
+        "header_alignment": "center",
+        "container": "container",
+        "background_color": "",
+        "padding_top": 0,
+        "padding_bottom": 0,
+        "custom_class": ""
+      }
+    }
+  },
+  "order": [
+    "video_hero_atr8xm",
+    "empty_space_Xraa8N",
+    "rich_text_HJnab7",
+    "empty_space_DUnaNE",
+    "featured_collection_RVWigY",
+    "empty_space_mmVH4d",
+    "collection_list_pTq3VN",
+    "banner_with_slider_Fc6Fj3",
+    "empty_space_TFpXDq",
+    "lookbook_bfWfbP",
+    "empty_space_dFrBem",
+    "featured_collection_9jekbn",
+    "empty_space_VrTami",
+    "rich_text_Q4kcqc",
+    "video_hero_XmeQQb",
+    "empty_space_mjMte9",
+    "image_with_text_AJ9wTN",
+    "empty_space_8ne43h",
+    "collection_tabs_H3ThCx",
+    "empty_space_XzXMjg",
+    "cascading_collection_GKLEHj",
+    "empty_space_8ri4C8",
+    "17604257402851ec51",
+    "1766562485b1b6830c",
+    "17755705673909f49f"
+  ]
+}

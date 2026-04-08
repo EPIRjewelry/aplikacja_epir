@@ -1,59 +1,38 @@
 # Dokumentacja EPIR AI
 
-## Start tutaj
+Ten katalog jest częścią jedynego kanonicznego pakietu dokumentacji EPIR. Ten sam zestaw plików musi istnieć 1:1 również w mirrorze NotebookLM.
 
-Jeśli wchodzisz do repo po raz pierwszy, **zacznij od tych dwóch plików w tej kolejności**:
+## Kolejność czytania
 
-1. [`../EPIR_AI_ECOSYSTEM_MASTER.md`](../EPIR_AI_ECOSYSTEM_MASTER.md) — onboarding, aktualna architektura, role agentów, prompty produkcyjne
-2. [`../EPIR_AI_BIBLE.md`](../EPIR_AI_BIBLE.md) — orthodoksja, zasady nienegocjowalne, guardrails dla zmian
+1. [`../AGENTS.md`](../AGENTS.md)
+2. [`../EPIR_AI_ECOSYSTEM_MASTER.md`](../EPIR_AI_ECOSYSTEM_MASTER.md)
+3. [`../EPIR_AI_BIBLE.md`](../EPIR_AI_BIBLE.md)
+4. [`README.md`](README.md)
 
-Te dwa dokumenty są **podstawowym źródłem prawdy** dla całego repo.
+## Kanoniczny zestaw dokumentów
 
-## Jak czytać dokumentację
+### Dokumenty bazowe
 
-- Chcesz zrozumieć **jak system jest zbudowany** → zacznij od `EPIR_AI_ECOSYSTEM_MASTER.md`
-- Chcesz zrozumieć **jakich zasad nie wolno łamać** → czytaj `EPIR_AI_BIBLE.md`
-- Chcesz coś **uruchomić, wdrożyć albo zmigrować** → dopiero potem przejdź do dokumentów operacyjnych poniżej
+- [`../AGENTS.md`](../AGENTS.md) — onboarding dla ludzi i narzędzi AI
+- [`../EPIR_AI_ECOSYSTEM_MASTER.md`](../EPIR_AI_ECOSYSTEM_MASTER.md) — model systemu i podział odpowiedzialności
+- [`../EPIR_AI_BIBLE.md`](../EPIR_AI_BIBLE.md) — zasady nienegocjowalne i guardrails
 
-## Dokumenty nadrzędne
+### Dokumenty techniczne w `docs/`
 
-- [`../EPIR_AI_ECOSYSTEM_MASTER.md`](../EPIR_AI_ECOSYSTEM_MASTER.md)
-- [`../EPIR_AI_BIBLE.md`](../EPIR_AI_BIBLE.md)
-
-## Współdzielony kontekst AI po klonie repo
-
-Jeśli otwierasz repo na nowym komputerze i chcesz, żeby narzędzia AI widziały ten sam kontekst repozytoryjny:
-
-- [`../AGENTS.md`](../AGENTS.md) — wspólny onboarding AI dla repo
-- [`../.github/copilot-instructions.md`](../.github/copilot-instructions.md) — instrukcje workspace dla GitHub Copilot
-
-Te pliki są commitowane do repo, więc nowy klon dostaje ten sam kontekst startowy bez polegania na lokalnej pamięci czy stashu.
-
-## Dokumenty operacyjne
-
-- [`SHOPIFY_PLATFORM_2026_04.md`](SHOPIFY_PLATFORM_2026_04.md) — **Shopify Admin API 2026-04+**: limity `json` metafields, app-owned metaobjects i scope’y, audit rozszerzeń w repo, notatka o Dependabocie
-- [`../KROKI_URUCHOMIENIA.md`](../KROKI_URUCHOMIENIA.md) — szybka sekwencja uruchomienia i deployu
-- [`DEPLOYMENT_EPIR.md`](DEPLOYMENT_EPIR.md) — wdrożenie
-- [`DEPLOYMENT_CROSS_SESSION_MEMORY_PRODUCTION.md`](DEPLOYMENT_CROSS_SESSION_MEMORY_PRODUCTION.md) — **produkcja:** migracja D1 `person_memory`, deploy chat workera, smoke testy (bez etapu dev)
-- [`SEKRETY_I_MIGRACJE.md`](SEKRETY_I_MIGRACJE.md) — sekrety i migracje
-- [`PODSUMOWANIE_WDROZENIA.md`](PODSUMOWANIE_WDROZENIA.md) — podsumowanie wdrożenia
-
-## Dokumenty domenowe / pomocnicze
-
-- [`ANALYTICS_KB.md`](ANALYTICS_KB.md) — analityka, BigQuery, definicje zapytań
-- [`AUDYT_ZRODEL_MIGRACJI.md`](AUDYT_ZRODEL_MIGRACJI.md)
-- [`ANALIZA_RAPORTU_DUPLIKACJI.md`](ANALIZA_RAPORTU_DUPLIKACJI.md)
-- [`CLEAN_CODE_BASELINE_PLAN.md`](CLEAN_CODE_BASELINE_PLAN.md)
-- [`RAPORT_NAPRAWY_CZATU.md`](RAPORT_NAPRAWY_CZATU.md)
-- [`NOTEBOOKLM_EPIR_CHAT_INGRESS.md`](NOTEBOOKLM_EPIR_CHAT_INGRESS.md) — czat kupującego, App Proxy, Ingress, S2S (skrót pod RAG / NotebookLM)
-- [`PERSONA_UI_SSOT.md`](PERSONA_UI_SSOT.md) — kontrakt `PersonaUi` (Gemma) vs prompt systemowy; Hydrogen + TAE
-- [`MVP_CROSS_SESSION_MEMORY_READING_LIST.md`](MVP_CROSS_SESSION_MEMORY_READING_LIST.md) — mapa plików `workers/chat` przed MVP pamięci międzysesyjnej (Ingress → handleChat → SessionDO → D1)
+- [`EPIR_INGRESS_AND_RUNTIME.md`](EPIR_INGRESS_AND_RUNTIME.md) — techniczny kontrakt ingressu, runtime i aktualnych przepływów czatu
+- [`EPIR_DATA_SCHEMA_CONTRACT.md`](EPIR_DATA_SCHEMA_CONTRACT.md) — kontrakt danych Shopify, D1, Vectorize i BigQuery
+- [`EPIR_DEPLOYMENT_AND_OPERATIONS.md`](EPIR_DEPLOYMENT_AND_OPERATIONS.md) — sekrety, migracje, deploy i runbook operacyjny
+- [`EPIR_BLUEPRINTS_AND_EXCEPTIONS.md`](EPIR_BLUEPRINTS_AND_EXCEPTIONS.md) — Project B, automatyzacje, limity API i zasady agentowe
 
 ## Zasada porządku
 
-Jeżeli jakikolwiek dokument pomocniczy jest sprzeczny z:
+Poza plikami z tej listy nie utrzymujemy dodatkowych helperów, quizów, checkpointów ani „historycznych” dokumentów. Gdy treść zostaje wchłonięta do pakietu kanonicznego, stary plik znika.
 
-- `EPIR_AI_ECOSYSTEM_MASTER.md`
-- `EPIR_AI_BIBLE.md`
+## Dla agentów i onboardingów
 
-wtedy **wygrywają dokumenty nadrzędne**, a dokument pomocniczy wymaga aktualizacji.
+Pliki startowe dla narzędzi AI:
+
+- [`../AGENTS.md`](../AGENTS.md)
+- [`../.github/copilot-instructions.md`](../.github/copilot-instructions.md)
+
+Jeżeli jakikolwiek inny plik lub odpowiedź AI jest sprzeczna z pakietem powyżej, pakiet kanoniczny wygrywa.

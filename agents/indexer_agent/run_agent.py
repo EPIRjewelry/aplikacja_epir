@@ -20,10 +20,14 @@ def main():
 
     cmd = [sys.executable, str(script),
            "--sources",
+            "AGENTS.md",
            "EPIR_AI_ECOSYSTEM_MASTER.md",
            "EPIR_AI_BIBLE.md",
-           "docs/NOTEBOOKLM_EPIR_CHAT_INGRESS.md",
-           "docs/TEST_NOTEBOOKLM_EPIR.md",
+            "docs/README.md",
+            "docs/EPIR_INGRESS_AND_RUNTIME.md",
+            "docs/EPIR_DATA_SCHEMA_CONTRACT.md",
+            "docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md",
+            "docs/EPIR_BLUEPRINTS_AND_EXCEPTIONS.md",
            "--out", "data/embeddings.json"]
 
     print("Running indexer:", " ".join(cmd))

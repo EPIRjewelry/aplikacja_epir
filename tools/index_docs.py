@@ -5,7 +5,7 @@ This minimal indexer uses a deterministic pseudo-embedding when no
 embedding provider is available so it works offline for a quick RAG MVP.
 
 Usage (local):
-  python tools/index_docs.py --sources EPIR_AI_ECOSYSTEM_MASTER.md EPIR_AI_BIBLE.md docs/NOTEBOOKLM_EPIR_CHAT_INGRESS.md docs/TEST_NOTEBOOKLM_EPIR.md --out data/embeddings.json
+    python tools/index_docs.py --sources AGENTS.md EPIR_AI_ECOSYSTEM_MASTER.md EPIR_AI_BIBLE.md docs/README.md docs/EPIR_INGRESS_AND_RUNTIME.md docs/EPIR_DATA_SCHEMA_CONTRACT.md docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md docs/EPIR_BLUEPRINTS_AND_EXCEPTIONS.md --out data/embeddings.json
 
 Optional Qdrant upsert (requires qdrant-client installed):
   python tools/index_docs.py --backend qdrant --qdrant-url http://localhost:6333 --qdrant-api-key XXX
@@ -27,10 +27,14 @@ from pathlib import Path
 from typing import List
 
 DEFAULT_SOURCES = [
+    "AGENTS.md",
     "EPIR_AI_ECOSYSTEM_MASTER.md",
     "EPIR_AI_BIBLE.md",
-    "docs/NOTEBOOKLM_EPIR_CHAT_INGRESS.md",
-    "docs/TEST_NOTEBOOKLM_EPIR.md",
+    "docs/README.md",
+    "docs/EPIR_INGRESS_AND_RUNTIME.md",
+    "docs/EPIR_DATA_SCHEMA_CONTRACT.md",
+    "docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md",
+    "docs/EPIR_BLUEPRINTS_AND_EXCEPTIONS.md",
 ]
 
 

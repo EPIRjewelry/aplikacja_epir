@@ -1,1 +1,20 @@
-{"name":"aplikacja_epir","private":true,"workspaces":["apps/*","workers/*","extensions/*","packages/*"],"dependencies":{"lodash":"^4.17.23"}}
+{
+  "name": "aplikacja_epir",
+  "private": true,
+  "workspaces": ["apps/*", "workers/*", "extensions/*", "packages/*"],
+  "scripts": {
+    "shopify:version": "shopify version",
+    "shopify:app:build": "shopify app build",
+    "shopify:app:deploy": "shopify app deploy --allow-updates --force"
+  },
+  "dependencies": {
+    "lodash": "^4.17.23"
+  },
+  "devDependencies": {
+    "@shopify/cli": "3.91.0"
+  },
+  "overrides": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}

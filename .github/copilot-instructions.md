@@ -28,16 +28,17 @@ This repository uses **repo-shared AI context**. After cloning on a new machine,
 
 Top-level source of truth:
 
+- `AGENTS.md`
 - `EPIR_AI_ECOSYSTEM_MASTER.md`
 - `EPIR_AI_BIBLE.md`
+- `docs/README.md`
 
 Secondary / helper docs:
 
-- `KROKI_URUCHOMIENIA.md`
-- `docs/DEPLOYMENT_EPIR.md`
-- `docs/SEKRETY_I_MIGRACJE.md`
-- `docs/ANALYTICS_KB.md`
-- other `docs/*.md`
+- `docs/EPIR_INGRESS_AND_RUNTIME.md`
+- `docs/EPIR_DATA_SCHEMA_CONTRACT.md`
+- `docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md`
+- `docs/EPIR_BLUEPRINTS_AND_EXCEPTIONS.md`
 
 If a helper document conflicts with a top-level document, the top-level document wins.
 
@@ -51,3 +52,8 @@ If a helper document conflicts with a top-level document, the top-level document
 ## Goal
 
 A newly cloned repo should provide enough shared context for Copilot to reason about the same architecture, rules and onboarding flow as on any other machine.
+
+## Documentation mirror policy
+
+- The NotebookLM folder must contain the exact same documentation set as this repo.
+- Do not maintain separate legacy or historical helper documents once their content is absorbed into the canonical package.

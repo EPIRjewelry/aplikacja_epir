@@ -10,6 +10,10 @@
       if(/\/assistant\.js(?:\?|$)/.test(candidate)){src=candidate;break;}
     }
   }
+  if(!src&&typeof document!=='undefined'&&document.querySelector){
+    var el=document.querySelector('script[src*="assistant.js"]');
+    if(el&&el.src)src=el.src;
+  }
   if(!src){
     window.__EPIR_ASSISTANT_RUNTIME_LOADING__=false;
     console.error('[EPIR Assistant] Nie znaleziono źródła assistant.js');

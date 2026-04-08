@@ -78,7 +78,7 @@
         // Endpoint z sekcji (data-worker-endpoint) lub domyślny produkcyjny
         let pixelEndpoint = 'https://asystent.epirbizuteria.pl/pixel';
         const sectionEl = document.getElementById('epir-assistant-section');
-        if (sectionEl?.dataset?.workerEndpoint) {
+        if (sectionEl && sectionEl.dataset && sectionEl.dataset.workerEndpoint) {
           try {
             const url = new URL(sectionEl.dataset.workerEndpoint);
             pixelEndpoint = url.origin + '/pixel';

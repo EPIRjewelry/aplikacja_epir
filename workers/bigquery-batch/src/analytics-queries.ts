@@ -1,5 +1,5 @@
 /**
- * Whitelist zapytań analitycznych (ANALYTICS_KB).
+ * Whitelist zapytań analitycznych zgodna z kanonicznym kontraktem danych EPIR.
  * queryId musi pochodzić z tej listy – brak surowego SQL od użytkownika.
  */
 export const ANALYTICS_QUERY_WHITELIST: Record<string, string> = {

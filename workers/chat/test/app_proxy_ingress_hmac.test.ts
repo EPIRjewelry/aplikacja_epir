@@ -226,4 +226,67 @@ describe('App Proxy ingress HMAC (/apps/assistant/chat)', () => {
     expect(data.reply).toContain('Witaj');
     expect(data.session_id).toBeTruthy();
   });
+
+  it('allows consecutive App Proxy requests with same query signature when body differs', async () => {
+    const { env } = makeEnv();
+    const url = buildBaseUrl();
+    const signature = signShopifyAppProxyQuery(url, env.SHOPIFY_APP_SECRET);
+    url.searchParams.set('signature', signature);
+
+    const body1 = JSON.stringify({ message: 'hej 1', stream: false, brand: 'epir' });
+    const body2 = JSON.stringify({ message: 'hej 2', stream: false, brand: 'epir' });
+
+    const response1 = await worker.fetch(
+      new Request(url.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body1,
+      }),
+      env,
+      noopCtx,
+    );
+    const response2 = await worker.fetch(
+      new Request(url.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body2,
+      }),
+      env,
+      noopCtx,
+    );
+
+    expect(response1.status).toBe(200);
+    expect(response2.status).toBe(200);
+  });
+
+  it('allows repeated App Proxy requests with identical body and signature', async () => {
+    const { env } = makeEnv();
+    const url = buildBaseUrl();
+    const signature = signShopifyAppProxyQuery(url, env.SHOPIFY_APP_SECRET);
+    url.searchParams.set('signature', signature);
+
+    const body = JSON.stringify({ message: 'hej replay', stream: false, brand: 'epir' });
+
+    const response1 = await worker.fetch(
+      new Request(url.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      }),
+      env,
+      noopCtx,
+    );
+    const response2 = await worker.fetch(
+      new Request(url.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      }),
+      env,
+      noopCtx,
+    );
+
+    expect(response1.status).toBe(200);
+    expect(response2.status).toBe(200);
+  });
 });

@@ -11,10 +11,9 @@
 // Sekrety (SHOPIFY_APP_SECRET) pochodzą TYLKO z Cloudflare Secrets.
 // ŻADNYCH sekretów w wrangler.toml [vars] ani w kodzie.
 // Endpointy:
-// - POST /mcp/tools/call (dev/test bez HMAC)
-// - POST /apps/assistant/mcp (App Proxy + HMAC)
+// - POST /mcp/tools/call (dev/test oraz helper backendowy bez App Proxy)
+// - POST /apps/assistant/mcp (podpisana trasa kompatybilności; nie jest kanonicznym buyer-facing ingress czatu)
 
-import { verifyAppProxyHmac } from './auth';
 import { checkRateLimit } from './rate-limiter';
 import { 
   type JsonRpcRequest, 
@@ -340,12 +339,8 @@ export async function handleMcpRequest(request: Request, env: Env): Promise<Resp
   }
 
   if (isAppProxy) {
-    if (!env.SHOPIFY_APP_SECRET) {
-      return new Response('Server misconfigured', { status: 500, headers: json() });
-    }
-    const valid = await verifyAppProxyHmac(request, env.SHOPIFY_APP_SECRET);
-    if (!valid) return new Response('Invalid signature', { status: 401, headers: json() });
-
+    // App Proxy HMAC jest weryfikowany centralnie w index.ts dla całego /apps/assistant/*.
+    // Tutaj zakładamy już preautoryzowany request i nie dublujemy osobnego verifiera.
     // Rate limit per shop for App Proxy MCP calls. Protect backend from abusive loops.
     try {
       const shop = env.SHOP_DOMAIN || process.env.SHOP_DOMAIN || 'global';

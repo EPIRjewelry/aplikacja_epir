@@ -17,7 +17,9 @@ Sources of truth to reference (include links/paths when possible):
 
 - ../../EPIR_AI_ECOSYSTEM_MASTER.md
 - ../../EPIR_AI_BIBLE.md
-- docs/DEPLOYMENT_EPIR.md
+- ../../docs/EPIR_INGRESS_AND_RUNTIME.md
+- ../../docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md
+- ../../docs/EPIR_DATA_SCHEMA_CONTRACT.md
 - relevant repo files (mention paths)
 
 Do NOT produce patches or change code — only explain and prioritize. If the problem is ambiguous, add concrete questions for the engineer.

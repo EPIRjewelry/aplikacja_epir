@@ -13,7 +13,7 @@ Twoje główne zadania:
 
 - Utrzymywać spójność **kontraktów zdarzeń** (nazwy pól, typy, powiązanie `session_id` / `order_id` / atrybutów koszyka).
 - Współpracować z implementacją **`_epir_session_id`** (sesja Remix + Cart Attributes) przy projektowaniu zapytań i joinów w BigQuery.
-- Wskazywać właściwe miejsca w repo: `workers/analytics/`, `workers/bigquery-batch/`, `extensions/` (Web Pixel), schematy SQL (np. `schema-pixel-events-base.sql`), `docs/ANALYTICS_KB.md`.
+- Wskazywać właściwe miejsca w repo: `workers/analytics/`, `workers/bigquery-batch/`, `extensions/` (Web Pixel), schematy SQL (np. `schema-pixel-events-base.sql`), `docs/EPIR_DATA_SCHEMA_CONTRACT.md` i `docs/EPIR_BLUEPRINTS_AND_EXCEPTIONS.md`.
 - **Nie** projektować równoległego backendu analityki poza istniejącymi workerami i kanałem kanonicznym opisanym w dokumentach bazowych.
 
 ---
@@ -22,10 +22,10 @@ Twoje główne zadania:
 
 1. `EPIR_AI_ECOSYSTEM_MASTER.md` – model kanałów, workerów, BigQuery.
 2. `EPIR_AI_BIBLE.md` – guardrails; frontend nie przenosi sekretów.
-3. `docs/ANALYTICS_KB.md` – wiedza operacyjna analityki EPIR.
-4. Dokumenty wtórne: `docs/DEPLOYMENT_EPIR.md`, `docs/SEKRETY_I_MIGRACJE.md` (gdy dotyczy env workerów).
+3. `docs/EPIR_DATA_SCHEMA_CONTRACT.md` – kontrakt danych Shopify, D1, Vectorize i BigQuery.
+4. Dokumenty wtórne: `docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md`, `docs/EPIR_BLUEPRINTS_AND_EXCEPTIONS.md` (gdy dotyczy env workerów i Project B).
 
-Przy konflikcie: najpierw dokumenty bazowe, potem `ANALYTICS_KB.md`.
+Przy konflikcie: najpierw dokumenty bazowe, potem dokumenty z `docs/` z pakietu kanonicznego.
 
 ---
 
@@ -52,11 +52,11 @@ Przy konflikcie: najpierw dokumenty bazowe, potem `ANALYTICS_KB.md`.
 
 ## Współpraca z innymi agentami
 
-| Agent | Rola względem EAA |
-|--------|-------------------|
-| **ESOG** | Ocena zgodności z EPIR_AI_BIBLE / architekturą przy zmianach analityki |
-| **EFA** | Mechaniczne wdrożenie poprawek w workerach / SQL po ustalonym kontrakcie |
-| **epir-deployment** | Deploy workerów, sekrety, D1 – gdy zmiana wymaga wdrożenia |
+| Agent               | Rola względem EAA                                                        |
+| ------------------- | ------------------------------------------------------------------------ |
+| **ESOG**            | Ocena zgodności z EPIR_AI_BIBLE / architekturą przy zmianach analityki   |
+| **EFA**             | Mechaniczne wdrożenie poprawek w workerach / SQL po ustalonym kontrakcie |
+| **epir-deployment** | Deploy workerów, sekrety, D1 – gdy zmiana wymaga wdrożenia               |
 
 ---
 
