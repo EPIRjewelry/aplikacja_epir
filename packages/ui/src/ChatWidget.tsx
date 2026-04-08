@@ -11,6 +11,7 @@ export type ChatMessage = {
   id: string;
   role: 'user' | 'assistant';
   text: string;
+  imagePreviewUrl?: string;
 };
 
 type ChatResponseBody = {
@@ -101,6 +102,7 @@ function ChatWidgetFallback({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageImageUrlsRef = useRef<Set<string>>(new Set());
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({behavior: 'smooth'});
@@ -112,11 +114,18 @@ function ChatWidgetFallback({
 
   useEffect(() => {
     return () => {
-      if (pendingImage?.previewUrl) {
+      if (pendingImage?.previewUrl && !messageImageUrlsRef.current.has(pendingImage.previewUrl)) {
         URL.revokeObjectURL(pendingImage.previewUrl);
       }
     };
   }, [pendingImage?.previewUrl]);
+
+  useEffect(() => {
+    return () => {
+      messageImageUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      messageImageUrlsRef.current.clear();
+    };
+  }, []);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -127,12 +136,13 @@ function ChatWidgetFallback({
       const userMessage: ChatMessage = {
         id: `user-${Date.now()}`,
         role: 'user',
-        text: trimmed || (attachment ? '(załącznik obrazu)' : ''),
+        text: trimmed || (attachment ? 'Załączono zdjęcie' : ''),
+        ...(attachment?.previewUrl ? {imagePreviewUrl: attachment.previewUrl} : {}),
       };
       setMessages((prev) => [...prev, userMessage]);
       setInputValue('');
       if (attachment?.previewUrl) {
-        URL.revokeObjectURL(attachment.previewUrl);
+        messageImageUrlsRef.current.add(attachment.previewUrl);
       }
       setPendingImage(null);
       setIsLoading(true);
@@ -282,7 +292,18 @@ function ChatWidgetFallback({
                     : 'mr-8 bg-gray-100 text-gray-900'
                 }`}
               >
-                {m.text}
+                {m.imagePreviewUrl ? (
+                  <div className="space-y-2">
+                    <img
+                      src={m.imagePreviewUrl}
+                      alt="Załączone zdjęcie użytkownika"
+                      className="max-h-44 w-full rounded border border-blue-200 object-cover"
+                    />
+                    {m.text ? <p className="m-0 whitespace-pre-wrap">{m.text}</p> : null}
+                  </div>
+                ) : (
+                  m.text
+                )}
               </div>
             ))}
             {isLoading && (

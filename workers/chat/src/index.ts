@@ -132,6 +132,8 @@ interface ChatRequestBody {
   collectionHandle?: string;
 }
 
+const IMAGE_ATTACHMENT_PLACEHOLDER = '(załącznik obrazu)';
+
 type PublicStorefrontTokenEnvKey = 'PUBLIC_STOREFRONT_API_TOKEN_KAZKA' | 'PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY';
 type PrivateStorefrontTokenEnvKey = 'PRIVATE_STOREFRONT_API_TOKEN_ZARECZYNY';
 type StorefrontTokenEnvKey = PublicStorefrontTokenEnvKey;
@@ -450,7 +452,7 @@ function parseChatRequestBody(
       image_base64 = normalizeImageBase64(rawImage);
     }
   }
-  const resolvedMessage = messageText || (image_base64 ? '(załącznik obrazu)' : '');
+  const resolvedMessage = messageText || (image_base64 ? IMAGE_ATTACHMENT_PLACEHOLDER : '');
   const storefrontIdFromBody = typeof maybe.storefrontId === 'string' && maybe.storefrontId.trim().length > 0 ? maybe.storefrontId.trim() : undefined;
   const channelFromBody = typeof maybe.channel === 'string' && maybe.channel.trim().length > 0 ? maybe.channel.trim() : undefined;
   const storefrontFromBrand =
@@ -480,6 +482,235 @@ function parseChatRequestBody(
 function normalizeImageBase64(raw: string): string {
   if (raw.startsWith('data:image/')) return raw;
   return `data:image/png;base64,${raw}`;
+}
+
+function normalizeImageCaption(rawCaption: string): string {
+  return String(rawCaption || '')
+    .replace(/\s+/g, ' ')
+    .replace(/^opis\s*(zdjęcia|obrazu)?\s*[:\-]\s*/i, '')
+    .trim()
+    .slice(0, 360);
+}
+
+async function generateImageCaption(
+  env: Env,
+  sessionId: string,
+  imageBase64: string,
+  userMessage: string,
+): Promise<string | null> {
+  const userContext = userMessage.trim();
+  const userParts: KimiContentPart[] = [];
+  if (userContext && userContext !== IMAGE_ATTACHMENT_PLACEHOLDER) {
+    userParts.push({ type: 'text', text: `Kontekst wiadomości użytkownika: ${userContext}` });
+  }
+  userParts.push({
+    type: 'text',
+    text:
+      'Opisz to zdjęcie po polsku w maksymalnie dwóch krótkich zdaniach. Opis ma być neutralny, konkretny i bez domysłów.',
+  });
+  userParts.push({ type: 'image_url', image_url: { url: imageBase64 } });
+
+  const captionPrompt: GroqMessage[] = [
+    {
+      role: 'system',
+      content:
+        'Tworzysz krótki opis obrazu do pamięci rozmowy. Nie zadawaj pytań, nie dodawaj porad zakupowych, nie zgaduj niepewnych szczegółów.',
+    },
+    { role: 'user', content: userParts },
+  ];
+
+  try {
+    const raw = await getGroqResponse(captionPrompt, env, {
+      max_tokens: 120,
+      sessionId: `${sessionId}_img_caption`,
+    });
+    const normalized = normalizeImageCaption(raw);
+    return normalized || null;
+  } catch (error) {
+    console.warn('[image_caption] failed:', error);
+    return null;
+  }
+}
+
+function buildImageSurrogateContent(userMessage: string, caption: string): string {
+  const normalizedCaption = normalizeImageCaption(caption);
+  const normalizedUser = userMessage.trim();
+  if (!normalizedCaption) return normalizedUser || IMAGE_ATTACHMENT_PLACEHOLDER;
+  if (normalizedUser && normalizedUser !== IMAGE_ATTACHMENT_PLACEHOLDER) {
+    return `${normalizedUser}\n[Opis załączonego zdjęcia: ${normalizedCaption}]`;
+  }
+  return `Użytkownik przesłał zdjęcie. Opis: ${normalizedCaption}`;
+}
+
+const CHAT_ATTACHMENT_EMBEDDING_MODEL = '@cf/baai/bge-large-en-v1.5';
+let chatAttachmentEmbeddingsSchemaReady: Promise<void> | null = null;
+
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function ensureChatAttachmentEmbeddingsTable(db: D1Database): Promise<void> {
+  if (!chatAttachmentEmbeddingsSchemaReady) {
+    chatAttachmentEmbeddingsSchemaReady = (async () => {
+      await db
+        .prepare(
+          `CREATE TABLE IF NOT EXISTS chat_attachment_embeddings (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            message_ts INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            caption_text TEXT NOT NULL,
+            embedding_model TEXT NOT NULL,
+            embedding_json TEXT NOT NULL,
+            storefront_id TEXT,
+            channel TEXT,
+            created_at INTEGER NOT NULL
+          )`,
+        )
+        .run();
+      await db
+        .prepare(
+          `CREATE INDEX IF NOT EXISTS idx_chat_attachment_embeddings_session
+           ON chat_attachment_embeddings(session_id, created_at DESC)`,
+        )
+        .run();
+      await db
+        .prepare(
+          `CREATE INDEX IF NOT EXISTS idx_chat_attachment_embeddings_hash
+           ON chat_attachment_embeddings(content_hash)`,
+        )
+        .run();
+    })().catch((error) => {
+      chatAttachmentEmbeddingsSchemaReady = null;
+      throw error;
+    });
+  }
+  await chatAttachmentEmbeddingsSchemaReady;
+}
+
+async function embedCaptionTextForAnalytics(env: Env, caption: string): Promise<number[] | null> {
+  if (!env.AI?.run) return null;
+  try {
+    const res = (await env.AI.run(CHAT_ATTACHMENT_EMBEDDING_MODEL, {
+      text: [caption],
+    })) as { data?: unknown[] };
+    const maybeVector = res?.data?.[0];
+    if (!Array.isArray(maybeVector)) return null;
+    const vector = maybeVector
+      .map((v) => Number(v))
+      .filter((v) => Number.isFinite(v));
+    return vector.length > 0 ? vector : null;
+  } catch (error) {
+    console.warn('[attachment_analytics] embedding failed:', error);
+    return null;
+  }
+}
+
+async function emitAttachmentUploadedEvent(
+  env: Env,
+  payload: {
+    sessionId: string;
+    messageTs: number;
+    contentHash: string;
+    captionText: string;
+    storefrontId?: string;
+    channel?: string;
+  },
+): Promise<void> {
+  if (!env.ANALYTICS_WORKER) return;
+  try {
+    await env.ANALYTICS_WORKER.fetch('https://analytics.internal/pixel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'chat_attachment_uploaded',
+        data: {
+          sessionId: payload.sessionId,
+          messageTs: payload.messageTs,
+          storefront_id: payload.storefrontId ?? null,
+          channel: payload.channel ?? null,
+          contentHash: payload.contentHash,
+          captionText: payload.captionText,
+          captionLength: payload.captionText.length,
+          source: 'chat_worker',
+        },
+      }),
+    });
+  } catch (error) {
+    console.warn('[attachment_analytics] event emit failed:', error);
+  }
+}
+
+async function persistAttachmentEmbedding(
+  env: Env,
+  payload: {
+    sessionId: string;
+    messageTs: number;
+    contentHash: string;
+    captionText: string;
+    storefrontId?: string;
+    channel?: string;
+  },
+): Promise<void> {
+  if (!env.DB_CHATBOT) return;
+  const vector = await embedCaptionTextForAnalytics(env, payload.captionText);
+  if (!vector) return;
+  try {
+    await ensureChatAttachmentEmbeddingsTable(env.DB_CHATBOT);
+    const id = `${payload.sessionId}:${payload.messageTs}:${payload.contentHash.slice(0, 16)}`;
+    await env.DB_CHATBOT.prepare(
+      `INSERT OR REPLACE INTO chat_attachment_embeddings (
+        id, session_id, message_ts, content_hash, caption_text, embedding_model, embedding_json, storefront_id, channel, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        id,
+        payload.sessionId,
+        payload.messageTs,
+        payload.contentHash,
+        payload.captionText,
+        CHAT_ATTACHMENT_EMBEDDING_MODEL,
+        JSON.stringify(vector),
+        payload.storefrontId ?? null,
+        payload.channel ?? null,
+        now(),
+      )
+      .run();
+  } catch (error) {
+    console.warn('[attachment_analytics] embedding persistence failed:', error);
+  }
+}
+
+async function persistAttachmentAnalytics(
+  env: Env,
+  payload: {
+    imageBase64: string;
+    sessionId: string;
+    messageTs: number;
+    captionText: string;
+    storefrontId?: string;
+    channel?: string;
+  },
+): Promise<void> {
+  try {
+    const contentHash = await sha256Hex(payload.imageBase64);
+    const eventPayload = {
+      sessionId: payload.sessionId,
+      messageTs: payload.messageTs,
+      contentHash,
+      captionText: payload.captionText,
+      storefrontId: payload.storefrontId,
+      channel: payload.channel,
+    };
+    await emitAttachmentUploadedEvent(env, eventPayload);
+    await persistAttachmentEmbedding(env, eventPayload);
+  } catch (error) {
+    console.warn('[attachment_analytics] pipeline failed:', error);
+  }
 }
 function ensureHistoryArray(input: unknown): HistoryEntry[] {
   if (typeof input === 'string' && input.trim().startsWith('[')) {
@@ -626,6 +857,26 @@ export class SessionDO {
       return new Response('ok');
     }
 
+    // POST /replace-last-user-text
+    if (method === 'POST' && pathname.endsWith('/replace-last-user-text')) {
+      const payload = (await request.json().catch(() => null)) as {
+        content?: string;
+        ts?: number;
+        expected_content?: string;
+      } | null;
+      if (!payload || typeof payload.content !== 'string' || !payload.content.trim()) {
+        return new Response('Bad Request', { status: 400 });
+      }
+      const replaced = await this.replaceLastUserText(
+        payload.content,
+        typeof payload.ts === 'number' ? payload.ts : undefined,
+        typeof payload.expected_content === 'string' ? payload.expected_content : undefined,
+      );
+      return new Response(JSON.stringify({ ok: true, replaced }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     // POST /set-session-id
     if (method === 'POST' && pathname.endsWith('/set-session-id')) {
         const payload = (await request.json().catch(() => null)) as { session_id?: string } | null;
@@ -751,6 +1002,43 @@ export class SessionDO {
     }
     this.history = this.history.slice(-MAX_HISTORY_IN_DO);
     await this.state.storage.put('history', this.history);
+  }
+
+  private async replaceLastUserText(
+    content: string,
+    expectedTs?: number,
+    expectedContent?: string,
+  ): Promise<boolean> {
+    const nextContent = content.trim();
+    if (!nextContent) return false;
+    const expected = expectedContent?.trim();
+
+    const findFromEnd = (predicate: (entry: HistoryEntry) => boolean): number => {
+      for (let i = this.history.length - 1; i >= 0; i--) {
+        if (predicate(this.history[i])) return i;
+      }
+      return -1;
+    };
+
+    let targetIdx = findFromEnd((entry) => {
+      if (entry.role !== 'user') return false;
+      if (typeof expectedTs === 'number' && entry.ts !== expectedTs) return false;
+      if (expected && entry.content !== expected) return false;
+      return true;
+    });
+
+    if (targetIdx < 0 && typeof expectedTs === 'number') {
+      targetIdx = findFromEnd((entry) => entry.role === 'user' && entry.ts === expectedTs);
+    }
+    if (targetIdx < 0 && expected) {
+      targetIdx = findFromEnd((entry) => entry.role === 'user' && entry.content === expected);
+    }
+    if (targetIdx < 0) return false;
+
+    const current = this.history[targetIdx];
+    this.history[targetIdx] = { ...current, content: nextContent };
+    await this.state.storage.put('history', this.history);
+    return true;
   }
 
   /**
@@ -943,10 +1231,11 @@ async function handleChat(
   }
 
   // Zapisz wiadomość użytkownika w DO
+  const userMessageTs = now();
   await stub.fetch('https://session/append', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ role: 'user', content: payload.message, ts: now() } as HistoryEntry),
+    body: JSON.stringify({ role: 'user', content: payload.message, ts: userMessageTs } as HistoryEntry),
   });
 
   // Zapisz cart_id w DO, jeśli dostarczono
@@ -1009,7 +1298,7 @@ async function handleChat(
   }
 
   console.log(`[handleChat] Przekierowanie do streamAssistantResponse dla sesji: ${sessionId}`);
-  return streamAssistantResponse(request, sessionId, payload.message, stub, env, customerToken, payload.brand, payload.image_base64, {
+  return streamAssistantResponse(request, sessionId, payload.message, userMessageTs, stub, env, customerToken, payload.brand, payload.image_base64, {
     storefrontId: payload.storefrontId,
     channel: payload.channel,
     route: payload.route,
@@ -1032,6 +1321,7 @@ async function streamAssistantResponse(
   request: Request,
   sessionId: string,
   userMessage: string,
+  userMessageTs: number,
   stub: DurableObjectStub,
   env: Env,
   customerToken?: string,
@@ -1085,24 +1375,70 @@ async function streamAssistantResponse(
         }
       }
 
+      const refreshPersonMemory = async () => {
+        if (!shopifyCustomerId || !env.DB_CHATBOT) return;
+        try {
+          const histResp = await stub.fetch('https://session/history');
+          const historyData = await histResp.json().catch(() => []);
+          const hist = ensureHistoryArray(historyData);
+          const snippet = historyToPlainText(hist);
+          if (!snippet.trim()) return;
+          const prev = await loadPersonMemory(env.DB_CHATBOT, shopifyCustomerId);
+          const merged = await mergeSessionIntoPersonSummary(env, prev, snippet);
+          await upsertPersonMemory(env.DB_CHATBOT, shopifyCustomerId, merged);
+        } catch (e) {
+          console.error('[person_memory] refresh failed:', e);
+        }
+      };
+
       const maybeRefreshPersonMemory = () => {
-        if (!shopifyCustomerId || !env.DB_CHATBOT || !executionCtx) return;
-        executionCtx.waitUntil(
-          (async () => {
-            try {
-              const histResp = await stub.fetch('https://session/history');
-              const historyData = await histResp.json().catch(() => []);
-              const hist = ensureHistoryArray(historyData);
-              const snippet = historyToPlainText(hist);
-              if (!snippet.trim()) return;
-              const prev = await loadPersonMemory(env.DB_CHATBOT!, shopifyCustomerId);
-              const merged = await mergeSessionIntoPersonSummary(env, prev, snippet);
-              await upsertPersonMemory(env.DB_CHATBOT!, shopifyCustomerId, merged);
-            } catch (e) {
-              console.error('[person_memory] refresh failed:', e);
+        if (!shopifyCustomerId || !env.DB_CHATBOT) return;
+        if (executionCtx) {
+          executionCtx.waitUntil(refreshPersonMemory());
+          return;
+        }
+        void refreshPersonMemory();
+      };
+
+      const maybePersistImageSurrogate = () => {
+        if (!imageBase64) return;
+        const task = async () => {
+          try {
+            const caption = await generateImageCaption(env, sessionId, imageBase64, userMessage);
+            if (!caption) return;
+            const surrogate = buildImageSurrogateContent(userMessage, caption);
+            const replaceResp = await stub.fetch('https://session/replace-last-user-text', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ts: userMessageTs,
+                expected_content: userMessage,
+                content: surrogate,
+              }),
+            });
+            if (!replaceResp.ok) {
+              console.warn('[image_caption] replace-last-user-text failed with status', replaceResp.status);
             }
-          })(),
-        );
+            await persistAttachmentAnalytics(env, {
+              imageBase64,
+              sessionId,
+              messageTs: userMessageTs,
+              captionText: caption,
+              storefrontId: storefrontContext?.storefrontId,
+              channel: storefrontContext?.channel,
+            });
+          } catch (e) {
+            console.warn('[image_caption] surrogate persist failed:', e);
+          } finally {
+            await refreshPersonMemory();
+          }
+        };
+
+        if (executionCtx) {
+          executionCtx.waitUntil(task());
+          return;
+        }
+        void task();
       };
 
       // 🔴 KROK 3: ZBUDUJ WIADOMOŚCI DLA AI (Z LOGIKĄ RAG WORKER)
@@ -1428,7 +1764,11 @@ async function streamAssistantResponse(
         });
       }
 
-      maybeRefreshPersonMemory();
+      if (imageBase64) {
+        maybePersistImageSurrogate();
+      } else {
+        maybeRefreshPersonMemory();
+      }
 
     } catch (err) {
       console.error('Error in streamAssistantResponse:', err);

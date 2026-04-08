@@ -591,10 +591,29 @@ function finalizeAssistantMessage(id) {
   el.setAttribute('role', 'status');
 }
 
-function createUserMessage(messagesEl, text) {
+function createUserMessage(messagesEl, text, attachment) {
   const div = document.createElement('div');
   div.className = 'msg msg-user';
-  div.textContent = text;
+  const hasAttachment = Boolean(attachment && attachment.data);
+  if (hasAttachment) {
+    div.classList.add('msg-user--with-attachment');
+    const img = document.createElement('img');
+    img.className = 'msg-user-attachment__img';
+    img.loading = 'lazy';
+    img.src = 'data:' + (attachment.mediaType || 'image/jpeg') + ';base64,' + attachment.data;
+    img.alt = attachment.fileName
+      ? 'Załączone zdjęcie: ' + attachment.fileName
+      : 'Załączone zdjęcie użytkownika';
+    div.appendChild(img);
+    if (text && String(text).trim()) {
+      const textEl = document.createElement('span');
+      textEl.className = 'msg-user-attachment__text';
+      textEl.textContent = text;
+      div.appendChild(textEl);
+    }
+  } else {
+    div.textContent = text;
+  }
   messagesEl.appendChild(div);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
@@ -722,7 +741,7 @@ async function sendMessageToWorker(
 
   setLoading(true);
   showGlobalLoader();
-  createUserMessage(messagesEl, text || '(załącznik obrazu)');
+  createUserMessage(messagesEl, text || '(załącznik obrazu)', attachment);
   const { id: msgId, el: msgEl } = createAssistantMessage(messagesEl);
   let accumulated = '';
   let lastParsedActions = null;

@@ -78,4 +78,37 @@ describe('SessionDO', () => {
     }
 
   });
+
+  it('should replace latest user message text by timestamp', async () => {
+    const state = makeDurableStateStub();
+    const doStub = new SessionDO(state, mockEnv);
+    const ts = Date.now();
+
+    await doStub.fetch(
+      new Request('https://session/append', {
+        method: 'POST',
+        body: JSON.stringify({ role: 'user', content: '(załącznik obrazu)', ts }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const replaceRes = await doStub.fetch(
+      new Request('https://session/replace-last-user-text', {
+        method: 'POST',
+        body: JSON.stringify({
+          ts,
+          expected_content: '(załącznik obrazu)',
+          content: 'Użytkownik przesłał zdjęcie. Opis: pierścionek z diamentem.',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    expect(replaceRes.ok).toBeTruthy();
+
+    const historyRes = await doStub.fetch(new Request('https://session/history'));
+    const history = (await historyRes.json()) as any[];
+    expect(history.length).toBe(1);
+    expect(history[0].role).toBe('user');
+    expect(history[0].content).toContain('Użytkownik przesłał zdjęcie.');
+  });
 });
