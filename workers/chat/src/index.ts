@@ -86,6 +86,7 @@ import {
   historyToPlainText,
   mergeSessionIntoPersonSummary,
 } from './person-memory';
+import { handleConsentAppProxy, handleConsentS2S } from './consent';
 
 // Importy RAG (teraz używane tylko przez narzędzia, a nie przez index.ts)
 import {
@@ -1901,6 +1902,11 @@ export default {
       return handleChat(request, env, APP_PROXY_CHAT_CONTEXT_OVERRIDE, ctx);
     }
 
+    // Consent Gate (App Proxy — auth jak wyżej dla /apps/assistant/*)
+    if (url.pathname === '/apps/assistant/consent' && request.method === 'POST') {
+      return handleConsentAppProxy(request, env);
+    }
+
     // Endpoint czatu headless / BFF – zabezpieczony shared secret + headers kontekstowe.
     // Uwaga: Shopify App Proxy przekazuje /apps/assistant/chat jako /chat do backendu
     // i dodaje podpis HMAC w query/headerach.
@@ -1918,6 +1924,23 @@ export default {
         return s2sResult.response;
       }
       return handleChat(request, env, s2sResult.contextOverride, ctx);
+    }
+
+    // Consent Gate (S2S jak /chat — ten sam kontrakt nagłówków)
+    if (url.pathname === '/consent' && request.method === 'POST') {
+      if (hasAppProxySignature(request, url)) {
+        const appProxyAuthError = await authorizeAppProxyRequest(request, env);
+        if (appProxyAuthError) {
+          return appProxyAuthError;
+        }
+        return handleConsentAppProxy(request, env);
+      }
+
+      const s2sConsent = verifyS2SChatRequest(request, env);
+      if (!s2sConsent.ok) {
+        return s2sConsent.response;
+      }
+      return handleConsentS2S(request, env, s2sConsent.contextOverride);
     }
 
     // Endpoint serwera MCP (JSON-RPC 2.0)

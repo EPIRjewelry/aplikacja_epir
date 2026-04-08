@@ -510,6 +510,18 @@
   --epir-primary-color: #1a1a1a;
 }
 
+/* Reset typografii z motywu (kolumny / agresywne łamanie) — tylko wewnątrz widżetu */
+#epir-assistant-section .assistant-messages,
+#epir-assistant-embed .assistant-messages {
+  column-count: auto !important;
+  writing-mode: horizontal-tb !important;
+}
+#epir-assistant-section .epir-message__bubble,
+#epir-assistant-embed .epir-message__bubble {
+  word-break: normal !important;
+  overflow-wrap: anywhere;
+}
+
 #epir-assistant-section .assistant-panel,
 #epir-assistant-embed .assistant-panel,
 #epir-assistant-section .assistant-messages,
@@ -530,6 +542,12 @@
 
 #epir-assistant-section .msg-assistant,
 #epir-assistant-embed .msg-assistant {
+  color: #1a1a1a !important;
+  background: transparent !important;
+}
+
+#epir-assistant-section .msg-assistant .epir-message__bubble,
+#epir-assistant-embed .msg-assistant .epir-message__bubble {
   color: #1a1a1a !important;
   background: #f5f5f5 !important;
 }
@@ -663,13 +681,29 @@
 .msg-user { justify-content: flex-end; }
 .msg-assistant { justify-content: flex-start; }
 
+/* Bańka treści asystenta (jedno dziecko flex — treść + opcjonalne strong wewnątrz) */
 .msg .epir-message__bubble,
-.msg .bubble,
-.msg { /* fallback when bubble wrapper missing */
+.msg .bubble {
+  box-sizing: border-box;
   max-width: 75%;
+  min-width: 0;
   padding: 10px 14px;
   border-radius: 14px;
   word-wrap: break-word;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+/* Wiadomość użytkownika: bańka = sam wiersz .msg (bez wewnętrznego bąbla) */
+.msg.msg-user {
+  box-sizing: border-box;
+  max-width: 75%;
+  min-width: 0;
+  padding: 10px 14px;
+  border-radius: 14px;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .msg-user { color: #fff; }
@@ -700,11 +734,30 @@
   line-height: 1.4;
 }
 
-.msg-assistant {
+/* Kontener wiersza asystenta — bez tła; wizualna bańka jest w .epir-message__bubble */
+.msg.msg-assistant {
+  background: transparent;
+  border: none;
+  align-self: flex-start;
+}
+
+.msg.msg-assistant .epir-message__bubble {
   background: #f5f5f5;
   color: var(--epir-primary-color);
   border: 1px solid rgba(0,0,0,0.06);
-  align-self: flex-start;
+}
+
+/* Legacy: powitanie bez bąbla (np. stary cache) */
+.msg.msg-assistant:not(:has(.epir-message__bubble)) {
+  background: #f5f5f5;
+  color: var(--epir-primary-color);
+  border: 1px solid rgba(0,0,0,0.06);
+  max-width: 75%;
+  min-width: 0;
+  padding: 10px 14px;
+  border-radius: 14px;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* Typing state */
@@ -870,5 +923,93 @@
 
 .epir-assistant-launcher:active {
   transform: scale(0.95) !important;
+}
+
+/* ========================================
+   CONSENT GATE (Theme App Extension)
+======================================== */
+.epir-assistant-consent-bar {
+  order: -1;
+  max-width: 380px;
+  margin: 0 0 10px 0;
+  padding: 10px 12px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  font-size: 13px;
+  line-height: 1.35;
+  color: #1a1a1a !important;
+  z-index: 1;
+}
+
+.epir-assistant-consent-bar--locked {
+  border-color: rgba(212, 175, 55, 0.45);
+  background: linear-gradient(to bottom, #fffef8 0%, #fff 100%);
+}
+
+.epir-assistant-consent-bar--saving {
+  opacity: 0.72;
+  pointer-events: none;
+  position: relative;
+}
+
+.epir-assistant-consent-bar--saving::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 6px,
+    rgba(212, 175, 55, 0.06) 6px,
+    rgba(212, 175, 55, 0.06) 12px
+  );
+  pointer-events: none;
+}
+
+.epir-assistant-consent-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.epir-assistant-consent-checkbox {
+  margin-top: 2px;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--epir-accent-color, #d4af37);
+  cursor: pointer;
+}
+
+.epir-assistant-consent-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.epir-assistant-consent-error:not([hidden]) {
+  display: block;
+  color: #b23a2f;
+  font-size: 12px;
+  margin: 8px 0 0;
+  line-height: 1.3;
+}
+
+.epir-assistant--consent-locked .epir-assistant-launcher:disabled,
+.epir-assistant--consent-locked .epir-assistant-launcher[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.25);
+}
+
+.epir-assistant--consent-locked .assistant-form input[type='text']:disabled,
+.epir-assistant--consent-locked .assistant-form button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 

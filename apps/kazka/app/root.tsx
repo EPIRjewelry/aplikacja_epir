@@ -1,3 +1,4 @@
+import {useCallback, useEffect, useState} from 'react';
 import {
   Links,
   Meta,
@@ -10,14 +11,30 @@ import type {Shop} from '@shopify/hydrogen/storefront-api-types';
 import styles from './styles/app.css';
 import tailwind from './styles/tailwind-build.css';
 import favicon from '../public/favicon.svg';
-import {Layout, CartHeader, CartDrawer} from '@epir/ui';
-import {ChatWidget} from '~/components/ChatWidget';
+import {
+  Layout,
+  CartHeader,
+  CartDrawer,
+  ChatWidget,
+  ConsentToggle,
+  buildConsentPayload,
+  getStoredConsent,
+  storeConsent,
+  getOrCreateAnonymousId,
+  getConsentSessionId,
+} from '@epir/ui';
+import type {PersonaUi} from '@epir/ui';
 import {Seo, Storefront} from '@shopify/hydrogen';
 import type {LinksFunction, LoaderArgs} from '@remix-run/cloudflare';
 import {CART_QUERY} from '~/queries/cart';
 import {defer} from '@remix-run/cloudflare';
 import {resolveChatApiUrl} from '~/lib/resolve-chat-api-url';
-import {KAZKA_CHANNEL, KAZKA_STOREFRONT_ID} from '~/lib/chat-widget-context';
+import {
+  KAZKA_CHANNEL,
+  KAZKA_CONSENT_ID,
+  KAZKA_CONSENT_STORAGE_KEY,
+  KAZKA_STOREFRONT_ID,
+} from '~/lib/chat-widget-context';
 import {loadKazkaPersonaUi} from '~/lib/persona-ui.server';
 
 export const links: LinksFunction = () => {
@@ -72,6 +89,7 @@ export async function loader({context, request}: LoaderArgs) {
     storefrontId: KAZKA_STOREFRONT_ID,
     channel: KAZKA_CHANNEL,
     route,
+    shopDomain: new URL(request.url).host,
   });
 }
 
@@ -90,6 +108,117 @@ async function getCart(storefront: Storefront, cartId: string) {
   });
 
   return cart;
+}
+
+function KazkaConsentAndChat({
+  chatApiUrl,
+  cartId,
+  brand,
+  personaUi,
+  storefrontId,
+  channel,
+  route,
+  shopDomain,
+}: {
+  chatApiUrl: string;
+  cartId?: string | null;
+  brand: string;
+  personaUi: PersonaUi;
+  storefrontId: string;
+  channel: string;
+  route?: string;
+  shopDomain: string;
+}) {
+  const [consentGranted, setConsentGranted] = useState(false);
+  const [pendingConsent, setPendingConsent] = useState(false);
+  const [consentError, setConsentError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (getStoredConsent(KAZKA_CONSENT_STORAGE_KEY) === true) {
+      setConsentGranted(true);
+    }
+  }, []);
+
+  const onConsentChange = useCallback(
+    async (next: boolean) => {
+      setConsentError(null);
+      if (!next) {
+        storeConsent(false, KAZKA_CONSENT_STORAGE_KEY);
+        setConsentGranted(false);
+        return;
+      }
+      setPendingConsent(true);
+      try {
+        const sessionId = getConsentSessionId() || getOrCreateAnonymousId();
+        const payload = buildConsentPayload({
+          consentId: KAZKA_CONSENT_ID,
+          granted: true,
+          source: 'hydrogen-kazka',
+          storefrontId,
+          channel,
+          shopDomain,
+          route: route ?? '/',
+          sessionId,
+          anonymousId: getOrCreateAnonymousId(),
+          customerId: null,
+        });
+        const res = await fetch('/api/consent', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const errText = await res.text().catch(() => '');
+          let message = errText || `HTTP ${res.status}`;
+          try {
+            const j = JSON.parse(errText) as {error?: unknown};
+            if (typeof j.error === 'string' && j.error.trim()) {
+              message = j.error;
+            }
+          } catch {
+            /* response nie-JSON */
+          }
+          throw new Error(message);
+        }
+        storeConsent(true, KAZKA_CONSENT_STORAGE_KEY);
+        setConsentGranted(true);
+      } catch (e) {
+        setConsentError(
+          e instanceof Error ? e.message : 'Nie udało się zapisać zgody.',
+        );
+        setConsentGranted(false);
+      } finally {
+        setPendingConsent(false);
+      }
+    },
+    [channel, route, shopDomain, storefrontId],
+  );
+
+  return (
+    <>
+      <div className="fixed bottom-4 left-4 z-50 max-w-sm rounded-lg border border-gray-200 bg-white p-3 shadow-md">
+        <ConsentToggle
+          checked={consentGranted}
+          onChange={(c) => void onConsentChange(c)}
+          disabled={pendingConsent}
+          label="Wyrażam zgodę na rozmowę z asystentem AI (Kazka). Zgoda jest wymagana do wysłania wiadomości w czacie."
+        />
+        {consentError ? (
+          <p className="mt-2 text-xs text-red-600">{consentError}</p>
+        ) : null}
+      </div>
+      <ChatWidget
+        chatApiUrl={chatApiUrl}
+        cartId={cartId}
+        brand={brand}
+        personaUi={personaUi}
+        storefrontId={storefrontId}
+        channel={channel}
+        route={route}
+        consentGranted={consentGranted}
+      />
+    </>
+  );
 }
 
 export default function App() {
@@ -124,7 +253,7 @@ export default function App() {
         >
           <Outlet />
         </Layout>
-        <ChatWidget
+        <KazkaConsentAndChat
           chatApiUrl={data.chatApiUrl}
           cartId={data.cartId}
           brand={data.brand}
@@ -132,6 +261,7 @@ export default function App() {
           storefrontId={data.storefrontId}
           channel={data.channel}
           route={data.route}
+          shopDomain={data.shopDomain}
         />
         <ScrollRestoration />
         <Scripts />

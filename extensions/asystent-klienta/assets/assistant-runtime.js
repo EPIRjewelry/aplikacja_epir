@@ -8,6 +8,230 @@ var epirPendingAttachmentByForm = new WeakMap();
 /** Maksymalny rozmiar załącznika obrazu (4 MB po stronie klienta przed base64). */
 const EPIR_MAX_ATTACH_BYTES = 4 * 1024 * 1024;
 
+/* ===== CONSENT GATE (App Proxy POST /apps/assistant/consent) ===== */
+var EPIR_CONSENT_ANONYMOUS_KEY = 'epir-chat-anonymous-id';
+
+function getEpirAnonymousIdForConsent() {
+  try {
+    var id = sessionStorage.getItem(EPIR_CONSENT_ANONYMOUS_KEY);
+    if (!id && typeof crypto !== 'undefined' && crypto.randomUUID) {
+      id = crypto.randomUUID();
+      sessionStorage.setItem(EPIR_CONSENT_ANONYMOUS_KEY, id);
+    }
+    return id || String(Date.now());
+  } catch (e) {
+    return String(Date.now());
+  }
+}
+
+function getConsentStorageKeyForSection(section) {
+  var id = (section && section.dataset && section.dataset.consentId) || 'epir-theme-liquid-chat-v1';
+  return 'epir-consent:' + id;
+}
+
+/**
+ * Payload zgodny z workers/chat `parseConsentJsonBody` (tryb App Proxy nadpisuje storefront/channel po stronie serwera).
+ * Eksponowane do ewentualnych testów integracyjnych.
+ */
+function buildConsentEvent(section) {
+  var consentId = (section.dataset && section.dataset.consentId) || 'epir-theme-liquid-chat-v1';
+  var sessionKey = 'epir-assistant-session';
+  var sessionId = '';
+  try {
+    sessionId = sessionStorage.getItem(sessionKey) || '';
+  } catch (e) {}
+  if (!sessionId) sessionId = getEpirAnonymousIdForConsent();
+  var shopDomain = '';
+  try {
+    shopDomain =
+      (section.dataset && section.dataset.shopDomain) ||
+      (typeof window !== 'undefined' && window.location && window.location.hostname) ||
+      '';
+  } catch (e2) {}
+  var cid = (section.dataset && section.dataset.loggedInCustomerId && String(section.dataset.loggedInCustomerId).trim())
+    ? String(section.dataset.loggedInCustomerId).trim()
+    : null;
+  return {
+    consentId: consentId,
+    granted: true,
+    source: 'theme-app-extension',
+    storefrontId: (section.dataset && section.dataset.storefrontId) || 'epir-liquid',
+    channel: (section.dataset && section.dataset.channel) || 'online-store',
+    shopDomain: shopDomain,
+    route:
+      typeof window !== 'undefined' && window.location && window.location.pathname
+        ? window.location.pathname
+        : '/',
+    sessionId: sessionId,
+    anonymousId: getEpirAnonymousIdForConsent(),
+    customerId: cid,
+    timestamp: Date.now(),
+  };
+}
+
+function buildConsentFetchUrl(section, basePath) {
+  var endpoint = basePath || (section.dataset && section.dataset.consentEndpoint) || '/apps/assistant/consent';
+  var shop = (section.dataset && section.dataset.shopDomain) || '';
+  var customerId = (section.dataset && section.dataset.loggedInCustomerId) || '';
+  if (shop || customerId) {
+    var params = new URLSearchParams();
+    if (shop) params.set('shop', shop);
+    if (customerId) params.set('logged_in_customer_id', customerId);
+    endpoint = endpoint + (endpoint.indexOf('?') >= 0 ? '&' : '?') + params.toString();
+  }
+  return endpoint;
+}
+
+function submitConsentEvent(payload, section) {
+  var url = buildConsentFetchUrl(section, (section.dataset && section.dataset.consentEndpoint) || '/apps/assistant/consent');
+  return fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/plain',
+    },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+}
+
+function setConsentBarSaving(section, saving) {
+  var bar = section.querySelector('[data-epir-consent-bar]');
+  if (!bar) return;
+  if (saving) bar.classList.add('epir-assistant-consent-bar--saving');
+  else bar.classList.remove('epir-assistant-consent-bar--saving');
+}
+
+function setConsentGateError(section, message) {
+  var el = section.querySelector('[data-epir-consent-error]');
+  if (!el) return;
+  if (message) {
+    el.textContent = message;
+    el.removeAttribute('hidden');
+  } else {
+    el.textContent = '';
+    el.setAttribute('hidden', '');
+  }
+}
+
+function lockChatUi(section) {
+  section.classList.add('epir-assistant--consent-locked');
+  var bar = section.querySelector('[data-epir-consent-bar]');
+  if (bar) bar.classList.add('epir-assistant-consent-bar--locked');
+  var launcher = section.querySelector('#assistant-launcher') || section.querySelector('#assistant-launcher-embed');
+  if (launcher) {
+    launcher.setAttribute('disabled', 'disabled');
+    launcher.setAttribute('aria-disabled', 'true');
+  }
+  ['#assistant-input', '#assistant-input-embed', '#assistant-send-button', '#assistant-send-button-embed'].forEach(function (sel) {
+    var el = section.querySelector(sel);
+    if (el) el.setAttribute('disabled', 'disabled');
+  });
+  section.querySelectorAll('.assistant-attach-btn').forEach(function (btn) {
+    btn.setAttribute('disabled', 'disabled');
+  });
+  var fi = section.querySelector('#assistant-file-input-embed') || section.querySelector('#assistant-file-input-section');
+  if (fi) fi.setAttribute('disabled', 'disabled');
+}
+
+function unlockChatUi(section) {
+  section.classList.remove('epir-assistant--consent-locked');
+  var bar = section.querySelector('[data-epir-consent-bar]');
+  if (bar) bar.classList.remove('epir-assistant-consent-bar--locked');
+  var launcher = section.querySelector('#assistant-launcher') || section.querySelector('#assistant-launcher-embed');
+  if (launcher) {
+    launcher.removeAttribute('disabled');
+    launcher.setAttribute('aria-disabled', 'false');
+  }
+  ['#assistant-input', '#assistant-input-embed', '#assistant-send-button', '#assistant-send-button-embed'].forEach(function (sel) {
+    var el = section.querySelector(sel);
+    if (el) el.removeAttribute('disabled');
+  });
+  section.querySelectorAll('.assistant-attach-btn').forEach(function (btn) {
+    btn.removeAttribute('disabled');
+  });
+  var fi = section.querySelector('#assistant-file-input-embed') || section.querySelector('#assistant-file-input-section');
+  if (fi) fi.removeAttribute('disabled');
+}
+
+function initConsentGateForSection(section) {
+  if (!section || section.dataset.epirConsentInit === '1') return;
+  section.dataset.epirConsentInit = '1';
+  var cb = section.querySelector('.epir-assistant-consent-checkbox');
+  var storageKey = getConsentStorageKeyForSection(section);
+  var granted = false;
+  try {
+    granted = localStorage.getItem(storageKey) === 'true';
+  } catch (e) {}
+
+  if (granted) {
+    try {
+      if (cb) cb.checked = true;
+    } catch (e2) {}
+    unlockChatUi(section);
+  } else {
+    lockChatUi(section);
+  }
+
+  if (cb) {
+    cb.addEventListener('change', function () {
+      if (!cb.checked) {
+        try {
+          localStorage.setItem(storageKey, 'false');
+        } catch (e) {}
+        setConsentGateError(section, '');
+        lockChatUi(section);
+        return;
+      }
+      setConsentBarSaving(section, true);
+      setConsentGateError(section, '');
+      cb.setAttribute('disabled', 'disabled');
+      submitConsentEvent(buildConsentEvent(section), section)
+        .then(function (res) {
+          setConsentBarSaving(section, false);
+          cb.removeAttribute('disabled');
+          if (res.ok && res.status >= 200 && res.status < 300) {
+            try {
+              localStorage.setItem(storageKey, 'true');
+            } catch (e3) {}
+            unlockChatUi(section);
+          } else {
+            cb.checked = false;
+            lockChatUi(section);
+            setConsentGateError(
+              section,
+              'Nie udało się zapisać zgody (' + res.status + '). Spróbuj ponownie.'
+            );
+          }
+        })
+        .catch(function (err) {
+          setConsentBarSaving(section, false);
+          cb.removeAttribute('disabled');
+          cb.checked = false;
+          lockChatUi(section);
+          setConsentGateError(
+            section,
+            err && err.message ? err.message : 'Błąd sieci. Spróbuj ponownie.'
+          );
+        });
+    });
+  }
+
+  var launcher = section.querySelector('#assistant-launcher') || section.querySelector('#assistant-launcher-embed');
+  if (launcher) {
+    launcher.addEventListener(
+      'click',
+      function (ev) {
+        if (section.classList.contains('epir-assistant--consent-locked')) {
+          ev.preventDefault();
+          ev.stopPropagation();
+        }
+      },
+      true
+    );
+  }
+}
+
 function getPendingAttachment(form) {
   return form ? (epirPendingAttachmentByForm.get(form) || null) : null;
 }
@@ -454,7 +678,10 @@ function initAssistantUIForSection(section) {
       const welcomeDiv = document.createElement('div');
       welcomeDiv.className = 'msg msg-assistant welcome-message';
       welcomeDiv.setAttribute('role', 'status');
-      welcomeDiv.textContent = `Witaj ponownie, ${localName}! Miło Cię widzieć.`;
+      const welcomeBubble = document.createElement('div');
+      welcomeBubble.className = 'epir-message__bubble';
+      welcomeBubble.textContent = `Witaj ponownie, ${localName}! Miło Cię widzieć.`;
+      welcomeDiv.appendChild(welcomeBubble);
       messagesEl.insertBefore(welcomeDiv, messagesEl.firstChild);
     }
 
@@ -470,7 +697,10 @@ function initAssistantUIForSection(section) {
     // Web Pixel emits 'epir:activate-chat' when analytics-worker recommends activation
     window.addEventListener('epir:activate-chat', (event) => {
       console.log('[EPIR Assistant] 🚀 Proactive chat activation triggered:', event.detail);
-      
+      if (section.classList.contains('epir-assistant--consent-locked')) {
+        return;
+      }
+
       // Auto-open chat if closed
       const shell = section.querySelector('#assistant-panel') || section.querySelector('#assistant-panel-embed') || content;
       if (shell && shell.classList.contains('is-closed')) {
@@ -484,13 +714,18 @@ function initAssistantUIForSection(section) {
         const proactiveMsg = document.createElement('div');
         proactiveMsg.className = 'msg msg-assistant proactive-greeting';
         proactiveMsg.setAttribute('role', 'status');
-        proactiveMsg.innerHTML = `<strong>👋 Cześć!</strong> Widzę, że przeglądasz naszą kolekcję. Mogę Ci w czymś pomóc?`;
+        const proactiveBubble = document.createElement('div');
+        proactiveBubble.className = 'epir-message__bubble';
+        proactiveBubble.innerHTML = `<strong>👋 Cześć!</strong> Widzę, że przeglądasz naszą kolekcję. Mogę Ci w czymś pomóc?`;
+        proactiveMsg.appendChild(proactiveBubble);
         messagesEl.appendChild(proactiveMsg);
         
         // Scroll to show new message
         messagesEl.scrollTop = messagesEl.scrollHeight;
       }
     });
+
+    initConsentGateForSection(section);
   } catch (e) {
     console.warn('Assistant init error', e);
   }
@@ -548,13 +783,37 @@ if (typeof MutationObserver !== 'undefined') {
 // type StreamPayload = { content?; delta?; session_id?; error?; done? };
 
 /* Pomocnicze UI */
+/** Jedna bańka treści wewnątrz `.msg.msg-assistant` — zapobiega rozbiciu flexa na wiele itemów (tekst + strong). */
+function ensureAssistantBubble(msgRoot) {
+  var direct = null;
+  if (msgRoot.children && msgRoot.children.length) {
+    for (var i = 0; i < msgRoot.children.length; i++) {
+      if (msgRoot.children[i].classList && msgRoot.children[i].classList.contains('epir-message__bubble')) {
+        direct = msgRoot.children[i];
+        break;
+      }
+    }
+  }
+  if (direct) return direct;
+  var bubble = document.createElement('div');
+  bubble.className = 'epir-message__bubble';
+  while (msgRoot.firstChild) {
+    bubble.appendChild(msgRoot.firstChild);
+  }
+  msgRoot.appendChild(bubble);
+  return bubble;
+}
+
 function createAssistantMessage(messagesEl) {
   const id = `msg-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
   const div = document.createElement('div');
   div.className = 'msg msg-assistant msg-typing';
   div.id = id;
   div.setAttribute('role', 'status');
-  div.textContent = '...';
+  const bubble = document.createElement('div');
+  bubble.className = 'epir-message__bubble';
+  bubble.textContent = '...';
+  div.appendChild(bubble);
   messagesEl.appendChild(div);
   messagesEl.scrollTop = messagesEl.scrollHeight;
   return { id, el: div };
@@ -574,7 +833,8 @@ function updateAssistantMessage(id, text) {
   const el = document.getElementById(id);
   if (!el) return;
   if (el.classList.contains('msg-assistant')) {
-    el.innerHTML = formatAssistantMarkdownLite(text);
+    const bubble = ensureAssistantBubble(el);
+    bubble.innerHTML = formatAssistantMarkdownLite(text);
   } else {
     el.textContent = text;
   }
@@ -958,6 +1218,9 @@ function initAssistantSubmitHandler() {
 
 function doSendFromForm(form, input) {
   const sectionEl = form.closest('#epir-assistant-embed') || form.closest('#epir-assistant-section') || getAssistantSection();
+  if (sectionEl && sectionEl.classList.contains('epir-assistant--consent-locked')) {
+    return;
+  }
   const messagesEl = sectionEl && (sectionEl.querySelector('#assistant-messages') || sectionEl.querySelector('#assistant-messages-embed'));
   const text = (input && input.value && input.value.trim()) || '';
   const pendingAttachment = getPendingAttachment(form);

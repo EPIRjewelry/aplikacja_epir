@@ -71,6 +71,11 @@ export type ChatWidgetProps = {
   /** Z loadera kanału headless — zawsze w body POST. */
   channel: string;
   route?: string;
+  /**
+   * Consent Gate: gdy `false`, widget nie wysyła wiadomości (transport SSE bez zmian).
+   * `undefined` — bez blokady (kompatybilność wsteczna).
+   */
+  consentGranted?: boolean;
 };
 
 function ChatWidgetFallback({
@@ -81,6 +86,7 @@ function ChatWidgetFallback({
   storefrontId,
   channel,
   route,
+  consentGranted,
   isOpen,
   onToggle,
 }: {
@@ -91,9 +97,12 @@ function ChatWidgetFallback({
   storefrontId: string;
   channel: string;
   route?: string;
+  consentGranted?: boolean;
   isOpen: boolean;
   onToggle: () => void;
 }) {
+  const messagingAllowed =
+    consentGranted === undefined ? true : consentGranted === true;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -129,6 +138,7 @@ function ChatWidgetFallback({
 
   const sendMessage = useCallback(
     async (text: string) => {
+      if (!messagingAllowed) return;
       const trimmed = text.trim();
       const attachment = pendingImage;
       if ((!trimmed && !attachment) || isLoading) return;
@@ -260,7 +270,17 @@ function ChatWidgetFallback({
         inputRef.current?.focus();
       }
     },
-    [chatApiUrl, cartId, brand, storefrontId, channel, route, isLoading, pendingImage],
+    [
+      chatApiUrl,
+      cartId,
+      brand,
+      storefrontId,
+      channel,
+      route,
+      isLoading,
+      pendingImage,
+      messagingAllowed,
+    ],
   );
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -268,7 +288,10 @@ function ChatWidgetFallback({
     void sendMessage(inputValue);
   };
 
-  const canSend = (inputValue.trim().length > 0 || !!pendingImage) && !isLoading;
+  const canSend =
+    messagingAllowed &&
+    (inputValue.trim().length > 0 || !!pendingImage) &&
+    !isLoading;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2">
@@ -277,6 +300,11 @@ function ChatWidgetFallback({
           <div className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium">
             {personaUi.chatTitle}
           </div>
+          {!messagingAllowed && (
+            <div className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+              Aby korzystać z czatu, włącz zgodę w panelu obok (Consent Gate).
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {messages.length === 0 && (
               <p className="text-sm text-gray-500">
@@ -361,12 +389,12 @@ function ChatWidgetFallback({
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 placeholder="Napisz wiadomość…"
-                disabled={isLoading}
+                disabled={isLoading || !messagingAllowed}
                 className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
               />
               <button
                 type="button"
-                disabled={isLoading}
+                disabled={isLoading || !messagingAllowed}
                 onClick={() => fileInputRef.current?.click()}
                 className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:bg-gray-100"
                 aria-label="Dodaj zdjęcie"
@@ -403,6 +431,7 @@ export function ChatWidget({
   storefrontId,
   channel,
   route,
+  consentGranted,
 }: ChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const personaUi = {...DEFAULT_PERSONA_UI, ...personaUiProp};
@@ -416,6 +445,7 @@ export function ChatWidget({
       storefrontId={storefrontId}
       channel={channel}
       route={route}
+      consentGranted={consentGranted}
       isOpen={isOpen}
       onToggle={() => setIsOpen((o) => !o)}
     />

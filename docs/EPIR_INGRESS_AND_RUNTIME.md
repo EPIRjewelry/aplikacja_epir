@@ -15,6 +15,23 @@ Ten dokument definiuje aktualny kontrakt wejścia do systemu EPIR AI oraz faktyc
 
 Nie wolno mylić App Proxy `.../apps/assistant/chat` z serwerowym endpointem S2S `/chat`.
 
+### Consent Gate (ingress zgody, osobno od czatu)
+
+| Kontekst             | Browser / klient                     | Backend docelowy (worker `epir-art-jewellery-worker`)     | Uwagi                                      |
+| -------------------- | ------------------------------------ | --------------------------------------------------------- | ------------------------------------------ |
+| Online Store (TAE)   | `POST https://{shop}/apps/assistant/consent` | `POST` na workerze: `POST /apps/assistant/consent` (App Proxy + HMAC) | Theme App Extension; ten sam wzorzec co czat (podpis Shopify) |
+| Headless `kazka`     | `POST /api/consent` (same-origin BFF) | `POST https://asystent.epirbizuteria.pl/consent` (S2S)    | Remix/Pages forwarduje z nagłówkami S2S    |
+| Headless `zareczyny` | `POST /api/consent` (same-origin BFF) | `POST https://asystent.epirbizuteria.pl/consent` (S2S)    | Jak wyżej, inny `storefrontId` / `channel` |
+| Wewnętrzne S2S       | —                                    | `POST https://asystent.epirbizuteria.pl/consent`          | Bezpośrednio `POST /consent` z sekretem S2S (np. integracje serwerowe) |
+
+**Consent Gate nie zastępuje transportu wiadomości.** Czat nadal działa wyłącznie przez istniejący kontrakt `fetch` + **SSE** (`text/event-stream`) na ścieżkach czatu (`/apps/assistant/chat` → worker, headless: `/api/chat` → BFF → `/chat`). Zapis zgody to osobny, jednorazowy (lub powtarzalny append-only) `POST` z payloadem JSON; frontend **blokuje inicjalizację wysyłki** do czasu sukcesu zapisu (np. `204`), bez zmiany implementacji streamingu odpowiedzi asystenta.
+
+**TAE (Online Store)** — przeglądarka uderza w **Shopify App Proxy** (`/apps/assistant/consent`), tak jak dla czatu; worker weryfikuje HMAC jak dla buyer-facing App Proxy.
+
+**Hydrogen (`kazka`, `zareczyny`)** — przeglądarka uderza wyłącznie w **BFF** (`POST /api/consent`); BFF dokleja `X-EPIR-SHARED-SECRET`, `X-EPIR-STOREFRONT-ID`, `X-EPIR-CHANNEL` i forwarduje na `https://asystent.epirbizuteria.pl/consent` (kontrakt jak `api.chat.ts` → `/chat`).
+
+Trwały audyt zgód: append-only tabela `consent_events` w D1 `DB_CHATBOT` (`workers/chat/migrations/005_consent_events.sql`).
+
 ## Ingress dla Online Store
 
 ### Kontrakt
@@ -112,11 +129,17 @@ Non-compliant są w szczególności:
 ## Pliki kontrolne do audytu
 
 - `packages/ui/src/ChatWidget.tsx`
+- `packages/ui/src/consent.ts` (helpery zgody — Hydrogen)
 - `apps/kazka/app/lib/resolve-chat-api-url.ts`
 - `apps/kazka/app/routes/api.chat.ts`
+- `apps/kazka/app/routes/api.consent.ts`
 - `apps/zareczyny/app/lib/resolve-chat-api-url.ts`
 - `apps/zareczyny/app/routes/api.chat.ts`
+- `apps/zareczyny/app/routes/api.consent.ts`
+- `extensions/asystent-klienta/assets/assistant-runtime.js` (Consent Gate TAE)
 - `workers/chat/src/security.ts`
 - `workers/chat/src/index.ts`
+- `workers/chat/src/consent.ts`
+- `workers/chat/migrations/005_consent_events.sql`
 - `workers/chat/src/rag-client-wrapper.ts`
 - `workers/rag-worker/src/index.ts`

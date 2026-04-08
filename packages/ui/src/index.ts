@@ -24,5 +24,14 @@ export {
   type ChatWidgetProps,
   type ChatRequestPart,
 } from './ChatWidget';
+export {
+  type ConsentPayload,
+  buildConsentPayload,
+  getStoredConsent,
+  storeConsent,
+  getConsentStorageKey,
+  getConsentSessionId,
+} from './consent';
+export {ConsentToggle, type ConsentToggleProps} from './ConsentToggle';
 export type {PersonaUi} from './persona-ui';
 export {DEFAULT_PERSONA_UI} from './persona-ui';

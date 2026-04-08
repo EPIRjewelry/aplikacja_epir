@@ -3,7 +3,7 @@
   assign default_greeting = 'Witaj! Jestem Gemmą, doradczynią EPIR Art Jewellery. Jak mogę pomóc w wyborze biżuterii?'
   assign default_placeholder = 'Napisz wiadomość, np. „Pokaż pierścionki zaręczynowe z szafirem”'
   assign default_start_closed = true
-  assign app_version = 'v1.5.0-attach-preview-2026-04-08'
+  assign app_version = 'v1.5.1-bubble-layout-2026-04-08'
 %}
 
 {% schema %}
@@ -76,6 +76,8 @@
   data-app-version="{{ app_version }}"
   data-shop-domain="{{ shop.myshopify_domain }}"
   data-logged-in-customer-id="{{ customer.id | default: '' }}"
+  data-consent-id="epir-theme-liquid-chat-v1"
+  data-consent-endpoint="/apps/assistant/consent"
   data-worker-endpoint="{{ block.settings.worker_endpoint | default: '/apps/assistant/chat' }}"
   data-storefront-id="{{ block.settings.storefront_id | default: 'epir-liquid' }}"
   data-channel="{{ block.settings.channel | default: 'online-store' }}"
@@ -119,6 +121,23 @@
 
   <div class="assistant-container">
     <div
+      class="epir-assistant-consent-bar epir-assistant-consent-bar--locked"
+      data-epir-consent-bar
+      aria-live="polite"
+    >
+      <label class="epir-assistant-consent-label" for="epir-consent-checkbox-section">
+        <input
+          type="checkbox"
+          id="epir-consent-checkbox-section"
+          class="epir-assistant-consent-checkbox"
+          autocomplete="off"
+        >
+        <span class="epir-assistant-consent-text">Wyrażam zgodę na rozmowę z asystentem AI (wymagane do wysłania wiadomości).</span>
+      </label>
+      <p class="epir-assistant-consent-error" data-epir-consent-error hidden role="alert"></p>
+    </div>
+
+    <div
       id="assistant-panel"
       class="assistant-panel{% unless block.settings.start_closed == false %} is-closed{% endunless %}"
     >
@@ -132,7 +151,7 @@
       <div id="assistant-content" class="assistant-content">
       <div id="assistant-messages" class="assistant-messages" role="log" aria-atomic="false" aria-live="polite">
         <div class="msg msg-assistant welcome-message" role="status">
-          {{ block.settings.greeting_message | default: default_greeting }}
+          <div class="epir-message__bubble">{{ block.settings.greeting_message | default: default_greeting }}</div>
         </div>
       </div>
 
