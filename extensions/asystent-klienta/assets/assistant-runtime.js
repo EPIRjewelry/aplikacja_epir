@@ -19,6 +19,63 @@ function setPendingAttachment(form, attachment) {
   } else {
     epirPendingAttachmentByForm.delete(form);
   }
+  renderAttachmentPreview(form);
+}
+
+/**
+ * Kontener podglądu zdjęcia (nad paskiem inputu) — tworzony dynamicznie.
+ */
+function getOrCreateAttachmentPreviewEl(form) {
+  if (!form || !form.parentNode) return null;
+  const parent = form.parentNode;
+  var el = parent.querySelector('.epir-assistant-attach-preview');
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'epir-assistant-attach-preview';
+    el.setAttribute('hidden', '');
+    parent.insertBefore(el, form);
+  }
+  return el;
+}
+
+function renderAttachmentPreview(form) {
+  const att = getPendingAttachment(form);
+  const wrap = getOrCreateAttachmentPreviewEl(form);
+  if (!wrap) return;
+  if (!att || !att.data) {
+    wrap.setAttribute('hidden', '');
+    wrap.textContent = '';
+    return;
+  }
+  wrap.removeAttribute('hidden');
+  wrap.innerHTML = '';
+  const src = 'data:' + (att.mediaType || 'image/jpeg') + ';base64,' + att.data;
+  const img = document.createElement('img');
+  img.className = 'epir-assistant-attach-preview__img';
+  img.src = src;
+  img.alt = 'Podgląd załączonego zdjęcia';
+  const meta = document.createElement('div');
+  meta.className = 'epir-assistant-attach-preview__meta';
+  const nameEl = document.createElement('span');
+  nameEl.className = 'epir-assistant-attach-preview__name';
+  nameEl.textContent = att.fileName ? String(att.fileName) : 'Zdjęcie do wysłania';
+  const clearBtn = document.createElement('button');
+  clearBtn.type = 'button';
+  clearBtn.className = 'epir-assistant-attach-preview__clear';
+  clearBtn.setAttribute('aria-label', 'Usuń załącznik');
+  clearBtn.textContent = '×';
+  clearBtn.addEventListener('click', function (e) {
+    e.preventDefault();
+    setPendingAttachment(form, null);
+    form.querySelectorAll('.assistant-attach-btn--active').forEach(function (btn) {
+      btn.classList.remove('assistant-attach-btn--active');
+      btn.title = '';
+    });
+  });
+  meta.appendChild(nameEl);
+  meta.appendChild(clearBtn);
+  wrap.appendChild(img);
+  wrap.appendChild(meta);
 }
 
 /**
@@ -102,6 +159,7 @@ function ensureAssistantFileControls() {
         setPendingAttachment(form, {
           data: stripDataUrlPrefix(raw),
           mediaType: f.type || 'image/jpeg',
+          fileName: f.name || '',
         });
         attachBtn.classList.add('assistant-attach-btn--active');
         attachBtn.title = f.name || 'Zdjęcie gotowe do wysłania';
@@ -502,10 +560,24 @@ function createAssistantMessage(messagesEl) {
   return { id, el: div };
 }
 
+/** Bezpieczne **pogrubienie** w treści asystenta (bez pełnego Markdown). */
+function formatAssistantMarkdownLite(text) {
+  if (!text || typeof text !== 'string') return '';
+  var esc = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return esc.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
+}
+
 function updateAssistantMessage(id, text) {
   const el = document.getElementById(id);
   if (!el) return;
-  el.textContent = text;
+  if (el.classList.contains('msg-assistant')) {
+    el.innerHTML = formatAssistantMarkdownLite(text);
+  } else {
+    el.textContent = text;
+  }
   const parent = el.parentElement;
   if (parent) parent.scrollTop = parent.scrollHeight;
 }
