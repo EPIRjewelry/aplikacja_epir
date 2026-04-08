@@ -21,11 +21,11 @@ jobs:
         app: [kazka, zareczyny]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Detect relevant changes
         id: changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             relevant:
@@ -35,7 +35,7 @@ jobs:
 
       - name: Setup Node
         if: steps.changes.outputs.relevant == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
@@ -65,11 +65,11 @@ jobs:
         app: [kazka, zareczyny]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Detect relevant changes
         id: changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             relevant:
@@ -79,7 +79,7 @@ jobs:
 
       - name: Setup Node
         if: steps.changes.outputs.relevant == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
@@ -109,11 +109,11 @@ jobs:
         app: [kazka, zareczyny]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Detect relevant changes
         id: changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             relevant:
@@ -123,7 +123,7 @@ jobs:
 
       - name: Setup Node
         if: steps.changes.outputs.relevant == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
