@@ -1,29 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { SessionDO } from '../src/index';
-
-function makeDurableStateStub() {
-  const storage = new Map<string, any>();
-  return {
-    storage: {
-      async get(key: string) {
-        return storage.has(key) ? storage.get(key) : undefined;
-      },
-      async put(key: string, value: any) {
-        storage.set(key, value);
-      }
-    },
-    async blockConcurrencyWhile(cb: () => Promise<void>) {
-      // simply call the block
-      await cb();
-    }
-  } as unknown as DurableObjectState;
-}
+import { makeDurableStateStub } from './helpers/session-do-sql-stub';
 
 const mockEnv = {} as any;
 
 describe('SessionDO', () => {
   it('should append and retrieve history', async () => {
-    const state = makeDurableStateStub();
+    const { state } = makeDurableStateStub();
     const doStub = new SessionDO(state, mockEnv);
 
     const req = new Request('https://session/append', {
@@ -44,7 +27,7 @@ describe('SessionDO', () => {
   });
 
   it('should set and get session id and cart id', async () => {
-    const state = makeDurableStateStub();
+    const { state } = makeDurableStateStub();
     const doStub = new SessionDO(state, mockEnv);
 
     const setSession = await doStub.fetch(new Request('https://session/set-session-id', {
@@ -67,7 +50,7 @@ describe('SessionDO', () => {
   });
 
   it('should enforce local rate limit for DO endpoints', async () => {
-    const state = makeDurableStateStub();
+    const { state } = makeDurableStateStub();
     const doStub = new SessionDO(state, mockEnv);
 
     // hit the endpoint many times
@@ -80,7 +63,7 @@ describe('SessionDO', () => {
   });
 
   it('should replace latest user message text by timestamp', async () => {
-    const state = makeDurableStateStub();
+    const { state } = makeDurableStateStub();
     const doStub = new SessionDO(state, mockEnv);
     const ts = Date.now();
 
@@ -110,5 +93,98 @@ describe('SessionDO', () => {
     expect(history.length).toBe(1);
     expect(history[0].role).toBe('user');
     expect(history[0].content).toContain('Użytkownik przesłał zdjęcie.');
+  });
+
+  it('should preserve tool call entries in history', async () => {
+    const { state } = makeDurableStateStub();
+    const doStub = new SessionDO(state, mockEnv);
+
+    await doStub.fetch(
+      new Request('https://session/append', {
+        method: 'POST',
+        body: JSON.stringify({
+          role: 'assistant',
+          content: '',
+          ts: Date.now(),
+          tool_calls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'search_shop_catalog', arguments: '{"query":"ring"}' },
+            },
+          ],
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const historyRes = await doStub.fetch(new Request('https://session/history'));
+    const history = (await historyRes.json()) as Array<Record<string, unknown>>;
+    expect(history).toHaveLength(1);
+    expect(history[0].tool_calls).toBeTruthy();
+    expect(Array.isArray(history[0].tool_calls)).toBe(true);
+  });
+
+  it('should mark replay signature as used on duplicate requests', async () => {
+    const { state } = makeDurableStateStub();
+    const doStub = new SessionDO(state, mockEnv);
+
+    const first = await doStub.fetch(
+      new Request('https://session/replay-check', {
+        method: 'POST',
+        body: JSON.stringify({ signature: 'abc', timestamp: String(Date.now()) }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const firstJson = (await first.json()) as { used: boolean };
+    expect(firstJson.used).toBe(false);
+
+    const second = await doStub.fetch(
+      new Request('https://session/replay-check', {
+        method: 'POST',
+        body: JSON.stringify({ signature: 'abc', timestamp: String(Date.now()) }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const secondJson = (await second.json()) as { used: boolean };
+    expect(secondJson.used).toBe(true);
+  });
+
+  it('should replace the newest matching user message when timestamps collide', async () => {
+    const { state } = makeDurableStateStub();
+    const doStub = new SessionDO(state, mockEnv);
+    const ts = Date.now();
+
+    await doStub.fetch(
+      new Request('https://session/append', {
+        method: 'POST',
+        body: JSON.stringify({ role: 'user', content: 'pierwsza wiadomość', ts }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await doStub.fetch(
+      new Request('https://session/append', {
+        method: 'POST',
+        body: JSON.stringify({ role: 'user', content: '(załącznik obrazu)', ts }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await doStub.fetch(
+      new Request('https://session/replace-last-user-text', {
+        method: 'POST',
+        body: JSON.stringify({
+          ts,
+          expected_content: '(załącznik obrazu)',
+          content: 'opis drugiej wiadomości',
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const historyRes = await doStub.fetch(new Request('https://session/history'));
+    const history = (await historyRes.json()) as Array<{ content: string }>;
+    expect(history[0].content).toBe('pierwsza wiadomość');
+    expect(history[1].content).toBe('opis drugiej wiadomości');
   });
 });

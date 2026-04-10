@@ -4,6 +4,7 @@ import { shopifyAppProxyCanonicalString } from '../src/hmac';
 import worker from '../src/index';
 import type { Env } from '../src/config/bindings';
 import { SessionDO } from '../src/index';
+import { makeDurableStateStub } from './helpers/session-do-sql-stub';
 
 const noopCtx = { waitUntil() {} } as unknown as ExecutionContext;
 
@@ -18,22 +19,6 @@ function canonicalizeParams(params: URLSearchParams): string {
 
 function signHex(secret: string, message: string): string {
   return createHmac('sha256', secret).update(message, 'utf8').digest('hex');
-}
-
-function makeDurableStateStub(storage = new Map<string, any>()) {
-  return {
-    storage: {
-      async get(key: string) {
-        return storage.has(key) ? storage.get(key) : undefined;
-      },
-      async put(key: string, value: any) {
-        storage.set(key, value);
-      },
-    },
-    async blockConcurrencyWhile(cb: () => Promise<void>) {
-      await cb();
-    },
-  } as unknown as DurableObjectState;
 }
 
 function makeNoopNamespace() {
@@ -63,10 +48,10 @@ function makeSessionNamespace() {
         const key = String(id);
         let session = sessions.get(key);
         if (!session) {
-          const storage = new Map<string, any>();
+          const durableState = makeDurableStateStub(key);
           session = {
-            storage,
-            instance: new SessionDO(makeDurableStateStub(storage), {} as any),
+            storage: durableState.storage,
+            instance: new SessionDO(durableState.state, {} as any),
           };
           sessions.set(key, session);
         }
