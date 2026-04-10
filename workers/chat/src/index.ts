@@ -158,10 +158,12 @@ type ChatContextOverride = {
   brand?: string;
 };
 
+type RequiredRoutingContext = Required<Pick<ChatContextOverride, 'storefrontId' | 'channel'>> & Pick<ChatContextOverride, 'brand'>;
+
 type S2SChatAuthorizationResult =
   | {
       ok: true;
-      contextOverride: Required<ChatContextOverride>;
+      contextOverride: RequiredRoutingContext;
     }
   | {
       ok: false;
@@ -800,34 +802,142 @@ function isPixelPath(pathname: string): boolean {
   return pathname === '/pixel' || pathname.startsWith('/pixel/');
 }
 
+const REPLAY_KEY_TTL_MS = 10 * 60_000;
+const MAX_PRODUCT_VIEWS_IN_DO = 10;
+const MAX_PROACTIVE_ACTIVATIONS_IN_DO = 5;
+
+type SessionContextRow = {
+  id: 1;
+  cart_id: string | null;
+  session_id: string | null;
+  storefront_id: string | null;
+  channel: string | null;
+};
+
+type SessionCustomerRow = {
+  customer_id: string;
+  first_name: string | null;
+  last_name: string | null;
+};
+
+type MessageSqlRow = {
+  id: number;
+  role: ChatRole;
+  content: string;
+  ts: number;
+  tool_calls: string | null;
+  tool_call_id: string | null;
+  name: string | null;
+};
+
+function emptySessionContext(): SessionContextRow {
+  return {
+    id: 1,
+    cart_id: null,
+    session_id: null,
+    storefront_id: null,
+    channel: null,
+  };
+}
+
+function isSqlUniqueConstraintError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /unique/i.test(message);
+}
+
 // ============================================================================
 // DURABLE OBJECT (SessionDO)
 // ============================================================================
 export class SessionDO {
   private readonly state: DurableObjectState;
   private readonly env: Env;
-  private history: HistoryEntry[] = [];
-  private cartId: string | null = null;
-  private sessionId: string | null = null;
+  private readonly sql: DurableObjectStorage['sql'];
   private lastRequestTimestamp = 0;
   private requestsInWindow = 0;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
+    this.sql = state.storage.sql;
 
     this.state.blockConcurrencyWhile(async () => {
-      const rawHistory = await this.state.storage.get<unknown>('history');
-      const storedCartId = await this.state.storage.get<string>('cart_id');
-      const storedSessionId = await this.state.storage.get<string>('session_id');
-      this.history = ensureHistoryArray(rawHistory);
-      if (storedCartId) {
-        this.cartId = storedCartId;
-      }
-      if (storedSessionId) {
-        this.sessionId = storedSessionId;
-      }
+      this.initializeSchema();
     });
+  }
+
+  private initializeSchema(): void {
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS session_context (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        cart_id TEXT,
+        session_id TEXT,
+        storefront_id TEXT,
+        channel TEXT
+      )
+    `);
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS session_customer (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        customer_id TEXT NOT NULL,
+        first_name TEXT,
+        last_name TEXT
+      )
+    `);
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        ts INTEGER NOT NULL,
+        tool_calls TEXT,
+        tool_call_id TEXT,
+        name TEXT
+      )
+    `);
+    this.sql.exec(`
+      CREATE INDEX IF NOT EXISTS idx_session_messages_ts
+      ON messages(ts ASC, id ASC)
+    `);
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS replay_keys (
+        signature TEXT PRIMARY KEY,
+        expires_at INTEGER NOT NULL
+      )
+    `);
+    this.sql.exec(`
+      CREATE INDEX IF NOT EXISTS idx_replay_keys_expires_at
+      ON replay_keys(expires_at)
+    `);
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS product_views (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id TEXT NOT NULL,
+        product_type TEXT,
+        product_title TEXT,
+        duration INTEGER NOT NULL,
+        ts INTEGER NOT NULL,
+        session_id TEXT
+      )
+    `);
+    this.sql.exec(`
+      CREATE INDEX IF NOT EXISTS idx_product_views_ts
+      ON product_views(ts ASC, id ASC)
+    `);
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS proactive_chat_activations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        ts INTEGER NOT NULL,
+        activated INTEGER NOT NULL DEFAULT 1
+      )
+    `);
+    this.sql.exec(`
+      CREATE INDEX IF NOT EXISTS idx_proactive_chat_activations_ts
+      ON proactive_chat_activations(ts ASC, id ASC)
+    `);
+    this.sql.exec('INSERT OR IGNORE INTO session_context (id) VALUES (1)');
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -841,7 +951,7 @@ export class SessionDO {
 
     // GET /history
     if (method === 'GET' && pathname.endsWith('/history')) {
-      return new Response(JSON.stringify(this.history), {
+      return new Response(JSON.stringify(this.getHistory()), {
         headers: { 'Content-Type': 'application/json' },
       });
     }
@@ -868,7 +978,7 @@ export class SessionDO {
       if (!payload || typeof payload.content !== 'string' || !payload.content.trim()) {
         return new Response('Bad Request', { status: 400 });
       }
-      const replaced = await this.replaceLastUserText(
+      const replaced = this.replaceLastUserText(
         payload.content,
         typeof payload.ts === 'number' ? payload.ts : undefined,
         typeof payload.expected_content === 'string' ? payload.expected_content : undefined,
@@ -882,8 +992,7 @@ export class SessionDO {
     if (method === 'POST' && pathname.endsWith('/set-session-id')) {
         const payload = (await request.json().catch(() => null)) as { session_id?: string } | null;
          if (payload?.session_id) {
-            this.sessionId = payload.session_id;
-            await this.state.storage.put('session_id', payload.session_id);
+          this.setSessionId(payload.session_id);
             return new Response('session_id set');
          }
          return new Response('Bad Request', { status: 400 });
@@ -900,19 +1009,19 @@ export class SessionDO {
         first_name: payload.first_name || null,
         last_name: payload.last_name || null,
       };
-      await this.state.storage.put('customer', customer);
+      this.setCustomer(customer);
       return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } });
     }
 
     // GET /customer - retrieve known customer info for this session
     if (method === 'GET' && pathname.endsWith('/customer')) {
-      const customer = await this.state.storage.get('customer');
+      const customer = this.getCustomer();
       return new Response(JSON.stringify({ customer: customer ?? null }), { headers: { 'Content-Type': 'application/json' } });
     }
     
     // GET /cart-id
     if (method === 'GET' && pathname.endsWith('/cart-id')) {
-      return new Response(JSON.stringify({ cart_id: this.cartId }), {
+      return new Response(JSON.stringify({ cart_id: this.getCartId() }), {
         headers: { 'Content-Type': 'application/json' },
       });
     }
@@ -923,21 +1032,15 @@ export class SessionDO {
       if (!payload || typeof payload.cart_id !== 'string') {
         return new Response('Bad Request', { status: 400 });
       }
-      this.cartId = payload.cart_id;
-      await this.state.storage.put('cart_id', this.cartId);
+      this.setCartId(payload.cart_id);
       return new Response('ok');
     }
 
     // POST /set-storefront-context (kanoniczny kontrakt danych: storefront_id + channel dla messages_raw)
     if (method === 'POST' && pathname.endsWith('/set-storefront-context')) {
       const payload = (await request.json().catch(() => null)) as { storefront_id?: string; channel?: string } | null;
-      if (payload) {
-        if (typeof payload.storefront_id === 'string') {
-          await this.state.storage.put('storefront_id', payload.storefront_id);
-        }
-        if (typeof payload.channel === 'string') {
-          await this.state.storage.put('channel', payload.channel);
-        }
+      if (payload && (typeof payload.storefront_id === 'string' || typeof payload.channel === 'string')) {
+        this.setStorefrontContext(payload.storefront_id, payload.channel);
       }
       return new Response('ok');
     }
@@ -949,15 +1052,8 @@ export class SessionDO {
       if (!p || !p.signature || !p.timestamp) {
         return new Response(JSON.stringify({ error: 'Invalid payload' }), { status: 400 });
       }
-      const { signature, timestamp } = p;
-      const key = `replay:${signature}`;
-      const used = await this.state.storage.get<boolean>(key);
-      if (used) {
-        return new Response(JSON.stringify({ used: true }), { status: 200 });
-      }
-      // Store with expiration (10 minutes) - use alarm or manual cleanup if needed
-      await this.state.storage.put(key, true);
-      return new Response(JSON.stringify({ used: false }), { status: 200 });
+      const used = this.checkAndMarkReplay(p.signature);
+      return new Response(JSON.stringify({ used }), { status: 200 });
     }
 
     // POST /track-product-view (z analytics-worker)
@@ -966,7 +1062,7 @@ export class SessionDO {
       if (!payload || typeof payload.product_id !== 'string') {
         return new Response('Bad Request: product_id required', { status: 400 });
       }
-      await this.trackProductView(payload.product_id, payload.product_type, payload.product_title, payload.duration || 0);
+      this.trackProductView(payload.product_id, payload.product_type, payload.product_title, payload.duration || 0);
       return new Response('ok');
     }
 
@@ -976,7 +1072,7 @@ export class SessionDO {
         if (!payload || !payload.customer_id || !payload.session_id) {
             return new Response('Bad Request: customer_id and session_id required', { status: 400 });
         }
-        await this.activateProactiveChat(payload.customer_id, payload.session_id, payload.reason || 'unknown', payload.timestamp || now());
+      this.activateProactiveChat(payload.customer_id, payload.session_id, payload.reason || 'unknown', payload.timestamp || now());
         return new Response('ok');
     }
 
@@ -994,29 +1090,154 @@ export class SessionDO {
     return this.requestsInWindow <= RATE_LIMIT_MAX_REQUESTS;
   }
 
-  private async append(payload: HistoryEntry): Promise<void> {
-    this.history.push({ ...payload, ts: payload.ts || now() });
-    // Archiwizuj najstarsze wiadomości do D1 przed usunięciem z pamięci DO
-    if (this.history.length > MAX_HISTORY_IN_DO) {
-      const toArchive = this.history.slice(0, this.history.length - MAX_HISTORY_IN_DO);
-      await this.archiveToD1(toArchive);
-    }
-    this.history = this.history.slice(-MAX_HISTORY_IN_DO);
-    await this.state.storage.put('history', this.history);
+  private getSessionContext(): SessionContextRow {
+    const row = this.sql.exec(
+      'SELECT cart_id, session_id, storefront_id, channel FROM session_context WHERE id = 1',
+    ).one() as Omit<SessionContextRow, 'id'> | null;
+
+    return {
+      ...emptySessionContext(),
+      ...(row ?? {}),
+    };
   }
 
-  private async replaceLastUserText(
+  private writeSessionContext(next: SessionContextRow): void {
+    this.sql.exec(
+      'UPDATE session_context SET cart_id = ?, session_id = ?, storefront_id = ?, channel = ? WHERE id = 1',
+      next.cart_id,
+      next.session_id,
+      next.storefront_id,
+      next.channel,
+    );
+  }
+
+  private updateSessionContext(patch: Partial<Omit<SessionContextRow, 'id'>>): void {
+    const current = this.getSessionContext();
+    this.writeSessionContext({
+      id: 1,
+      cart_id: patch.cart_id !== undefined ? patch.cart_id : current.cart_id,
+      session_id: patch.session_id !== undefined ? patch.session_id : current.session_id,
+      storefront_id: patch.storefront_id !== undefined ? patch.storefront_id : current.storefront_id,
+      channel: patch.channel !== undefined ? patch.channel : current.channel,
+    });
+  }
+
+  private getCartId(): string | null {
+    return this.getSessionContext().cart_id;
+  }
+
+  private setCartId(cartId: string): void {
+    this.updateSessionContext({ cart_id: cartId });
+  }
+
+  private setSessionId(sessionId: string): void {
+    this.updateSessionContext({ session_id: sessionId });
+  }
+
+  private setStorefrontContext(storefrontId?: string, channel?: string): void {
+    const patch: Partial<Omit<SessionContextRow, 'id'>> = {};
+    if (typeof storefrontId === 'string') {
+      patch.storefront_id = storefrontId;
+    }
+    if (typeof channel === 'string') {
+      patch.channel = channel;
+    }
+    if (Object.keys(patch).length > 0) {
+      this.updateSessionContext(patch);
+    }
+  }
+
+  private getSessionId(): string {
+    return this.getSessionContext().session_id ?? this.getDurableObjectId() ?? 'unknown-session';
+  }
+
+  private getDurableObjectId(): string | null {
+    const durableObjectId = (this.state as DurableObjectState & { id?: { toString(): string } }).id;
+    return durableObjectId && typeof durableObjectId.toString === 'function'
+      ? durableObjectId.toString()
+      : null;
+  }
+
+  private setCustomer(customer: SessionCustomerRow): void {
+    this.sql.exec(
+      'INSERT OR REPLACE INTO session_customer (id, customer_id, first_name, last_name) VALUES (1, ?, ?, ?)',
+      customer.customer_id,
+      customer.first_name,
+      customer.last_name,
+    );
+  }
+
+  private getCustomer(): SessionCustomerRow | null {
+    return this.sql.exec(
+      'SELECT customer_id, first_name, last_name FROM session_customer WHERE id = 1',
+    ).one() as SessionCustomerRow | null;
+  }
+
+  private selectMessageRows(): MessageSqlRow[] {
+    return this.sql.exec(
+      'SELECT id, role, content, ts, tool_calls, tool_call_id, name FROM messages ORDER BY ts ASC, id ASC',
+    ).toArray() as MessageSqlRow[];
+  }
+
+  private deserializeHistoryEntry(row: MessageSqlRow): HistoryEntry {
+    let toolCalls: unknown;
+    if (typeof row.tool_calls === 'string' && row.tool_calls.trim().length > 0) {
+      try {
+        toolCalls = JSON.parse(row.tool_calls);
+      } catch (error) {
+        console.warn('[SessionDO] Failed to parse tool_calls JSON:', error);
+      }
+    }
+
+    return {
+      role: row.role,
+      content: row.content ?? '',
+      ts: row.ts,
+      ...(toolCalls !== undefined ? { tool_calls: toolCalls } : {}),
+      ...(row.tool_call_id ? { tool_call_id: row.tool_call_id } : {}),
+      ...(row.name ? { name: row.name } : {}),
+    };
+  }
+
+  private getHistory(): HistoryEntry[] {
+    return this.selectMessageRows().map((row) => this.deserializeHistoryEntry(row)).slice(-MAX_HISTORY_IN_DO);
+  }
+
+  private async append(payload: HistoryEntry): Promise<void> {
+    const ts = payload.ts || now();
+    this.sql.exec(
+      'INSERT INTO messages (role, content, ts, tool_calls, tool_call_id, name) VALUES (?, ?, ?, ?, ?, ?)',
+      payload.role,
+      payload.content ?? '',
+      ts,
+      payload.tool_calls !== undefined ? JSON.stringify(payload.tool_calls) : null,
+      payload.tool_call_id ?? null,
+      payload.name ?? null,
+    );
+
+    const rows = this.selectMessageRows();
+    if (rows.length > MAX_HISTORY_IN_DO) {
+      const overflowRows = rows.slice(0, rows.length - MAX_HISTORY_IN_DO);
+      await this.archiveToD1(overflowRows.map((row) => this.deserializeHistoryEntry(row)));
+      for (const row of overflowRows) {
+        this.sql.exec('DELETE FROM messages WHERE id = ?', row.id);
+      }
+    }
+  }
+
+  private replaceLastUserText(
     content: string,
     expectedTs?: number,
     expectedContent?: string,
-  ): Promise<boolean> {
+  ): boolean {
     const nextContent = content.trim();
     if (!nextContent) return false;
     const expected = expectedContent?.trim();
+    const rows = this.selectMessageRows();
 
-    const findFromEnd = (predicate: (entry: HistoryEntry) => boolean): number => {
-      for (let i = this.history.length - 1; i >= 0; i--) {
-        if (predicate(this.history[i])) return i;
+    const findFromEnd = (predicate: (entry: MessageSqlRow) => boolean): number => {
+      for (let i = rows.length - 1; i >= 0; i--) {
+        if (predicate(rows[i])) return i;
       }
       return -1;
     };
@@ -1036,10 +1257,30 @@ export class SessionDO {
     }
     if (targetIdx < 0) return false;
 
-    const current = this.history[targetIdx];
-    this.history[targetIdx] = { ...current, content: nextContent };
-    await this.state.storage.put('history', this.history);
+    const current = rows[targetIdx];
+    this.sql.exec('UPDATE messages SET content = ? WHERE id = ?', nextContent, current.id);
     return true;
+  }
+
+  private cleanupExpiredReplayKeys(cutoff = now()): void {
+    this.sql.exec('DELETE FROM replay_keys WHERE expires_at < ?', cutoff);
+  }
+
+  private checkAndMarkReplay(signature: string): boolean {
+    this.cleanupExpiredReplayKeys();
+    try {
+      this.sql.exec(
+        'INSERT INTO replay_keys (signature, expires_at) VALUES (?, ?)',
+        signature,
+        now() + REPLAY_KEY_TTL_MS,
+      );
+      return false;
+    } catch (error) {
+      if (isSqlUniqueConstraintError(error)) {
+        return true;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -1050,10 +1291,11 @@ export class SessionDO {
   private async archiveToD1(messages: HistoryEntry[]): Promise<void> {
     if (!this.env.DB_CHATBOT || messages.length === 0) return;
 
-    const sessionId = this.sessionId ?? this.state.id.toString();
+    const sessionId = this.getSessionId();
     const db = this.env.DB_CHATBOT;
-    const storefrontId = await this.state.storage.get<string>('storefront_id') ?? null;
-    const channel = await this.state.storage.get<string>('channel') ?? null;
+    const sessionContext = this.getSessionContext();
+    const storefrontId = sessionContext.storefront_id ?? null;
+    const channel = sessionContext.channel ?? null;
 
     try {
       for (const msg of messages) {
@@ -1082,47 +1324,59 @@ export class SessionDO {
     }
   }
 
-  private async trackProductView(
+  private trimProductViews(): void {
+    const rows = this.sql.exec('SELECT id FROM product_views ORDER BY ts ASC, id ASC').toArray() as Array<{ id: number }>;
+    const overflow = rows.slice(0, Math.max(0, rows.length - MAX_PRODUCT_VIEWS_IN_DO));
+    for (const row of overflow) {
+      this.sql.exec('DELETE FROM product_views WHERE id = ?', row.id);
+    }
+  }
+
+  private trackProductView(
     productId: string,
     productType?: string,
     productTitle?: string,
     duration?: number
-  ): Promise<void> {
-    const productView = {
-      product_id: productId,
-      product_type: productType || null,
-      product_title: productTitle || null,
-      duration: duration || 0,
-      timestamp: now(),
-      session_id: this.sessionId,
-    };
-    await this.state.storage.put('last_product_view', productView);
-    const productViews = (await this.state.storage.get<Array<any>>('product_views')) || [];
-    productViews.push(productView);
-    const trimmedViews = productViews.slice(-10);
-    await this.state.storage.put('product_views', trimmedViews);
+  ): void {
+    const ts = now();
+    this.sql.exec(
+      'INSERT INTO product_views (product_id, product_type, product_title, duration, ts, session_id) VALUES (?, ?, ?, ?, ?, ?)',
+      productId,
+      productType || null,
+      productTitle || null,
+      duration || 0,
+      ts,
+      this.getSessionContext().session_id,
+    );
+    this.trimProductViews();
     console.log(`[SessionDO] 👁️ Product view tracked: ${productId} (${duration}s)`, productType);
   }
 
-  private async activateProactiveChat(
+  private trimProactiveActivations(): void {
+    const rows = this.sql.exec(
+      'SELECT id FROM proactive_chat_activations ORDER BY ts ASC, id ASC',
+    ).toArray() as Array<{ id: number }>;
+    const overflow = rows.slice(0, Math.max(0, rows.length - MAX_PROACTIVE_ACTIVATIONS_IN_DO));
+    for (const row of overflow) {
+      this.sql.exec('DELETE FROM proactive_chat_activations WHERE id = ?', row.id);
+    }
+  }
+
+  private activateProactiveChat(
     customerId: string,
     sessionId: string,
     reason: string,
     timestamp: number
-  ): Promise<void> {
-    const activationEvent = {
-      customer_id: customerId,
-      session_id: sessionId,
-      reason: reason,
-      timestamp: timestamp,
-      activated: true,
-    };
-    await this.state.storage.put('proactive_chat_active', true);
-    await this.state.storage.put('proactive_chat_event', activationEvent);
-    const activationHistory = (await this.state.storage.get<Array<any>>('proactive_activations')) || [];
-    activationHistory.push(activationEvent);
-    const trimmed = activationHistory.slice(-5);
-    await this.state.storage.put('proactive_activations', trimmed);
+  ): void {
+    this.sql.exec(
+      'INSERT INTO proactive_chat_activations (customer_id, session_id, reason, ts, activated) VALUES (?, ?, ?, ?, ?)',
+      customerId,
+      sessionId,
+      reason,
+      timestamp,
+      1,
+    );
+    this.trimProactiveActivations();
     console.log(`[SessionDO] 🚀 Proactive chat activated for ${customerId}/${sessionId}, reason: ${reason}`);
   }
 }
@@ -1544,7 +1798,15 @@ async function streamAssistantResponse(
       // Cel: Zapobiegaj overflow kontekstu, oszczędzaj tokeny, zwiększ szybkość
       const messagesForTruncate: HistoryMessage[] = messages.map((m) => ({
         role: m.role as HistoryMessage['role'],
-        content: m.content ?? '',
+        content:
+          typeof m.content === 'string'
+            ? m.content
+            : Array.isArray(m.content)
+              ? m.content
+                  .filter((part): part is Extract<KimiContentPart, { type: 'text' }> => part.type === 'text')
+                  .map((part) => part.text)
+                  .join('\n')
+              : '',
         ...(m.tool_calls && { tool_calls: m.tool_calls }),
         ...(m.tool_call_id && { tool_call_id: m.tool_call_id }),
         ...(m.name && { name: m.name }),
