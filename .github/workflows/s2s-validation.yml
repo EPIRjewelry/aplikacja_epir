@@ -1,0 +1,28 @@
+name: S2S validation
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  s2s-validation:
+    name: S2S validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18 (cache npm)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: workers/chat/package-lock.json
+
+      - name: Install dependencies (workers/chat)
+        working-directory: workers/chat
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Run S2S Vitest tests (explicit files)
+        working-directory: workers/chat
+        run: npx vitest run test/ingress_s2s.test.ts test/consent_s2s.test.ts test/consent_app_proxy.test.ts test/app_proxy_ingress_hmac.test.ts
