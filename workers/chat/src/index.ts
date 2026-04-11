@@ -1325,15 +1325,17 @@ export class SessionDO {
   }
 
   private getCustomer(): SessionCustomerRow | null {
-    return this.sql.exec(
+    const rows = this.sql.exec(
       'SELECT customer_id, first_name, last_name FROM session_customer WHERE id = 1',
-    ).one() as SessionCustomerRow | null;
+    ).toArray() as SessionCustomerRow[];
+    return rows[0] ?? null;
   }
 
   private getSessionMeta(): SessionMetaRow {
-    const row = this.sql.exec(
+    const rows = this.sql.exec(
       'SELECT created_at, message_seq, tool_call_seq, usage_seq, cart_activity_seq FROM session_meta WHERE id = 1',
-    ).one() as Omit<SessionMetaRow, 'id'> | null;
+    ).toArray() as Array<Omit<SessionMetaRow, 'id'>>;
+    const row = rows[0];
 
     return {
       ...emptySessionMeta(),
