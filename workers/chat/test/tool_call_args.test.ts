@@ -6,7 +6,7 @@ describe('executeToolWithParsedArguments', () => {
     const executor = vi.fn().mockResolvedValue({ result: { ok: true } });
 
     const outcome = await executeToolWithParsedArguments(
-      'search_shop_catalog',
+      'search_catalog',
       '{"query": "pierścionek"',
       executor,
     );
@@ -21,14 +21,14 @@ describe('executeToolWithParsedArguments', () => {
     const executor = vi.fn().mockResolvedValue({ result: { ok: true } });
 
     const outcome = await executeToolWithParsedArguments(
-      'search_shop_catalog',
-      '{"query":"czarny onyks"}',
+      'search_catalog',
+      '{"catalog":{"query":"czarny onyks"}}',
       executor,
     );
 
     expect(outcome.skippedExecution).toBe(false);
     expect(executor).toHaveBeenCalledTimes(1);
-    expect(executor).toHaveBeenCalledWith({ query: 'czarny onyks' });
+    expect(executor).toHaveBeenCalledWith({ catalog: { query: 'czarny onyks' } });
     expect((outcome.toolResult as any).result).toEqual({ ok: true });
   });
 });

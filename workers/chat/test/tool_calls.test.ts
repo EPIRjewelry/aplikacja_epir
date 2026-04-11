@@ -3,8 +3,8 @@ import type { GroqMessage } from '../src/ai-client';
 
 describe('Tool calls message structure', () => {
   it('should include tool_calls when assistant invokes a function', () => {
-    const toolName = 'search_shop_catalog';
-    const toolArgs = { query: 'rings', limit: 10 };
+    const toolName = 'search_catalog';
+    const toolArgs = { catalog: { query: 'rings', pagination: { limit: 10 } } };
     const toolCallId = 'call_1';
 
     const groqMessage: GroqMessage = {
@@ -29,7 +29,7 @@ describe('Tool calls message structure', () => {
   });
   
   it('should construct valid GroqMessage for tool results with tool_call_id', () => {
-    const toolName = 'search_shop_catalog';
+    const toolName = 'search_catalog';
     const toolCallId = 'call_2';
     const toolResult = { results: [{ id: 1, name: 'Ring' }] };
     
@@ -58,11 +58,11 @@ describe('Tool calls message structure', () => {
           {
             id: toolCallId,
             type: 'function',
-            function: { name: 'search_shop_catalog', arguments: '{"query":"rings"}' },
+            function: { name: 'search_catalog', arguments: '{"catalog":{"query":"rings"}}' },
           },
         ],
       },
-      { role: 'tool', name: 'search_shop_catalog', tool_call_id: toolCallId, content: '{"results":[{"id":1,"name":"Ring"}]}' },
+      { role: 'tool', name: 'search_catalog', tool_call_id: toolCallId, content: '{"results":[{"id":1,"name":"Ring"}]}' },
     ];
     
     messages.forEach((msg) => {
@@ -76,9 +76,9 @@ describe('Tool calls message structure', () => {
   });
 
   it('should serialize multi-turn conversation with native tool calls', () => {
-    const toolName = 'search_shop_catalog';
+    const toolName = 'search_catalog';
     const toolCallId = 'call_4';
-    const toolArgs = { query: 'gold rings', category: 'rings' };
+    const toolArgs = { catalog: { query: 'gold rings', filters: { categories: ['rings'] } } };
     
     const currentMessages: GroqMessage[] = [
       { role: 'system', content: 'You are a luxury jewelry assistant.' },

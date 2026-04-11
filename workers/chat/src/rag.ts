@@ -312,7 +312,7 @@ export async function searchProductCatalogWithMCP(
   if (envOrShopDomain && typeof envOrShopDomain === 'object') {
     const e = envOrShopDomain as { MCP_ENDPOINT?: string; SHOP_DOMAIN?: string };
     if (!e.MCP_ENDPOINT && !e.SHOP_DOMAIN) {
-      if (query === 'error') return { error: 'Tool search_shop_catalog failed: Mocked MCP error' };
+      if (query === 'error') return { error: 'Tool search_catalog failed: Mocked MCP error' };
       return { result: `Products for query: ${query}` };
     }
   }
@@ -325,8 +325,14 @@ export async function searchProductCatalogWithMCP(
     jsonrpc: '2.0',
     method: 'tools/call',
     params: {
-      name: 'search_shop_catalog',
-      arguments: { query, context: contextValue }
+      name: 'search_catalog',
+      arguments: {
+        catalog: {
+          query,
+          context: { intent: contextValue },
+          pagination: { limit: 5 },
+        },
+      }
     },
     id: Date.now()
   };
@@ -342,12 +348,12 @@ export async function searchProductCatalogWithMCP(
       signal: controller.signal
     });
 
-    console.log('[mcp] call', { tool: 'search_shop_catalog', status: res.status, args: safeArgsSummary(payload.params?.arguments) });
+    console.log('[mcp] call', { tool: 'search_catalog', status: res.status, args: safeArgsSummary(payload.params?.arguments) });
 
     if (!res.ok) {
       if (res.status === 522) return JSON.stringify(CATALOG_FALLBACK);
       const txt = await res.text().catch(() => '<no body>');
-      throw new Error(`MCP search_shop_catalog error ${res.status}: ${txt}`);
+      throw new Error(`MCP search_catalog error ${res.status}: ${txt}`);
     }
 
     let j: unknown = await res.json().catch(() => null);
@@ -386,7 +392,7 @@ export async function searchProductCatalogWithMCP(
 
 /**
  * searchProductsAndCartWithMCP
- * - PRIMARY: MCP tools dla produktów i koszyka (search_shop_catalog, update_cart, get_cart)
+ * - PRIMARY: MCP tools dla produktów i koszyka (search_catalog, update_cart, get_cart)
  * - FALLBACK: Vectorize dla offline product search
  * - Zwraca sformatowany kontekst dla promptu AI
  */

@@ -35,22 +35,135 @@ function safeArgsSummary(args: any) {
 }
 
 function normalizeSearchArgs(raw: any) {
-  const args = { ...raw };
-  args.first = typeof args.first === 'number' ? args.first : 5;
-  if (typeof args.query === 'string') {
-    args.query = args.query.trim();
+  const args = raw && typeof raw === 'object' ? { ...raw } : {};
+  const catalog = args.catalog && typeof args.catalog === 'object' ? { ...args.catalog } : {};
+  if (typeof catalog.query !== 'string' && typeof args.query === 'string') {
+    catalog.query = args.query.trim();
+  } else if (typeof catalog.query === 'string') {
+    catalog.query = catalog.query.trim();
   }
-  args.context = typeof args.context === 'string' && args.context.trim().length > 0 ? args.context : 'biżuteria';
-  return args;
+
+  const context = catalog.context && typeof catalog.context === 'object' ? { ...catalog.context } : {};
+  if (typeof context.intent !== 'string' && typeof args.context === 'string' && args.context.trim()) {
+    context.intent = args.context.trim();
+  }
+  if (typeof context.intent !== 'string' || !context.intent.trim()) {
+    context.intent = 'biżuteria';
+  }
+  catalog.context = context;
+
+  const pagination = catalog.pagination && typeof catalog.pagination === 'object' ? { ...catalog.pagination } : {};
+  if (typeof pagination.limit !== 'number') {
+    pagination.limit = typeof args.first === 'number' ? args.first : 5;
+  }
+  catalog.pagination = pagination;
+
+  return { catalog };
+}
+
+function normalizeUpdateCartPayload(raw: any) {
+  const args = raw && typeof raw === 'object' ? { ...raw } : {};
+  const normalized: Record<string, unknown> = {};
+
+  if (typeof args.cart_id === 'string' && args.cart_id.trim()) {
+    normalized.cart_id = args.cart_id.trim();
+  }
+  if (args.cart_id === null) {
+    delete normalized.cart_id;
+  }
+
+  const addItemsRaw: any[] = Array.isArray(args.add_items) ? [...args.add_items] : [];
+  const updateItemsRaw: any[] = Array.isArray(args.update_items) ? [...args.update_items] : [];
+  const removeLineIdsRaw: any[] = Array.isArray(args.remove_line_ids) ? [...args.remove_line_ids] : [];
+
+  if (Array.isArray(args.lines)) {
+    for (const line of args.lines) {
+      if (!line || typeof line !== 'object') continue;
+      const quantity = typeof line.quantity === 'number' ? Math.max(0, Math.trunc(line.quantity)) : null;
+      if (quantity === null) continue;
+      if (typeof line.line_item_id === 'string' && line.line_item_id.trim()) {
+        updateItemsRaw.push({ id: line.line_item_id.trim(), quantity });
+      } else if (typeof line.merchandise_id === 'string' && line.merchandise_id.trim() && quantity > 0) {
+        addItemsRaw.push({ product_variant_id: line.merchandise_id.trim(), quantity });
+      }
+    }
+  }
+
+  const add_items = addItemsRaw
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const productVariantId =
+        typeof item.product_variant_id === 'string' && item.product_variant_id.trim()
+          ? item.product_variant_id.trim()
+          : typeof item.merchandise_id === 'string' && item.merchandise_id.trim()
+            ? item.merchandise_id.trim()
+            : '';
+      const quantity = typeof item.quantity === 'number' ? Math.trunc(item.quantity) : null;
+      if (!productVariantId || quantity === null || quantity < 1) return null;
+      return { product_variant_id: productVariantId, quantity };
+    })
+    .filter((item): item is { product_variant_id: string; quantity: number } => Boolean(item));
+
+  const update_items = updateItemsRaw
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const id =
+        typeof item.id === 'string' && item.id.trim()
+          ? item.id.trim()
+          : typeof item.line_item_id === 'string' && item.line_item_id.trim()
+            ? item.line_item_id.trim()
+            : '';
+      const quantity = typeof item.quantity === 'number' ? Math.max(0, Math.trunc(item.quantity)) : null;
+      if (!id || quantity === null) return null;
+      return { id, quantity };
+    })
+    .filter((item): item is { id: string; quantity: number } => Boolean(item));
+
+  const remove_line_ids = removeLineIdsRaw
+    .map((lineId) => (typeof lineId === 'string' && lineId.trim() ? lineId.trim() : null))
+    .filter((lineId): lineId is string => Boolean(lineId));
+
+  if (add_items.length > 0) normalized.add_items = add_items;
+  if (update_items.length > 0) normalized.update_items = update_items;
+  if (remove_line_ids.length > 0) normalized.remove_line_ids = remove_line_ids;
+
+  if (args.buyer_identity && typeof args.buyer_identity === 'object') {
+    const buyerIdentity: Record<string, string> = {};
+    if (typeof args.buyer_identity.email === 'string' && args.buyer_identity.email.trim()) {
+      buyerIdentity.email = args.buyer_identity.email.trim();
+    }
+    if (typeof args.buyer_identity.phone === 'string' && args.buyer_identity.phone.trim()) {
+      buyerIdentity.phone = args.buyer_identity.phone.trim();
+    }
+    if (typeof args.buyer_identity.country_code === 'string' && args.buyer_identity.country_code.trim()) {
+      buyerIdentity.country_code = args.buyer_identity.country_code.trim();
+    }
+    if (Object.keys(buyerIdentity).length > 0) {
+      normalized.buyer_identity = buyerIdentity;
+    }
+  }
+
+  if (typeof args.note === 'string' && args.note.trim()) {
+    normalized.note = args.note.trim();
+  }
+
+  return normalized;
 }
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function hasCatalogQueryOrFilters(args: Record<string, any>): boolean {
+  const query = args?.catalog?.query;
+  if (typeof query === 'string' && query.trim().length > 0) return true;
+  const filters = args?.catalog?.filters;
+  return Boolean(filters && typeof filters === 'object' && Object.keys(filters).length > 0);
+}
+
 function validateNormalizedArgs(toolName: string, args: Record<string, any>): void {
-  if (toolName === 'search_shop_catalog' && !isNonEmptyString(args.query)) {
-    throw new Error('Invalid params: non-empty "query" required for search_shop_catalog');
+  if (toolName === 'search_catalog' && !hasCatalogQueryOrFilters(args)) {
+    throw new Error('Invalid params: "catalog.query" or "catalog.filters" required for search_catalog');
   }
   if (toolName === 'search_shop_policies_and_faqs' && !isNonEmptyString(args.query)) {
     throw new Error('Invalid params: non-empty "query" required for search_shop_policies_and_faqs');
@@ -58,14 +171,25 @@ function validateNormalizedArgs(toolName: string, args: Record<string, any>): vo
   if (toolName === 'get_cart' && !isNonEmptyString(args.cart_id)) {
     throw new Error('Invalid params: non-empty "cart_id" required for get_cart');
   }
-  if (toolName === 'update_cart' && (!Array.isArray(args.lines) || args.lines.length === 0)) {
-    throw new Error('Invalid params: non-empty "lines" required for update_cart');
+  if (toolName === 'update_cart') {
+    const hasAddItems = Array.isArray(args.add_items) && args.add_items.length > 0;
+    const hasUpdateItems = Array.isArray(args.update_items) && args.update_items.length > 0;
+    const hasRemoveLineIds = Array.isArray(args.remove_line_ids) && args.remove_line_ids.length > 0;
+    const hasBuyerIdentity = Boolean(args.buyer_identity && typeof args.buyer_identity === 'object' && Object.keys(args.buyer_identity).length > 0);
+    const hasNote = isNonEmptyString(args.note);
+
+    if (!hasAddItems && !hasUpdateItems && !hasRemoveLineIds && !hasBuyerIdentity && !hasNote) {
+      throw new Error('Invalid params: provide at least one of add_items, update_items, remove_line_ids, buyer_identity, note');
+    }
+    if (!isNonEmptyString(args.cart_id) && !hasAddItems) {
+      throw new Error('Invalid params: "cart_id" is required unless creating cart with add_items');
+    }
   }
 }
 
 /**
- * Wywołuje narzędzie MCP Shopify (search_shop_catalog, get_shop_policies, etc.)
- * @param toolName Nazwa narzędzia (np. "search_shop_catalog")
+ * Wywołuje narzędzie MCP Shopify (search_catalog, update_cart, etc.)
+ * @param toolName Nazwa narzędzia (np. "search_catalog")
  * @param args Argumenty narzędzia
  * @param env Env z SHOP_DOMAIN i SHOPIFY_STOREFRONT_TOKEN
  * @returns Wynik MCP (result.content[0].text lub error)
@@ -82,7 +206,11 @@ export async function callShopifyMcpTool(
     throw new Error('MCP_ENDPOINT or SHOP_DOMAIN not configured in wrangler.toml [vars]');
   }
 
-  const normalizedArgs = toolName === 'search_shop_catalog' ? normalizeSearchArgs(args) : args ?? {};
+  const normalizedArgs = toolName === 'search_catalog'
+    ? normalizeSearchArgs(args)
+    : toolName === 'update_cart'
+      ? normalizeUpdateCartPayload(args)
+      : args ?? {};
   validateNormalizedArgs(toolName, normalizedArgs);
 
   const request: McpRequest = {
@@ -111,7 +239,7 @@ export async function callShopifyMcpTool(
     console.log('[Shopify MCP] call', { tool: toolName, status: response.status, args: safeArgsSummary(normalizedArgs) });
 
     if (!response.ok) {
-      if (toolName === 'search_shop_catalog' && response.status === 522) {
+      if (toolName === 'search_catalog' && response.status === 522) {
         return CATALOG_FALLBACK;
       }
       const text = await response.text().catch(() => '<no body>');
@@ -129,7 +257,7 @@ export async function callShopifyMcpTool(
   } catch (err: any) {
     const isAbortError = err instanceof Error && err.name === 'AbortError';
     const isNetworkError = err instanceof TypeError;
-    if (toolName === 'search_shop_catalog' && (isAbortError || isNetworkError)) {
+    if (toolName === 'search_catalog' && (isAbortError || isNetworkError)) {
       return CATALOG_FALLBACK;
     }
     throw err;
@@ -146,7 +274,16 @@ export async function searchShopCatalogMcp(
   env: Env,
   context?: string
 ): Promise<string> {
-  return callShopifyMcpTool('search_shop_catalog', { query, context }, env);
+  return callShopifyMcpTool(
+    'search_catalog',
+    {
+      catalog: {
+        query,
+        context: { intent: context ?? 'biżuteria' },
+      },
+    },
+    env,
+  );
 }
 
 /**
@@ -171,7 +308,11 @@ export async function updateCart(
   cartId: string | null,
   lines: Array<{ merchandiseId: string; quantity: number }>
 ): Promise<string> {
-  const result = await callShopifyMcpTool('update_cart', { cart_id: cartId, lines }, env);
+  const add_items = lines.map((line) => ({
+    product_variant_id: line.merchandiseId,
+    quantity: line.quantity,
+  }));
+  const result = await callShopifyMcpTool('update_cart', { cart_id: cartId, add_items }, env);
   return JSON.stringify(result ?? {});
 }
 

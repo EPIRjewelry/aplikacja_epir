@@ -4,9 +4,9 @@ import { __test } from '../src/ai-client';
 describe('createGroqStreamTransform tool_call merging', () => {
   it('merges streamed deltas with index=0 and no id into one tool_call (no call_2..call_N spam)', async () => {
     const lines = [
-      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"search_shop_catalog","arguments":""}}]}}]}',
-      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"query"}}]}}]}',
-      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\": \\"x\\"}"}}],"finish_reason":"tool_calls"}}]}',
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"search_catalog","arguments":""}}]}}]}',
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"catalog\\":{\\"query\\""}}]}}]}',
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":" : \\"x\\"}}"}}],"finish_reason":"tool_calls"}}]}',
     ];
 
     const encoder = new TextEncoder();
@@ -34,7 +34,7 @@ describe('createGroqStreamTransform tool_call merging', () => {
     }
 
     expect(toolCalls.length).toBe(1);
-    expect(toolCalls[0].name).toBe('search_shop_catalog');
+    expect(toolCalls[0].name).toBe('search_catalog');
     expect(toolCalls[0].arguments).toContain('query');
   });
 });

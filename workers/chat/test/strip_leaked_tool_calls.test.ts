@@ -4,7 +4,7 @@ import { stripLeakedToolCallsLiterals } from '../src/utils/stripLeakedToolCallsL
 describe('stripLeakedToolCallsLiterals', () => {
   it('removes literal tool_calls JSON blob from model echo', () => {
     const raw =
-      'normalnie, fajne kolczyki chcę tool_calls: [{"id":"call_1","type":"function","function":{"name":"search_shop_catalog","arguments":"{\\"query\\": \\"kolczyki\\"}"}}]';
+      'normalnie, fajne kolczyki chcę tool_calls: [{"id":"call_1","type":"function","function":{"name":"search_catalog","arguments":"{\\"catalog\\": {\\"query\\": \\"kolczyki\\"}}"}}]';
     expect(stripLeakedToolCallsLiterals(raw).trim()).toBe('normalnie, fajne kolczyki chcę');
   });
 

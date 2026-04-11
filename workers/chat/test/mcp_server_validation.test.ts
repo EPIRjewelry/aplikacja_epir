@@ -7,7 +7,7 @@ describe('callMcpToolDirect validation', () => {
     vi.unstubAllGlobals();
   });
 
-  it('rejects missing query for search_shop_catalog before fetch', async () => {
+  it('rejects missing catalog.query for search_catalog before fetch', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -16,7 +16,7 @@ describe('callMcpToolDirect validation', () => {
       MCP_ENDPOINT: 'https://example.myshopify.com/api/mcp',
     } as any;
 
-    const result = await callMcpToolDirect(env, 'search_shop_catalog', { context: 'biżuteria' });
+    const result = await callMcpToolDirect(env, 'search_catalog', { catalog: { context: { intent: 'biżuteria' } } });
 
     expect((result as any).error?.code).toBe(-32602);
     expect(String((result as any).error?.message)).toContain('query');

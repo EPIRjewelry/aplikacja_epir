@@ -110,7 +110,7 @@ describe('SessionDO', () => {
             {
               id: 'call_1',
               type: 'function',
-              function: { name: 'search_shop_catalog', arguments: '{"query":"ring"}' },
+              function: { name: 'search_catalog', arguments: '{"catalog":{"query":"ring"}}' },
             },
           ],
         }),

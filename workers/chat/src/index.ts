@@ -13,7 +13,7 @@ export type { Env } from './config/bindings';
  * 1.  **POPRAWKA UTRATY SESJI:** Natychmiast wysyła 'session_id' do klienta
  * przez dedykowany event SSE 'session', co zapewnia stanowość.
  * 2.  **POPRAWKA INTENCJI/RAG:** Usunięto agresywną logikę RAG z `handleChat`.
- * Teraz to AI decyduje, kiedy wywołać narzędzia (jak search_shop_catalog)
+ * Teraz to AI decyduje, kiedy wywołać narzędzia (jak search_catalog)
  * zgodnie z logiką w nowym prompcie Harmony.
  * 3.  **POPRAWKA HARMONY:** `streamAssistantResponse` poprawnie wywołuje
  * `streamGroqHarmonyEvents` (zamiast streamGroqResponse) i implementuje
@@ -1785,7 +1785,7 @@ async function streamAssistantResponse(
 
       // 🔴 KROK 3b: ZDELEGUJ LOGIKĘ RAG DO RAG_WORKER
       // Zamiast błędnie wykonywać RAG tutaj, pozwalamy AI zdecydować, czy go potrzebuje.
-      // Jeśli AI wywoła `search_shop_catalog` lub `search_shop_policies_and_faqs`,
+      // Jeśli AI wywoła `search_catalog` lub `search_shop_policies_and_faqs`,
       // `callMcpToolDirect` w `mcp_server.ts` poprawnie wywoła `RAG_WORKER`.
       
       // W `index.ts` (stara wersja) była błędna logika RAG. Teraz jej nie ma.
@@ -1945,7 +1945,13 @@ async function streamAssistantResponse(
             } else {
               console.log(`[streamAssistant] ✅ Narzędzie ${call.name} wykonane`, { args: parsedArgs ?? {} });
             }
-            const toolResultString = JSON.stringify(toolResult.error ? toolResult : toolResult.result);
+            const toolResultString = toolResult.error
+              ? JSON.stringify({
+                  notice:
+                    'Narzędzie sklepu (Shopify MCP) nie zwróciło wyniku — nie twierdź o politykach ani usługach z pamięci marki; zaproponuj Kontakt lub ponowienie.',
+                  ...toolResult,
+                })
+              : JSON.stringify(toolResult.result);
 
             console.log(`[streamAssistant] 🛠️ Wynik narzędzia ${call.name}: ${toolResultString.substring(0, 100)}...`);
 

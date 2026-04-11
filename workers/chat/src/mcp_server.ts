@@ -4,8 +4,9 @@
 // Bez fallbacków na Storefront/Admin API – tzn. bez zależności od tokenów Storefront.
 // 
 // Strategia błędów (Plan B):
-// - Timeout/522/503/AbortError dla search_shop_catalog → fallback: puste produkty + system_note
-// - Timeout/AbortError dla innych narzędzi → błąd JSON-RPC (nie fallback)
+// - Timeout/522/503/AbortError dla search_catalog → fallback: puste produkty + system_note
+// - search_shop_policies_and_faqs: dłuższy timeout (15s), do 3 prób przy AbortError/TypeError, potem błąd
+// - Timeout/AbortError dla pozostałych narzędzi → błąd JSON-RPC (nie fallback)
 // - Dzięki temu AI dostaje "sklep niedostępny" zamiast crashu z 401.
 //
 // Sekrety (SHOPIFY_APP_SECRET) pochodzą TYLKO z Cloudflare Secrets.
@@ -22,9 +23,8 @@ import {
   createJsonRpcError 
 } from './utils/jsonrpc';
 import type { Env } from './index';
+import { TOOL_SCHEMAS } from './mcp_tools';
 import { normalizeCartId, isValidCartGid } from './utils/cart';
-import { withRetry } from './utils/retry';
-
 type JsonRpcId = string | number | null;
 
 function json(headers: HeadersInit = {}) {
@@ -42,6 +42,9 @@ function rpcError(id: JsonRpcId, code: number, message: string, data?: any): Res
 }
 
 const MCP_TIMEOUT_MS = 5000;
+/** Policies/FAQ search przez Shop MCP bywa wolniejsze niż katalog — krótki timeout powodował AbortError. */
+const MCP_POLICIES_TIMEOUT_MS = 15000;
+const MCP_POLICIES_MAX_ATTEMPTS = 3;
 
 const CATALOG_FALLBACK = {
   products: [],
@@ -73,15 +76,33 @@ function safeArgsSummary(args: any) {
   return summary;
 }
 
-/** Liczy produkty w odpowiedzi MCP search_shop_catalog (JSON w content[0].text). */
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shouldRetryPoliciesMcpFetch(err: unknown): boolean {
+  if (err instanceof TypeError) return true;
+  return err instanceof Error && err.name === 'AbortError';
+}
+
+/** Liczy produkty w odpowiedzi MCP search_catalog (JSON w content[0].text). */
 function summarizeSearchCatalogResult(result: unknown): { productCount: number | null; parseError?: boolean } {
   if (!result || typeof result !== 'object') return { productCount: null };
   const content = (result as { content?: Array<{ type?: string; text?: string }> }).content;
   const text = Array.isArray(content) ? content[0]?.text : undefined;
   if (typeof text !== 'string' || !text.trim()) return { productCount: null };
   try {
-    const parsed = JSON.parse(text) as { products?: unknown };
-    const products = parsed?.products;
+    const parsed = JSON.parse(text) as {
+      products?: unknown;
+      items?: unknown;
+      results?: unknown;
+      catalog?: { products?: unknown };
+    };
+    const products =
+      (Array.isArray(parsed?.products) && parsed.products)
+      || (Array.isArray(parsed?.items) && parsed.items)
+      || (Array.isArray(parsed?.results) && parsed.results)
+      || (Array.isArray(parsed?.catalog?.products) && parsed.catalog.products);
     if (!Array.isArray(products)) return { productCount: null, parseError: true };
     return { productCount: products.length };
   } catch {
@@ -89,29 +110,185 @@ function summarizeSearchCatalogResult(result: unknown): { productCount: number |
   }
 }
 
-function normalizeSearchArgs(raw: any, brand?: string) {
-  const args = { ...raw };
-  args.first = typeof args.first === 'number' ? args.first : 5;
-  if (typeof args.query === 'string') {
-    args.query = args.query.trim();
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
   }
-  let baseContext = typeof args.context === 'string' && args.context.trim().length > 0 ? args.context : 'biżuteria';
-  if (brand === 'kazka') {
-    baseContext = baseContext + ' z kolekcji Kazka Jewelry';
-  }
-  args.context = baseContext;
-  return args;
+  return null;
 }
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function normalizeSearchCatalogArgs(raw: any, brand?: string): Record<string, unknown> {
+  const source = raw && typeof raw === 'object' ? { ...raw } : {};
+  const normalized: Record<string, unknown> = {};
+  if (source.meta && typeof source.meta === 'object') {
+    normalized.meta = source.meta;
+  }
+
+  const catalog = source.catalog && typeof source.catalog === 'object'
+    ? { ...(source.catalog as Record<string, unknown>) }
+    : {};
+  const legacyQuery = isNonEmptyString(source.query) ? source.query.trim() : '';
+  if (!isNonEmptyString(catalog.query) && legacyQuery) {
+    catalog.query = legacyQuery;
+  }
+  if (isNonEmptyString(catalog.query)) {
+    catalog.query = catalog.query.trim();
+  }
+
+  const context = catalog.context && typeof catalog.context === 'object'
+    ? { ...(catalog.context as Record<string, unknown>) }
+    : {};
+  const legacyContext = isNonEmptyString(source.context) ? source.context.trim() : '';
+  if (!isNonEmptyString(context.intent) && legacyContext) {
+    context.intent = legacyContext;
+  }
+  if (!isNonEmptyString(context.intent)) {
+    context.intent = 'biżuteria';
+  }
+  if (brand === 'kazka' && isNonEmptyString(context.intent)) {
+    context.intent = `${context.intent} z kolekcji Kazka Jewelry`;
+  }
+  if (brand === 'zareczyny' && isNonEmptyString(context.intent)) {
+    context.intent = `${context.intent} w kontekście pierścionków zaręczynowych`;
+  }
+  catalog.context = context;
+
+  const pagination = catalog.pagination && typeof catalog.pagination === 'object'
+    ? { ...(catalog.pagination as Record<string, unknown>) }
+    : {};
+  const legacyFirst = toFiniteNumber(source.first);
+  if (typeof pagination.limit !== 'number' && legacyFirst !== null) {
+    pagination.limit = Math.max(1, Math.trunc(legacyFirst));
+  }
+  if (typeof pagination.limit !== 'number') {
+    pagination.limit = 5;
+  }
+  catalog.pagination = pagination;
+
+  if (!catalog.filters && source.filters && typeof source.filters === 'object') {
+    catalog.filters = source.filters;
+  }
+
+  normalized.catalog = catalog;
+  return normalized;
+}
+
+function normalizeUpdateCartArgs(raw: any, sessionCartKey?: string): Record<string, unknown> {
+  const source = normalizeCartArgs(raw ?? {}, sessionCartKey);
+  const normalized: Record<string, unknown> = {};
+
+  if (isNonEmptyString(source.cart_id)) {
+    normalized.cart_id = source.cart_id.trim();
+  }
+
+  const addItemsRaw: any[] = Array.isArray(source.add_items) ? [...source.add_items] : [];
+  const updateItemsRaw: any[] = Array.isArray(source.update_items) ? [...source.update_items] : [];
+  const removeLineIdsRaw: any[] = Array.isArray(source.remove_line_ids) ? [...source.remove_line_ids] : [];
+
+  if (Array.isArray(source.lines)) {
+    for (const line of source.lines) {
+      if (!line || typeof line !== 'object') continue;
+      const lineId = isNonEmptyString((line as any).line_item_id)
+        ? String((line as any).line_item_id).trim()
+        : isNonEmptyString((line as any).id)
+          ? String((line as any).id).trim()
+          : '';
+      const variantId = isNonEmptyString((line as any).product_variant_id)
+        ? String((line as any).product_variant_id).trim()
+        : isNonEmptyString((line as any).merchandise_id)
+          ? String((line as any).merchandise_id).trim()
+          : isNonEmptyString((line as any).variant_id)
+            ? String((line as any).variant_id).trim()
+            : '';
+      const quantityRaw = toFiniteNumber((line as any).quantity);
+      if (quantityRaw === null) continue;
+      const quantity = Math.max(0, Math.trunc(quantityRaw));
+
+      if (lineId) {
+        updateItemsRaw.push({ id: lineId, quantity });
+      } else if (variantId && quantity > 0) {
+        addItemsRaw.push({ product_variant_id: variantId, quantity });
+      }
+    }
+  }
+
+  const add_items = addItemsRaw
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const productVariantId = isNonEmptyString((item as any).product_variant_id)
+        ? String((item as any).product_variant_id).trim()
+        : isNonEmptyString((item as any).merchandise_id)
+          ? String((item as any).merchandise_id).trim()
+          : isNonEmptyString((item as any).variant_id)
+            ? String((item as any).variant_id).trim()
+            : '';
+      const quantityRaw = toFiniteNumber((item as any).quantity);
+      if (!productVariantId || quantityRaw === null) return null;
+      const quantity = Math.trunc(quantityRaw);
+      if (quantity < 1) return null;
+      return { product_variant_id: productVariantId, quantity };
+    })
+    .filter((item): item is { product_variant_id: string; quantity: number } => Boolean(item));
+
+  const update_items = updateItemsRaw
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const id = isNonEmptyString((item as any).id)
+        ? String((item as any).id).trim()
+        : isNonEmptyString((item as any).line_item_id)
+          ? String((item as any).line_item_id).trim()
+          : '';
+      const quantityRaw = toFiniteNumber((item as any).quantity);
+      if (!id || quantityRaw === null) return null;
+      const quantity = Math.max(0, Math.trunc(quantityRaw));
+      return { id, quantity };
+    })
+    .filter((item): item is { id: string; quantity: number } => Boolean(item));
+
+  const remove_line_ids = removeLineIdsRaw
+    .map((id) => (isNonEmptyString(id) ? id.trim() : null))
+    .filter((id): id is string => Boolean(id));
+
+  if (add_items.length > 0) normalized.add_items = add_items;
+  if (update_items.length > 0) normalized.update_items = update_items;
+  if (remove_line_ids.length > 0) normalized.remove_line_ids = remove_line_ids;
+
+  if (source.buyer_identity && typeof source.buyer_identity === 'object') {
+    const buyerIdentity = source.buyer_identity as Record<string, unknown>;
+    const normalizedBuyerIdentity: Record<string, string> = {};
+    if (isNonEmptyString(buyerIdentity.email)) normalizedBuyerIdentity.email = buyerIdentity.email.trim();
+    if (isNonEmptyString(buyerIdentity.phone)) normalizedBuyerIdentity.phone = buyerIdentity.phone.trim();
+    if (isNonEmptyString(buyerIdentity.country_code)) normalizedBuyerIdentity.country_code = buyerIdentity.country_code.trim();
+    if (Object.keys(normalizedBuyerIdentity).length > 0) {
+      normalized.buyer_identity = normalizedBuyerIdentity;
+    }
+  }
+
+  if (isNonEmptyString(source.note)) {
+    normalized.note = source.note.trim();
+  }
+
+  return normalized;
+}
+
+function hasCatalogQueryOrFilters(args: any): boolean {
+  const query = args?.catalog?.query;
+  if (isNonEmptyString(query)) return true;
+  const filters = args?.catalog?.filters;
+  return Boolean(filters && typeof filters === 'object' && Object.keys(filters).length > 0);
+}
+
 function validateNormalizedToolArgs(toolName: string, args: any): { code: number; message: string } | null {
-  if (toolName === 'search_shop_catalog' && !isNonEmptyString(args?.query)) {
+  if (toolName === 'search_catalog' && !hasCatalogQueryOrFilters(args)) {
     return {
       code: -32602,
-      message: 'Invalid params: non-empty "query" required for search_shop_catalog',
+      message: 'Invalid params: "catalog.query" or "catalog.filters" required for search_catalog',
     };
   }
   if (toolName === 'search_shop_policies_and_faqs' && !isNonEmptyString(args?.query)) {
@@ -126,10 +303,36 @@ function validateNormalizedToolArgs(toolName: string, args: any): { code: number
       message: 'Invalid params: non-empty "cart_id" required for get_cart',
     };
   }
-  if (toolName === 'update_cart' && (!Array.isArray(args?.lines) || args.lines.length === 0)) {
+  if (toolName === 'update_cart') {
+    const hasAddItems = Array.isArray(args?.add_items) && args.add_items.length > 0;
+    const hasUpdateItems = Array.isArray(args?.update_items) && args.update_items.length > 0;
+    const hasRemoveLineIds = Array.isArray(args?.remove_line_ids) && args.remove_line_ids.length > 0;
+    const hasBuyerIdentity =
+      Boolean(args?.buyer_identity && typeof args.buyer_identity === 'object' && Object.keys(args.buyer_identity).length > 0);
+    const hasNote = isNonEmptyString(args?.note);
+
+    if (!hasAddItems && !hasUpdateItems && !hasRemoveLineIds && !hasBuyerIdentity && !hasNote) {
+      return {
+        code: -32602,
+        message: 'Invalid params: provide at least one of add_items, update_items, remove_line_ids, buyer_identity, note',
+      };
+    }
+    if (!isNonEmptyString(args?.cart_id) && !hasAddItems) {
+      return {
+        code: -32602,
+        message: 'Invalid params: "cart_id" is required unless creating a cart with add_items',
+      };
+    }
+  }
+  return null;
+}
+
+function assertCartIdFormat(toolName: string, args: any): { code: number; message: string } | null {
+  if (args.cart_id && !isValidCartGid(args.cart_id) && !String(args.cart_id).startsWith('?key=')) {
+    console.warn(`[callShopMcp] Invalid cart_id format for ${toolName}:`, args.cart_id);
     return {
       code: -32602,
-      message: 'Invalid params: non-empty "lines" required for update_cart',
+      message: 'Invalid cart_id format. Expected a Shopify Cart GID (e.g., \'gid://shopify/Cart/<id>?key=...\')',
     };
   }
   return null;
@@ -185,23 +388,19 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
 
   // Normalize arguments based on tool type
   let args: any;
-  if (toolName === 'search_shop_catalog') {
-    args = normalizeSearchArgs(rawArgs, brand);
-  } else if (toolName === 'get_cart' || toolName === 'update_cart') {
+  if (toolName === 'search_catalog') {
+    args = normalizeSearchCatalogArgs(rawArgs, brand);
+  } else if (toolName === 'update_cart') {
+    args = normalizeUpdateCartArgs(rawArgs ?? {});
+  } else if (toolName === 'get_cart') {
     args = normalizeCartArgs(rawArgs ?? {});
-    
-    // Validate cart_id for cart operations
-    if (args.cart_id && !isValidCartGid(args.cart_id) && !args.cart_id.startsWith('?key=')) {
-      console.warn(`[callShopMcp] Invalid cart_id format for ${toolName}:`, args.cart_id);
-      return { 
-        error: { 
-          code: -32602, 
-          message: 'Invalid cart_id format. Expected a Shopify Cart GID (e.g., \'gid://shopify/Cart/<id>?key=...\')' 
-        } 
-      };
-    }
   } else {
     args = rawArgs ?? {};
+  }
+
+  if ((toolName === 'get_cart' || toolName === 'update_cart') && args?.cart_id) {
+    const cartError = assertCartIdFormat(toolName, args);
+    if (cartError) return { error: cartError };
   }
 
   const validationError = validateNormalizedToolArgs(toolName, args);
@@ -216,33 +415,65 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
     id: Date.now()
   };
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), MCP_TIMEOUT_MS);
   const endpoint = getMcpEndpoint(env) || `https://${String(shopDomain).replace(/\/$/, '')}/api/mcp`;
+  const isPoliciesTool = toolName === 'search_shop_policies_and_faqs';
+  const timeoutMs = isPoliciesTool ? MCP_POLICIES_TIMEOUT_MS : MCP_TIMEOUT_MS;
+  const maxFetchAttempts = isPoliciesTool ? MCP_POLICIES_MAX_ATTEMPTS : 1;
 
   try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(rpc),
-      signal: controller.signal
-    });
+    let res: Response | undefined;
+    for (let attempt = 1; attempt <= maxFetchAttempts; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      const fetchStarted = Date.now();
+      try {
+        res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(rpc),
+          signal: controller.signal
+        });
 
-    const queryPreview =
-      toolName === 'search_shop_catalog' && typeof args?.query === 'string'
-        ? args.query.slice(0, 240)
-        : undefined;
-    console.log('[mcp] call', {
-      tool: toolName,
-      status: res.status,
-      args: safeArgsSummary(args),
-      queryPreview,
-      timestamp: new Date().toISOString(),
-    });
+        const queryPreview =
+          toolName === 'search_catalog' && typeof args?.catalog?.query === 'string'
+            ? args.catalog.query.slice(0, 240)
+            : undefined;
+        console.log('[mcp] call', {
+          tool: toolName,
+          status: res.status,
+          args: safeArgsSummary(args),
+          queryPreview,
+          duration_ms: Date.now() - fetchStarted,
+          attempt,
+          maxAttempts: maxFetchAttempts,
+          timestamp: new Date().toISOString(),
+        });
+        break;
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.warn('[mcp] fetch attempt failed', {
+          tool: toolName,
+          attempt,
+          maxAttempts: maxFetchAttempts,
+          error: errMsg,
+        });
+        if (attempt < maxFetchAttempts && isPoliciesTool && shouldRetryPoliciesMcpFetch(err)) {
+          await sleepMs(100 * attempt);
+          continue;
+        }
+        throw err;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
+    if (!res) {
+      return { error: { code: -32000, message: 'Shop MCP call failed', details: 'No response from shop MCP' } };
+    }
 
     if (!res.ok) {
-      // Plan B: Safe fallback for search_shop_catalog on network/service errors
-      if (toolName === 'search_shop_catalog' && (res.status === 522 || res.status === 503 || res.status >= 500)) {
+      // Plan B: Safe fallback for search_catalog on network/service errors
+      if (toolName === 'search_catalog' && (res.status === 522 || res.status === 503 || res.status >= 500)) {
         console.warn(`[mcp] Shop MCP ${res.status} for ${toolName}, returning safe fallback`);
         return { result: CATALOG_FALLBACK };
       }
@@ -252,8 +483,8 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
 
     const json = (await res.json().catch(() => null)) as JsonRpcResponse | null;
     if (!json) {
-      if (toolName === 'search_shop_catalog') {
-        console.warn('[mcp] Invalid JSON from shop MCP for search_shop_catalog, returning safe fallback');
+      if (toolName === 'search_catalog') {
+        console.warn('[mcp] Invalid JSON from shop MCP for search_catalog, returning safe fallback');
         return { result: CATALOG_FALLBACK };
       }
       return { error: { code: -32700, message: 'Invalid JSON response from shop MCP' } };
@@ -262,9 +493,9 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
       return { error: (json as any).error };
     }
     const resultPayload = (json as any).result ?? json;
-    if (toolName === 'search_shop_catalog') {
+    if (toolName === 'search_catalog') {
       const { productCount, parseError } = summarizeSearchCatalogResult(resultPayload);
-      console.log('[mcp] search_shop_catalog outcome', {
+      console.log('[mcp] search_catalog outcome', {
         productCount,
         parseError: parseError ?? false,
       });
@@ -275,16 +506,14 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
     const isNetworkError = err instanceof TypeError;
     const errMsg = err?.message || String(err);
     
-    // Plan B: Safe fallback for search_shop_catalog on timeout/network errors
-    if (toolName === 'search_shop_catalog' && (isAbortError || isNetworkError)) {
+    // Plan B: Safe fallback for search_catalog on timeout/network errors
+    if (toolName === 'search_catalog' && (isAbortError || isNetworkError)) {
       console.warn(`[mcp] Timeout/Network error for ${toolName}, returning safe fallback`, { error: errMsg });
       return { result: CATALOG_FALLBACK };
     }
     
     console.error('[mcp] Shop MCP call failed', { tool: toolName, error: errMsg });
     return { error: { code: -32000, message: 'Shop MCP call failed', details: errMsg } };
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 
@@ -301,66 +530,17 @@ export async function handleToolsCall(env: any, request: Request): Promise<Respo
   }
 
   if (rpc.method === 'tools/list') {
-    const tools = [
-      {
-        name: 'search_shop_catalog',
-        description: 'Search Shopify product catalog using natural language or keywords',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            query: { type: 'string', description: 'Search query (keywords, product name, category)' },
-            context: { type: 'string', description: 'Additional context to help tailor results' }
-          },
-          required: ['query', 'context']
-        }
-      },
-      {
-        name: 'search_shop_policies_and_faqs',
-        description: 'Answer questions about policies, shipping, returns, FAQs',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            query: { type: 'string', description: 'The question about policies or FAQs' },
-            context: { type: 'string', description: 'Additional context (optional)' }
-          },
-          required: ['query']
-        }
-      },
-      {
-        name: 'get_cart',
-        description: 'Retrieve current shopping cart contents',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            cart_id: { type: 'string', description: 'Cart ID to retrieve' }
-          },
-          required: ['cart_id']
-        }
-      },
-      {
-        name: 'update_cart',
-        description: 'Add, remove, or update items in the shopping cart',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            cart_id: { type: ['string', 'null'], description: 'Cart ID (null for new cart)' },
-            lines: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  line_item_id: { type: 'string', description: 'Existing cart line ID' },
-                  merchandise_id: { type: 'string', description: 'Product variant ID' },
-                  quantity: { type: 'number', description: 'Quantity to set' }
-                },
-                required: ['quantity']
-              }
-            }
-          },
-          required: ['lines']
-        }
-      }
-    ];
+    const publicToolNames = [
+      'search_catalog',
+      'search_shop_policies_and_faqs',
+      'get_cart',
+      'update_cart',
+    ] as const;
+    const tools = publicToolNames.map((toolName) => ({
+      name: TOOL_SCHEMAS[toolName].name,
+      description: TOOL_SCHEMAS[toolName].description,
+      inputSchema: TOOL_SCHEMAS[toolName].parameters,
+    }));
     return rpcResult(rpc.id ?? null, { tools });
   }
 
@@ -372,10 +552,6 @@ export async function handleToolsCall(env: any, request: Request): Promise<Respo
   const args = rpc.params?.arguments ?? {};
   if (!name) {
     return rpcError(rpc.id ?? null, -32602, 'Invalid params: "name" required');
-  }
-
-  if (name === 'search_shop_catalog' && !args.query) {
-    return rpcError(rpc.id ?? null, -32602, 'Invalid params: "query" required for search_shop_catalog');
   }
 
   const brand = (rpc.params?.brand as string) || request.headers.get('X-Brand') || undefined;

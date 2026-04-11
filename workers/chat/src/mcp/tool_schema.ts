@@ -1,39 +1,71 @@
 /**
- * Definicja parametrów dla funkcji search_shop_catalog.
+ * Definicja parametrów dla funkcji search_catalog (UCP).
  */
-const searchShopCatalogSchema = {
+const searchCatalogSchema = {
   type: "object",
   properties: {
-    query: {
+    meta: {
       type: "object",
-      description: "JSON z encjami produktu, takimi jak 'metal', 'type', 'stones' (np. 'solitaire', 'diamond'). Należy zidentyfikować kluczowe preferencje klienta i ustrukturyzować je tutaj. Pole 'stones' może zawierać 'solitaire' dla jednego kamienia.",
+      description: "MCP transport metadata for UCP agent discovery.",
       properties: {
-        type: {
-          type: "string",
-          description: "Typ biżuterii, np. 'pierścionek', 'naszyjnik', 'pierścionek zaręczynowy'."
-        },
-        metal: {
-          type: "string",
-          description: "Typ metalu, np. 'platyna', 'żółte złoto', 'srebro'."
-        },
-        stones: {
-          type: "string",
-          description: "Rodzaj lub ilość kamieni. Użyj 'solitaire' dla jednego dużego kamienia."
-        },
-        // Można dodać więcej zaawansowanych filtrów z metaobiektów
-        fair_trade: {
-          type: "boolean",
-          description: "Czy poszukiwanie ma być ograniczone tylko do produktów z certyfikatem Fair Trade. Zawsze priorytetyzuj TRUE, chyba że klient wyraźnie pyta o coś innego."
+        "ucp-agent": {
+          type: "object",
+          properties: {
+            profile: {
+              type: "string",
+              description: "Agent profile URI for UCP discovery."
+            }
+          }
         }
-      },
-      required: ["type"]
+      }
     },
-    context: {
-      type: "string",
-      description: "Krótka, jednozdaniowa narracja klienta dotycząca stylu lub okazji (np. 'Klient szuka prezentu urodzinowego w stylu vintage', 'Klient preferuje minimalistyczny styl, duży kamień').",
+    catalog: {
+      type: "object",
+      description: "Catalog search parameters.",
+      properties: {
+        query: {
+          type: "string",
+          description: "Free-text search query."
+        },
+        context: {
+          type: "object",
+          description: "Buyer context signals for relevance/localization.",
+          properties: {
+            address_country: { type: "string" },
+            address_region: { type: "string" },
+            postal_code: { type: "string" },
+            language: { type: "string" },
+            currency: { type: "string" },
+            intent: { type: "string" }
+          }
+        },
+        filters: {
+          type: "object",
+          properties: {
+            categories: {
+              type: "array",
+              items: { type: "string" }
+            },
+            price: {
+              type: "object",
+              properties: {
+                min: { type: "number" },
+                max: { type: "number" }
+              }
+            }
+          }
+        },
+        pagination: {
+          type: "object",
+          properties: {
+            cursor: { type: "string" },
+            limit: { type: "number" }
+          }
+        }
+      }
     }
   },
-  required: ["query", "context"]
+  required: ["catalog"]
 };
 
 /**
@@ -46,36 +78,70 @@ const getCartSchema = {
 };
 
 /**
- * Definicja parametrów dla funkcji update_cart.
- * Zakładamy, że model otrzyma ID wariantu (variant_id) z wyników RAG lub wcześniejszego wyszukiwania.
+ * Definicja parametrów dla funkcji update_cart (UCP).
  */
 const updateCartSchema = {
   type: "object",
+  additionalProperties: false,
   properties: {
     cart_id: {
       type: "string",
-      description: "ID bieżącego koszyka klienta, musi być przekazane. Powinno być pobrane z Durable Object / Session State. Użyj 'CURRENT' jeśli nie jest jawnie znane."
+      description: "Identifier for the cart being updated. If not provided, a new cart will be created."
     },
-    lines: {
+    add_items: {
       type: "array",
-      description: "Lista pozycji do zaktualizowania (dodania/usunięcia) w koszyku.",
+      description: "Items to add to the cart. Required when creating a new cart.",
       items: {
         type: "object",
         properties: {
-          variant_id: {
+          product_variant_id: {
             type: "string",
-            description: "Global ID wariantu produktu do dodania/usunięcia (np. 'gid://shopify/ProductVariant/123456789')."
+            description: "Product variant ID (e.g., gid://shopify/ProductVariant/123)."
           },
           quantity: {
-            type: "integer",
-            description: "Ilość. Użyj 1 dla dodania, 0 dla usunięcia."
+            type: "number",
+            description: "Quantity to add, minimum 1."
           }
         },
-        required: ["variant_id", "quantity"]
+        required: ["product_variant_id", "quantity"]
       }
+    },
+    update_items: {
+      type: "array",
+      description: "Existing cart line items to update quantities for. Use quantity 0 to remove an item.",
+      items: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            description: "Cart line ID."
+          },
+          quantity: {
+            type: "number",
+            description: "New quantity (0 removes the item)."
+          }
+        },
+        required: ["id", "quantity"]
+      }
+    },
+    remove_line_ids: {
+      type: "array",
+      description: "List of line item IDs to remove explicitly.",
+      items: { type: "string" }
+    },
+    buyer_identity: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        email: { type: "string" },
+        phone: { type: "string" },
+        country_code: { type: "string" }
+      }
+    },
+    note: {
+      type: "string"
     }
-  },
-  required: ["cart_id", "lines"]
+  }
 };
 
 /**
@@ -124,9 +190,9 @@ export function generateMcpToolSchema(): string {
     {
       type: "function",
       function: {
-        name: "search_shop_catalog",
-        description: "Wyszukuje produkty w katalogu sklepu na podstawie cech produktu i preferencji klienta (metale, kamienie, typy biżuterii). Zwraca ustrukturyzowane wyniki. Używaj tylko do **wyszukiwania** produktów.",
-        parameters: searchShopCatalogSchema
+        name: "search_catalog",
+        description: "Wyszukuje produkty w katalogu sklepu w strukturze UCP (meta/catalog/pagination).",
+        parameters: searchCatalogSchema
       }
     },
     {
@@ -141,7 +207,7 @@ export function generateMcpToolSchema(): string {
       type: "function",
       function: {
         name: "update_cart",
-        description: "Aktualizuje koszyk klienta (dodaje lub usuwa produkty). Wymaga ID wariantu (variant_id) i ilości.",
+        description: "Aktualizuje koszyk klienta (dodawanie/usuwanie/zmiana ilości) w strukturze UCP.",
         parameters: updateCartSchema
       }
     },

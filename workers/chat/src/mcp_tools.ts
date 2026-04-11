@@ -6,7 +6,7 @@
  * - Shopify Storefront MCP: https://shopify.dev/docs/apps/build/storefront-mcp/servers/storefront
  * 
  * UWAGA: Tylko oficjalne narzędzia Shopify Storefront MCP!
- * - search_shop_catalog
+ * - search_catalog
  * - search_shop_policies_and_faqs
  * - get_cart
  * - update_cart
@@ -17,22 +17,78 @@
  * Format zgodny z OpenAI function-calling.
  */
 export const TOOL_SCHEMAS = {
-  search_shop_catalog: {
-    name: 'search_shop_catalog',
-    description: 'Search Shopify product catalog using natural language or keywords. Returns product details including name, price, URL, image, and description.',
+  search_catalog: {
+    name: 'search_catalog',
+    description: 'Search for products from the online store using UCP catalog schema.',
     parameters: {
       type: 'object',
       properties: {
-        query: {
-          type: 'string',
-          description: 'Search query (keywords, product name, category, etc.)'
+        meta: {
+          type: 'object',
+          description: 'MCP transport metadata for UCP agent discovery.',
+          properties: {
+            'ucp-agent': {
+              type: 'object',
+              properties: {
+                profile: {
+                  type: 'string',
+                  description: 'Agent profile URI for UCP discovery.'
+                }
+              }
+            }
+          }
         },
-        context: {
-          type: 'string',
-          description: 'Additional context to help tailor results (e.g., "Customer prefers silver jewelry")'
+        catalog: {
+          type: 'object',
+          description: 'Catalog search parameters.',
+          properties: {
+            query: {
+              type: 'string',
+              description: 'Free-text search query.'
+            },
+            context: {
+              type: 'object',
+              description: 'Buyer context signals for relevance and localization.',
+              properties: {
+                address_country: { type: 'string', description: 'ISO 3166-1 alpha-2 country code (e.g., US, CA, GB).' },
+                address_region: { type: 'string', description: 'First-level administrative division (e.g., CA).' },
+                postal_code: { type: 'string', description: 'Postal or ZIP code.' },
+                language: { type: 'string', description: 'IETF BCP 47 language tag (e.g., en, pl-PL).' },
+                currency: { type: 'string', description: 'ISO 4217 currency code (e.g., USD, PLN).' },
+                intent: { type: 'string', description: 'Natural-language context describing buyer intent.' }
+              }
+            },
+            filters: {
+              type: 'object',
+              description: 'Optional filter criteria.',
+              properties: {
+                categories: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Filter by product categories using OR logic.'
+                },
+                price: {
+                  type: 'object',
+                  description: 'Price range filter in minor currency units.',
+                  properties: {
+                    min: { type: 'number', description: 'Minimum price in minor units (e.g., 5000 for 50.00).' },
+                    max: { type: 'number', description: 'Maximum price in minor units (e.g., 10000 for 100.00).' }
+                  }
+                }
+              }
+            },
+            pagination: {
+              type: 'object',
+              description: 'Pagination parameters.',
+              properties: {
+                cursor: { type: 'string', description: 'Opaque cursor from previous response.' },
+                limit: { type: 'number', description: 'Requested page size (default 10, max 250).' }
+              }
+            }
+          }
         }
       },
-      required: ['query', 'context']
+      required: ['catalog']
     }
   },
 
@@ -96,39 +152,73 @@ export const TOOL_SCHEMAS = {
 
   update_cart: {
     name: 'update_cart',
-    description: 'Update quantities of items in an existing cart or add new items. Creates a new cart if no cart_id is provided. Set quantity to 0 to remove an item.',
+    description: 'Perform updates to a cart including add/update/remove line items and buyer identity.',
     parameters: {
       type: 'object',
+      additionalProperties: false,
       properties: {
         cart_id: {
           type: ['string', 'null'],
-          description: 'ID of the cart to update. Creates a new cart if not provided.'
+          description: 'Identifier for the cart being updated. If not provided, a new cart will be created.'
         },
-        lines: {
+        add_items: {
           type: 'array',
+          description: 'Items to add to the cart. Required when creating a new cart.',
           items: {
             type: 'object',
             properties: {
-              line_item_id: {
+              product_variant_id: {
                 type: 'string',
-                description: 'ID of existing cart line to update (e.g., gid://shopify/CartLine/line2)'
-              },
-              merchandise_id: {
-                type: 'string',
-                description: 'Product variant ID (e.g., gid://shopify/ProductVariant/789012)'
+                description: 'Product variant ID (e.g., gid://shopify/ProductVariant/789012).'
               },
               quantity: {
                 type: 'number',
-                description: 'Quantity to set (0 to remove)',
-                minimum: 0
+                minimum: 1,
+                description: 'Quantity to add.'
               }
             },
-            required: ['quantity']
+            required: ['product_variant_id', 'quantity']
           },
-          description: 'Array of cart line items to update or add'
+        },
+        update_items: {
+          type: 'array',
+          description: 'Existing cart line items to update quantities for. Use quantity 0 to remove an item.',
+          items: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+                description: 'Cart line ID to update.'
+              },
+              quantity: {
+                type: 'number',
+                minimum: 0,
+                description: 'New quantity for the line item. Use 0 to remove.'
+              }
+            },
+            required: ['id', 'quantity']
+          }
+        },
+        remove_line_ids: {
+          type: 'array',
+          description: 'List of line item IDs to remove explicitly.',
+          items: { type: 'string' }
+        },
+        buyer_identity: {
+          type: 'object',
+          description: 'Information about the buyer including email, phone and country code.',
+          additionalProperties: false,
+          properties: {
+            email: { type: 'string', description: 'Buyer email.' },
+            phone: { type: 'string', description: 'Buyer phone number.' },
+            country_code: { type: 'string', description: 'ISO country code used for regional pricing.' }
+          }
+        },
+        note: {
+          type: 'string',
+          description: 'Optional cart note.'
         }
-      },
-      required: ['lines']
+      }
     }
   }
 };

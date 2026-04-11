@@ -38,11 +38,13 @@ export async function searchProductCatalog(
 ): Promise<{ products: ProductResult[] }> {
   try {
     const result = await callShopifyMcpTool(
-      'search_shop_catalog',
+      'search_catalog',
       {
-        query: params.query,
-        first: params.first ?? 5,
-        context: params.context ?? 'biżuteria',
+        catalog: {
+          query: params.query,
+          context: { intent: params.context ?? 'biżuteria' },
+          pagination: { limit: params.first ?? 5 },
+        },
       },
       env as any,
     );
