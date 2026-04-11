@@ -1,7 +1,8 @@
 // MCP Server (JSON-RPC 2.0) dla narzędzi Shopify w trybie single-store.
-// Architektura: Wszystkie narzędzia delegują do oficjalnego endpoint MCP sklepu:
-//   https://{shop_domain}/api/mcp
-// Bez fallbacków na Storefront/Admin API – tzn. bez zależności od tokenów Storefront.
+// Architektura:
+// - Narzędzia commerce delegują do oficjalnego endpoint MCP sklepu:
+//     https://{shop_domain}/api/mcp
+// - Narzędzia wewnętrzne workera (np. `get_size_table`) mogą korzystać bezpośrednio ze Storefront API.
 // 
 // Strategia błędów (Plan B):
 // - Timeout/522/503/AbortError dla search_catalog → fallback: puste produkty + system_note
@@ -25,6 +26,7 @@ import {
 import type { Env } from './index';
 import { TOOL_SCHEMAS } from './mcp_tools';
 import { normalizeCartId, isValidCartGid } from './utils/cart';
+import { getSizeTable } from './size-table';
 type JsonRpcId = string | number | null;
 
 function json(headers: HeadersInit = {}) {
@@ -387,6 +389,10 @@ function normalizeCartArgs(raw: any, sessionCartKey?: string): any {
 }
 
 async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: string): Promise<{ result?: any; error?: any }> {
+  if (toolName === 'get_size_table') {
+    return { result: await getSizeTable(env) };
+  }
+
   const shopDomain = env?.SHOP_DOMAIN || process.env.SHOP_DOMAIN;
   if (!shopDomain) {
     return { error: { code: -32602, message: 'SHOP_DOMAIN not configured' } };
@@ -539,6 +545,7 @@ export async function handleToolsCall(env: any, request: Request): Promise<Respo
     const publicToolNames = [
       'search_catalog',
       'search_shop_policies_and_faqs',
+      'get_size_table',
       'get_cart',
       'update_cart',
     ] as const;

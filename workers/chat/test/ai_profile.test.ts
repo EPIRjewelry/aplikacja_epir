@@ -20,6 +20,7 @@ describe('AI profile helpers', () => {
     expect(result).toContain('Core Values: Craftsmanship');
     expect(result).toContain('FAQ Focus: Shipping');
     expect(result).toContain('Active Promotions: Free shipping over 500 PLN');
+    expect(result).toContain('get_size_table');
   });
 
   it('returns normalized AI profile from Storefront API response', async () => {

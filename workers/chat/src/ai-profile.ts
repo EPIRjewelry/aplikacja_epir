@@ -7,6 +7,9 @@ export interface AIProfile {
   promotion_rules: string;
 }
 
+const SIZE_TABLE_PROMPT_INSTRUCTION =
+  'Size Table Tool: Gdy klient pyta o rozmiar pierścionka lub jak zmierzyć palec – użyj narzędzia get_size_table aby pobrać aktualną tabelę rozmiarów.';
+
 interface MetaobjectFieldNode {
   key?: string | null;
   value?: string | null;
@@ -100,6 +103,7 @@ export function buildAIProfilePrompt(profile: AIProfile): string {
     `Core Values: ${profile.core_values}`,
     `FAQ Focus: ${profile.faq_theme}`,
     `Active Promotions: ${profile.promotion_rules}`,
+    SIZE_TABLE_PROMPT_INSTRUCTION,
   ].join('\n');
 }
 

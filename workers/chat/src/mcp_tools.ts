@@ -5,11 +5,10 @@
  * - OpenAI function-calling: https://platform.openai.com/docs/guides/function-calling
  * - Shopify Storefront MCP: https://shopify.dev/docs/apps/build/storefront-mcp/servers/storefront
  * 
- * UWAGA: Tylko oficjalne narzędzia Shopify Storefront MCP!
- * - search_catalog
- * - search_shop_policies_and_faqs
- * - get_cart
- * - update_cart
+ * UWAGA:
+ * - Narzędzia commerce (`search_catalog`, `search_shop_policies_and_faqs`, `get_cart`, `update_cart`)
+ *   delegują do Shopify MCP.
+ * - `get_size_table` jest narzędziem wewnętrznym worker-a i korzysta bezpośrednio ze Storefront API.
  */
 
 /**
@@ -109,6 +108,16 @@ export const TOOL_SCHEMAS = {
       },
       required: ['query']
     }
+  },
+
+  get_size_table: {
+    name: 'get_size_table',
+    description: 'Pobiera tabelę rozmiarów pierścionków (PL/US/UK/średnica mm/obwód mm). Użyj gdy klient pyta o rozmiar pierścionka, jak zmierzyć palec, lub prosi o przeliczenie rozmiaru.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
   },
 
   get_cart: {
