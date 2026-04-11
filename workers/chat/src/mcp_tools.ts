@@ -158,7 +158,7 @@ export const TOOL_SCHEMAS = {
       additionalProperties: false,
       properties: {
         cart_id: {
-          type: ['string', 'null'],
+          type: 'string',
           description: 'Identifier for the cart being updated. If not provided, a new cart will be created.'
         },
         add_items: {
@@ -172,7 +172,7 @@ export const TOOL_SCHEMAS = {
                 description: 'Product variant ID (e.g., gid://shopify/ProductVariant/789012).'
               },
               quantity: {
-                type: 'number',
+                type: 'integer',
                 minimum: 1,
                 description: 'Quantity to add.'
               }
@@ -191,7 +191,7 @@ export const TOOL_SCHEMAS = {
                 description: 'Cart line ID to update.'
               },
               quantity: {
-                type: 'number',
+                type: 'integer',
                 minimum: 0,
                 description: 'New quantity for the line item. Use 0 to remove.'
               }

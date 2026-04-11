@@ -99,7 +99,7 @@ const updateCartSchema = {
             description: "Product variant ID (e.g., gid://shopify/ProductVariant/123)."
           },
           quantity: {
-            type: "number",
+            type: "integer",
             description: "Quantity to add, minimum 1."
           }
         },
@@ -117,7 +117,7 @@ const updateCartSchema = {
             description: "Cart line ID."
           },
           quantity: {
-            type: "number",
+            type: "integer",
             description: "New quantity (0 removes the item)."
           }
         },
