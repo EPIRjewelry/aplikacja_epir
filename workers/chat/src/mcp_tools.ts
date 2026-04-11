@@ -82,7 +82,7 @@ export const TOOL_SCHEMAS = {
               description: 'Pagination parameters.',
               properties: {
                 cursor: { type: 'string', description: 'Opaque cursor from previous response.' },
-                limit: { type: 'number', description: 'Requested page size (default 10, max 250).' }
+                limit: { type: 'number', description: 'Requested page size; chat worker clamps to max 3 for buyer-facing catalog.' }
               }
             }
           }

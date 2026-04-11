@@ -163,12 +163,18 @@ function normalizeSearchCatalogArgs(raw: any, brand?: string): Record<string, un
     ? { ...(catalog.pagination as Record<string, unknown>) }
     : {};
   const legacyFirst = toFiniteNumber(source.first);
-  if (typeof pagination.limit !== 'number' && legacyFirst !== null) {
-    pagination.limit = Math.max(1, Math.trunc(legacyFirst));
+  let limitNum: number | null =
+    typeof pagination.limit === 'number' && Number.isFinite(pagination.limit)
+      ? Math.trunc(pagination.limit)
+      : toFiniteNumber(pagination.limit);
+  if (limitNum === null && legacyFirst !== null) {
+    limitNum = Math.trunc(legacyFirst);
   }
-  if (typeof pagination.limit !== 'number') {
-    pagination.limit = 5;
+  if (limitNum === null) {
+    limitNum = 3;
   }
+  /** Twardy limit czatu: max 3 wyniki katalogu (prompt + MCP). */
+  pagination.limit = Math.max(1, Math.min(limitNum, 3));
   catalog.pagination = pagination;
 
   if (!catalog.filters && source.filters && typeof source.filters === 'object') {

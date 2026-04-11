@@ -111,6 +111,7 @@ interface HistoryEntry {
   tool_calls?: any;
   tool_call_id?: string;
   name?: string;
+  message_uid?: string;
 }
 
 interface ChatRequestBody {
@@ -820,6 +821,15 @@ type SessionCustomerRow = {
   last_name: string | null;
 };
 
+type SessionMetaRow = {
+  id: 1;
+  created_at: number | null;
+  message_seq: number;
+  tool_call_seq: number;
+  usage_seq: number;
+  cart_activity_seq: number;
+};
+
 type MessageSqlRow = {
   id: number;
   role: ChatRole;
@@ -828,6 +838,7 @@ type MessageSqlRow = {
   tool_calls: string | null;
   tool_call_id: string | null;
   name: string | null;
+  message_uid: string | null;
 };
 
 function emptySessionContext(): SessionContextRow {
@@ -840,9 +851,45 @@ function emptySessionContext(): SessionContextRow {
   };
 }
 
+function emptySessionMeta(): SessionMetaRow {
+  return {
+    id: 1,
+    created_at: null,
+    message_seq: 0,
+    tool_call_seq: 0,
+    usage_seq: 0,
+    cart_activity_seq: 0,
+  };
+}
+
 function isSqlUniqueConstraintError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? '');
   return /unique/i.test(message);
+}
+
+function truncatePersistError(error: unknown, maxLength = 500): string {
+  const message = error instanceof Error ? error.message : String(error ?? 'Unknown persistence error');
+  if (message.length <= maxLength) return message;
+  return `${message.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function tryExtractCartId(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null;
+
+  const record = value as Record<string, unknown>;
+  if (typeof record.cart_id === 'string' && record.cart_id) return record.cart_id;
+  if (typeof record.id === 'string' && record.id.startsWith('gid://shopify/Cart/')) return record.id;
+
+  if (record.cart && typeof record.cart === 'object') {
+    const nested = tryExtractCartId(record.cart);
+    if (nested) return nested;
+  }
+  if (record.result && typeof record.result === 'object') {
+    const nested = tryExtractCartId(record.result);
+    if (nested) return nested;
+  }
+
+  return null;
 }
 
 // ============================================================================
@@ -876,6 +923,16 @@ export class SessionDO {
       )
     `);
     this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS session_meta (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        created_at INTEGER,
+        message_seq INTEGER NOT NULL DEFAULT 0,
+        tool_call_seq INTEGER NOT NULL DEFAULT 0,
+        usage_seq INTEGER NOT NULL DEFAULT 0,
+        cart_activity_seq INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+    this.sql.exec(`
       CREATE TABLE IF NOT EXISTS session_customer (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         customer_id TEXT NOT NULL,
@@ -894,9 +951,14 @@ export class SessionDO {
         name TEXT
       )
     `);
+    this.execIgnoreDuplicateColumn('ALTER TABLE messages ADD COLUMN message_uid TEXT');
     this.sql.exec(`
       CREATE INDEX IF NOT EXISTS idx_session_messages_ts
       ON messages(ts ASC, id ASC)
+    `);
+    this.sql.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_session_messages_uid
+      ON messages(message_uid)
     `);
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS replay_keys (
@@ -938,6 +1000,21 @@ export class SessionDO {
       ON proactive_chat_activations(ts ASC, id ASC)
     `);
     this.sql.exec('INSERT OR IGNORE INTO session_context (id) VALUES (1)');
+    this.sql.exec(`
+      INSERT OR IGNORE INTO session_meta (id, created_at, message_seq, tool_call_seq, usage_seq, cart_activity_seq)
+      VALUES (1, NULL, 0, 0, 0, 0)
+    `);
+  }
+
+  private execIgnoreDuplicateColumn(sql: string): void {
+    try {
+      this.sql.exec(sql);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error ?? '');
+      if (!/duplicate column/i.test(message)) {
+        throw error;
+      }
+    }
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -978,7 +1055,7 @@ export class SessionDO {
       if (!payload || typeof payload.content !== 'string' || !payload.content.trim()) {
         return new Response('Bad Request', { status: 400 });
       }
-      const replaced = this.replaceLastUserText(
+      const replaced = await this.replaceLastUserText(
         payload.content,
         typeof payload.ts === 'number' ? payload.ts : undefined,
         typeof payload.expected_content === 'string' ? payload.expected_content : undefined,
@@ -993,6 +1070,7 @@ export class SessionDO {
         const payload = (await request.json().catch(() => null)) as { session_id?: string } | null;
          if (payload?.session_id) {
           this.setSessionId(payload.session_id);
+          await this.persistSessionRecord({ lastActivity: now() });
             return new Response('session_id set');
          }
          return new Response('Bad Request', { status: 400 });
@@ -1010,6 +1088,7 @@ export class SessionDO {
         last_name: payload.last_name || null,
       };
       this.setCustomer(customer);
+      await this.persistSessionRecord({ lastActivity: now() });
       return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } });
     }
 
@@ -1033,6 +1112,7 @@ export class SessionDO {
         return new Response('Bad Request', { status: 400 });
       }
       this.setCartId(payload.cart_id);
+      await this.persistSessionRecord({ lastActivity: now() });
       return new Response('ok');
     }
 
@@ -1041,7 +1121,84 @@ export class SessionDO {
       const payload = (await request.json().catch(() => null)) as { storefront_id?: string; channel?: string } | null;
       if (payload && (typeof payload.storefront_id === 'string' || typeof payload.channel === 'string')) {
         this.setStorefrontContext(payload.storefront_id, payload.channel);
+        await this.persistSessionRecord({ lastActivity: now() });
       }
+      return new Response('ok');
+    }
+
+    if (method === 'POST' && pathname.endsWith('/persist-tool-call')) {
+      const payload = (await request.json().catch(() => null)) as {
+        tool_call_uid?: string;
+        tool_name?: string;
+        arguments?: unknown;
+        result?: unknown;
+        status?: string;
+        duration_ms?: number;
+        timestamp?: number;
+      } | null;
+      if (!payload?.tool_name || typeof payload.tool_name !== 'string') {
+        return new Response('Bad Request: tool_name required', { status: 400 });
+      }
+      await this.persistToolCallRecord({
+        tool_call_uid: payload.tool_call_uid,
+        tool_name: payload.tool_name,
+        arguments: payload.arguments,
+        result: payload.result,
+        status: payload.status,
+        duration_ms: payload.duration_ms,
+        timestamp: payload.timestamp,
+      });
+      return new Response('ok');
+    }
+
+    if (method === 'POST' && pathname.endsWith('/persist-usage')) {
+      const payload = (await request.json().catch(() => null)) as {
+        usage_uid?: string;
+        model?: string;
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+        timestamp?: number;
+      } | null;
+      if (!payload?.model || typeof payload.model !== 'string') {
+        return new Response('Bad Request: model required', { status: 400 });
+      }
+      await this.persistUsageRecord({
+        usage_uid: payload.usage_uid,
+        model: payload.model,
+        prompt_tokens: payload.prompt_tokens,
+        completion_tokens: payload.completion_tokens,
+        total_tokens: payload.total_tokens,
+        timestamp: payload.timestamp,
+      });
+      return new Response('ok');
+    }
+
+    if (method === 'POST' && pathname.endsWith('/persist-cart-activity')) {
+      const payload = (await request.json().catch(() => null)) as {
+        items?: Array<{
+          activity_uid?: string;
+          cart_id?: string | null;
+          action?: string;
+          product_id?: string | null;
+          variant_id?: string | null;
+          quantity?: number | null;
+          timestamp?: number;
+        }>;
+      } | null;
+      const items = Array.isArray(payload?.items) ? payload.items.filter((item) => typeof item?.action === 'string') : [];
+      if (items.length === 0) {
+        return new Response('Bad Request: items required', { status: 400 });
+      }
+      await this.persistCartActivityRecords(items as Array<{
+        activity_uid?: string;
+        cart_id?: string | null;
+        action: string;
+        product_id?: string | null;
+        variant_id?: string | null;
+        quantity?: number | null;
+        timestamp?: number;
+      }>);
       return new Response('ok');
     }
 
@@ -1173,9 +1330,52 @@ export class SessionDO {
     ).one() as SessionCustomerRow | null;
   }
 
+  private getSessionMeta(): SessionMetaRow {
+    const row = this.sql.exec(
+      'SELECT created_at, message_seq, tool_call_seq, usage_seq, cart_activity_seq FROM session_meta WHERE id = 1',
+    ).one() as Omit<SessionMetaRow, 'id'> | null;
+
+    return {
+      ...emptySessionMeta(),
+      ...(row ?? {}),
+    };
+  }
+
+  private writeSessionMeta(next: SessionMetaRow): void {
+    this.sql.exec(
+      'INSERT OR REPLACE INTO session_meta (id, created_at, message_seq, tool_call_seq, usage_seq, cart_activity_seq) VALUES (1, ?, ?, ?, ?, ?)',
+      next.created_at,
+      next.message_seq,
+      next.tool_call_seq,
+      next.usage_seq,
+      next.cart_activity_seq,
+    );
+  }
+
+  private getOrCreateSessionCreatedAt(fallbackTs = now()): number {
+    const meta = this.getSessionMeta();
+    if (typeof meta.created_at === 'number' && Number.isFinite(meta.created_at)) {
+      return meta.created_at;
+    }
+    meta.created_at = fallbackTs;
+    this.writeSessionMeta(meta);
+    return fallbackTs;
+  }
+
+  private nextSessionSequence(key: 'message_seq' | 'tool_call_seq' | 'usage_seq' | 'cart_activity_seq'): number {
+    const meta = this.getSessionMeta();
+    meta[key] += 1;
+    this.writeSessionMeta(meta);
+    return meta[key];
+  }
+
+  private makeSessionUid(prefix: 'msg' | 'tool' | 'usage' | 'cart', key: 'message_seq' | 'tool_call_seq' | 'usage_seq' | 'cart_activity_seq'): string {
+    return `${this.getSessionId()}:${prefix}:${this.nextSessionSequence(key)}`;
+  }
+
   private selectMessageRows(): MessageSqlRow[] {
     return this.sql.exec(
-      'SELECT id, role, content, ts, tool_calls, tool_call_id, name FROM messages ORDER BY ts ASC, id ASC',
+      'SELECT id, role, content, ts, tool_calls, tool_call_id, name, message_uid FROM messages ORDER BY ts ASC, id ASC',
     ).toArray() as MessageSqlRow[];
   }
 
@@ -1205,31 +1405,43 @@ export class SessionDO {
 
   private async append(payload: HistoryEntry): Promise<void> {
     const ts = payload.ts || now();
+    const messageUid = payload.message_uid ?? this.makeSessionUid('msg', 'message_seq');
     this.sql.exec(
-      'INSERT INTO messages (role, content, ts, tool_calls, tool_call_id, name) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO messages (role, content, ts, tool_calls, tool_call_id, name, message_uid) VALUES (?, ?, ?, ?, ?, ?, ?)',
       payload.role,
       payload.content ?? '',
       ts,
       payload.tool_calls !== undefined ? JSON.stringify(payload.tool_calls) : null,
       payload.tool_call_id ?? null,
       payload.name ?? null,
+      messageUid,
     );
+    await this.persistMessageRow({
+      id: -1,
+      role: payload.role,
+      content: payload.content ?? '',
+      ts,
+      tool_calls: payload.tool_calls !== undefined ? JSON.stringify(payload.tool_calls) : null,
+      tool_call_id: payload.tool_call_id ?? null,
+      name: payload.name ?? null,
+      message_uid: messageUid,
+    });
 
     const rows = this.selectMessageRows();
     if (rows.length > MAX_HISTORY_IN_DO) {
       const overflowRows = rows.slice(0, rows.length - MAX_HISTORY_IN_DO);
-      await this.archiveToD1(overflowRows.map((row) => this.deserializeHistoryEntry(row)));
+      await this.archiveToD1(overflowRows);
       for (const row of overflowRows) {
         this.sql.exec('DELETE FROM messages WHERE id = ?', row.id);
       }
     }
   }
 
-  private replaceLastUserText(
+  private async replaceLastUserText(
     content: string,
     expectedTs?: number,
     expectedContent?: string,
-  ): boolean {
+  ): Promise<boolean> {
     const nextContent = content.trim();
     if (!nextContent) return false;
     const expected = expectedContent?.trim();
@@ -1259,6 +1471,10 @@ export class SessionDO {
 
     const current = rows[targetIdx];
     this.sql.exec('UPDATE messages SET content = ? WHERE id = ?', nextContent, current.id);
+    await this.persistMessageRow({
+      ...current,
+      content: nextContent,
+    });
     return true;
   }
 
@@ -1288,40 +1504,296 @@ export class SessionDO {
    * Wywoływane gdy historia przekracza limit (alarm/limit after append)
    * lub przed okresowym czyszczeniem. DB_CHATBOT jest dostępny przez this.env.
    */
-  private async archiveToD1(messages: HistoryEntry[]): Promise<void> {
-    if (!this.env.DB_CHATBOT || messages.length === 0) return;
+  private async archiveToD1(messages: MessageSqlRow[]): Promise<void> {
+    if (messages.length === 0) return;
+    for (const message of messages) {
+      await this.persistMessageRow(message);
+    }
+    console.log(`[SessionDO] Ensured ${messages.length} messages in D1 for session ${this.getSessionId()}`);
+  }
+
+  private buildSessionSnapshot(lastActivity = now()) {
+    const sessionContext = this.getSessionContext();
+    const customer = this.getCustomer();
+    const meta = this.getSessionMeta();
+    const createdAt = typeof meta.created_at === 'number' && Number.isFinite(meta.created_at)
+      ? meta.created_at
+      : this.getOrCreateSessionCreatedAt(lastActivity);
+
+    return {
+      session_id: this.getSessionId(),
+      customer_id: customer?.customer_id ?? null,
+      first_name: customer?.first_name ?? null,
+      last_name: customer?.last_name ?? null,
+      cart_id: sessionContext.cart_id ?? null,
+      created_at: createdAt,
+      last_activity: lastActivity,
+      archived_at: lastActivity,
+      message_count: meta.message_seq,
+      storefront_id: sessionContext.storefront_id ?? null,
+      channel: sessionContext.channel ?? null,
+    };
+  }
+
+  private async persistSessionRecord(options?: {
+    lastActivity?: number;
+    persistStatus?: 'ok' | 'error';
+    lastPersistError?: string | null;
+    lastPersistErrorAt?: number | null;
+  }): Promise<void> {
+    if (!this.env.DB_CHATBOT) return;
+
+    const snapshot = this.buildSessionSnapshot(options?.lastActivity ?? now());
+    try {
+      await this.env.DB_CHATBOT
+        .prepare(
+          `INSERT INTO sessions (
+            session_id, customer_id, first_name, last_name, cart_id,
+            created_at, last_activity, archived_at, message_count,
+            storefront_id, channel, persist_status, last_persist_error, last_persist_error_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(session_id) DO UPDATE SET
+            customer_id = excluded.customer_id,
+            first_name = excluded.first_name,
+            last_name = excluded.last_name,
+            cart_id = excluded.cart_id,
+            last_activity = excluded.last_activity,
+            archived_at = excluded.archived_at,
+            message_count = excluded.message_count,
+            storefront_id = excluded.storefront_id,
+            channel = excluded.channel,
+            persist_status = excluded.persist_status,
+            last_persist_error = excluded.last_persist_error,
+            last_persist_error_at = excluded.last_persist_error_at`
+        )
+        .bind(
+          snapshot.session_id,
+          snapshot.customer_id,
+          snapshot.first_name,
+          snapshot.last_name,
+          snapshot.cart_id,
+          snapshot.created_at,
+          snapshot.last_activity,
+          snapshot.archived_at,
+          snapshot.message_count,
+          snapshot.storefront_id,
+          snapshot.channel,
+          options?.persistStatus ?? 'ok',
+          options?.lastPersistError ?? null,
+          options?.lastPersistErrorAt ?? null,
+        )
+        .run();
+    } catch (error) {
+      console.error('[SessionDO] Failed to persist session snapshot to D1', {
+        session_id: snapshot.session_id,
+        error: truncatePersistError(error),
+      });
+    }
+  }
+
+  private async persistFailure(scope: string, error: unknown, timestamp = now()): Promise<void> {
+    const message = truncatePersistError(error);
+    console.error('[SessionDO] D1 persistence failure', {
+      session_id: this.getSessionId(),
+      scope,
+      error: message,
+    });
+    await this.persistSessionRecord({
+      lastActivity: timestamp,
+      persistStatus: 'error',
+      lastPersistError: `${scope}: ${message}`,
+      lastPersistErrorAt: timestamp,
+    });
+  }
+
+  private async persistMessageRow(row: MessageSqlRow): Promise<void> {
+    if (!this.env.DB_CHATBOT || !row.message_uid) return;
 
     const sessionId = this.getSessionId();
-    const db = this.env.DB_CHATBOT;
     const sessionContext = this.getSessionContext();
-    const storefrontId = sessionContext.storefront_id ?? null;
-    const channel = sessionContext.channel ?? null;
 
     try {
-      for (const msg of messages) {
-        await db
+      await this.env.DB_CHATBOT
+        .prepare(
+          `INSERT INTO messages (
+            session_id, role, content, timestamp, tool_calls, tool_call_id, name, storefront_id, channel, message_uid
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(message_uid) DO UPDATE SET
+            role = excluded.role,
+            content = excluded.content,
+            timestamp = excluded.timestamp,
+            tool_calls = excluded.tool_calls,
+            tool_call_id = excluded.tool_call_id,
+            name = excluded.name,
+            storefront_id = excluded.storefront_id,
+            channel = excluded.channel`
+        )
+        .bind(
+          sessionId,
+          row.role,
+          row.content ?? '',
+          row.ts ?? now(),
+          row.tool_calls,
+          row.tool_call_id ?? null,
+          row.name ?? null,
+          sessionContext.storefront_id ?? null,
+          sessionContext.channel ?? null,
+          row.message_uid,
+        )
+        .run();
+      await this.persistSessionRecord({ lastActivity: row.ts ?? now() });
+    } catch (error) {
+      await this.persistFailure('messages', error, row.ts ?? now());
+    }
+  }
+
+  private async persistToolCallRecord(payload: {
+    tool_call_uid?: string;
+    tool_name: string;
+    arguments?: unknown;
+    result?: unknown;
+    status?: string;
+    duration_ms?: number;
+    timestamp?: number;
+  }): Promise<void> {
+    if (!this.env.DB_CHATBOT) return;
+
+    const timestamp = typeof payload.timestamp === 'number' ? payload.timestamp : now();
+    const toolCallUid = payload.tool_call_uid ?? this.makeSessionUid('tool', 'tool_call_seq');
+
+    try {
+      await this.env.DB_CHATBOT
+        .prepare(
+          `INSERT INTO tool_calls (
+            session_id, tool_name, arguments, result, status, duration_ms, timestamp, tool_call_uid
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(tool_call_uid) DO UPDATE SET
+            tool_name = excluded.tool_name,
+            arguments = excluded.arguments,
+            result = excluded.result,
+            status = excluded.status,
+            duration_ms = excluded.duration_ms,
+            timestamp = excluded.timestamp`
+        )
+        .bind(
+          this.getSessionId(),
+          payload.tool_name,
+          payload.arguments !== undefined ? JSON.stringify(payload.arguments) : null,
+          payload.result !== undefined ? JSON.stringify(payload.result) : null,
+          payload.status ?? 'success',
+          typeof payload.duration_ms === 'number' ? Math.trunc(payload.duration_ms) : null,
+          timestamp,
+          toolCallUid,
+        )
+        .run();
+      await this.persistSessionRecord({ lastActivity: timestamp });
+    } catch (error) {
+      await this.persistFailure('tool_calls', error, timestamp);
+    }
+  }
+
+  private async persistUsageRecord(payload: {
+    usage_uid?: string;
+    model: string;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    timestamp?: number;
+  }): Promise<void> {
+    if (!this.env.DB_CHATBOT) return;
+
+    const timestamp = typeof payload.timestamp === 'number' ? payload.timestamp : now();
+    const usageUid = payload.usage_uid ?? this.makeSessionUid('usage', 'usage_seq');
+    const promptTokens = typeof payload.prompt_tokens === 'number' ? Math.max(0, Math.trunc(payload.prompt_tokens)) : 0;
+    const completionTokens = typeof payload.completion_tokens === 'number' ? Math.max(0, Math.trunc(payload.completion_tokens)) : 0;
+    const totalTokens = typeof payload.total_tokens === 'number'
+      ? Math.max(0, Math.trunc(payload.total_tokens))
+      : promptTokens + completionTokens;
+
+    try {
+      await this.env.DB_CHATBOT
+        .prepare(
+          `INSERT INTO usage_stats (
+            session_id, model, prompt_tokens, completion_tokens, total_tokens, timestamp, usage_uid
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(usage_uid) DO UPDATE SET
+            model = excluded.model,
+            prompt_tokens = excluded.prompt_tokens,
+            completion_tokens = excluded.completion_tokens,
+            total_tokens = excluded.total_tokens,
+            timestamp = excluded.timestamp`
+        )
+        .bind(
+          this.getSessionId(),
+          payload.model,
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          timestamp,
+          usageUid,
+        )
+        .run();
+      await this.persistSessionRecord({ lastActivity: timestamp });
+    } catch (error) {
+      await this.persistFailure('usage_stats', error, timestamp);
+    }
+  }
+
+  private async persistCartActivityRecords(items: Array<{
+    activity_uid?: string;
+    cart_id?: string | null;
+    action: string;
+    product_id?: string | null;
+    variant_id?: string | null;
+    quantity?: number | null;
+    timestamp?: number;
+  }>): Promise<void> {
+    if (!this.env.DB_CHATBOT || items.length === 0) return;
+
+    for (const item of items) {
+      const timestamp = typeof item.timestamp === 'number' ? item.timestamp : now();
+      const activityUid = item.activity_uid ?? this.makeSessionUid('cart', 'cart_activity_seq');
+      try {
+        await this.env.DB_CHATBOT
           .prepare(
-            `INSERT INTO messages (session_id, role, content, timestamp, tool_calls, tool_call_id, name, storefront_id, channel)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            `INSERT INTO cart_activity (
+              session_id, cart_id, action, product_id, variant_id, quantity, timestamp, activity_uid
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(activity_uid) DO UPDATE SET
+              cart_id = excluded.cart_id,
+              action = excluded.action,
+              product_id = excluded.product_id,
+              variant_id = excluded.variant_id,
+              quantity = excluded.quantity,
+              timestamp = excluded.timestamp`
           )
           .bind(
-            sessionId,
-            msg.role,
-            msg.content ?? '',
-            msg.ts ?? now(),
-            msg.tool_calls ? JSON.stringify(msg.tool_calls) : null,
-            msg.tool_call_id ?? null,
-            msg.name ?? null,
-            storefrontId,
-            channel
+            this.getSessionId(),
+            item.cart_id ?? null,
+            item.action,
+            item.product_id ?? null,
+            item.variant_id ?? null,
+            typeof item.quantity === 'number' ? Math.trunc(item.quantity) : null,
+            timestamp,
+            activityUid,
           )
           .run();
+      } catch (error) {
+        await this.persistFailure('cart_activity', error, timestamp);
+        return;
       }
-      console.log(`[SessionDO] Archived ${messages.length} messages to D1 for session ${sessionId}`);
-    } catch (error) {
-      console.error('[SessionDO] Failed to archive to D1:', error);
-      // Nie rzucaj – błąd archiwizacji nie powinien przerywać głównego przepływu
     }
+
+    const lastTimestamp = items.reduce((max, item) => {
+      const ts = typeof item.timestamp === 'number' ? item.timestamp : 0;
+      return Math.max(max, ts);
+    }, 0) || now();
+    await this.persistSessionRecord({ lastActivity: lastTimestamp });
   }
 
   private trimProductViews(): void {
@@ -1891,6 +2363,22 @@ async function streamAssistantResponse(
           }),
         );
 
+        const iterationUsageTotal = usageTotals.prompt_tokens + usageTotals.completion_tokens;
+        if (iterationUsageTotal > 0) {
+          await stub.fetch('https://session/persist-usage', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              usage_uid: `${sessionId}:usage:${userMessageTs}:${i}`,
+              model: CHAT_MODEL_ID,
+              prompt_tokens: usageTotals.prompt_tokens,
+              completion_tokens: usageTotals.completion_tokens,
+              total_tokens: iterationUsageTotal,
+              timestamp: now(),
+            }),
+          });
+        }
+
         const detectedToolCalls = Array.from(pendingToolCalls.values());
 
         if (detectedToolCalls.length > 0 || finishReason === 'tool_calls') {
@@ -1921,6 +2409,7 @@ async function streamAssistantResponse(
           await sendSSE('status', { message: `Używam narzędzia: ${toolCallEntries.map((t) => t.function.name).join(', ')}...` });
 
           for (const call of detectedToolCalls) {
+            const toolStartedAt = now();
             const { toolResult, parsedArgs, skippedExecution } = await executeToolWithParsedArguments(
               call.name,
               call.arguments,
@@ -1944,6 +2433,105 @@ async function streamAssistantResponse(
               });
             } else {
               console.log(`[streamAssistant] ✅ Narzędzie ${call.name} wykonane`, { args: parsedArgs ?? {} });
+            }
+            const toolFinishedAt = now();
+            const toolCallUid = `${sessionId}:tool:${userMessageTs}:${call.id}`;
+            const toolPersistStatus = skippedExecution ? 'invalid_arguments' : toolResult.error ? 'error' : 'success';
+            await stub.fetch('https://session/persist-tool-call', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                tool_call_uid: toolCallUid,
+                tool_name: call.name,
+                arguments: parsedArgs ?? { raw: call.arguments },
+                result: toolResult.error ? { error: toolResult.error } : toolResult.result,
+                status: toolPersistStatus,
+                duration_ms: toolFinishedAt - toolStartedAt,
+                timestamp: toolFinishedAt,
+              }),
+            });
+
+            const parsedArgsRecord =
+              parsedArgs && typeof parsedArgs === 'object' ? (parsedArgs as Record<string, unknown>) : null;
+            const resolvedCartId =
+              (parsedArgsRecord && typeof parsedArgsRecord.cart_id === 'string' ? parsedArgsRecord.cart_id : null) ??
+              tryExtractCartId(toolResult.result);
+            if ((call.name === 'get_cart' || call.name === 'update_cart') && resolvedCartId) {
+              await stub.fetch('https://session/set-cart-id', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cart_id: resolvedCartId }),
+              });
+            }
+
+            if (call.name === 'get_cart' && resolvedCartId) {
+              await stub.fetch('https://session/persist-cart-activity', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  items: [
+                    {
+                      activity_uid: `${toolCallUid}:view`,
+                      cart_id: resolvedCartId,
+                      action: 'view',
+                      timestamp: toolFinishedAt,
+                    },
+                  ],
+                }),
+              });
+            }
+
+            if (call.name === 'update_cart' && parsedArgsRecord) {
+              const cartActivityItems: Array<Record<string, unknown>> = [];
+              const addItems = Array.isArray(parsedArgsRecord.add_items) ? parsedArgsRecord.add_items : [];
+              const updateItems = Array.isArray(parsedArgsRecord.update_items) ? parsedArgsRecord.update_items : [];
+              const removeLineIds = Array.isArray(parsedArgsRecord.remove_line_ids) ? parsedArgsRecord.remove_line_ids : [];
+
+              addItems.forEach((item, index) => {
+                if (!item || typeof item !== 'object') return;
+                const row = item as Record<string, unknown>;
+                cartActivityItems.push({
+                  activity_uid: `${toolCallUid}:add:${index}`,
+                  cart_id: resolvedCartId,
+                  action: 'add',
+                  variant_id: typeof row.product_variant_id === 'string' ? row.product_variant_id : null,
+                  quantity: typeof row.quantity === 'number' ? row.quantity : null,
+                  timestamp: toolFinishedAt,
+                });
+              });
+
+              updateItems.forEach((item, index) => {
+                if (!item || typeof item !== 'object') return;
+                const row = item as Record<string, unknown>;
+                const quantity = typeof row.quantity === 'number' ? row.quantity : null;
+                cartActivityItems.push({
+                  activity_uid: `${toolCallUid}:update:${index}`,
+                  cart_id: resolvedCartId,
+                  action: quantity === 0 ? 'remove' : 'update',
+                  product_id: typeof row.id === 'string' ? row.id : null,
+                  quantity,
+                  timestamp: toolFinishedAt,
+                });
+              });
+
+              removeLineIds.forEach((lineId, index) => {
+                if (typeof lineId !== 'string') return;
+                cartActivityItems.push({
+                  activity_uid: `${toolCallUid}:remove:${index}`,
+                  cart_id: resolvedCartId,
+                  action: 'remove',
+                  product_id: lineId,
+                  timestamp: toolFinishedAt,
+                });
+              });
+
+              if (cartActivityItems.length > 0) {
+                await stub.fetch('https://session/persist-cart-activity', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ items: cartActivityItems }),
+                });
+              }
             }
             const toolResultString = toolResult.error
               ? JSON.stringify({

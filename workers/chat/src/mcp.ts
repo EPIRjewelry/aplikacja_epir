@@ -43,7 +43,7 @@ export async function searchProductCatalog(
         catalog: {
           query: params.query,
           context: { intent: params.context ?? 'biżuteria' },
-          pagination: { limit: params.first ?? 5 },
+          pagination: { limit: params.first ?? 3 },
         },
       },
       env as any,
@@ -110,7 +110,7 @@ export async function mcpCatalogSearch(
 ): Promise<Array<{name: string; price: string; url: string; image: string; id: string}> | null> {
   try {
     // Direct call to searchProductCatalog instead of HTTP fetch
-    const result = await searchProductCatalog({ query, first: 5 }, env);
+    const result = await searchProductCatalog({ query, first: 3 }, env);
     
     if (!result || !result.products || result.products.length === 0) {
       return null;

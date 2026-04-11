@@ -8,7 +8,8 @@ workers_dev = true
 command = ""
 
 [vars]
-ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://zareczyny.epirbizuteria.pl,https://epir-art-silver-jewellery.myshopify.com,https://asystent.epirbizuteria.pl"
+# `null` = literal Origin string from Shopify Web Pixel sandbox (opaque origin)
+ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://zareczyny.epirbizuteria.pl,https://epir-art-silver-jewellery.myshopify.com,https://asystent.epirbizuteria.pl,null"
 SHOPIFY_WEBHOOK_SECRET = "dev-placeholder-override-with-wrangler-secret-put"
 
 [[d1_databases]]

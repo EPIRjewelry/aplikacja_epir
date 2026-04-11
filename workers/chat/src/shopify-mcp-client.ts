@@ -53,9 +53,18 @@ function normalizeSearchArgs(raw: any) {
   catalog.context = context;
 
   const pagination = catalog.pagination && typeof catalog.pagination === 'object' ? { ...catalog.pagination } : {};
-  if (typeof pagination.limit !== 'number') {
-    pagination.limit = typeof args.first === 'number' ? args.first : 5;
+  let limitNum: number | null =
+    typeof pagination.limit === 'number' && Number.isFinite(pagination.limit)
+      ? Math.trunc(pagination.limit)
+      : null;
+  if (limitNum === null && typeof args.first === 'number' && Number.isFinite(args.first)) {
+    limitNum = Math.trunc(args.first);
   }
+  if (limitNum === null) {
+    limitNum = 3;
+  }
+  /** Twardy limit czatu: max 3 wyniki katalogu (zgodnie z workerem MCP). */
+  pagination.limit = Math.max(1, Math.min(limitNum, 3));
   catalog.pagination = pagination;
 
   return { catalog };

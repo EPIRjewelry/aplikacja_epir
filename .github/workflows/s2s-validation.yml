@@ -25,4 +25,4 @@ jobs:
 
       - name: Run S2S Vitest tests (explicit files)
         working-directory: workers/chat
-        run: npx vitest run test/ingress_s2s.test.ts test/consent_s2s.test.ts test/consent_app_proxy.test.ts test/app_proxy_ingress_hmac.test.ts
+        run: npx vitest run test/ingress_s2s.test.ts test/consent_s2s.test.ts test/consent_app_proxy.test.ts test/app_proxy_ingress_hmac.test.ts test/mcp_policies_retry.test.ts

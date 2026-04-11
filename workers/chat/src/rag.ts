@@ -330,7 +330,7 @@ export async function searchProductCatalogWithMCP(
         catalog: {
           query,
           context: { intent: contextValue },
-          pagination: { limit: 5 },
+          pagination: { limit: 3 },
         },
       }
     },

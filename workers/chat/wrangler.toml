@@ -87,7 +87,8 @@ invocation_logs = true
 
 [vars]
 ALLOWED_ORIGIN = "https://epir-art-silver-jewellery.myshopify.com"
-ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://epir-art-silver-jewellery.myshopify.com,https://asystent.epirbizuteria.pl,https://kazka.epirbizuteria.pl,https://zareczyny.epirbizuteria.pl"
+# `null` = literal Origin string from Shopify Web Pixel sandbox (opaque origin), not a TOML null
+ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://epir-art-silver-jewellery.myshopify.com,https://asystent.epirbizuteria.pl,https://kazka.epirbizuteria.pl,https://zareczyny.epirbizuteria.pl,null"
 SHOP_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
 # MCP endpoint - zmienna konfiguracyjna (CHAT_SPEC: shopify-admin-mcp = {shop_domain}/api/mcp)
 MCP_ENDPOINT = "https://epir-art-silver-jewellery.myshopify.com/api/mcp"
