@@ -119,6 +119,75 @@ function requireAi(env: Env): AIBinding {
   return env.AI;
 }
 
+function stringifyForLog(value: unknown): string {
+  try {
+    if (value instanceof Error) {
+      const errorWithCause = value as Error & { cause?: unknown };
+      return (
+        JSON.stringify({
+          name: value.name,
+          message: value.message,
+          stack: value.stack,
+          ...(errorWithCause.cause !== undefined ? { cause: errorWithCause.cause } : {}),
+        }) ?? String(value)
+      );
+    }
+
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function extractTextFromAiContent(content: unknown): string | null {
+  if (typeof content === 'string') {
+    return content.trim().length > 0 ? content : null;
+  }
+
+  if (!Array.isArray(content)) return null;
+
+  const joined = content
+    .map((part) => {
+      if (typeof part === 'string') return part;
+      if (isRecord(part) && typeof part.text === 'string') return part.text;
+      return '';
+    })
+    .join('')
+    .trim();
+
+  return joined.length > 0 ? joined : null;
+}
+
+function extractTextFromAiResult(result: unknown): string | null {
+  if (!isRecord(result)) return null;
+
+  const directResponse = extractTextFromAiContent(result.response);
+  if (directResponse) return directResponse;
+
+  if (Array.isArray(result.choices) && result.choices.length > 0) {
+    const firstChoice = result.choices[0];
+    if (isRecord(firstChoice)) {
+      const message = isRecord(firstChoice.message) ? firstChoice.message : null;
+      const messageContent = extractTextFromAiContent(message?.content);
+      if (messageContent) return messageContent;
+
+      const delta = isRecord(firstChoice.delta) ? firstChoice.delta : null;
+      const deltaContent = extractTextFromAiContent(delta?.content);
+      if (deltaContent) return deltaContent;
+    }
+  }
+
+  if (result.result !== undefined && result.result !== result) {
+    return extractTextFromAiResult(result.result);
+  }
+
+  return null;
+}
+
 async function runModelStream(
   messages: GroqMessage[],
   env: Env,
@@ -366,20 +435,35 @@ export async function getGroqResponse(
   options?: { max_tokens?: number; sessionId?: string },
 ): Promise<string> {
   const ai = requireAi(env);
-  const result = (await ai.run(
-    CHAT_MODEL_ID,
-    {
-      messages: messages.map(mapMessageForWorkersAI),
-      max_tokens: options?.max_tokens ?? MODEL_PARAMS.max_tokens,
-      temperature: MODEL_PARAMS.temperature,
-    },
-    workersAiRunOptions(options?.sessionId),
-  )) as { response?: string };
+  const startTime = Date.now();
 
-  const content = result?.response;
-  if (!content) {
-    throw new Error('Workers AI returned an empty or invalid response');
+  try {
+    const result = (await ai.run(
+      CHAT_MODEL_ID,
+      {
+        messages: messages.map(mapMessageForWorkersAI),
+        max_tokens: options?.max_tokens ?? MODEL_PARAMS.max_tokens,
+        temperature: MODEL_PARAMS.temperature,
+      },
+      workersAiRunOptions(options?.sessionId),
+    )) as Record<string, unknown> & { response?: string };
+
+    const content = extractTextFromAiResult(result);
+    if (!content) {
+      if (result && typeof result === 'object') {
+        console.warn(
+          '[getGroqResponse] unexpected result keys',
+          Date.now() - startTime,
+          'ms',
+          JSON.stringify(Object.keys(result)),
+        );
+      }
+      throw new Error('Workers AI returned an empty or invalid response');
+    }
+
+    return String(content);
+  } catch (e) {
+    console.error('[getGroqResponse] failed', Date.now() - startTime, 'ms', stringifyForLog(e));
+    throw e;
   }
-
-  return String(content);
 }

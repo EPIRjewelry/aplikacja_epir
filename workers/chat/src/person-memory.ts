@@ -99,8 +99,11 @@ Nie wymyślaj faktów. Nie opisuj zamówień ani numerów zamówień — tylko p
   };
   let out: string | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
+    const startTime = Date.now();
+    console.log('[person_memory] AI call start', startTime);
     try {
       out = await getGroqResponse([system, user], env, { max_tokens: 512 });
+      console.log('[person_memory] AI call success', Date.now() - startTime, 'ms');
       if (out && out.trim().length > 20) break;
     } catch (e) {
       if (attempt === 1) throw e;
