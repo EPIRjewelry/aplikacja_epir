@@ -54,6 +54,8 @@ binding = "AI"
 
 # Headless / BFF S2S ingress secret (must be set via secret, never in [vars]):
 # wrangler secret put EPIR_CHAT_SHARED_SECRET
+# Shopify Admin API enrichment dla zalogowanego klienta (imię / email / profil):
+# wrangler secret put SHOPIFY_ADMIN_TOKEN
 
 # Service binding to RAG worker (reusable RAG orchestrator)
 [[services]]

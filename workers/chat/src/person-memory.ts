@@ -40,6 +40,27 @@ export function historyToPlainText(
   return joined.length > maxChars ? joined.slice(-maxChars) : joined;
 }
 
+function buildFallbackPersonSummary(
+  previousSummary: string | null,
+  conversationSnippet: string,
+): string {
+  const userHints = conversationSnippet
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /^user:\s+/i.test(line))
+    .map((line) => line.replace(/^user:\s+/i, '').trim())
+    .filter(Boolean)
+    .slice(-2);
+
+  const combined = [previousSummary?.trim(), ...userHints]
+    .filter((value): value is string => Boolean(value && value.trim()))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return combined.slice(0, 700);
+}
+
 /**
  * Łączy poprzedni skrót z nową rozmową (jedno wywołanie modelu, krótki output).
  */
@@ -62,6 +83,13 @@ Nie wymyślaj faktów. Nie opisuj zamówień ani numerów zamówień — tylko p
     role: 'user',
     content: `Poprzedni skrót:\n${previousSummary ?? '(brak)'}\n\nNowa rozmowa (fragment):\n${conversationSnippet}`,
   };
-  const out = await getGroqResponse([system, user], env, { max_tokens: 512 });
-  return out.trim().slice(0, 2000);
+  try {
+    const out = await getGroqResponse([system, user], env, { max_tokens: 512 });
+    const normalized = out.trim().slice(0, 2000);
+    if (normalized) return normalized;
+  } catch (error) {
+    console.warn('[person_memory] merge fallback activated:', error);
+  }
+
+  return buildFallbackPersonSummary(previousSummary, conversationSnippet);
 }

@@ -375,11 +375,17 @@ export async function getCustomerById(env: Env, customerId: string): Promise<{ f
     const adminToken = env.SHOPIFY_ADMIN_TOKEN || process.env.SHOPIFY_ADMIN_TOKEN || process.env.SHOPIFY_ACCESS_TOKEN;
     if (!adminToken) throw new Error('SHOPIFY_ADMIN_TOKEN not configured');
 
+    const normalizedId = customerId.startsWith('gid://shopify/Customer/')
+      ? customerId
+      : `gid://shopify/Customer/${customerId}`;
     const query = `query customer($id: ID!) { customer(id: $id) { firstName lastName email } }`;
     const endpoint = `https://${shopDomain}/admin/api/2024-07/graphql.json`;
-    const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': adminToken }, body: JSON.stringify({ query, variables: { id: customerId } }) });
+    const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': adminToken }, body: JSON.stringify({ query, variables: { id: normalizedId } }) });
     if (!response.ok) return null;
     const json: any = await response.json().catch(() => null);
+    if (json?.errors) {
+      console.warn('[getCustomerById] GraphQL errors:', JSON.stringify(json.errors));
+    }
     const customer = json?.data?.customer;
     if (!customer) return null;
     return { firstName: customer.firstName, lastName: customer.lastName, email: customer.email };

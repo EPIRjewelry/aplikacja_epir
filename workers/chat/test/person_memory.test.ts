@@ -1,5 +1,17 @@
-import { describe, expect, it, vi } from 'vitest';
-import { historyToPlainText, loadPersonMemory, upsertPersonMemory } from '../src/person-memory';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../src/ai-client', () => ({
+  getGroqResponse: vi.fn(),
+}));
+
+import { getGroqResponse } from '../src/ai-client';
+import { historyToPlainText, loadPersonMemory, mergeSessionIntoPersonSummary, upsertPersonMemory } from '../src/person-memory';
+
+const mockedGetGroqResponse = vi.mocked(getGroqResponse);
+
+afterEach(() => {
+  mockedGetGroqResponse.mockReset();
+});
 
 describe('person_memory helpers', () => {
   it('historyToPlainText keeps user/assistant and respects maxChars', () => {
@@ -37,5 +49,36 @@ describe('person_memory helpers', () => {
     } as unknown as D1Database;
     await upsertPersonMemory(db, 'gid://shopify/Customer/1', 'summary text');
     expect(run).toHaveBeenCalled();
+  });
+
+  it('mergeSessionIntoPersonSummary returns model output when available', async () => {
+    mockedGetGroqResponse.mockResolvedValueOnce('Klient preferuje srebro i szafiry.');
+
+    const summary = await mergeSessionIntoPersonSummary(
+      {} as never,
+      null,
+      'user: Szukam srebrnego pierścionka z szafirem',
+    );
+
+    expect(summary).toBe('Klient preferuje srebro i szafiry.');
+  });
+
+  it('mergeSessionIntoPersonSummary falls back to previous summary and latest user hints when model fails', async () => {
+    mockedGetGroqResponse.mockRejectedValueOnce(new Error('Workers AI returned an empty or invalid response'));
+
+    const summary = await mergeSessionIntoPersonSummary(
+      {} as never,
+      'Preferuje biżuterię srebrną.',
+      [
+        'user: Szukam pierścionka z szafirem',
+        'assistant: Jasne, pomogę.',
+        'user: Najlepiej delikatny model',
+      ].join('\n'),
+    );
+
+    expect(summary).toContain('Preferuje biżuterię srebrną.');
+    expect(summary).toContain('Szukam pierścionka z szafirem');
+    expect(summary).toContain('Najlepiej delikatny model');
+    expect(summary).not.toContain('assistant:');
   });
 });

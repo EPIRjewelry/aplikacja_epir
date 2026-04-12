@@ -46,6 +46,11 @@ export class TokenVaultDO extends DurableObject {
     `);
   }
 
+  private queryFirst<T>(sql: string, ...bindings: unknown[]): T | null {
+    const rows = this.sql.exec(sql, ...bindings).toArray() as T[];
+    return rows[0] ?? null;
+  }
+
   /**
    * Fetch handler dla DO
    */
@@ -81,9 +86,11 @@ export class TokenVaultDO extends DurableObject {
     }
 
     // Sprawdź czy token już istnieje
-    const existing = this.sql
-      .exec('SELECT token, expires_at FROM token_mappings WHERE customer_id = ? AND shop_id = ?', customerId, shopId)
-      .one() as { token: string; expires_at: number | null } | null;
+    const existing = this.queryFirst<{ token: string; expires_at: number | null }>(
+      'SELECT token, expires_at FROM token_mappings WHERE customer_id = ? AND shop_id = ? LIMIT 1',
+      customerId,
+      shopId,
+    );
 
     if (existing) {
       // Sprawdź czy nie wygasł
@@ -165,9 +172,16 @@ export class TokenVaultDO extends DurableObject {
       });
     }
 
-    const result = this.sql
-      .exec('SELECT customer_id, shop_id, created_at, last_used_at, expires_at FROM token_mappings WHERE token = ?', token)
-      .one();
+    const result = this.queryFirst<{
+      customer_id: string;
+      shop_id: string;
+      created_at: number;
+      last_used_at: number;
+      expires_at: number | null;
+    }>(
+      'SELECT customer_id, shop_id, created_at, last_used_at, expires_at FROM token_mappings WHERE token = ? LIMIT 1',
+      token,
+    );
 
     if (!result) {
       return new Response(JSON.stringify({ error: 'Token not found' }), { 
@@ -194,9 +208,10 @@ export class TokenVaultDO extends DurableObject {
       });
     }
 
-    const result = this.sql
-      .exec('SELECT expires_at FROM token_mappings WHERE token = ?', token)
-      .one() as { expires_at: number | null } | null;
+    const result = this.queryFirst<{ expires_at: number | null }>(
+      'SELECT expires_at FROM token_mappings WHERE token = ? LIMIT 1',
+      token,
+    );
 
     if (!result) {
       return new Response(JSON.stringify({ valid: false }), {
