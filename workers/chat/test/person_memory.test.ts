@@ -18,13 +18,13 @@ describe('person_memory helpers', () => {
     const text = historyToPlainText(
       [
         { role: 'system', content: 'x' },
-        { role: 'user', content: 'hello' },
-        { role: 'assistant', content: 'hi' },
+        { role: 'user', content: 'Szukam srebrnego pierścionka z opalem' },
+        { role: 'assistant', content: 'Mam kilka propozycji w stylu minimalistycznym' },
       ],
       100,
     );
-    expect(text).toContain('user: hello');
-    expect(text).toContain('assistant: hi');
+    expect(text).toContain('user: Szukam srebrnego pierścionka z opalem');
+    expect(text).toContain('assistant: Mam kilka propozycji w stylu minimalistycznym');
     expect(text).not.toContain('system');
   });
 
@@ -63,22 +63,20 @@ describe('person_memory helpers', () => {
     expect(summary).toBe('Klient preferuje srebro i szafiry.');
   });
 
-  it('mergeSessionIntoPersonSummary falls back to previous summary and latest user hints when model fails', async () => {
-    mockedGetGroqResponse.mockRejectedValueOnce(new Error('Workers AI returned an empty or invalid response'));
+  it('mergeSessionIntoPersonSummary throws when model returns empty or invalid output', async () => {
+    mockedGetGroqResponse.mockResolvedValueOnce('');
+    mockedGetGroqResponse.mockResolvedValueOnce('   ');
 
-    const summary = await mergeSessionIntoPersonSummary(
-      {} as never,
-      'Preferuje biżuterię srebrną.',
-      [
-        'user: Szukam pierścionka z szafirem',
-        'assistant: Jasne, pomogę.',
-        'user: Najlepiej delikatny model',
-      ].join('\n'),
-    );
-
-    expect(summary).toContain('Preferuje biżuterię srebrną.');
-    expect(summary).toContain('Szukam pierścionka z szafirem');
-    expect(summary).toContain('Najlepiej delikatny model');
-    expect(summary).not.toContain('assistant:');
+    await expect(
+      mergeSessionIntoPersonSummary(
+        {} as never,
+        'Preferuje biżuterię srebrną.',
+        [
+          'user: Szukam pierścionka z szafirem',
+          'assistant: Jasne, pomogę.',
+          'user: Najlepiej delikatny model',
+        ].join('\n'),
+      ),
+    ).rejects.toThrow('Workers AI returned an empty or invalid response');
   });
 });

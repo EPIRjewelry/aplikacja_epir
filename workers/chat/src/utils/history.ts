@@ -13,6 +13,24 @@ export interface Message {
   name?: string;
 }
 
+function splitLeadingSystemMessages(messages: Message[]): {
+  leadingSystemMessages: Message[];
+  restMessages: Message[];
+} {
+  const firstNonSystemIndex = messages.findIndex((message) => message.role !== 'system');
+  if (firstNonSystemIndex === -1) {
+    return {
+      leadingSystemMessages: messages,
+      restMessages: [],
+    };
+  }
+
+  return {
+    leadingSystemMessages: messages.slice(0, firstNonSystemIndex),
+    restMessages: messages.slice(firstNonSystemIndex),
+  };
+}
+
 /**
  * Estimate token count for a message (rough approximation)
  * Rule of thumb: ~4 characters per token for English, ~3 for Polish
@@ -78,21 +96,20 @@ export function truncateHistory(
   
   console.log(`[truncateHistory] Current tokens: ${currentTokens}, target: ${maxTokens}`);
   
-  // Always keep system message (usually index 0)
-  const systemMsg = messages[0]?.role === 'system' ? messages[0] : null;
-  const restMessages = systemMsg ? messages.slice(1) : messages;
+  // Always keep all leading system messages (base prompt + runtime context)
+  const { leadingSystemMessages, restMessages } = splitLeadingSystemMessages(messages);
   
   // Keep recent messages (sliding window from end)
   const recentMessages = restMessages.slice(-keepRecentCount);
   
   // Calculate tokens with system + recent
-  let result = systemMsg ? [systemMsg, ...recentMessages] : recentMessages;
+  let result = [...leadingSystemMessages, ...recentMessages];
   let resultTokens = calculateMessageTokens(result);
   
   // If still over limit, reduce recent count
   if (resultTokens > maxTokens && recentMessages.length > 2) {
-    const reducedRecent = recentMessages.slice(-(keepRecentCount / 2));
-    result = systemMsg ? [systemMsg, ...reducedRecent] : reducedRecent;
+    const reducedRecent = recentMessages.slice(-Math.max(2, Math.floor(keepRecentCount / 2)));
+    result = [...leadingSystemMessages, ...reducedRecent];
     resultTokens = calculateMessageTokens(result);
   }
   
@@ -131,9 +148,8 @@ export function truncateWithSummary(
     return messages;
   }
   
-  // Separate system, old, and recent messages
-  const systemMsg = messages[0]?.role === 'system' ? messages[0] : null;
-  const restMessages = systemMsg ? messages.slice(1) : messages;
+  // Preserve all leading system messages (prompt + injected runtime context)
+  const { leadingSystemMessages, restMessages } = splitLeadingSystemMessages(messages);
   const recentMessages = restMessages.slice(-keepRecentCount);
   const oldMessages = restMessages.slice(0, -keepRecentCount);
   
@@ -142,7 +158,7 @@ export function truncateWithSummary(
   
   // Build result with summary
   const result = [
-    ...(systemMsg ? [systemMsg] : []),
+    ...leadingSystemMessages,
     ...(summaryMsg ? [summaryMsg] : []),
     ...recentMessages
   ];

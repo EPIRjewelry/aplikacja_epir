@@ -1863,6 +1863,7 @@ async function handleChat(
       // Call a helper in shopify-mcp-client to fetch firstName and lastName
       const { getCustomerById } = await import('./shopify-mcp-client');
       const customer = await getCustomerById(env, customerId);
+      console.log('[handleChat] getCustomerById result:', JSON.stringify(customer));
       if (customer && (customer.firstName || customer.lastName)) {
         await stub.fetch('https://session/set-customer', {
           method: 'POST',
@@ -1872,7 +1873,10 @@ async function handleChat(
         console.log('[handleChat] SessionDO: set customer for session:', customerId);
       }
     } catch (e) {
-      console.warn('[handleChat] Unable to fetch/store customer profile:', e);
+      console.warn('[handleChat] getCustomerById EXCEPTION:',
+        e instanceof Error ? e.message : String(e));
+      console.warn('[handleChat] getCustomerById STACK:',
+        e instanceof Error ? e.stack : 'no stack');
     }
   }
 
@@ -2021,6 +2025,12 @@ async function streamAssistantResponse(
       const cartIdData = (await cartIdResp.json().catch(() => ({ cart_id: null }))) as { cart_id?: string | null };
       const cartId = cartIdData.cart_id;
 
+      // Pobierz profil klienta z SessionDO
+      let customerFirstName: string | null = null;
+      const customerResp = await stub.fetch('https://session/customer');
+      const customerData = await customerResp.json().catch(() => ({ customer: null })) as { customer?: { first_name?: string | null } | null };
+      customerFirstName = customerData?.customer?.first_name ?? null;
+
       let crossSessionSummary: string | null = null;
       if (shopifyCustomerId && env.DB_CHATBOT) {
         try {
@@ -2156,7 +2166,8 @@ async function streamAssistantResponse(
         messages.push({ role: 'system', content: `Kontekst systemowy: Aktualny cart_id sesji to: ${cartId}` });
       }
       if (customerToken) {
-        messages.push({ role: 'system', content: `Kontekst systemowy: Klient jest zalogowany. Jego anonimowy token to: ${customerToken}` });
+        const nameInfo = customerFirstName ? ` Imię klienta: ${customerFirstName}.` : '';
+        messages.push({ role: 'system', content: `Kontekst systemowy: Klient jest zalogowany.${nameInfo} Jego anonimowy token to: ${customerToken}` });
       }
       // Kontekst storefrontu (kazka, zareczyny) – baza wiedzy segmentowana
       if (storefrontContext?.storefrontId || storefrontContext?.channel) {

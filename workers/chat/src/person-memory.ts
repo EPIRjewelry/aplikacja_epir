@@ -33,9 +33,23 @@ export function historyToPlainText(
   entries: Array<{ role: string; content?: string }>,
   maxChars = 12000,
 ): string {
+  const lowSignalPatterns = [
+    /^cześć$/i,
+    /^hej$/i,
+    /^witaj$/i,
+    /^dzień dobry$/i,
+    /^pamiętasz mnie[?]?$/i,
+    /^poznajesz mnie[?]?$/i,
+    /^rozpoznajesz mnie[?]?$/i,
+  ];
   const lines = entries
     .filter((e) => e.role === 'user' || e.role === 'assistant')
-    .map((e) => `${e.role}: ${(e.content ?? '').slice(0, 4000)}`);
+    .map((e) => `${e.role}: ${(e.content ?? '').slice(0, 4000)}`)
+    .filter((line) => {
+      const content = line.replace(/^(user|assistant):\s+/i, '').trim();
+      if (content.length < 10) return false;
+      return !lowSignalPatterns.some((re) => re.test(content));
+    });
   const joined = lines.join('\n');
   return joined.length > maxChars ? joined.slice(-maxChars) : joined;
 }
@@ -83,13 +97,26 @@ Nie wymyślaj faktów. Nie opisuj zamówień ani numerów zamówień — tylko p
     role: 'user',
     content: `Poprzedni skrót:\n${previousSummary ?? '(brak)'}\n\nNowa rozmowa (fragment):\n${conversationSnippet}`,
   };
-  try {
-    const out = await getGroqResponse([system, user], env, { max_tokens: 512 });
-    const normalized = out.trim().slice(0, 2000);
-    if (normalized) return normalized;
-  } catch (error) {
-    console.warn('[person_memory] merge fallback activated:', error);
+  let out: string | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      out = await getGroqResponse([system, user], env, { max_tokens: 512 });
+      if (out && out.trim().length > 20) break;
+    } catch (e) {
+      if (attempt === 1) throw e;
+    }
   }
-
+  try {
+    const normalized = (out ?? '').trim().slice(0, 2000);
+    if (normalized && normalized.length > 0) return normalized;
+  } catch (error) {
+    // przechwyć poniżej
+  }
+  // fallback z warunkiem: nie nadpisuj dobrego previousSummary
+  console.warn('[person_memory] merge fallback activated:', out);
+  if (previousSummary && previousSummary.trim().length > 50) {
+    return previousSummary; // zachowaj dobry poprzedni summary
+  }
+  if (!out || out.trim().length <= 20) throw new Error('Workers AI returned an empty or invalid response');
   return buildFallbackPersonSummary(previousSummary, conversationSnippet);
 }
