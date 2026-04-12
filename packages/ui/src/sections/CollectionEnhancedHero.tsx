@@ -1,4 +1,5 @@
 import React from 'react';
+import {RichText} from '@shopify/hydrogen';
 
 /** Wynik mapCollectionEnhancedData() — płaski kontrakt z metaobject fields[] */
 export type CollectionEnhancedFlat = {
@@ -30,6 +31,17 @@ export const COLLECTION_ENHANCED_FRAGMENT = `#graphql
     }
   }
 `;
+
+function isShopifyRichTextJsonString(s: string): boolean {
+  const t = s.trim();
+  if (!t.startsWith('{')) return false;
+  try {
+    const o = JSON.parse(t) as {type?: string};
+    return o?.type === 'root';
+  } catch {
+    return false;
+  }
+}
 
 export function CollectionEnhancedHero({
   collectionTitle,
@@ -76,7 +88,13 @@ export function CollectionEnhancedHero({
       <div className="mx-auto max-w-3xl px-5 py-8 md:py-10 text-center text-[#2a2a2a]">
         <h1 className="text-3xl md:text-4xl font-semibold mb-6">{displayTitle}</h1>
         {philosophy ? (
-          <div className="text-lg leading-relaxed whitespace-pre-wrap">{philosophy}</div>
+          isShopifyRichTextJsonString(philosophy) ? (
+            <div className="text-lg leading-relaxed text-left max-w-none">
+              <RichText data={philosophy} />
+            </div>
+          ) : (
+            <div className="text-lg leading-relaxed whitespace-pre-wrap">{philosophy}</div>
+          )
         ) : null}
       </div>
 

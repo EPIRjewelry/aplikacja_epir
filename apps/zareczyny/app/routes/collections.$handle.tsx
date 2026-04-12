@@ -57,9 +57,23 @@ export function mapCollectionEnhancedData(
       case 'name':
         out.name = trimOrNull(field.value);
         break;
-      case 'philosophy':
-        out.philosophy = trimOrNull(field.value);
+      case 'philosophy': {
+        const raw = field.value;
+        if (typeof raw !== 'string') break;
+        const t = raw.trim();
+        if (!t) break;
+        try {
+          const parsed = JSON.parse(t) as {type?: string};
+          if (parsed?.type === 'root') {
+            out.philosophy = JSON.stringify(parsed);
+          } else {
+            out.philosophy = t;
+          }
+        } catch {
+          out.philosophy = t;
+        }
         break;
+      }
       case 'accent_color':
         out.accentColor = trimOrNull(field.value);
         break;
