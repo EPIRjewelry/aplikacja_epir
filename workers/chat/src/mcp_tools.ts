@@ -64,7 +64,7 @@ export const TOOL_SCHEMAS = {
                 categories: {
                   type: 'array',
                   items: { type: 'string' },
-                  description: 'Filter by product categories using OR logic.'
+                  description: 'Lista kategorii produktów (nazwy, slugi lub identyfikatory). Wyszukiwanie używa logiki OR — produkt pasuje, jeśli należy do przynajmniej jednej z podanych kategorii. Przekaż tablicę stringów (np. ["pierścionki", "obrączki"]). Używaj wartości zgodnych z katalogiem sklepu; nie gwarantujemy automatycznego mapowania aliasów ani hierarchii kategorii.'
                 },
                 price: {
                   type: 'object',
