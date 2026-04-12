@@ -8,10 +8,10 @@
     "shopify:app:deploy": "shopify app deploy --allow-updates --force"
   },
   "dependencies": {
-    "lodash": "^4.17.23"
+    "lodash": "^4.18.1"
   },
   "devDependencies": {
-    "@shopify/cli": "3.91.0"
+    "@shopify/cli": "3.93.2"
   },
   "overrides": {
     "react": "18.3.1",

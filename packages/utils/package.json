@@ -8,10 +8,10 @@
     ".": "./src/index.ts"
   },
   "peerDependencies": {
-    "@shopify/hydrogen": "^2024.10.0"
+    "@shopify/hydrogen": "^2026.4.0"
   },
   "devDependencies": {
-    "@shopify/hydrogen": "^2024.10.0",
-    "typescript": "^5.2.2"
+    "@shopify/hydrogen": "^2026.4.0",
+    "typescript": "^6.0.2"
   }
 }
