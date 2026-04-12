@@ -390,7 +390,7 @@ function normalizeCartArgs(raw: any, sessionCartKey?: string): any {
 
 async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: string): Promise<{ result?: any; error?: any }> {
   if (toolName === 'get_size_table') {
-    return { result: await getSizeTable(env) };
+    return { result: await getSizeTable(env, brand) };
   }
 
   const shopDomain = env?.SHOP_DOMAIN || process.env.SHOP_DOMAIN;

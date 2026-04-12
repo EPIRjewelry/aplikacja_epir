@@ -28,6 +28,8 @@ export interface Env {
   SHOPIFY_STOREFRONT_TOKEN?: string;
   SHOPIFY_ADMIN_TOKEN?: string;
   SHOP_DOMAIN?: string;
+  /** Opcjonalnie: GID wpisu metaobject z tabelą rozmiarów (gdy handle wpisu ≠ `tabela_rozmiarow`). */
+  SIZE_TABLE_METAOBJECT_GID?: string;
   MCP_ENDPOINT?: string;
 
   PUBLIC_STOREFRONT_API_TOKEN_KAZKA?: string;

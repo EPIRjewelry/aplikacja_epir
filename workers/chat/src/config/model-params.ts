@@ -17,7 +17,7 @@ export const CHAT_MODEL_ID = '@cf/moonshotai/kimi-k2.5' as const;
  * 
  * These values are optimized for luxury jewelry e-commerce assistant:
  * - temperature: Controls randomness (0.5 = balanced creativity/consistency)
- * - max_tokens: Maximum response length (3000 = ~2000 words)
+ * - max_tokens: Maximum response length (1300 ≈ zwięzła odpowiedź po polsku)
  * - top_p: Nucleus sampling threshold (0.9 = high quality, diverse responses)
  * 
  * For future tuning: create a new config file instead of mutating callers ad hoc.
@@ -37,11 +37,11 @@ export const MODEL_PARAMS = {
    * Max tokens: Maximum response length
    * - 1 token ≈ 0.75 words (English)
    * - 1 token ≈ 0.5 words (Polish, due to diacritics)
-   * - 3000 tokens ≈ 1500-2000 words in Polish
+   * - 1300 tokens ≈ ok. 600–900 słów po polsku (orientacyjnie)
    * 
-   * @default 3000
+   * @default 1300
    */
-  max_tokens: 3000,
+  max_tokens: 1300,
 
   /**
    * Top-p (nucleus sampling): Probability threshold for token selection

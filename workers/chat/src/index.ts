@@ -42,6 +42,7 @@ import { truncateWithSummary, type Message as HistoryMessage } from './utils/his
 import { stripLeakedToolCallsLiterals } from './utils/stripLeakedToolCallsLiterals';
 import { executeToolWithParsedArguments } from './utils/tool-call-args';
 import { callMcpToolDirect, handleMcpRequest } from './mcp_server';
+import { STOREFRONTS, resolveStorefrontConfig } from './config/storefronts';
 
 /** Wywołanie run_analytics_query – tylko gdy channel=internal-dashboard (BIGQUERY_BATCH + ADMIN_KEY) */
 async function runAnalyticsQuery(env: Env, args: { queryId?: string; dateFrom?: number; dateTo?: number }): Promise<{ result?: unknown; error?: unknown }> {
@@ -136,23 +137,6 @@ interface ChatRequestBody {
 
 const IMAGE_ATTACHMENT_PLACEHOLDER = '(załącznik obrazu)';
 
-type PublicStorefrontTokenEnvKey = 'PUBLIC_STOREFRONT_API_TOKEN_KAZKA' | 'PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY';
-type PrivateStorefrontTokenEnvKey = 'PRIVATE_STOREFRONT_API_TOKEN_ZARECZYNY';
-type StorefrontTokenEnvKey = PublicStorefrontTokenEnvKey;
-
-type StaticStorefrontConfig = {
-  storefrontId: string;
-  channel: string;
-  aiProfileGid?: string;
-  apiTokenEnvKey?: StorefrontTokenEnvKey;
-  privateTokenEnvKey?: PrivateStorefrontTokenEnvKey;
-};
-
-type ResolvedStorefrontConfig = StaticStorefrontConfig & {
-  apiToken?: string;
-  privateToken?: string;
-};
-
 type ChatContextOverride = {
   storefrontId?: string;
   channel?: string;
@@ -232,64 +216,6 @@ async function authorizeAppProxyRequest(request: Request, env: Env): Promise<Res
   }
 
   return null;
-}
-
-/** Mapowanie aliasów storefrontów na konfigurację. Na drucie używamy aliasu (np. "kazka"), wewnątrz MCP – rzeczywisty Storefront ID. */
-const STOREFRONTS: Record<string, StaticStorefrontConfig> = {
-  'online-store': {
-    storefrontId: 'gid://shopify/Storefront/1000013955',
-    channel: 'online-store',
-    aiProfileGid: 'gid://shopify/Metaobject/2153911189836',
-  },
-  'epir-liquid': {
-    storefrontId: 'gid://shopify/Storefront/1000013955',
-    channel: 'online-store',
-    aiProfileGid: 'gid://shopify/Metaobject/2153911189836',
-  },
-  /**
-   * Theme App Extension / sklep klasyczny: `assistant-runtime.js` wysyła `brand: "epir"` (data-brand).
-   * Bez tego aliasu worker nie dobierał aiProfileGid ani tokenu Storefront → 401 przy odczycie metaobject.
-   */
-  epir: {
-    storefrontId: 'gid://shopify/Storefront/1000013955',
-    channel: 'online-store',
-    aiProfileGid: 'gid://shopify/Metaobject/2153911189836',
-  },
-  /** Opcjonalny alias hosta (np. przyszłe nagłówki / body z identyfikatorem domeny). */
-  'epirbizuteria.pl': {
-    storefrontId: 'gid://shopify/Storefront/1000013955',
-    channel: 'online-store',
-    aiProfileGid: 'gid://shopify/Metaobject/2153911189836',
-  },
-  kazka: {
-    storefrontId: 'gid://shopify/Storefront/1000013955', // Zastąp faktycznym ID z Headless sales channel
-    channel: 'hydrogen-kazka',
-    aiProfileGid: 'gid://shopify/Metaobject/2057969205580',
-    apiTokenEnvKey: 'PUBLIC_STOREFRONT_API_TOKEN_KAZKA',
-  },
-  zareczyny: {
-    storefrontId: 'gid://shopify/Storefront/1000013955',
-    channel: 'hydrogen-zareczyny',
-    /** Typ Admin: `ai_profile`, handle: zareczyny — opublikuj wpis (Active), inaczej Storefront zwróci null */
-    aiProfileGid: 'gid://shopify/Metaobject/2117458166092',
-    apiTokenEnvKey: 'PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY',
-    privateTokenEnvKey: 'PRIVATE_STOREFRONT_API_TOKEN_ZARECZYNY',
-  },
-};
-
-function resolveStorefrontConfig(env: Env, storefrontKey?: string): ResolvedStorefrontConfig | null {
-  if (!storefrontKey) return null;
-  const config = STOREFRONTS[storefrontKey];
-  if (!config) return null;
-  return {
-    ...config,
-    apiToken: config.apiTokenEnvKey
-      ? env[config.apiTokenEnvKey] ?? env.SHOPIFY_STOREFRONT_TOKEN
-      : env.SHOPIFY_STOREFRONT_TOKEN,
-    privateToken: config.privateTokenEnvKey
-      ? env[config.privateTokenEnvKey] ?? env.PRIVATE_STOREFRONT_API_TOKEN
-      : env.PRIVATE_STOREFRONT_API_TOKEN,
-  };
 }
 
 // Stałe konfiguracyjne
