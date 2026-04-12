@@ -62,7 +62,12 @@ export function shouldUseWorkersAi(env: Env): boolean {
 const WORKERS_AI_SESSION_ID_MAX_LENGTH = 64;
 const WORKERS_AI_SESSION_ID_SAFE_PATTERN = /^[A-Za-z0-9_-]+$/;
 
-function normalizeWorkersAiSessionId(sessionId?: string): string | undefined {
+/**
+ * Odfiltrowuje `session_id` pod nagłówek Workers AI `x-session-affinity` (prefix cache / affinity, niższy TTFT przy stabilnej sesji).
+ * Zgodne z widgetem: `crypto.randomUUID()` (np. `550e8400-e29b-41d4-a716-446655440000`) — dozwolone: A–Z, a–z, 0–9, `_`, `-`.
+ * Przy braku dopasowania nagłówek nie jest wysyłany (po cichu); nie używaj w ID znaków spoza listy.
+ */
+export function normalizeWorkersAiSessionId(sessionId?: string): string | undefined {
   const trimmed = sessionId?.trim();
   if (!trimmed) return undefined;
   const normalized = trimmed.slice(0, WORKERS_AI_SESSION_ID_MAX_LENGTH);
@@ -70,6 +75,7 @@ function normalizeWorkersAiSessionId(sessionId?: string): string | undefined {
   return normalized;
 }
 
+/** Opcje `env.AI.run`: ustawia `x-session-affinity`, gdy {@link normalizeWorkersAiSessionId} zwraca wartość. */
 export function workersAiRunOptions(sessionId?: string): { headers?: Record<string, string> } | undefined {
   const normalizedSessionId = normalizeWorkersAiSessionId(sessionId);
   if (!normalizedSessionId) return undefined;
@@ -352,7 +358,7 @@ export async function streamGroqEvents(
     .pipeThrough(createGroqStreamTransform());
 }
 
-export const __test = { createGroqStreamTransform };
+export const __test = { createGroqStreamTransform, normalizeWorkersAiSessionId };
 
 export async function getGroqResponse(
   messages: GroqMessage[],

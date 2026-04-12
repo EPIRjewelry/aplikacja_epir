@@ -2231,10 +2231,16 @@ async function streamAssistantResponse(
         throw new Error('Workers AI binding missing. Add [ai] binding in wrangler.toml.');
       }
 
+      // Workers AI: nagłówek x-session-affinity (ses_<sessionId>) — workersAiRunOptions(sessionId) w ai-client.ts;
+      // stabilizuje routing/cache prefiksu (niższy TTFT przy tej samej sesji). sessionId musi przejść
+      // normalizeWorkersAiSessionId — domyślny UUID z klienta / crypto.randomUUID() jest zgodny.
+
       // 🔴 KROK 4: PĘTLA WYWOŁAŃ NARZĘDZI (native tool_calls)
       let currentMessages: GroqMessage[] = imageBase64
         ? injectKimiMultimodalUserContent(truncatedMessages, imageBase64)
         : truncatedMessages;
+      // Świadomie bez „Code Mode” (wykonywalny TS generowany przez model) na kanale storefront — wymagałby osobnej
+      // piaskownicy i przeglądu ESOG; opóźnienia MCP ogranicza pętla i MAX_TOOL_CALLS.
       const MAX_TOOL_CALLS = 5;
       
       // 🔴 FIX: accumulatedResponse poza pętlą - nie resetuj w każdej iteracji
