@@ -3,10 +3,123 @@ window.__EPIR_ASSISTANT_RUNTIME_LOADED__=true;
 // extensions/asystent-klienta/assets/assistant.js
 // Shopify canonical storefront ingress: always use App Proxy endpoint.
 var EPIR_CHAT_WORKER_ENDPOINT = '/apps/assistant/chat';
+var EPIR_LOGGED_IN_CUSTOMER_CACHE_KEY = 'epir-logged-in-customer-id';
+var EPIR_LOGGED_IN_CUSTOMER_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 /** Ostatnio wybrany obraz, izolowany per formularz czatu. */
 var epirPendingAttachmentByForm = new WeakMap();
 /** Maksymalny rozmiar załącznika obrazu (4 MB po stronie klienta przed base64). */
 const EPIR_MAX_ATTACH_BYTES = 4 * 1024 * 1024;
+
+function normalizeLoggedInCustomerId(value) {
+  if (value === null || value === undefined) return '';
+  var normalized = String(value).trim();
+  return normalized ? normalized : '';
+}
+
+function getAssistantShopDomain(section) {
+  return (
+    (section && section.dataset && section.dataset.shopDomain) ||
+    (typeof Shopify !== 'undefined' && Shopify && Shopify.shop) ||
+    (typeof window !== 'undefined' && window.location && window.location.hostname) ||
+    ''
+  );
+}
+
+function readShopifyGlobalCustomerId() {
+  try {
+    var analyticsId = normalizeLoggedInCustomerId(
+      typeof window !== 'undefined' &&
+        window.ShopifyAnalytics &&
+        window.ShopifyAnalytics.meta &&
+        window.ShopifyAnalytics.meta.page &&
+        window.ShopifyAnalytics.meta.page.customerId,
+    );
+    if (analyticsId) return analyticsId;
+  } catch (e) {}
+
+  try {
+    var stId = normalizeLoggedInCustomerId(
+      typeof window !== 'undefined' &&
+        window.__st &&
+        (window.__st.cid || window.__st.customerId || window.__st.customer_id),
+    );
+    if (stId) return stId;
+  } catch (e2) {}
+
+  return '';
+}
+
+function readCachedLoggedInCustomerId(section) {
+  try {
+    var raw = sessionStorage.getItem(EPIR_LOGGED_IN_CUSTOMER_CACHE_KEY);
+    if (!raw) return '';
+
+    var parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      return normalizeLoggedInCustomerId(raw);
+    }
+
+    if (!parsed || typeof parsed !== 'object') return '';
+
+    var customerId = normalizeLoggedInCustomerId(parsed.customerId);
+    var capturedAt = Number(parsed.capturedAt || 0);
+    var cachedShopDomain = normalizeLoggedInCustomerId(parsed.shopDomain);
+    var currentShopDomain = normalizeLoggedInCustomerId(getAssistantShopDomain(section));
+
+    if (!customerId) return '';
+    if (capturedAt && Date.now() - capturedAt > EPIR_LOGGED_IN_CUSTOMER_CACHE_TTL_MS) return '';
+    if (cachedShopDomain && currentShopDomain && cachedShopDomain !== currentShopDomain) return '';
+
+    return customerId;
+  } catch (e3) {
+    return '';
+  }
+}
+
+function writeCachedLoggedInCustomerId(section, customerId) {
+  var normalized = normalizeLoggedInCustomerId(customerId);
+  if (!normalized) return '';
+  try {
+    sessionStorage.setItem(
+      EPIR_LOGGED_IN_CUSTOMER_CACHE_KEY,
+      JSON.stringify({
+        customerId: normalized,
+        shopDomain: normalizeLoggedInCustomerId(getAssistantShopDomain(section)),
+        capturedAt: Date.now(),
+      }),
+    );
+  } catch (e) {}
+  return normalized;
+}
+
+function resolveLoggedInCustomerId(section) {
+  var datasetId = normalizeLoggedInCustomerId(section && section.dataset && section.dataset.loggedInCustomerId);
+  if (datasetId) {
+    writeCachedLoggedInCustomerId(section, datasetId);
+    return datasetId;
+  }
+
+  var globalId = readShopifyGlobalCustomerId();
+  if (globalId) {
+    if (section && section.dataset) {
+      section.dataset.loggedInCustomerId = globalId;
+    }
+    writeCachedLoggedInCustomerId(section, globalId);
+    return globalId;
+  }
+
+  var cachedId = readCachedLoggedInCustomerId(section);
+  if (cachedId) {
+    if (section && section.dataset) {
+      section.dataset.loggedInCustomerId = cachedId;
+    }
+    return cachedId;
+  }
+
+  return '';
+}
 
 /* ===== CONSENT GATE (App Proxy POST /apps/assistant/consent) ===== */
 var EPIR_CONSENT_ANONYMOUS_KEY = 'epir-chat-anonymous-id';
@@ -48,9 +161,7 @@ function buildConsentEvent(section) {
       (typeof window !== 'undefined' && window.location && window.location.hostname) ||
       '';
   } catch (e2) {}
-  var cid = (section.dataset && section.dataset.loggedInCustomerId && String(section.dataset.loggedInCustomerId).trim())
-    ? String(section.dataset.loggedInCustomerId).trim()
-    : null;
+  var cid = resolveLoggedInCustomerId(section) || null;
   return {
     consentId: consentId,
     granted: true,
@@ -72,7 +183,7 @@ function buildConsentEvent(section) {
 function buildConsentFetchUrl(section, basePath) {
   var endpoint = basePath || (section.dataset && section.dataset.consentEndpoint) || '/apps/assistant/consent';
   var shop = (section.dataset && section.dataset.shopDomain) || '';
-  var customerId = (section.dataset && section.dataset.loggedInCustomerId) || '';
+  var customerId = resolveLoggedInCustomerId(section) || '';
   if (shop || customerId) {
     var params = new URLSearchParams();
     if (shop) params.set('shop', shop);
@@ -672,7 +783,7 @@ function initAssistantUIForSection(section) {
     try {
       localName = localStorage.getItem('epir_customer_name') || sessionStorage.getItem('epir_customer_name');
     } catch {}
-    const loggedInCustomerId = section.dataset.loggedInCustomerId || '';
+    const loggedInCustomerId = resolveLoggedInCustomerId(section) || '';
     if (localName && !loggedInCustomerId && messagesEl) {
       // Dodaj powitanie z imieniem tylko dla lokalnie rozpoznanego klienta
       const welcomeDiv = document.createElement('div');
@@ -1235,7 +1346,7 @@ function doSendFromForm(form, input) {
     try {
       let endpoint = normalizeAssistantEndpoint();
       const shop = (sectionEl && sectionEl.dataset && sectionEl.dataset.shopDomain) || '';
-      const customerId = (sectionEl && sectionEl.dataset && sectionEl.dataset.loggedInCustomerId) || '';
+      const customerId = resolveLoggedInCustomerId(sectionEl) || '';
       if (shop || customerId) {
         const params = new URLSearchParams();
         if (shop) params.set('shop', shop);

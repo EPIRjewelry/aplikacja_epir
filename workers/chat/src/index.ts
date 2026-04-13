@@ -234,6 +234,44 @@ function now(): number {
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
+
+type EffectiveShopifyCustomerIdResolution = {
+  customerId: string | null;
+  source: 'request' | 'session' | 'none';
+};
+
+function normalizeOptionalString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function resolveEffectiveShopifyCustomerId(
+  requestCustomerId?: string | null,
+  sessionCustomerId?: string | null,
+): EffectiveShopifyCustomerIdResolution {
+  const requestCustomer = normalizeOptionalString(requestCustomerId);
+  if (requestCustomer) {
+    return {
+      customerId: requestCustomer,
+      source: 'request',
+    };
+  }
+
+  const sessionCustomer = normalizeOptionalString(sessionCustomerId);
+  if (sessionCustomer) {
+    return {
+      customerId: sessionCustomer,
+      source: 'session',
+    };
+  }
+
+  return {
+    customerId: null,
+    source: 'none',
+  };
+}
+
 function isChatRole(value: unknown): value is ChatRole {
   return value === 'user' || value === 'assistant' || value === 'system' || value === 'tool';
 }
@@ -2138,8 +2176,8 @@ async function handleChat(
 
   // [TOKEN VAULT] Bez zmian
   const url = new URL(request.url);
-  const customerId = url.searchParams.get('logged_in_customer_id') || null;
-  const shopId = url.searchParams.get('shop') || env.SHOP_DOMAIN;
+  const customerId = normalizeOptionalString(url.searchParams.get('logged_in_customer_id'));
+  const shopId = normalizeOptionalString(url.searchParams.get('shop')) ?? normalizeOptionalString(env.SHOP_DOMAIN);
   
   // 🔴 POPRAWKA SESJI: Używamy `payload.session_id` LUB generujemy nowy
   const sessionId = payload.session_id ?? crypto.randomUUID();
@@ -2333,13 +2371,40 @@ async function streamAssistantResponse(
       // Pobierz profil klienta z SessionDO
       let customerFirstName: string | null = null;
       const customerResp = await stub.fetch('https://session/customer');
-      const customerData = await customerResp.json().catch(() => ({ customer: null })) as { customer?: { first_name?: string | null } | null };
-      customerFirstName = customerData?.customer?.first_name ?? null;
+      const customerData = await customerResp.json().catch(() => ({ customer: null })) as {
+        customer?: {
+          customer_id?: string | null;
+          first_name?: string | null;
+        } | null;
+      };
+      const sessionCustomer = customerData?.customer ?? null;
+      customerFirstName = normalizeOptionalString(sessionCustomer?.first_name ?? null);
+      const effectiveCustomerContext = resolveEffectiveShopifyCustomerId(
+        shopifyCustomerId,
+        sessionCustomer?.customer_id ?? null,
+      );
+      const effectiveShopifyCustomerId = effectiveCustomerContext.customerId;
+      const shopId = normalizeOptionalString(new URL(request.url).searchParams.get('shop')) ?? normalizeOptionalString(env.SHOP_DOMAIN);
+
+      let effectiveCustomerToken = customerToken;
+      if (!effectiveCustomerToken && effectiveShopifyCustomerId && shopId) {
+        try {
+          const tokenVaultId = env.TOKEN_VAULT_DO.idFromName('global');
+          const tokenVaultStub = env.TOKEN_VAULT_DO.get(tokenVaultId);
+          const vault = new TokenVault(tokenVaultStub);
+          effectiveCustomerToken = await vault.getOrCreateToken(effectiveShopifyCustomerId, shopId);
+          if (effectiveCustomerContext.source === 'session') {
+            console.log('[streamAssistant] 🔐 TokenVault: recovered token via SessionDO customer context');
+          }
+        } catch (error) {
+          console.warn('[streamAssistant] TokenVault recovery failed:', error);
+        }
+      }
 
       let crossSessionSummary: string | null = null;
-      if (shopifyCustomerId && env.DB_CHATBOT) {
+      if (effectiveShopifyCustomerId && env.DB_CHATBOT) {
         try {
-          crossSessionSummary = await loadPersonMemory(env.DB_CHATBOT, shopifyCustomerId);
+          crossSessionSummary = await loadPersonMemory(env.DB_CHATBOT, effectiveShopifyCustomerId);
         } catch (e) {
           console.warn('[person_memory] load failed:', e);
         }
@@ -2349,14 +2414,14 @@ async function streamAssistantResponse(
         `${sessionId}:person_memory:${userMessageTs}:${reason}`;
 
       const refreshPersonMemory = async (reason: 'chat_turn' | 'image_surrogate') => {
-        if (!shopifyCustomerId || !env.DB_CHATBOT) return;
+        if (!effectiveShopifyCustomerId || !env.DB_CHATBOT) return;
         const requestId = buildPersonMemoryRequestId(reason);
         try {
           const refreshResp = await stub.fetch('https://session/refresh-memory-atomic', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              shopify_customer_id: shopifyCustomerId,
+              shopify_customer_id: effectiveShopifyCustomerId,
               request_id: requestId,
               reason,
             }),
@@ -2373,7 +2438,7 @@ async function streamAssistantResponse(
       };
 
       const maybeRefreshPersonMemory = () => {
-        if (!shopifyCustomerId || !env.DB_CHATBOT) return;
+        if (!effectiveShopifyCustomerId || !env.DB_CHATBOT) return;
         const task = refreshPersonMemory('chat_turn');
         if (executionCtx) {
           executionCtx.waitUntil(task);
@@ -2482,9 +2547,15 @@ async function streamAssistantResponse(
       if (cartId) {
         messages.push({ role: 'system', content: `Kontekst systemowy: Aktualny cart_id sesji to: ${cartId}` });
       }
-      if (customerToken) {
-        const nameInfo = customerFirstName ? ` Imię klienta: ${customerFirstName}.` : '';
-        messages.push({ role: 'system', content: `Kontekst systemowy: Klient jest zalogowany.${nameInfo} Jego anonimowy token to: ${customerToken}` });
+      if (effectiveCustomerToken || effectiveShopifyCustomerId) {
+        const loginContextParts = ['Kontekst systemowy: Klient jest zalogowany.'];
+        if (customerFirstName) {
+          loginContextParts.push(`Imię klienta: ${customerFirstName}.`);
+        }
+        if (effectiveCustomerToken) {
+          loginContextParts.push(`Jego anonimowy token to: ${effectiveCustomerToken}`);
+        }
+        messages.push({ role: 'system', content: loginContextParts.join(' ') });
       }
       // Kontekst storefrontu (kazka, zareczyny) – baza wiedzy segmentowana
       if (storefrontContext?.storefrontId || storefrontContext?.channel) {
@@ -2616,8 +2687,11 @@ async function streamAssistantResponse(
             session_id: sessionId,
             storefrontId: storefrontContext?.storefrontId ?? null,
             channel: storefrontContext?.channel ?? null,
-            customer_token_present: Boolean(customerToken),
             shopify_customer_id_present: Boolean(shopifyCustomerId),
+            effective_customer_id_present: Boolean(effectiveShopifyCustomerId),
+            shopify_customer_id_fallback_used: effectiveCustomerContext.source === 'session',
+            effective_customer_source: effectiveCustomerContext.source,
+            customer_token_present: Boolean(effectiveCustomerToken),
             finish_reason: finishReason,
             tool_calls_count: pendingToolCalls.size,
             usage_prompt_tokens: usageTotals.prompt_tokens,
@@ -3084,6 +3158,7 @@ export {
   cors,
   handleChat,
   getSystemPromptForChannel,
+  resolveEffectiveShopifyCustomerId,
   verifyAppProxyHmac,
   handleMcpRequest,
   getGroqResponse,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SessionDO } from '../src/index';
+import { resolveEffectiveShopifyCustomerId, SessionDO } from '../src/index';
 import { makeDurableStateStub } from './helpers/session-do-sql-stub';
 
 describe('SessionDO customer', () => {
@@ -20,5 +20,28 @@ describe('SessionDO customer', () => {
     const customer = json.customer!;
     expect(customer.customer_id).toBe('gid://shopify/Customer/123');
     expect(customer.first_name).toBe('Anna');
+  });
+
+  it('prefers request customer id over session fallback', () => {
+    expect(
+      resolveEffectiveShopifyCustomerId('gid://shopify/Customer/111', 'gid://shopify/Customer/222'),
+    ).toEqual({
+      customerId: 'gid://shopify/Customer/111',
+      source: 'request',
+    });
+  });
+
+  it('falls back to session customer id when request customer id is missing', () => {
+    expect(resolveEffectiveShopifyCustomerId('', 'gid://shopify/Customer/222')).toEqual({
+      customerId: 'gid://shopify/Customer/222',
+      source: 'session',
+    });
+  });
+
+  it('returns none when neither request nor session customer id exists', () => {
+    expect(resolveEffectiveShopifyCustomerId('   ', null)).toEqual({
+      customerId: null,
+      source: 'none',
+    });
   });
 });
