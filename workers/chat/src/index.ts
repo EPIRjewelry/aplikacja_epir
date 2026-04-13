@@ -83,7 +83,8 @@ import { DASHBOARD_HTML } from './dashboard-html';
 import { buildAIProfilePrompt, fetchAIProfile } from './ai-profile';
 import {
   loadPersonMemory,
-  upsertPersonMemory,
+  loadPersonMemoryRecord,
+  upsertPersonMemoryVersioned,
   historyToPlainText,
   mergeSessionIntoPersonSummary,
 } from './person-memory';
@@ -223,6 +224,8 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 20;
 const MAX_HISTORY_FOR_AI = 20; // Ogranicz liczbę wiadomości wysyłanych do AI
 const MAX_HISTORY_IN_DO = 200; // Ogranicz przechowywanie w DO
+const PERSON_MEMORY_LOCK_TTL_MS = 15_000;
+const PERSON_MEMORY_RECENT_TTL_MS = 5 * 60_000;
 
 // --- Funkcje pomocnicze i parsery (bez zmian) ---
 function now(): number {
@@ -767,6 +770,30 @@ type MessageSqlRow = {
   message_uid: string | null;
 };
 
+type PersonMemoryLockState = {
+  owner_request_id: string;
+  expires_at: number;
+};
+
+type PersonMemoryRefreshResult = {
+  ok: boolean;
+  status:
+    | 'success'
+    | 'idempotent'
+    | 'in_flight'
+    | 'lock_conflict'
+    | 'empty_snippet'
+    | 'version_conflict'
+    | 'db_unavailable'
+    | 'error';
+  request_id: string;
+  version?: number;
+  owner_request_id?: string;
+  expires_at?: number;
+  summary?: string | null;
+  reason?: string;
+};
+
 function emptySessionContext(): SessionContextRow {
   return {
     id: 1,
@@ -827,6 +854,15 @@ export class SessionDO {
   private readonly sql: DurableObjectStorage['sql'];
   private lastRequestTimestamp = 0;
   private requestsInWindow = 0;
+  private readonly personMemoryLocks = new Map<string, PersonMemoryLockState>();
+  private readonly personMemoryRecentResults = new Map<
+    string,
+    {
+      request_id: string;
+      expires_at: number;
+      result: PersonMemoryRefreshResult;
+    }
+  >();
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -1126,6 +1162,71 @@ export class SessionDO {
         timestamp?: number;
       }>);
       return new Response('ok');
+    }
+
+    if (method === 'POST' && pathname.endsWith('/acquire-memory-lock')) {
+      const payload = (await request.json().catch(() => null)) as {
+        shopify_customer_id?: string;
+        request_id?: string;
+        lock_ttl_ms?: number;
+      } | null;
+      if (!payload?.shopify_customer_id || !payload?.request_id) {
+        return new Response('Bad Request: shopify_customer_id and request_id required', { status: 400 });
+      }
+      const lock = this.acquirePersonMemoryLock(
+        payload.shopify_customer_id,
+        payload.request_id,
+        typeof payload.lock_ttl_ms === 'number' ? payload.lock_ttl_ms : PERSON_MEMORY_LOCK_TTL_MS,
+      );
+      return new Response(JSON.stringify({ ok: true, ...lock }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (method === 'POST' && pathname.endsWith('/release-memory-lock')) {
+      const payload = (await request.json().catch(() => null)) as {
+        shopify_customer_id?: string;
+        request_id?: string;
+      } | null;
+      if (!payload?.shopify_customer_id || !payload?.request_id) {
+        return new Response('Bad Request: shopify_customer_id and request_id required', { status: 400 });
+      }
+      const released = this.releasePersonMemoryLock(payload.shopify_customer_id, payload.request_id);
+      return new Response(JSON.stringify({ ok: true, released }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (method === 'POST' && pathname.endsWith('/refresh-memory-atomic')) {
+      const payload = (await request.json().catch(() => null)) as {
+        shopify_customer_id?: string;
+        request_id?: string;
+        reason?: string;
+      } | null;
+      if (!payload?.shopify_customer_id || !payload?.request_id) {
+        return new Response('Bad Request: shopify_customer_id and request_id required', { status: 400 });
+      }
+      try {
+        const result = await this.refreshPersonMemoryAtomic({
+          shopify_customer_id: payload.shopify_customer_id,
+          request_id: payload.request_id,
+          reason: payload.reason,
+        });
+        return new Response(JSON.stringify(result), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (error) {
+        console.error('[person_memory] refresh failed:', error);
+        return new Response(JSON.stringify({
+          ok: false,
+          status: 'error',
+          request_id: payload.request_id,
+          reason: payload.reason,
+        } satisfies PersonMemoryRefreshResult), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // POST /replay-check
@@ -1779,6 +1880,210 @@ export class SessionDO {
     this.trimProactiveActivations();
     console.log(`[SessionDO] 🚀 Proactive chat activated for ${customerId}/${sessionId}, reason: ${reason}`);
   }
+
+  private cleanupExpiredPersonMemoryState(referenceTs = now()): void {
+    for (const [customerId, lock] of this.personMemoryLocks.entries()) {
+      if (lock.expires_at <= referenceTs) {
+        this.personMemoryLocks.delete(customerId);
+      }
+    }
+    for (const [key, entry] of this.personMemoryRecentResults.entries()) {
+      if (entry.expires_at <= referenceTs) {
+        this.personMemoryRecentResults.delete(key);
+      }
+    }
+  }
+
+  private recentPersonMemoryKey(customerId: string, requestId: string): string {
+    return `${customerId}::${requestId}`;
+  }
+
+  private getRecentPersonMemoryResult(customerId: string, requestId: string): PersonMemoryRefreshResult | null {
+    this.cleanupExpiredPersonMemoryState();
+    const entry = this.personMemoryRecentResults.get(this.recentPersonMemoryKey(customerId, requestId));
+    return entry ? entry.result : null;
+  }
+
+  private rememberPersonMemoryResult(customerId: string, requestId: string, result: PersonMemoryRefreshResult): void {
+    this.cleanupExpiredPersonMemoryState();
+    this.personMemoryRecentResults.set(this.recentPersonMemoryKey(customerId, requestId), {
+      request_id: requestId,
+      expires_at: now() + PERSON_MEMORY_RECENT_TTL_MS,
+      result,
+    });
+  }
+
+  private acquirePersonMemoryLock(
+    customerId: string,
+    requestId: string,
+    ttlMs = PERSON_MEMORY_LOCK_TTL_MS,
+  ): { acquired: boolean; already_owned: boolean; owner_request_id: string; expires_at: number } {
+    const safeTtl = Number.isFinite(ttlMs) ? Math.max(1_000, Math.trunc(ttlMs)) : PERSON_MEMORY_LOCK_TTL_MS;
+    const currentTs = now();
+    this.cleanupExpiredPersonMemoryState(currentTs);
+    const existing = this.personMemoryLocks.get(customerId);
+    if (existing) {
+      return {
+        acquired: false,
+        already_owned: existing.owner_request_id === requestId,
+        owner_request_id: existing.owner_request_id,
+        expires_at: existing.expires_at,
+      };
+    }
+    const lock = {
+      owner_request_id: requestId,
+      expires_at: currentTs + safeTtl,
+    } satisfies PersonMemoryLockState;
+    this.personMemoryLocks.set(customerId, lock);
+    console.log('[person_memory] lock_acquire', JSON.stringify({
+      customer_id: customerId,
+      request_id: requestId,
+      expires_at: lock.expires_at,
+    }));
+    return {
+      acquired: true,
+      already_owned: false,
+      owner_request_id: requestId,
+      expires_at: lock.expires_at,
+    };
+  }
+
+  private releasePersonMemoryLock(customerId: string, requestId: string): boolean {
+    const existing = this.personMemoryLocks.get(customerId);
+    if (!existing || existing.owner_request_id !== requestId) return false;
+    this.personMemoryLocks.delete(customerId);
+    console.log('[person_memory] lock_release', JSON.stringify({
+      customer_id: customerId,
+      request_id: requestId,
+    }));
+    return true;
+  }
+
+  private async refreshPersonMemoryAtomic(payload: {
+    shopify_customer_id: string;
+    request_id: string;
+    reason?: string;
+  }): Promise<PersonMemoryRefreshResult> {
+    const cached = this.getRecentPersonMemoryResult(payload.shopify_customer_id, payload.request_id);
+    if (cached) {
+      console.log('[person_memory] idempotent_hit', JSON.stringify({
+        customer_id: payload.shopify_customer_id,
+        request_id: payload.request_id,
+        source: 'do-cache',
+        cached_status: cached.status,
+      }));
+      return { ...cached, status: 'idempotent' };
+    }
+
+    if (!this.env.DB_CHATBOT) {
+      return {
+        ok: true,
+        status: 'db_unavailable',
+        request_id: payload.request_id,
+        reason: payload.reason,
+      };
+    }
+
+    const lock = this.acquirePersonMemoryLock(payload.shopify_customer_id, payload.request_id);
+    if (!lock.acquired) {
+      const result = {
+        ok: true,
+        status: lock.already_owned ? 'in_flight' : 'lock_conflict',
+        request_id: payload.request_id,
+        owner_request_id: lock.owner_request_id,
+        expires_at: lock.expires_at,
+        reason: payload.reason,
+      } satisfies PersonMemoryRefreshResult;
+      console.warn('[person_memory] lock_conflict', JSON.stringify({
+        customer_id: payload.shopify_customer_id,
+        request_id: payload.request_id,
+        owner_request_id: lock.owner_request_id,
+        already_owned: lock.already_owned,
+      }));
+      return result;
+    }
+
+    try {
+      const snippet = historyToPlainText(this.getHistory());
+      if (!snippet.trim()) {
+        const result = {
+          ok: true,
+          status: 'empty_snippet',
+          request_id: payload.request_id,
+          reason: payload.reason,
+        } satisfies PersonMemoryRefreshResult;
+        this.rememberPersonMemoryResult(payload.shopify_customer_id, payload.request_id, result);
+        return result;
+      }
+
+      const current = await loadPersonMemoryRecord(this.env.DB_CHATBOT, payload.shopify_customer_id);
+      if (current?.lastUpdatedByRequestId === payload.request_id) {
+        const result = {
+          ok: true,
+          status: 'idempotent',
+          request_id: payload.request_id,
+          version: current.version,
+          summary: current.summary,
+          reason: payload.reason,
+        } satisfies PersonMemoryRefreshResult;
+        this.rememberPersonMemoryResult(payload.shopify_customer_id, payload.request_id, result);
+        console.log('[person_memory] idempotent_hit', JSON.stringify({
+          customer_id: payload.shopify_customer_id,
+          request_id: payload.request_id,
+          source: 'd1-row',
+          version: current.version,
+        }));
+        return result;
+      }
+
+      const merged = await mergeSessionIntoPersonSummary(this.env, current?.summary ?? null, snippet);
+      const writeResult = await upsertPersonMemoryVersioned(this.env.DB_CHATBOT, {
+        shopifyCustomerId: payload.shopify_customer_id,
+        summary: merged,
+        expectedVersion: current?.version ?? 0,
+        requestId: payload.request_id,
+      });
+
+      if (writeResult.status === 'conflict') {
+        const result = {
+          ok: true,
+          status: 'version_conflict',
+          request_id: payload.request_id,
+          version: writeResult.record?.version,
+          summary: writeResult.record?.summary ?? null,
+          reason: payload.reason,
+        } satisfies PersonMemoryRefreshResult;
+        this.rememberPersonMemoryResult(payload.shopify_customer_id, payload.request_id, result);
+        console.warn('[person_memory] version_conflict', JSON.stringify({
+          customer_id: payload.shopify_customer_id,
+          request_id: payload.request_id,
+          expected_version: current?.version ?? 0,
+          actual_version: writeResult.record?.version ?? null,
+        }));
+        return result;
+      }
+
+      const result = {
+        ok: true,
+        status: writeResult.status === 'idempotent' ? 'idempotent' : 'success',
+        request_id: payload.request_id,
+        version: writeResult.record.version,
+        summary: writeResult.record.summary,
+        reason: payload.reason,
+      } satisfies PersonMemoryRefreshResult;
+      this.rememberPersonMemoryResult(payload.shopify_customer_id, payload.request_id, result);
+      console.log('[person_memory] refresh_success', JSON.stringify({
+        customer_id: payload.shopify_customer_id,
+        request_id: payload.request_id,
+        version: writeResult.record.version,
+        status: result.status,
+        reason: payload.reason ?? 'chat_turn',
+      }));
+      return result;
+    } finally {
+      this.releasePersonMemoryLock(payload.shopify_customer_id, payload.request_id);
+    }
+  }
 }
 
 // ============================================================================
@@ -2040,17 +2345,28 @@ async function streamAssistantResponse(
         }
       }
 
-      const refreshPersonMemory = async () => {
+      const buildPersonMemoryRequestId = (reason: 'chat_turn' | 'image_surrogate') =>
+        `${sessionId}:person_memory:${userMessageTs}:${reason}`;
+
+      const refreshPersonMemory = async (reason: 'chat_turn' | 'image_surrogate') => {
         if (!shopifyCustomerId || !env.DB_CHATBOT) return;
+        const requestId = buildPersonMemoryRequestId(reason);
         try {
-          const histResp = await stub.fetch('https://session/history');
-          const historyData = await histResp.json().catch(() => []);
-          const hist = ensureHistoryArray(historyData);
-          const snippet = historyToPlainText(hist);
-          if (!snippet.trim()) return;
-          const prev = await loadPersonMemory(env.DB_CHATBOT, shopifyCustomerId);
-          const merged = await mergeSessionIntoPersonSummary(env, prev, snippet);
-          await upsertPersonMemory(env.DB_CHATBOT, shopifyCustomerId, merged);
+          const refreshResp = await stub.fetch('https://session/refresh-memory-atomic', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              shopify_customer_id: shopifyCustomerId,
+              request_id: requestId,
+              reason,
+            }),
+          });
+          const refreshData = (await refreshResp.json().catch(() => null)) as Record<string, unknown> | null;
+          if (!refreshResp.ok) {
+            console.error('[person_memory] refresh failed:', refreshData ?? { status: refreshResp.status, request_id: requestId });
+            return;
+          }
+          console.log('[person_memory] refresh result', JSON.stringify(refreshData ?? { request_id: requestId, status: 'unknown' }));
         } catch (e) {
           console.error('[person_memory] refresh failed:', e);
         }
@@ -2058,11 +2374,12 @@ async function streamAssistantResponse(
 
       const maybeRefreshPersonMemory = () => {
         if (!shopifyCustomerId || !env.DB_CHATBOT) return;
+        const task = refreshPersonMemory('chat_turn');
         if (executionCtx) {
-          executionCtx.waitUntil(refreshPersonMemory());
+          executionCtx.waitUntil(task);
           return;
         }
-        void refreshPersonMemory();
+        void task;
       };
 
       const maybePersistImageSurrogate = () => {
@@ -2095,7 +2412,7 @@ async function streamAssistantResponse(
           } catch (e) {
             console.warn('[image_caption] surrogate persist failed:', e);
           } finally {
-            await refreshPersonMemory();
+            await refreshPersonMemory('image_surrogate');
           }
         };
 

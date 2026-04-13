@@ -5,27 +5,147 @@
 import type { Env } from './config/bindings';
 import { getGroqResponse, type GroqMessage } from './ai-client';
 
-export async function loadPersonMemory(db: D1Database, shopifyCustomerId: string): Promise<string | null> {
+export type PersonMemoryRecord = {
+  shopifyCustomerId: string;
+  summary: string;
+  updatedAt: number;
+  version: number;
+  lastUpdatedByRequestId: string | null;
+};
+
+export type PersonMemoryWriteResult =
+  | {
+      status: 'created' | 'updated' | 'idempotent';
+      record: PersonMemoryRecord;
+    }
+  | {
+      status: 'conflict';
+      record: PersonMemoryRecord | null;
+    };
+
+type PersonMemoryRow = {
+  shopify_customer_id: string;
+  summary: string;
+  updated_at: number;
+  version?: number | null;
+  last_updated_by_request_id?: string | null;
+};
+
+function normalizePersonMemorySummary(summary: string): string {
+  return String(summary ?? '').trim().slice(0, 2000);
+}
+
+function mapPersonMemoryRow(row: PersonMemoryRow | null): PersonMemoryRecord | null {
+  if (!row) return null;
+  return {
+    shopifyCustomerId: row.shopify_customer_id,
+    summary: normalizePersonMemorySummary(row.summary ?? ''),
+    updatedAt: typeof row.updated_at === 'number' ? row.updated_at : Number(row.updated_at ?? 0),
+    version: typeof row.version === 'number' ? row.version : Number(row.version ?? 0),
+    lastUpdatedByRequestId:
+      typeof row.last_updated_by_request_id === 'string' && row.last_updated_by_request_id.trim().length > 0
+        ? row.last_updated_by_request_id
+        : null,
+  };
+}
+
+export async function loadPersonMemoryRecord(
+  db: D1Database,
+  shopifyCustomerId: string,
+): Promise<PersonMemoryRecord | null> {
   const row = await db
-    .prepare('SELECT summary FROM person_memory WHERE shopify_customer_id = ?')
+    .prepare(
+      `SELECT shopify_customer_id, summary, updated_at, version, last_updated_by_request_id
+       FROM person_memory
+       WHERE shopify_customer_id = ?`,
+    )
     .bind(shopifyCustomerId)
-    .first<{ summary: string }>();
-  const s = row?.summary?.trim();
-  return s && s.length > 0 ? s : null;
+    .first<PersonMemoryRow>();
+  return mapPersonMemoryRow(row ?? null);
+}
+
+export async function loadPersonMemory(db: D1Database, shopifyCustomerId: string): Promise<string | null> {
+  const record = await loadPersonMemoryRecord(db, shopifyCustomerId);
+  const summary = record?.summary?.trim();
+  return summary && summary.length > 0 ? summary : null;
+}
+
+export async function upsertPersonMemoryVersioned(
+  db: D1Database,
+  options: {
+    shopifyCustomerId: string;
+    summary: string;
+    expectedVersion: number;
+    requestId: string;
+  },
+): Promise<PersonMemoryWriteResult> {
+  const normalizedSummary = normalizePersonMemorySummary(options.summary);
+  const ts = Date.now();
+  const nextVersion = Math.max(1, Math.trunc(options.expectedVersion) + 1);
+
+  const result = await db
+    .prepare(
+      `INSERT INTO person_memory (
+         shopify_customer_id,
+         summary,
+         updated_at,
+         version,
+         last_updated_by_request_id
+       )
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(shopify_customer_id) DO UPDATE SET
+         summary = excluded.summary,
+         updated_at = excluded.updated_at,
+         version = excluded.version,
+         last_updated_by_request_id = excluded.last_updated_by_request_id
+       WHERE person_memory.version = ?`,
+    )
+    .bind(
+      options.shopifyCustomerId,
+      normalizedSummary,
+      ts,
+      nextVersion,
+      options.requestId,
+      Math.max(0, Math.trunc(options.expectedVersion)),
+    )
+    .run();
+
+  const changes = Number((result as { meta?: { changes?: number } })?.meta?.changes ?? 0);
+  if (changes > 0) {
+    return {
+      status: options.expectedVersion > 0 ? 'updated' : 'created',
+      record: {
+        shopifyCustomerId: options.shopifyCustomerId,
+        summary: normalizedSummary,
+        updatedAt: ts,
+        version: nextVersion,
+        lastUpdatedByRequestId: options.requestId,
+      },
+    };
+  }
+
+  const current = await loadPersonMemoryRecord(db, options.shopifyCustomerId);
+  if (current?.lastUpdatedByRequestId === options.requestId) {
+    return {
+      status: 'idempotent',
+      record: current,
+    };
+  }
+
+  return {
+    status: 'conflict',
+    record: current,
+  };
 }
 
 export async function upsertPersonMemory(db: D1Database, shopifyCustomerId: string, summary: string): Promise<void> {
-  const ts = Date.now();
-  await db
-    .prepare(
-      `INSERT INTO person_memory (shopify_customer_id, summary, updated_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT(shopify_customer_id) DO UPDATE SET
-         summary = excluded.summary,
-         updated_at = excluded.updated_at`,
-    )
-    .bind(shopifyCustomerId, summary, ts)
-    .run();
+  const current = await loadPersonMemoryRecord(db, shopifyCustomerId);
+  await upsertPersonMemoryVersioned(db, {
+    shopifyCustomerId,
+    summary,
+    expectedVersion: current?.version ?? 0,
+    requestId: `legacy:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`,
+  });
 }
 
 /** Skraca rozmowę do tekstu dla modelu streszczającego. */
@@ -110,7 +230,7 @@ Nie wymyślaj faktów. Nie opisuj zamówień ani numerów zamówień — tylko p
     }
   }
   try {
-    const normalized = (out ?? '').trim().slice(0, 2000);
+    const normalized = normalizePersonMemorySummary(out ?? '');
     if (normalized && normalized.length > 0) return normalized;
   } catch (error) {
     // przechwyć poniżej

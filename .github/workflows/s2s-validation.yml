@@ -12,16 +12,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 18 (cache npm)
+      - name: Setup Node.js 20 (cache npm)
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: 'npm'
-          cache-dependency-path: workers/chat/package-lock.json
+          cache-dependency-path: workers/chat/package.json
 
-      - name: Install dependencies (workers/chat)
+      - name: Install dependencies (workers/chat, ignore stale lockfile)
         working-directory: workers/chat
-        run: npm install --legacy-peer-deps --no-audit --no-fund
+        run: npm install --workspaces=false --package-lock=false --legacy-peer-deps --no-audit --no-fund
 
       - name: Run S2S Vitest tests (explicit files)
         working-directory: workers/chat

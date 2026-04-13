@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { SessionDO } from '../src/index';
 import { makeDurableStateStub } from './helpers/session-do-sql-stub';
 
@@ -73,13 +73,11 @@ describe('SessionDO', () => {
     const { state } = makeDurableStateStub();
     const doStub = new SessionDO(state, mockEnv);
 
-    // hit the endpoint many times
     for (let i = 0; i < 21; i++) {
       const r = await doStub.fetch(new Request('https://session/history'));
       if (i < 20) expect(r.status).toBe(200);
       else expect(r.status).toBe(429);
     }
-
   });
 
   it('should replace latest user message text by timestamp', async () => {
@@ -305,5 +303,187 @@ describe('SessionDO', () => {
     expect(
       writes.some((entry) => entry.sql.includes('INSERT INTO sessions') && entry.args.includes('ok')),
     ).toBe(true);
+  });
+
+  it('should acquire and release person memory lock for the same customer', async () => {
+    const { state } = makeDurableStateStub();
+    const doStub = new SessionDO(state, mockEnv);
+
+    const acquire = await doStub.fetch(
+      new Request('https://session/acquire-memory-lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shopify_customer_id: 'gid://shopify/Customer/1',
+          request_id: 'req-1',
+        }),
+      }),
+    );
+    const acquireJson = (await acquire.json()) as { acquired: boolean };
+    expect(acquireJson.acquired).toBe(true);
+
+    const release = await doStub.fetch(
+      new Request('https://session/release-memory-lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shopify_customer_id: 'gid://shopify/Customer/1',
+          request_id: 'req-1',
+        }),
+      }),
+    );
+    const releaseJson = (await release.json()) as { released: boolean };
+    expect(releaseJson.released).toBe(true);
+  });
+
+  it('should reject competing person memory lock owners', async () => {
+    const { state } = makeDurableStateStub();
+    const doStub = new SessionDO(state, mockEnv);
+
+    await doStub.fetch(
+      new Request('https://session/acquire-memory-lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shopify_customer_id: 'gid://shopify/Customer/1',
+          request_id: 'req-1',
+        }),
+      }),
+    );
+
+    const acquire = await doStub.fetch(
+      new Request('https://session/acquire-memory-lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shopify_customer_id: 'gid://shopify/Customer/1',
+          request_id: 'req-2',
+        }),
+      }),
+    );
+    const acquireJson = (await acquire.json()) as { acquired: boolean; owner_request_id: string };
+    expect(acquireJson.acquired).toBe(false);
+    expect(acquireJson.owner_request_id).toBe('req-1');
+  });
+
+  it('should return empty snippet when atomic refresh has nothing meaningful to persist', async () => {
+    const { state } = makeDurableStateStub();
+    const doStub = new SessionDO(state, { DB_CHATBOT: {} } as any);
+
+    const refresh = await doStub.fetch(
+      new Request('https://session/refresh-memory-atomic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shopify_customer_id: 'gid://shopify/Customer/1',
+          request_id: 'req-empty',
+          reason: 'chat_turn',
+        }),
+      }),
+    );
+    const refreshJson = (await refresh.json()) as { status: string };
+    expect(refreshJson.status).toBe('empty_snippet');
+  });
+
+  it('should return idempotent for repeated atomic refresh request ids', async () => {
+    const { state } = makeDurableStateStub();
+    const doStub = new SessionDO(state, { DB_CHATBOT: {} } as any);
+
+    await doStub.fetch(
+      new Request('https://session/refresh-memory-atomic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shopify_customer_id: 'gid://shopify/Customer/1',
+          request_id: 'req-empty',
+          reason: 'chat_turn',
+        }),
+      }),
+    );
+
+    const replay = await doStub.fetch(
+      new Request('https://session/refresh-memory-atomic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shopify_customer_id: 'gid://shopify/Customer/1',
+          request_id: 'req-empty',
+          reason: 'chat_turn',
+        }),
+      }),
+    );
+    const replayJson = (await replay.json()) as { status: string };
+    expect(replayJson.status).toBe('idempotent');
+  });
+
+  it('should return lock_conflict when atomic refresh sees another owner', async () => {
+    const { state } = makeDurableStateStub();
+    const doStub = new SessionDO(state, { DB_CHATBOT: {} } as any);
+
+    await doStub.fetch(
+      new Request('https://session/acquire-memory-lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shopify_customer_id: 'gid://shopify/Customer/1',
+          request_id: 'req-lock-owner',
+        }),
+      }),
+    );
+
+    const refresh = await doStub.fetch(
+      new Request('https://session/refresh-memory-atomic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shopify_customer_id: 'gid://shopify/Customer/1',
+          request_id: 'req-contender',
+          reason: 'chat_turn',
+        }),
+      }),
+    );
+    const refreshJson = (await refresh.json()) as { status: string; owner_request_id: string };
+    expect(refreshJson.status).toBe('lock_conflict');
+    expect(refreshJson.owner_request_id).toBe('req-lock-owner');
+  });
+
+  it('should allow acquiring a new lock after ttl expiry', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-13T12:00:00.000Z'));
+    try {
+      const { state } = makeDurableStateStub();
+      const doStub = new SessionDO(state, mockEnv);
+
+      await doStub.fetch(
+        new Request('https://session/acquire-memory-lock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            shopify_customer_id: 'gid://shopify/Customer/1',
+            request_id: 'req-old',
+            lock_ttl_ms: 1000,
+          }),
+        }),
+      );
+
+      vi.advanceTimersByTime(1500);
+
+      const reacquire = await doStub.fetch(
+        new Request('https://session/acquire-memory-lock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            shopify_customer_id: 'gid://shopify/Customer/1',
+            request_id: 'req-new',
+            lock_ttl_ms: 1000,
+          }),
+        }),
+      );
+      const reacquireJson = (await reacquire.json()) as { acquired: boolean; owner_request_id: string };
+      expect(reacquireJson.acquired).toBe(true);
+      expect(reacquireJson.owner_request_id).toBe('req-new');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
