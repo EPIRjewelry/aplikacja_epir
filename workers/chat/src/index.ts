@@ -366,6 +366,66 @@ function verifyS2SChatRequest(request: Request, env: Env): S2SChatAuthorizationR
   };
 }
 
+
+function parseHistoryRequestBody(input: unknown): { session_id: string } | null {
+  if (typeof input !== 'object' || input === null) return null;
+  const maybe = input as Record<string, unknown>;
+  const sessionId = typeof maybe.session_id === 'string' ? maybe.session_id.trim() : '';
+  if (!sessionId) return null;
+  return { session_id: sessionId };
+}
+
+function normalizeHistoryForUi(history: HistoryEntry[]): Array<{ role: 'user' | 'assistant'; content: string }> {
+  return history
+    .filter((entry) => entry.role === 'user' || entry.role === 'assistant')
+    .map((entry) => ({
+      role: entry.role as 'user' | 'assistant',
+      content: typeof entry.content === 'string' ? entry.content.trim() : '',
+    }))
+    .filter((entry) => entry.content.length > 0);
+}
+
+async function handleHistoryRequest(request: Request, env: Env): Promise<Response> {
+  const raw = await request.json().catch(() => null);
+  const payload = parseHistoryRequestBody(raw);
+  if (!payload) {
+    return new Response('Bad Request: session_id required', {
+      status: 400,
+      headers: cors(env, request),
+    });
+  }
+
+  const doId = env.SESSION_DO.idFromName(payload.session_id);
+  const stub = env.SESSION_DO.get(doId);
+
+  let historyRaw: unknown;
+  try {
+    const historyResp = await stub.fetch('https://session/history');
+    if (!historyResp.ok) {
+      throw new Error(`Session history returned ${historyResp.status}`);
+    }
+    historyRaw = await historyResp.json().catch(() => []);
+  } catch (error) {
+    console.error('[handleHistory] Failed to fetch session history', error);
+    return new Response(JSON.stringify({ error: 'history_unavailable' }), {
+      status: 502,
+      headers: {
+        ...cors(env, request),
+        'Content-Type': 'application/json',
+      },
+    });
+  }
+
+  const history = normalizeHistoryForUi(ensureHistoryArray(historyRaw));
+  return new Response(JSON.stringify({ session_id: payload.session_id, history }), {
+    status: 200,
+    headers: {
+      ...cors(env, request),
+      'Content-Type': 'application/json',
+    },
+  });
+}
+
 /** Parsuje tablicę `parts` (AI SDK v6 / widget): text + opcjonalny file (base64). */
 function extractFromPartsArray(parts: unknown): { text: string; imageRaw?: string; mediaType?: string } | null {
   if (!Array.isArray(parts) || parts.length === 0) return null;
@@ -3099,6 +3159,11 @@ export default {
       return handleConsentAppProxy(request, env);
     }
 
+    // Historia czatu storefrontu (App Proxy)
+    if (url.pathname === '/apps/assistant/history' && request.method === 'POST') {
+      return handleHistoryRequest(request, env);
+    }
+
     // Endpoint czatu headless / BFF – zabezpieczony shared secret + headers kontekstowe.
     // Uwaga: Shopify App Proxy przekazuje /apps/assistant/chat jako /chat do backendu
     // i dodaje podpis HMAC w query/headerach.
@@ -3116,6 +3181,23 @@ export default {
         return s2sResult.response;
       }
       return handleChat(request, env, s2sResult.contextOverride, ctx);
+    }
+
+    // Historia czatu headless / BFF – ten sam kontrakt auth co `/chat`.
+    if (url.pathname === '/history' && request.method === 'POST') {
+      if (hasAppProxySignature(request, url)) {
+        const appProxyAuthError = await authorizeAppProxyRequest(request, env);
+        if (appProxyAuthError) {
+          return appProxyAuthError;
+        }
+        return handleHistoryRequest(request, env);
+      }
+
+      const s2sHistory = verifyS2SChatRequest(request, env);
+      if (!s2sHistory.ok) {
+        return s2sHistory.response;
+      }
+      return handleHistoryRequest(request, env);
     }
 
     // Consent Gate (S2S jak /chat — ten sam kontrakt nagłówków)

@@ -25,6 +25,14 @@ export type ChatRequestPart =
   | {type: 'file'; data: string; mediaType: string};
 
 const ANONYMOUS_ID_KEY = 'chat-anonymous-id';
+const SESSION_ID_KEY = 'epir-assistant-session';
+const CHAT_TRANSCRIPT_STORAGE_PREFIX = 'epir-chat-transcript';
+const CHAT_TRANSCRIPT_MAX_MESSAGES = 100;
+
+type PersistedChatMessage = {
+  role: 'user' | 'assistant';
+  text: string;
+};
 
 export function getOrCreateAnonymousId(): string {
   if (typeof window === 'undefined') return '';
@@ -36,7 +44,198 @@ export function getOrCreateAnonymousId(): string {
   return id ?? '';
 }
 
-const SESSION_ID_KEY = 'epir-assistant-session';
+function buildChatTranscriptStorageKey(
+  storefrontId: string,
+  channel: string,
+  actorId: string,
+): string {
+  return [
+    CHAT_TRANSCRIPT_STORAGE_PREFIX,
+    storefrontId || 'unknown-storefront',
+    channel || 'unknown-channel',
+    actorId || 'anonymous',
+  ].join(':');
+}
+
+function getChatTranscriptStorageKeys(
+  storefrontId: string,
+  channel: string,
+): string[] {
+  if (typeof window === 'undefined') return [];
+
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  const addKey = (actorId: string) => {
+    const key = buildChatTranscriptStorageKey(storefrontId, channel, actorId);
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      keys.push(key);
+    }
+  };
+
+  const sessionId = sessionStorage.getItem(SESSION_ID_KEY);
+  if (sessionId) addKey(sessionId);
+
+  const anonymousId = sessionStorage.getItem(ANONYMOUS_ID_KEY) ?? getOrCreateAnonymousId();
+  if (anonymousId) addKey(anonymousId);
+
+  return keys;
+}
+
+function normalizeTranscriptMessages(
+  input: unknown,
+  source: string,
+): ChatMessage[] {
+  if (!Array.isArray(input)) return [];
+
+  const normalized: ChatMessage[] = [];
+  for (let i = 0; i < input.length; i++) {
+    const entry = input[i];
+    if (!entry || typeof entry !== 'object') continue;
+
+    const maybe = entry as {
+      role?: unknown;
+      text?: unknown;
+      content?: unknown;
+    };
+    const role =
+      maybe.role === 'user'
+        ? 'user'
+        : maybe.role === 'assistant'
+          ? 'assistant'
+          : null;
+    const rawText =
+      typeof maybe.text === 'string'
+        ? maybe.text
+        : typeof maybe.content === 'string'
+          ? maybe.content
+          : '';
+    const text = rawText.trim();
+    if (!role || !text) continue;
+
+    normalized.push({
+      id: `${source}-${role}-${i}-${Math.random().toString(36).slice(2, 8)}`,
+      role,
+      text,
+    });
+  }
+
+  return normalized.slice(-CHAT_TRANSCRIPT_MAX_MESSAGES);
+}
+
+function toPersistedChatMessages(messages: ChatMessage[]): PersistedChatMessage[] {
+  return messages
+    .filter((message) => message.role === 'user' || message.role === 'assistant')
+    .map((message) => ({
+      role: message.role,
+      text: message.text.trim(),
+    }))
+    .filter((message) => message.text.length > 0)
+    .slice(-CHAT_TRANSCRIPT_MAX_MESSAGES);
+}
+
+function readPersistedChatMessages(
+  storefrontId: string,
+  channel: string,
+): ChatMessage[] {
+  if (typeof window === 'undefined') return [];
+
+  const keys = getChatTranscriptStorageKeys(storefrontId, channel);
+  const primaryKey = keys[0] ?? null;
+
+  for (const key of keys) {
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) continue;
+      const normalized = normalizeTranscriptMessages(JSON.parse(raw), 'restored');
+      if (!normalized.length) continue;
+      if (primaryKey && primaryKey !== key) {
+        sessionStorage.setItem(
+          primaryKey,
+          JSON.stringify(toPersistedChatMessages(normalized)),
+        );
+      }
+      return normalized;
+    } catch {
+      // ignore malformed storage
+    }
+  }
+
+  return [];
+}
+
+function syncPersistedChatMessages(
+  storefrontId: string,
+  channel: string,
+  messages: ChatMessage[],
+): void {
+  if (typeof window === 'undefined') return;
+
+  const normalized = toPersistedChatMessages(messages);
+  const keys = getChatTranscriptStorageKeys(storefrontId, channel);
+  if (!keys.length) return;
+
+  if (!normalized.length) {
+    keys.forEach((key) => sessionStorage.removeItem(key));
+    return;
+  }
+
+  const serialized = JSON.stringify(normalized);
+  keys.forEach((key) => sessionStorage.setItem(key, serialized));
+}
+
+function resolveChatHistoryApiUrl(chatApiUrl: string): string | null {
+  if (!chatApiUrl) return null;
+
+  const rewritePath = (pathname: string): string | null => {
+    if (pathname.endsWith('/api/chat')) {
+      return pathname.slice(0, -'/api/chat'.length) + '/api/chat-history';
+    }
+    if (pathname.endsWith('/chat')) {
+      return pathname.slice(0, -'/chat'.length) + '/history';
+    }
+    return null;
+  };
+
+  try {
+    const base =
+      typeof window !== 'undefined'
+        ? window.location.origin
+        : 'https://epir.invalid';
+    const url = new URL(chatApiUrl, base);
+    const nextPath = rewritePath(url.pathname);
+    if (!nextPath) return null;
+    url.pathname = nextPath;
+    return typeof window !== 'undefined' && url.origin === window.location.origin
+      ? `${url.pathname}${url.search}`
+      : url.toString();
+  } catch {
+    if (chatApiUrl.endsWith('/api/chat')) {
+      return chatApiUrl.replace(/\/api\/chat$/, '/api/chat-history');
+    }
+    if (chatApiUrl.endsWith('/chat')) {
+      return chatApiUrl.replace(/\/chat$/, '/history');
+    }
+    return null;
+  }
+}
+
+function normalizeHistoryResponse(input: unknown): ChatMessage[] {
+  if (Array.isArray(input)) {
+    return normalizeTranscriptMessages(input, 'history');
+  }
+  if (
+    input &&
+    typeof input === 'object' &&
+    Array.isArray((input as {history?: unknown}).history)
+  ) {
+    return normalizeTranscriptMessages(
+      (input as {history: unknown[]}).history,
+      'history',
+    );
+  }
+  return [];
+}
 
 function createFileReadError(details?: string): Error {
   const baseMessage = 'Nie udało się odczytać załączonego pliku. Spróbuj ponownie.';
@@ -112,12 +311,20 @@ function ChatWidgetFallback({
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageImageUrlsRef = useRef<Set<string>>(new Set());
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const hydrationCompleteRef = useRef(false);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({behavior: 'smooth'});
   }, []);
 
+  const commitMessages = useCallback((next: ChatMessage[]) => {
+    messagesRef.current = next;
+    setMessages(next);
+  }, []);
+
   useEffect(() => {
+    messagesRef.current = messages;
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
@@ -136,6 +343,60 @@ function ChatWidgetFallback({
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const restored = readPersistedChatMessages(storefrontId, channel);
+    if (restored.length > 0) {
+      commitMessages(restored);
+    }
+    hydrationCompleteRef.current = true;
+
+    const sessionId = sessionStorage.getItem(SESSION_ID_KEY);
+    const historyApiUrl = resolveChatHistoryApiUrl(chatApiUrl);
+    if (!historyApiUrl || !sessionId) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch(historyApiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({session_id: sessionId}),
+        });
+        if (!response.ok) return;
+        const data = await response.json().catch(() => null);
+        const history = normalizeHistoryResponse(data);
+        if (!history.length || cancelled) return;
+
+        const currentSignature = JSON.stringify(
+          messagesRef.current.map(({role, text}) => ({role, text})),
+        );
+        const nextSignature = JSON.stringify(
+          history.map(({role, text}) => ({role, text})),
+        );
+        if (currentSignature !== nextSignature) {
+          commitMessages(history);
+        }
+        syncPersistedChatMessages(storefrontId, channel, history);
+      } catch (error) {
+        console.warn('[ChatWidget] Failed to sync history', error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chatApiUrl, channel, commitMessages, storefrontId]);
+
+  useEffect(() => {
+    if (!hydrationCompleteRef.current) return;
+    syncPersistedChatMessages(storefrontId, channel, messages);
+  }, [channel, messages, storefrontId]);
+
   const sendMessage = useCallback(
     async (text: string) => {
       if (!messagingAllowed) return;
@@ -149,7 +410,8 @@ function ChatWidgetFallback({
         text: trimmed || (attachment ? 'Załączono zdjęcie' : ''),
         ...(attachment?.previewUrl ? {imagePreviewUrl: attachment.previewUrl} : {}),
       };
-      setMessages((prev) => [...prev, userMessage]);
+      const nextMessagesAfterUser = [...messagesRef.current, userMessage];
+      commitMessages(nextMessagesAfterUser);
       setInputValue('');
       if (attachment?.previewUrl) {
         messageImageUrlsRef.current.add(attachment.previewUrl);
@@ -208,8 +470,8 @@ function ChatWidgetFallback({
           let buffer = '';
           let accumulated = '';
           const msgId = `assistant-${Date.now()}`;
-          setMessages((prev) => [
-            ...prev,
+          commitMessages([
+            ...messagesRef.current,
             {id: msgId, role: 'assistant', text: '...'},
           ]);
           while (true) {
@@ -225,7 +487,13 @@ function ChatWidgetFallback({
                 const jsonStr = line.slice(5).trim();
                 if (!jsonStr || jsonStr === '[DONE]') continue;
                 try {
-                  const parsed = JSON.parse(jsonStr);
+                  const parsed = JSON.parse(jsonStr) as {
+                    session_id?: string;
+                    error?: string;
+                    delta?: string;
+                    content?: string;
+                    done?: boolean;
+                  };
                   if (parsed.session_id) {
                     sessionStorage.setItem(SESSION_ID_KEY, parsed.session_id);
                   }
@@ -233,9 +501,11 @@ function ChatWidgetFallback({
                   if (parsed.delta) accumulated += parsed.delta;
                   if (parsed.content) accumulated = parsed.content;
                   if (parsed.done) break;
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === msgId ? {...m, text: accumulated || '...'} : m,
+                  commitMessages(
+                    messagesRef.current.map((message) =>
+                      message.id === msgId
+                        ? {...message, text: accumulated || '...'}
+                        : message,
                     ),
                   );
                 } catch (e) {
@@ -245,14 +515,17 @@ function ChatWidgetFallback({
               }
             }
           }
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === msgId ? {...m, text: accumulated || '(brak odpowiedzi)'} : m,
-            ),
+          const finalMessages = messagesRef.current.map((message) =>
+            message.id === msgId
+              ? {...message, text: accumulated || '(brak odpowiedzi)'}
+              : message,
           );
+          commitMessages(finalMessages);
+          syncPersistedChatMessages(storefrontId, channel, finalMessages);
         } else {
           const data = (await res.json().catch(() => ({}))) as ChatResponseBody & {
             error?: string;
+            session_id?: string;
           };
           if (!data.reply) throw new Error('No reply from server');
           const assistantMessage: ChatMessage = {
@@ -260,26 +533,40 @@ function ChatWidgetFallback({
             role: 'assistant',
             text: data.reply,
           };
-          setMessages((prev) => [...prev, assistantMessage]);
+          const nextMessagesAfterAssistant = [
+            ...messagesRef.current,
+            assistantMessage,
+          ];
+          commitMessages(nextMessagesAfterAssistant);
+          if (data.session_id) {
+            sessionStorage.setItem(SESSION_ID_KEY, data.session_id);
+          }
+          syncPersistedChatMessages(
+            storefrontId,
+            channel,
+            nextMessagesAfterAssistant,
+          );
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Wystąpił błąd';
         setErrorMessage(msg);
+        syncPersistedChatMessages(storefrontId, channel, messagesRef.current);
       } finally {
         setIsLoading(false);
         inputRef.current?.focus();
       }
     },
     [
-      chatApiUrl,
-      cartId,
       brand,
-      storefrontId,
+      cartId,
       channel,
-      route,
+      chatApiUrl,
+      commitMessages,
       isLoading,
-      pendingImage,
       messagingAllowed,
+      pendingImage,
+      route,
+      storefrontId,
     ],
   );
 

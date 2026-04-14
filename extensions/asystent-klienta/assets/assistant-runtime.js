@@ -5,6 +5,11 @@ window.__EPIR_ASSISTANT_RUNTIME_LOADED__=true;
 var EPIR_CHAT_WORKER_ENDPOINT = '/apps/assistant/chat';
 var EPIR_LOGGED_IN_CUSTOMER_CACHE_KEY = 'epir-logged-in-customer-id';
 var EPIR_LOGGED_IN_CUSTOMER_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+var EPIR_ASSISTANT_SESSION_KEY = 'epir-assistant-session';
+var EPIR_ASSISTANT_TRANSCRIPT_STORAGE_PREFIX = 'epir-assistant-transcript';
+var EPIR_ASSISTANT_HISTORY_ENDPOINT = '/apps/assistant/history';
+var EPIR_ASSISTANT_TRANSCRIPT_MAX_ENTRIES = 100;
+var EPIR_IMAGE_ATTACHMENT_PLACEHOLDER = '(załącznik obrazu)';
 /** Ostatnio wybrany obraz, izolowany per formularz czatu. */
 var epirPendingAttachmentByForm = new WeakMap();
 /** Maksymalny rozmiar załącznika obrazu (4 MB po stronie klienta przed base64). */
@@ -722,6 +727,214 @@ function teleportAssistantToBody(section) {
   }
 }
 
+
+function getAssistantHistoryEndpoint(section) {
+  return (
+    (section && section.dataset && section.dataset.historyEndpoint) ||
+    EPIR_ASSISTANT_HISTORY_ENDPOINT
+  );
+}
+
+function getAssistantTranscriptStorageKey(section, actorId) {
+  var normalizedActor = normalizeLoggedInCustomerId(actorId) || getEpirAnonymousIdForConsent();
+  var shopDomain = normalizeLoggedInCustomerId(getAssistantShopDomain(section)) || 'unknown-shop';
+  var storefrontId = normalizeLoggedInCustomerId(section && section.dataset && section.dataset.storefrontId) || 'epir-liquid';
+  var channel = normalizeLoggedInCustomerId(section && section.dataset && section.dataset.channel) || 'online-store';
+  return [
+    EPIR_ASSISTANT_TRANSCRIPT_STORAGE_PREFIX,
+    'tae',
+    shopDomain,
+    storefrontId,
+    channel,
+    normalizedActor,
+  ].join(':');
+}
+
+function getAssistantTranscriptStorageKeys(section, sessionIdKey) {
+  var keys = [];
+  var seen = {};
+  var addKey = function (actorId) {
+    var key = getAssistantTranscriptStorageKey(section, actorId);
+    if (key && !seen[key]) {
+      seen[key] = true;
+      keys.push(key);
+    }
+  };
+
+  try {
+    var sessionId = sessionStorage.getItem(sessionIdKey || EPIR_ASSISTANT_SESSION_KEY);
+    if (sessionId) addKey(sessionId);
+  } catch (e) {}
+
+  try {
+    var anonymousId = sessionStorage.getItem(EPIR_CONSENT_ANONYMOUS_KEY);
+    if (anonymousId) addKey(anonymousId);
+  } catch (e2) {}
+
+  addKey(getEpirAnonymousIdForConsent());
+  return keys;
+}
+
+function normalizeAssistantTranscriptEntries(entries) {
+  if (!Array.isArray(entries)) return [];
+  var normalized = [];
+  for (var i = 0; i < entries.length; i++) {
+    var entry = entries[i];
+    if (!entry || typeof entry !== 'object') continue;
+    var role = entry.role === 'assistant' ? 'assistant' : entry.role === 'user' ? 'user' : '';
+    var content = typeof entry.content === 'string' ? entry.content.trim() : '';
+    if (!role || !content) continue;
+    normalized.push({ role: role, content: content });
+  }
+  return normalized.slice(-EPIR_ASSISTANT_TRANSCRIPT_MAX_ENTRIES);
+}
+
+function readAssistantTranscript(section, sessionIdKey) {
+  var keys = getAssistantTranscriptStorageKeys(section, sessionIdKey);
+  var primaryKey = keys[0] || null;
+  for (var i = 0; i < keys.length; i++) {
+    try {
+      var raw = sessionStorage.getItem(keys[i]);
+      if (!raw) continue;
+      var normalized = normalizeAssistantTranscriptEntries(JSON.parse(raw));
+      if (!normalized.length) continue;
+      if (primaryKey && primaryKey !== keys[i]) {
+        sessionStorage.setItem(primaryKey, JSON.stringify(normalized));
+      }
+      return normalized;
+    } catch (e) {}
+  }
+  return [];
+}
+
+function syncAssistantTranscriptStorage(section, transcript, sessionIdKey) {
+  var normalized = normalizeAssistantTranscriptEntries(transcript);
+  var keys = getAssistantTranscriptStorageKeys(section, sessionIdKey);
+  try {
+    if (!normalized.length) {
+      for (var i = 0; i < keys.length; i++) {
+        sessionStorage.removeItem(keys[i]);
+      }
+      return normalized;
+    }
+    var serialized = JSON.stringify(normalized);
+    for (var j = 0; j < keys.length; j++) {
+      sessionStorage.setItem(keys[j], serialized);
+    }
+  } catch (e) {}
+  return normalized;
+}
+
+function extractAssistantTranscriptFromDom(messagesEl) {
+  if (!messagesEl) return [];
+  var nodes = messagesEl.querySelectorAll('.msg');
+  var transcript = [];
+  for (var i = 0; i < nodes.length; i++) {
+    var node = nodes[i];
+    if (!node || !node.classList) continue;
+    if (node.classList.contains('welcome-message') || node.classList.contains('proactive-greeting')) continue;
+    var role = node.classList.contains('msg-user')
+      ? 'user'
+      : node.classList.contains('msg-assistant')
+        ? 'assistant'
+        : '';
+    if (!role) continue;
+    var bubble = node.querySelector('.epir-message__bubble');
+    var content = role === 'assistant' && bubble ? bubble.textContent || '' : node.textContent || '';
+    if (role === 'user' && node.classList.contains('msg-user--with-attachment') && !String(content).trim()) {
+      content = EPIR_IMAGE_ATTACHMENT_PLACEHOLDER;
+    }
+    content = String(content || '').trim();
+    if (!content) continue;
+    transcript.push({ role: role, content: content });
+  }
+  return normalizeAssistantTranscriptEntries(transcript);
+}
+
+function persistAssistantTranscriptFromDom(section, messagesEl, sessionIdKey) {
+  return syncAssistantTranscriptStorage(
+    section,
+    extractAssistantTranscriptFromDom(messagesEl),
+    sessionIdKey,
+  );
+}
+
+function renderAssistantTranscript(messagesEl, transcript) {
+  if (!messagesEl) return;
+  messagesEl.innerHTML = '';
+  var normalized = normalizeAssistantTranscriptEntries(transcript);
+  for (var i = 0; i < normalized.length; i++) {
+    var entry = normalized[i];
+    if (entry.role === 'user') {
+      createUserMessage(messagesEl, entry.content);
+      continue;
+    }
+    var assistantMessage = createAssistantMessage(messagesEl);
+    updateAssistantMessage(assistantMessage.id, entry.content);
+    finalizeAssistantMessage(assistantMessage.id);
+  }
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function buildAssistantHistoryFetchUrl(section) {
+  var endpoint = getAssistantHistoryEndpoint(section);
+  var shop = getAssistantShopDomain(section) || '';
+  var customerId = resolveLoggedInCustomerId(section) || '';
+  if (shop || customerId) {
+    var params = new URLSearchParams();
+    if (shop) params.set('shop', shop);
+    if (customerId) params.set('logged_in_customer_id', customerId);
+    endpoint = endpoint + (endpoint.indexOf('?') >= 0 ? '&' : '?') + params.toString();
+  }
+  return endpoint;
+}
+
+async function fetchAssistantTranscriptFromBackend(section, sessionIdKey) {
+  var sessionId = '';
+  try {
+    sessionId = sessionStorage.getItem(sessionIdKey || EPIR_ASSISTANT_SESSION_KEY) || '';
+  } catch (e) {}
+  if (!sessionId) return [];
+
+  var response = await fetch(buildAssistantHistoryFetchUrl(section), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+
+  if (!response.ok) {
+    throw new Error('History request failed (' + response.status + ')');
+  }
+
+  var data = await response.json().catch(function () { return null; });
+  var history = Array.isArray(data)
+    ? data
+    : data && Array.isArray(data.history)
+      ? data.history
+      : [];
+  return normalizeAssistantTranscriptEntries(history);
+}
+
+function syncAssistantTranscriptFromBackend(section, messagesEl, sessionIdKey) {
+  if (!section || !messagesEl || section.dataset.assistantHistorySync === '1') return;
+  section.dataset.assistantHistorySync = '1';
+  fetchAssistantTranscriptFromBackend(section, sessionIdKey)
+    .then(function (history) {
+      if (!history.length) return;
+      var current = extractAssistantTranscriptFromDom(messagesEl);
+      if (JSON.stringify(current) === JSON.stringify(history)) return;
+      renderAssistantTranscript(messagesEl, history);
+      syncAssistantTranscriptStorage(section, history, sessionIdKey);
+    })
+    .catch(function (error) {
+      console.warn('[EPIR Assistant] History sync failed', error);
+    });
+}
+
 // Minimal initializer: bind toggle button to open/close the assistant (supports block + embed)
 function initAssistantUIForSection(section) {
   if (!section || section.dataset.assistantUiInit === '1') return;
@@ -779,13 +992,24 @@ function initAssistantUIForSection(section) {
 
     // --- Powitanie klienta imieniem z localStorage/sessionStorage ---
     const messagesEl = section.querySelector('#assistant-messages') || section.querySelector('#assistant-messages-embed');
+    const restoredTranscript = messagesEl
+      ? readAssistantTranscript(section, EPIR_ASSISTANT_SESSION_KEY)
+      : [];
+    const hasRestoredTranscript = restoredTranscript.length > 0;
+    if (hasRestoredTranscript && messagesEl) {
+      renderAssistantTranscript(messagesEl, restoredTranscript);
+    }
+    if (messagesEl) {
+      syncAssistantTranscriptFromBackend(section, messagesEl, EPIR_ASSISTANT_SESSION_KEY);
+    }
+
     let localName = null;
     try {
       localName = localStorage.getItem('epir_customer_name') || sessionStorage.getItem('epir_customer_name');
     } catch {}
     const loggedInCustomerId = resolveLoggedInCustomerId(section) || '';
-    if (localName && !loggedInCustomerId && messagesEl) {
-      // Dodaj powitanie z imieniem tylko dla lokalnie rozpoznanego klienta
+    if (localName && !loggedInCustomerId && messagesEl && !hasRestoredTranscript) {
+      // Dodaj powitanie z imieniem tylko dla lokalnie rozpoznanego klienta, gdy brak transcriptu do odtworzenia
       const welcomeDiv = document.createElement('div');
       welcomeDiv.className = 'msg msg-assistant welcome-message';
       welcomeDiv.setAttribute('role', 'status');
@@ -1112,7 +1336,8 @@ async function sendMessageToWorker(
 
   setLoading(true);
   showGlobalLoader();
-  createUserMessage(messagesEl, text || '(załącznik obrazu)', attachment);
+  createUserMessage(messagesEl, text || EPIR_IMAGE_ATTACHMENT_PLACEHOLDER, attachment);
+  persistAssistantTranscriptFromDom(sectionEl, messagesEl, sessionIdKey);
   const { id: msgId, el: msgEl } = createAssistantMessage(messagesEl);
   let accumulated = '';
   let lastParsedActions = null;
@@ -1256,6 +1481,7 @@ async function sendMessageToWorker(
           // Można dodać rendering szczegółów zamówienia
         }
       }
+      persistAssistantTranscriptFromDom(sectionEl, messagesEl, sessionIdKey);
   } catch (err) {
     console.error('Błąd czatu:', err);
     reportUiExtensionError(err, {
@@ -1268,6 +1494,7 @@ async function sendMessageToWorker(
     updateAssistantMessage(msgId, finalText);
     const el = document.getElementById(msgId);
     if (el) el.classList.add('msg-error');
+    persistAssistantTranscriptFromDom(sectionEl, messagesEl, sessionIdKey);
   } finally {
     finalizeAssistantMessage(msgId);
     setLoading(false);
