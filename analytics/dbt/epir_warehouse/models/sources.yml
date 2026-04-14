@@ -1,0 +1,14 @@
+version: 2
+
+sources:
+  - name: epir_warehouse
+    description: >-
+      Hurtownia EPIR (BigQuery). Zdarzenia pixela trafiają do epir_pixel_events_raw
+      po eksporcie z Cloudflare D1 (worker epir-bigquery-batch).
+    database: "{{ var('gcp_project_id') }}"
+    schema: "{{ var('epir_dataset') }}"
+    tables:
+      - name: epir_pixel_events_raw
+        description: Eksport wierszy z D1 pixel_events (JSON w kolumnie payload).
+      - name: messages_raw
+        description: Eksport wiadomości czata z D1 (ai-assistant-sessions-db).

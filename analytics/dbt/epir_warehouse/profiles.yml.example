@@ -1,0 +1,14 @@
+# Skopiuj do ~/.dbt/profiles.yml (sekcja epir_warehouse) lub użyj DBT_PROFILES_DIR.
+# Uzupełnij project / dataset / location wg środowiska.
+
+epir_warehouse:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: epir-adk-agent-v2-48a86e6f
+      dataset: analytics_435783047
+      location: EU
+      threads: 4
+      timeout_seconds: 300

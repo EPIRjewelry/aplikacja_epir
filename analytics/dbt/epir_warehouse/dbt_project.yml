@@ -1,0 +1,18 @@
+name: epir_warehouse
+version: '1.0.0'
+config-version: 2
+
+profile: epir_warehouse
+
+model-paths: ['models']
+macro-paths: ['macros']
+test-paths: ['tests']
+
+vars:
+  gcp_project_id: epir-adk-agent-v2-48a86e6f
+  epir_dataset: analytics_435783047
+
+models:
+  epir_warehouse:
+    staging:
+      +materialized: view
