@@ -21,7 +21,8 @@ interface Env {
 }
 
 const BQ_DATASET = 'analytics_435783047';
-const BQ_TABLE_EVENTS = 'events_raw';
+/** EPIR pixel/analytics export (D1 pixel_events). Osobna nazwa od legacy `events_raw` (np. ADK / inne skrypty). */
+const BQ_TABLE_EVENTS = 'epir_pixel_events_raw';
 const BQ_TABLE_MESSAGES = 'messages_raw';
 const BATCH_SIZE = 100;
 

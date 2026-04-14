@@ -137,7 +137,7 @@ export const TOOL_SCHEMAS = {
 
   run_analytics_query: {
     name: 'run_analytics_query',
-    description: 'Wykonuje whitelistowane zapytanie analityczne zgodne z kanonicznym kontraktem danych EPIR. Dostępne TYLKO dla internal-dashboard. Zwraca wyniki z BigQuery (events_raw, messages_raw).',
+    description: 'Wykonuje whitelistowane zapytanie analityczne zgodne z kanonicznym kontraktem danych EPIR. Dostępne TYLKO dla internal-dashboard. Zwraca wyniki z BigQuery (epir_pixel_events_raw, messages_raw).',
     parameters: {
       type: 'object',
       properties: {
