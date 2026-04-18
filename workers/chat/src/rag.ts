@@ -60,6 +60,122 @@ export interface RagResultItem {
 export interface RagSearchResult {
   query?: string;
   results: RagResultItem[];
+  /** KB-clamp: MCP failed for binding policy query — do not use Vectorize. */
+  error?: { code: string; message?: string };
+}
+
+/** Must match `POLICY_SYSTEM_UNAVAILABLE` in workers/rag-worker. */
+export const POLICY_SYSTEM_UNAVAILABLE = 'POLICY_SYSTEM_UNAVAILABLE' as const;
+
+/**
+ * Binding policy / regulatory query — Vectorize fallback forbidden
+ * (EPIR_KB_MCP_POLICY_CONTRACT). Kept in sync with
+ * `workers/rag-worker/src/domain/orchestrator.ts` `isBindingPolicyQuery`.
+ * Biased to over-detect (false positives are safer than RAG leakage).
+ */
+function normalizePolicyQuery(query: string): string {
+  return query
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ł/g, 'l');
+}
+
+const BINDING_POLICY_PATTERNS: readonly RegExp[] = [
+  /zwrot/i,
+  /zwroc/i,
+  /zwraca/i,
+  /zwruot/i,
+  /zwrut/i,
+  /odesl/i,
+  /odsyl/i,
+  /wymian/i,
+  /wymien/i,
+  /odstap/i,
+  /14\s*dni/i,
+  /30\s*dni/i,
+  /reklamac/i,
+  /napraw/i,
+  /gwaranc/i,
+  /rekojm/i,
+  /wysyl/i,
+  /przesylk/i,
+  /dostaw/i,
+  /dostarc/i,
+  /kurier/i,
+  /paczk/i,
+  /paczkomat/i,
+  /\b(inpost|dpd|dhl|fedex|ups|orlen\s*paczka)\b/i,
+  /czas\s+(dostaw|wysyl|realizac)/i,
+  /koszt(y|u|em)?\s+(dostaw|wysyl|zwrot)/i,
+  /oplat[ayę]\s+(za\s+)?(wysyl|dostaw|zwrot)/i,
+  /darmow[aąe]\s+(wysyl|dostaw)/i,
+  /regulamin/i,
+  /polityk/i,
+  /prywatno/i,
+  /dane\s+osobow/i,
+  /\brodo\b/i,
+  /ochrona\s+danych/i,
+  /cookie/i,
+  /plik(i|ów)\s+cookies?/i,
+  /paragon/i,
+  /faktur/i,
+  /prawo\s+konsument/i,
+  /ustawa\s+o\s+prawach\s+konsument/i,
+
+  /\breturn(s|ed|ing|able)?\b/i,
+  /\brefund(s|ed|ing|able)?\b/i,
+  /\bexchange(s|d|ing)?\b/i,
+  /\bmoney[-\s]?back\b/i,
+  /\bcooling[-\s]?off\b/i,
+  /\bwithdraw(al)?\b/i,
+  /\b(14|30)[-\s]?day(s)?\b/i,
+  /\bwarrant(y|ies)\b/i,
+  /\bguarantee(s|d)?\b/i,
+  /\bcomplaint(s)?\b/i,
+  /\brepair(s|ed|ing)?\b/i,
+  /\bship(ping|ment|ments|ped|s)?\b/i,
+  /\bdeliver(y|ies|ed|ing)\b/i,
+  /\bcourier(s)?\b/i,
+  /\bpostage\b/i,
+  /\btracking\b/i,
+  /\bparcel(s)?\b/i,
+  /\bpickup\s+point(s)?\b/i,
+  /\bfree\s+(ship|delivery)/i,
+  /\bterms\s+(of\s+(service|use|sale)|and\s+conditions)\b/i,
+  /\bt&c(s)?\b/i,
+  /\btos\b/i,
+  /\bprivacy\b/i,
+  /\bgdpr\b/i,
+  /\bdata\s+protection\b/i,
+  /\bconsumer\s+rights?\b/i,
+  /\bstatutory\s+rights?\b/i,
+  /\b(return|refund|shipping|delivery|privacy|exchange|warranty|cancellation|cookie|store|sale)\s+polic(y|ies)\b/i,
+  /\bpolic(y|ies)\s+(on|for|regarding|about|covering)\b/i,
+  /\b(our|your|the)\s+(store\s+)?polic(y|ies)\b/i,
+  /\breceipt(s)?\b/i,
+  /\binvoice(s)?\b/i,
+];
+
+// Soft-exemption patterns run against the DIACRITIC-STRIPPED lowercase text.
+const BINDING_POLICY_SOFT_EXEMPTIONS: readonly RegExp[] = [
+  /\bfaq\s+o\s+(kamieni|kolekcji|stylu|pielegnacj)/i,
+  /\bpytania\s+i\s+odpowiedzi\s+o\s+(kamieni|kolekcji|stylu|pielegnacj)/i,
+];
+
+export function isBindingPolicyQuery(query: string): boolean {
+  if (!query || typeof query !== 'string') return false;
+  const normalized = normalizePolicyQuery(query);
+  const matched = BINDING_POLICY_PATTERNS.some((re) => re.test(normalized));
+  if (!matched) return false;
+  if (BINDING_POLICY_SOFT_EXEMPTIONS.some((re) => re.test(normalized))) {
+    const strongBinding =
+      /zwrot|refund|reklamac|complaint|wysyl|ship|dostaw|deliver|gwaranc|warrant|rekojm|regulamin|polityk|prywatno|gdpr|rodo|terms|withdraw|odstap/i.test(
+        normalized,
+      );
+    return strongBinding;
+  }
+  return true;
 }
 
 // --- Additional lightweight TS types and defensive guards for RAG inputs ---
@@ -482,8 +598,7 @@ export async function searchProductsAndCartWithMCP(
 
 /**
  * searchShopPoliciesAndFaqsWithMCP
- * - Wyszukuje FAQ/policies używając Vectorize (similarity search)
- * - Zwraca RagSearchResult z listą elementów (id, snippet, source)
+ * - MCP primary; Vectorize only for non-binding informational queries (KB-clamp).
  */
 export async function searchShopPoliciesAndFaqsWithMCP(
   query: string,
@@ -492,64 +607,23 @@ export async function searchShopPoliciesAndFaqsWithMCP(
   aiBinding?: any,
   topK: number = 3
 ): Promise<RagSearchResult> {
-  try {
-    // MCP path
-    if (shopDomain) {
-  // Use the canonical, hardcoded shop MCP endpoint for policies/FAQ lookups
-  const mcpEndpoint = CANONICAL_MCP_URL;
-      const payload = {
-        jsonrpc: '2.0',
-        method: 'tools/call',
-        params: {
-          name: 'search_shop_policies_and_faqs',
-          arguments: { query }
-        },
-        id: Date.now()
-      };
-      const res = await fetch(mcpEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => '<no body>');
-        throw new Error(`MCP search_shop_policies_and_faqs error ${res.status}: ${txt}`);
-      }
-      let j: unknown = await res.json().catch(() => null);
-      if (isString(j)) {
-        const parsed = safeJsonParse(j);
-        if (parsed) j = parsed as unknown;
-      }
-      if (isRecord(j) && 'error' in j && j.error) {
-        const errStr = JSON.stringify((j as Record<string, unknown>).error);
-        throw new Error(`MCP tool call failed: ${errStr}`);
-      }
-      // Standard MCP result: j.result.content[]
-      let results: RagResultItem[] = [];
-      if (isRecord(j) && 'result' in j && isRecord(j.result) && Array.isArray((j.result as McpResult).content)) {
-        results = (j.result as McpResult).content!
-          .filter((c: McpContentItem) => c.type === 'text')
-          .map((c: McpContentItem, idx: number) => {
-            // Try to parse double-encoded text content
-            const parsedText = safeJsonParse(c.text);
-            const text = isString(parsedText) ? parsedText : (c.text || '');
-            return ({
-            id: `faq_${idx + 1}`,
-            title: c.title || undefined,
-              text,
-              snippet: (text || '').slice(0, 500),
-            source: 'mcp',
-            score: undefined,
-            metadata: c,
-            full: c
-            });
-          });
-      }
-      return { query, results };
+  const binding = isBindingPolicyQuery(query);
+
+  const policyUnavailable = (): RagSearchResult => ({
+    query,
+    results: [],
+    error: {
+      code: POLICY_SYSTEM_UNAVAILABLE,
+      message:
+        'Shopify policy service (Storefront MCP) did not return usable content; Vectorize fallback is disabled for binding policy queries per EPIR_KB_MCP_POLICY_CONTRACT.',
+    },
+  });
+
+  async function runVectorizeForNonBinding(): Promise<RagSearchResult> {
+    if (!vectorIndex || !aiBinding || binding) {
+      return { query, results: [] };
     }
-    // Fallback: Vectorize
-    if (vectorIndex && aiBinding) {
-      // Run embedding
+    try {
       const embedding = await aiBinding.run('@cf/baai/bge-large-en-v1.5', { text: [query] });
       const vector = embedding?.data?.[0] || [];
       const vectorResults = await vectorIndex.query(vector, { topK });
@@ -560,15 +634,90 @@ export async function searchShopPoliciesAndFaqsWithMCP(
         source: 'vectorize',
         score: match.score,
         metadata: match.metadata,
-        full: match
+        full: match,
       }));
       return { query, results };
+    } catch (ve) {
+      console.error('Vectorize fallback error:', ve);
+      return { query, results: [] };
     }
-    // No MCP, no Vectorize
-    return { query, results: [] };
+  }
+
+  try {
+    if (shopDomain) {
+      const mcpEndpoint = CANONICAL_MCP_URL;
+      const payload = {
+        jsonrpc: '2.0',
+        method: 'tools/call',
+        params: {
+          name: 'search_shop_policies_and_faqs',
+          arguments: { query },
+        },
+        id: Date.now(),
+      };
+      const res = await fetch(mcpEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '<no body>');
+        if (binding) {
+          console.error(`MCP search_shop_policies_and_faqs error ${res.status}: ${txt}`);
+          return policyUnavailable();
+        }
+        console.warn(`MCP search_shop_policies_and_faqs HTTP ${res.status} (non-binding; will try Vectorize): ${txt}`);
+      } else {
+        let j: unknown = await res.json().catch(() => null);
+        if (isString(j)) {
+          const parsed = safeJsonParse(j);
+          if (parsed) j = parsed as unknown;
+        }
+        if (isRecord(j) && 'error' in j && j.error) {
+          if (binding) {
+            console.error('MCP tool call failed (binding query):', j.error);
+            return policyUnavailable();
+          }
+          console.warn('MCP tool call failed (non-binding; will try Vectorize):', j.error);
+        } else {
+          let results: RagResultItem[] = [];
+          if (isRecord(j) && 'result' in j && isRecord(j.result) && Array.isArray((j.result as McpResult).content)) {
+            results = (j.result as McpResult).content!
+              .filter((c: McpContentItem) => c.type === 'text')
+              .map((c: McpContentItem, idx: number) => {
+                const parsedText = safeJsonParse(c.text);
+                const text = isString(parsedText) ? parsedText : (c.text || '');
+                return {
+                  id: `faq_${idx + 1}`,
+                  title: c.title || undefined,
+                  text,
+                  snippet: (text || '').slice(0, 500),
+                  source: 'mcp',
+                  score: undefined,
+                  metadata: c,
+                  full: c,
+                };
+              });
+          }
+          if (results.length > 0) {
+            return { query, results };
+          }
+          if (binding) {
+            return policyUnavailable();
+          }
+        }
+      }
+    } else if (binding) {
+      return policyUnavailable();
+    }
+
+    return runVectorizeForNonBinding();
   } catch (err) {
     console.error('searchShopPoliciesAndFaqsWithMCP error:', err);
-    return { query, results: [] };
+    if (binding) {
+      return policyUnavailable();
+    }
+    return runVectorizeForNonBinding();
   }
 }
 
@@ -627,6 +776,12 @@ function logError(message: string, data?: any) {
  * - łączy wyniki z różnych źródeł (MCP, Vectorize)
  */
 export function formatRagContextForPrompt(rag: RagSearchResult): string {
+  if (rag?.error?.code === POLICY_SYSTEM_UNAVAILABLE) {
+    return (
+      '[SYSTEM: Policy service unavailable — MCP did not return binding store policies. ' +
+      'Do not answer from Vectorize or general knowledge about returns/shipping/terms; tell the user the policy system is temporarily unavailable.]'
+    );
+  }
   if (!rag || !Array.isArray(rag.results) || rag.results.length === 0) return '';
 
   let output = '';
