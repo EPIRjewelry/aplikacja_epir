@@ -43,16 +43,30 @@ import { stripLeakedToolCallsLiterals } from './utils/stripLeakedToolCallsLitera
 import { executeToolWithParsedArguments } from './utils/tool-call-args';
 import { callMcpToolDirect, handleMcpRequest } from './mcp_server';
 import { STOREFRONTS, resolveStorefrontConfig } from './config/storefronts';
+import { chatPipelineLog } from './utils/chat-pipeline-log';
 
 /** Wywołanie run_analytics_query – tylko gdy channel=internal-dashboard (BIGQUERY_BATCH + ADMIN_KEY) */
 async function runAnalyticsQuery(env: Env, args: { queryId?: string; dateFrom?: number; dateTo?: number }): Promise<{ result?: unknown; error?: unknown }> {
+  const t0 = Date.now();
   const binding = (env as any).BIGQUERY_BATCH as Fetcher | undefined;
   const adminKey = env.ADMIN_KEY;
   if (!binding || !adminKey) {
+    chatPipelineLog({
+      phase: 'analytics_bigquery_tool',
+      duration_ms: Date.now() - t0,
+      ok: false,
+      reason: 'binding_or_admin_key_missing',
+    });
     return { error: { code: -32603, message: 'run_analytics_query not configured (BIGQUERY_BATCH or ADMIN_KEY missing)' } };
   }
   const queryId = args?.queryId;
   if (!queryId || typeof queryId !== 'string') {
+    chatPipelineLog({
+      phase: 'analytics_bigquery_tool',
+      duration_ms: Date.now() - t0,
+      ok: false,
+      reason: 'query_id_required',
+    });
     return { error: { code: -32602, message: 'queryId required' } };
   }
   try {
@@ -67,13 +81,42 @@ async function runAnalyticsQuery(env: Env, args: { queryId?: string; dateFrom?: 
     });
     const data = await res.json().catch(() => ({})) as { rows?: unknown[]; error?: string };
     if (!res.ok) {
+      chatPipelineLog({
+        phase: 'analytics_bigquery_tool',
+        duration_ms: Date.now() - t0,
+        ok: false,
+        queryId,
+        http_status: res.status,
+      });
       return { error: { code: res.status, message: data.error ?? `HTTP ${res.status}` } };
     }
     if (data.error) {
+      chatPipelineLog({
+        phase: 'analytics_bigquery_tool',
+        duration_ms: Date.now() - t0,
+        ok: false,
+        queryId,
+        reason: 'worker_error_field',
+      });
       return { error: { code: -32000, message: data.error } };
     }
-    return { result: { queryId, rows: data.rows ?? [] } };
+    const rows = data.rows ?? [];
+    chatPipelineLog({
+      phase: 'analytics_bigquery_tool',
+      duration_ms: Date.now() - t0,
+      ok: true,
+      queryId,
+      row_count: Array.isArray(rows) ? rows.length : 0,
+    });
+    return { result: { queryId, rows } };
   } catch (e: any) {
+    chatPipelineLog({
+      phase: 'analytics_bigquery_tool',
+      duration_ms: Date.now() - t0,
+      ok: false,
+      queryId,
+      exception: true,
+    });
     return { error: { code: -32000, message: e?.message ?? 'run_analytics_query failed' } };
   }
 }
@@ -89,6 +132,14 @@ import {
   mergeSessionIntoPersonSummary,
 } from './person-memory';
 import { handleConsentAppProxy, handleConsentS2S } from './consent';
+import {
+  MEMORY_EXTRACT_MESSAGE_VERSION,
+  makeIdempotencyKey,
+  type MemoryExtractMessage,
+} from './memory/queue-message';
+import { eraseCustomerMemory, handleMemoryExtractBatch, processMemoryExtractMessage } from './memory/consumer';
+import { retrieveCustomerMemory } from './memory/retriever';
+import { emitMemoryMetric } from './memory/metrics';
 
 // Importy RAG (teraz używane tylko przez narzędzia, a nie przez index.ts)
 import {
@@ -2134,7 +2185,9 @@ export class SessionDO {
         return result;
       }
 
-      const merged = await mergeSessionIntoPersonSummary(this.env, current?.summary ?? null, snippet);
+      const merged = await mergeSessionIntoPersonSummary(this.env, current?.summary ?? null, snippet, {
+        shopifyCustomerId: payload.shopify_customer_id,
+      });
       const writeResult = await upsertPersonMemoryVersioned(this.env.DB_CHATBOT, {
         shopifyCustomerId: payload.shopify_customer_id,
         summary: merged,
@@ -2476,6 +2529,63 @@ async function streamAssistantResponse(
       const refreshPersonMemory = async (reason: 'chat_turn' | 'image_surrogate') => {
         if (!effectiveShopifyCustomerId || !env.DB_CHATBOT) return;
         const requestId = buildPersonMemoryRequestId(reason);
+
+        const memoryExtractEnabled = String(env.MEMORY_EXTRACT_ENABLED ?? '').toLowerCase() === 'true';
+        if (memoryExtractEnabled) {
+          try {
+            const turns = history.slice(-6).map((h) => ({
+              role: h.role === 'system' ? ('user' as const) : (h.role as 'user' | 'assistant' | 'tool'),
+              content: h.content ?? '',
+              ts: h.ts,
+              toolName: h.name,
+              toolCallId: h.tool_call_id,
+              toolCalls: Array.isArray(h.tool_calls)
+                ? (h.tool_calls as Array<{ id?: string; function?: { name?: string; arguments?: string } }>).map((tc) => ({
+                    id: String(tc?.id ?? ''),
+                    name: String(tc?.function?.name ?? ''),
+                    arguments: tc?.function?.arguments,
+                  }))
+                : undefined,
+              messageId: h.message_uid,
+            }));
+            const idempotencyKey = await makeIdempotencyKey(effectiveShopifyCustomerId, String(userMessageTs));
+            const message: MemoryExtractMessage = {
+              v: MEMORY_EXTRACT_MESSAGE_VERSION,
+              kind: 'chat_turn_archive',
+              sessionId,
+              shopifyCustomerId: effectiveShopifyCustomerId,
+              idempotencyKey,
+              turns,
+              locale: undefined,
+              market: undefined,
+              channel: storefrontContext?.channel,
+              storefrontId: storefrontContext?.storefrontId,
+              enqueuedAt: Date.now(),
+              reason,
+            };
+            if (env.MEMORY_EXTRACT_QUEUE?.send) {
+              await env.MEMORY_EXTRACT_QUEUE.send(message);
+              emitMemoryMetric({
+                tag: 'chat.memory',
+                phase: 'queue_enqueue',
+                customer_id: effectiveShopifyCustomerId,
+                idempotency_key: idempotencyKey,
+                turns: turns.length,
+              });
+              return;
+            }
+            console.warn('[person_memory] MEMORY_EXTRACT_QUEUE not bound — inline extract fallback');
+            try {
+              await processMemoryExtractMessage(env, message);
+              return;
+            } catch (inlineErr) {
+              console.warn('[person_memory] inline extract failed, falling back to legacy merge:', (inlineErr as Error).message);
+            }
+          } catch (enqueueErr) {
+            console.warn('[person_memory] enqueue failed, falling back to legacy merge:', (enqueueErr as Error).message);
+          }
+        }
+
         try {
           const refreshResp = await stub.fetch('https://session/refresh-memory-atomic', {
             method: 'POST',
@@ -2561,6 +2671,8 @@ async function streamAssistantResponse(
             ...(h.tool_calls && { tool_calls: h.tool_calls as any }),
         }));
         
+      const promptBuildT0 = Date.now();
+
       // run_analytics_query tylko gdy channel === "internal-dashboard" (MUST z planu)
       const schemasToUse = storefrontContext?.channel === 'internal-dashboard'
         ? Object.values(TOOL_SCHEMAS)
@@ -2642,13 +2754,51 @@ async function streamAssistantResponse(
         });
       }
 
-      // 🔴 KROK 3b: ZDELEGUJ LOGIKĘ RAG DO RAG_WORKER
-      // Zamiast błędnie wykonywać RAG tutaj, pozwalamy AI zdecydować, czy go potrzebuje.
-      // Jeśli AI wywoła `search_catalog` lub `search_shop_policies_and_faqs`,
-      // `callMcpToolDirect` w `mcp_server.ts` poprawnie wywoła `RAG_WORKER`.
-      
-      // W `index.ts` (stara wersja) była błędna logika RAG. Teraz jej nie ma.
-      // AI samo zdecyduje o wywołaniu narzędzi RAG (search_..._catalog/policies).
+      // --- Memory v2 retrieval (za feature-flag MEMORY_V2_ENABLED) ---
+      // Dokleja deterministyczny skrót + top-k fakty/tury z Vectorize `memory_customer`.
+      // KB-clamp: retriever filtruje po `customerId` i `kind='fact'|'turn'`; treści polityk
+      // tam nie trafiają (blokada w consumer/extractor). Pytania o politykę dalej idą
+      // przez `search_shop_policies_and_faqs` (luxury-system-prompt.ts).
+      if (effectiveShopifyCustomerId) {
+        try {
+          const retrieved = await retrieveCustomerMemory(env, {
+            shopifyCustomerId: effectiveShopifyCustomerId,
+            queryText: userMessage,
+          });
+          if (retrieved.deterministicSummary && !crossSessionSummary) {
+            messages.push({
+              role: 'system',
+              content: `Kontekst systemowy — deterministyczny skrót preferencji klienta: ${retrieved.deterministicSummary}`,
+            });
+          }
+          if (retrieved.factsBlock) {
+            messages.push({
+              role: 'system',
+              content: `<customer_facts_retrieved>\n${retrieved.factsBlock}\n</customer_facts_retrieved>`,
+            });
+          }
+          if (retrieved.turnsBlock) {
+            messages.push({
+              role: 'system',
+              content: `<customer_turns_retrieved>\n${retrieved.turnsBlock}\n</customer_turns_retrieved>`,
+            });
+          }
+          if (!retrieved.deterministicSummary && !crossSessionSummary && retrieved.activeFactsCount === 0) {
+            if (String(env.MEMORY_V2_ENABLED ?? '').toLowerCase() === 'true') {
+              messages.push({
+                role: 'system',
+                content: 'Kontekst systemowy — brak potwierdzonych preferencji klienta w pamięci. Nie udawaj, że pamiętasz wcześniejsze rozmowy; pytaj o potrzeby.',
+              });
+            }
+          }
+        } catch (err) {
+          console.warn('[memory.retriever] failed (non-fatal):', (err as Error).message);
+        }
+      }
+
+      // 🔴 KROK 3b: RAG / katalog — bez wstrzykiwania kontekstu tutaj; model woła narzędzia.
+      // `search_catalog` / `search_shop_policies_and_faqs` idą przez Shopify Remote MCP (`callMcpToolDirect` → `mcp_server.ts`).
+      // Osobna ścieżka „RAG worker” jest w `rag-client-wrapper.ts` (logi `chat.pipeline` phase rag_worker).
 
       messages.push(...aiHistory);
       // Wiadomość użytkownika (ostatnia) jest już w `aiHistory`
@@ -2677,6 +2827,20 @@ async function streamAssistantResponse(
         ...(m.tool_call_id && { tool_call_id: m.tool_call_id }),
         ...(m.name && { name: m.name }),
       }));
+
+      chatPipelineLog({
+        phase: 'prompt_built',
+        session_id: sessionId,
+        duration_ms: Date.now() - promptBuildT0,
+        messages_count: truncatedMessages.length,
+        history_entries: aiHistory.length,
+        ai_profile_loaded: Boolean(aiProfile),
+        storefrontId: storefrontContext?.storefrontId ?? null,
+        channel: storefrontContext?.channel ?? null,
+        tools_registered: schemasToUse.length,
+        cart_id_present: Boolean(cartId),
+        cross_session_summary_present: Boolean(crossSessionSummary),
+      });
       
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log(`[streamAssistant] Rozpoczynam pętlę AI. Sesja: ${sessionId}`);
@@ -2706,7 +2870,13 @@ async function streamAssistantResponse(
       let finalTextResponse = ''; 
 
       for (let i = 0; i < MAX_TOOL_CALLS; i++) {
-        const groqStream = await streamGroqEvents(currentMessages, env, toolDefinitions, sessionId);
+        const groqStream = await streamGroqEvents(
+          currentMessages,
+          env,
+          toolDefinitions,
+          sessionId,
+          `tool_loop_${i}`,
+        );
         const reader = groqStream.getReader();
         let iterationText = ''; // Tymczasowy buffer dla tej iteracji
         const pendingToolCalls = new Map<string, { id: string; name: string; arguments: string }>();
@@ -2759,6 +2929,17 @@ async function streamAssistantResponse(
           }),
         );
 
+        chatPipelineLog({
+          phase: 'model_turn',
+          session_id: sessionId,
+          tool_loop: i,
+          model: CHAT_MODEL_ID,
+          finish_reason: finishReason,
+          tool_calls_pending: pendingToolCalls.size,
+          usage_prompt_tokens: usageTotals.prompt_tokens,
+          usage_completion_tokens: usageTotals.completion_tokens,
+        });
+
         const iterationUsageTotal = usageTotals.prompt_tokens + usageTotals.completion_tokens;
         if (iterationUsageTotal > 0) {
           await stub.fetch('https://session/persist-usage', {
@@ -2810,14 +2991,16 @@ async function streamAssistantResponse(
               call.name,
               call.arguments,
               async (safeArgs) => {
-                console.log(`[streamAssistant] 🛠️ Wykonuję narzędzie: ${call.name} z argumentami:`, safeArgs);
                 if (call.name === 'run_analytics_query') {
                   return runAnalyticsQuery(env, safeArgs as { queryId?: string; dateFrom?: number; dateTo?: number });
                 }
                 const brandForMcp = (storefrontContext?.storefrontId === 'kazka' || storefrontContext?.storefrontId === 'zareczyny')
                   ? storefrontContext.storefrontId
                   : brand;
-                return callMcpToolDirect(env, call.name, safeArgs, brandForMcp);
+                return callMcpToolDirect(env, call.name, safeArgs, brandForMcp, {
+                  session_id: sessionId,
+                  tool_loop: i,
+                });
               },
             );
 
@@ -2827,10 +3010,16 @@ async function streamAssistantResponse(
                 raw: call.arguments,
                 error: (toolResult as any)?.error,
               });
-            } else {
-              console.log(`[streamAssistant] ✅ Narzędzie ${call.name} wykonane`, { args: parsedArgs ?? {} });
             }
             const toolFinishedAt = now();
+            chatPipelineLog({
+              phase: 'tool_execute',
+              session_id: sessionId,
+              tool_loop: i,
+              tool: call.name,
+              duration_ms: toolFinishedAt - toolStartedAt,
+              status: skippedExecution ? 'invalid_arguments' : toolResult.error ? 'error' : 'success',
+            });
             const toolCallUid = `${sessionId}:tool:${userMessageTs}:${call.id}`;
             const toolPersistStatus = skippedExecution ? 'invalid_arguments' : toolResult.error ? 'error' : 'success';
             await stub.fetch('https://session/persist-tool-call', {
@@ -3225,7 +3414,102 @@ export default {
       return handleMcpRequest(request, env);
     }
 
+    // --- Memory v2: GDPR erasure endpoint ---
+    // DELETE /memory/customer/{customerId}
+    // Autoryzacja: ADMIN_KEY w nagłówku X-Admin-Key (per-operator) lub webhook Shopify (patrz /webhooks/customers/redact).
+    if (request.method === 'DELETE' && url.pathname.startsWith('/memory/customer/')) {
+      const adminKey = request.headers.get('X-Admin-Key');
+      if (!env.ADMIN_KEY || adminKey !== env.ADMIN_KEY) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+        });
+      }
+      const customerId = decodeURIComponent(url.pathname.replace(/^\/memory\/customer\//, '')).trim();
+      if (!customerId) {
+        return new Response(JSON.stringify({ error: 'customer_id required' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+        });
+      }
+      try {
+        const result = await eraseCustomerMemory(env, customerId);
+        return new Response(JSON.stringify({ ok: true, customer_id: customerId, ...result }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+        });
+      } catch (err) {
+        console.error('[memory.erase] endpoint failed:', err);
+        return new Response(JSON.stringify({ ok: false, error: (err as Error).message }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+        });
+      }
+    }
+
+    // --- Shopify webhook: customers/redact (GDPR) ---
+    // Dokumentacja: https://shopify.dev/docs/apps/webhooks/configuration/mandatory-webhooks
+    // Kontrakt: POST z body { customer: { id }, shop_id, shop_domain } + nagłówek X-Shopify-Hmac-Sha256.
+    if (request.method === 'POST' && url.pathname === '/webhooks/customers/redact') {
+      try {
+        const rawBody = await request.text();
+        const hmac = request.headers.get('X-Shopify-Hmac-Sha256');
+        if (!env.SHOPIFY_APP_SECRET || !hmac) {
+          return new Response('Unauthorized', { status: 401 });
+        }
+        const enc = new TextEncoder();
+        const key = await crypto.subtle.importKey(
+          'raw',
+          enc.encode(env.SHOPIFY_APP_SECRET),
+          { name: 'HMAC', hash: 'SHA-256' },
+          false,
+          ['sign'],
+        );
+        const signature = await crypto.subtle.sign('HMAC', key, enc.encode(rawBody));
+        const bytes = new Uint8Array(signature);
+        let bin = '';
+        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        const expected = btoa(bin);
+        if (expected !== hmac) {
+          return new Response('Unauthorized', { status: 401 });
+        }
+        const payload = JSON.parse(rawBody) as { customer?: { id?: string | number } };
+        const rawId = payload?.customer?.id;
+        const customerId = rawId == null ? '' : `gid://shopify/Customer/${String(rawId)}`;
+        if (!customerId) {
+          return new Response(JSON.stringify({ ok: true, note: 'no_customer_id' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        const result = await eraseCustomerMemory(env, customerId);
+        return new Response(JSON.stringify({ ok: true, ...result }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (err) {
+        console.error('[webhooks/customers/redact] failed:', err);
+        return new Response('error', { status: 500 });
+      }
+    }
+
     return new Response('Not Found', { status: 404, headers: cors(env, request) });
+  },
+
+  /**
+   * Queue handler dla `memory-extract` (Etap 3 — semantyczna pamięć klienta).
+   * Każda wiadomość jest niezależnie ack/retry; DLQ skonfigurowana w wrangler.toml.
+   */
+  async queue(batch: MessageBatch<unknown>, env: Env): Promise<void> {
+    if (!batch?.queue) {
+      console.warn('[queue] missing batch.queue');
+      return;
+    }
+    if (batch.queue === 'memory-extract') {
+      await handleMemoryExtractBatch(env, batch);
+      return;
+    }
+    console.warn('[queue] unknown queue', { queue: batch.queue, messages: batch.messages?.length ?? 0 });
   },
 };
 

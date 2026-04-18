@@ -5,8 +5,18 @@
 
 type AIBinding = { run: (model: string, input: unknown, opts?: unknown) => Promise<unknown> };
 type VectorizeIndex = {
-  query?: (v: number[], o: { topK: number }) => Promise<unknown>;
+  query?: (v: number[], o: { topK: number; filter?: Record<string, unknown>; returnMetadata?: boolean | string }) => Promise<unknown>;
   upsert?: (rows: unknown[]) => Promise<unknown>;
+  deleteByIds?: (ids: string[]) => Promise<unknown>;
+};
+
+/**
+ * Queue producer binding (Cloudflare Queues).
+ * Consumer kontrakt: patrz `src/memory/consumer.ts`.
+ */
+type QueueProducer<T = unknown> = {
+  send: (body: T, options?: { contentType?: string; delaySeconds?: number }) => Promise<void>;
+  sendBatch?: (messages: Array<{ body: T; contentType?: string; delaySeconds?: number }>) => Promise<void>;
 };
 
 export interface Env {
@@ -20,6 +30,16 @@ export interface Env {
   DB_CHATBOT: D1Database;
 
   VECTOR_INDEX?: VectorizeIndex;
+  /** Vectorize index dla pamięci klienta (typed facts + user-turn embeddings). */
+  MEMORY_INDEX?: VectorizeIndex;
+
+  /** Queue producer dla memory-extract pipeline (Etap 3). */
+  MEMORY_EXTRACT_QUEUE?: QueueProducer<unknown>;
+
+  /** Feature flagi: włącz producenta/consumera pamięci v2. */
+  MEMORY_EXTRACT_ENABLED?: string;
+  MEMORY_V2_ENABLED?: string;
+  MEMORY_RAW_RETRIEVAL_ENABLED?: string;
 
   SHOPIFY_APP_SECRET: string;
   ALLOWED_ORIGIN?: string;
