@@ -30,6 +30,15 @@ import { getSizeTable } from './size-table';
 import { getAccessTokenFromServiceAccount, clearAccessTokenCache } from './utils/google-auth';
 type JsonRpcId = string | number | null;
 
+function resolveGcpServiceAccountKey(env: Env): string | undefined {
+  if (env.GCP_SERVICE_ACCOUNT_KEY) return env.GCP_SERVICE_ACCOUNT_KEY;
+  try {
+    return (process as unknown as { env?: Record<string, string | undefined> }).env?.GCP_SERVICE_ACCOUNT_KEY;
+  } catch {
+    return undefined;
+  }
+}
+
 function json(headers: HeadersInit = {}) {
   return { 'Content-Type': 'application/json', ...headers };
 }
@@ -45,6 +54,8 @@ function rpcError(id: JsonRpcId, code: number, message: string, data?: any): Res
 }
 
 const MCP_TIMEOUT_MS = 5000;
+/** Druga próba fetch po 401/403: wyczyszczenie cache tokenu + nowy Bearer (tylko gdy jest SA + endpoint Google). */
+const MCP_GOOGLE_AUTH_MAX_ATTEMPTS = 2;
 /** Policies/FAQ search przez Shop MCP bywa wolniejsze niż katalog — krótki timeout powodował AbortError. */
 const MCP_POLICIES_TIMEOUT_MS = 15000;
 const MCP_POLICIES_MAX_ATTEMPTS = 3;
@@ -431,7 +442,17 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
   const endpoint = getMcpEndpoint(env) || `https://${String(shopDomain).replace(/\/$/, '')}/api/mcp`;
   const isPoliciesTool = toolName === 'search_shop_policies_and_faqs';
   const timeoutMs = isPoliciesTool ? MCP_POLICIES_TIMEOUT_MS : MCP_TIMEOUT_MS;
-  const maxFetchAttempts = isPoliciesTool ? MCP_POLICIES_MAX_ATTEMPTS : 1;
+
+  const mayUseGoogleAuth =
+    env.MCP_AUTH_METHOD === 'SERVICE_ACCOUNT' || endpoint.includes('bigquery.googleapis.com');
+  const saKey = resolveGcpServiceAccountKey(env);
+  const googleAuthWithRetry = Boolean(mayUseGoogleAuth && saKey);
+
+  const maxFetchAttempts = isPoliciesTool
+    ? MCP_POLICIES_MAX_ATTEMPTS
+    : googleAuthWithRetry
+      ? MCP_GOOGLE_AUTH_MAX_ATTEMPTS
+      : 1;
 
   try {
     let res: Response | undefined;
@@ -444,8 +465,7 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         let usedGoogleAuth = false;
         try {
-          const useServiceAccount = ((env as any)?.MCP_AUTH_METHOD === 'SERVICE_ACCOUNT') || endpoint.includes('bigquery.googleapis.com');
-          const saKey = (env as any)?.GCP_SERVICE_ACCOUNT_KEY || (process.env as any)?.GCP_SERVICE_ACCOUNT_KEY;
+          const useServiceAccount = mayUseGoogleAuth;
           if (useServiceAccount && saKey) {
             const token = await getAccessTokenFromServiceAccount(saKey, 'https://www.googleapis.com/auth/bigquery');
             if (token?.access_token) {

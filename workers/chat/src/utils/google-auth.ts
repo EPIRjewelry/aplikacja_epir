@@ -76,10 +76,11 @@ export async function getAccessTokenFromServiceAccount(
   const header = { alg: 'RS256', typ: 'JWT' };
   const claim = {
     iss: clientEmail,
+    sub: clientEmail,
     scope,
     aud: 'https://oauth2.googleapis.com/token',
     exp,
-    iat
+    iat,
   };
 
   const jwtHeader = base64UrlEncode(JSON.stringify(header));

@@ -119,6 +119,8 @@ ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://epir-art-silver-jewellery.my
 SHOP_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
 # MCP endpoint - zmienna konfiguracyjna (CHAT_SPEC: shopify-admin-mcp = {shop_domain}/api/mcp)
 MCP_ENDPOINT = "https://epir-art-silver-jewellery.myshopify.com/api/mcp"
+# BigQuery / Google MCP (opcjonalnie): pełny JSON service account jako secret; opcjonalnie [vars] MCP_AUTH_METHOD = "SERVICE_ACCOUNT"
+#   wrangler secret put GCP_SERVICE_ACCOUNT_KEY
 # WORKER_ORIGIN: URL Workera dla internal MCP calls (używane w rag.ts callMcpTool)
 # W produkcji: https://asystent.epirbizuteria.pl
 # W dev: https://asystent-epir.YOUR-NAME.workers.dev
