@@ -11,6 +11,7 @@ Ten dokument definiuje kontrakt danych dla warstw Shopify, Cloudflare i analityk
 3. Złożone struktury treściowe przechowujemy preferencyjnie w **metaobjectach**, nie w rozbudowanych metafields JSON.
 4. Dla zapisów `json` przez Admin API należy respektować limit platformy; duże konfiguracje należy rozbijać na metaobjects i referencje.
 5. Każdy dokument lub rekord powiązany ze storefrontem powinien mieć możliwość przypisania do `storefrontId`.
+6. Treść **polityk sklepu i FAQ wiążących** dla agentów AI: wyłącznie Shopify Knowledge Base / Storefront MCP — [`EPIR_KB_MCP_POLICY_CONTRACT.md`](EPIR_KB_MCP_POLICY_CONTRACT.md). D1, Vectorize i inne magazyny nie są źródłem normatywnym tej treści.
 
 ## Shopify: kluczowe metaobiekty
 
@@ -93,13 +94,93 @@ Kluczowe obszary:
 - `messages`
 - `client_profiles`
 - `person_memory`
+- **`memory_facts`**, **`memory_events`**, **`memory_raw_turns`** (migracje 009–011; semantyczna pamięć klienta + audyt referencji)
 - dane pomocnicze wykorzystywane przez Durable Objects
 
 Rola:
 
 - archiwizacja wiadomości,
 - przechowywanie rozszerzonego stanu klienta,
-- pamięć skrótowa między sesjami, jeśli została jawnie wdrożona.
+- pamięć skrótowa między sesjami, jeśli została jawnie wdrożona,
+- ustrukturyzowane fakty preferencji (`memory_facts`), ślad audytowy użycia narzędzi MCP / polityk (`memory_events`), surowe wypowiedzi użytkownika z limitem czasu (`memory_raw_turns`).
+
+#### `memory_facts` (migracja 009)
+
+**Cel:** trwałe, ustrukturyzowane fakty o preferencjach klienta (slot-filling), źródło dla deterministycznego skrótu `person_memory.summary` oraz dla retrievalu semantycznego (np. embeddingi w indeksie Vectorize `memory_customer`, warstwa aplikacji — patrz [`EPIR_MEMORY_ARCHITECTURE.md`](EPIR_MEMORY_ARCHITECTURE.md)).
+
+**Powiązanie z tożsamością:** każdy rekord jest przypisany do **`shopify_customer_id`** (identyfikator klienta Shopify). Brak rekordów bez tego klucza.
+
+**Zasady treści (KB / polityki):** pełny tekst wiążących polityk sklepu **nie** jest zapisywany w tej tabeli. Dotyk polityk jest odzwierciedlany wyłącznie w `memory_events` (audyt referencji). Szczegóły normatywne: [`EPIR_KB_MCP_POLICY_CONTRACT.md`](EPIR_KB_MCP_POLICY_CONTRACT.md).
+
+| Kolumna | Typ | Opis |
+|--------|-----|------|
+| `id` | TEXT PK | Identyfikator rekordu |
+| `shopify_customer_id` | TEXT NOT NULL | Klient Shopify (klucz partycji logicznej) |
+| `slot` | TEXT NOT NULL | Slot faktu; dozwolone wartości (CHECK): `budget`, `metal`, `stone`, `ring_size`, `style`, `intent`, `event`, `product_interest`, `contact_pref`, `language` |
+| `value` | TEXT NOT NULL | Wartość znormalizowana |
+| `value_raw` | TEXT | Oryginalna fraza użytkownika (opcjonalnie) |
+| `confidence` | REAL NOT NULL DEFAULT 0.5 | Pewność ekstrakcji |
+| `source_session_id` | TEXT | Sesja źródłowa |
+| `source_message_id` | TEXT | Wiadomość źródłowa |
+| `source_kind` | TEXT NOT NULL DEFAULT `'extractor'` | Proweniencja zapisu |
+| `created_at` | INTEGER NOT NULL | Unix epoch (ms) utworzenia |
+| `expires_at` | INTEGER | Unix epoch (ms) wygaśnięcia rekordu (TTL per slot — warstwa aplikacji) |
+| `superseded_by` | TEXT | Id nowego rekordu, który nadpisuje ten (łańcuch wersji tej samej preferencji) |
+
+**Indeksy:** `idx_memory_facts_customer`, `idx_memory_facts_customer_slot`, `idx_memory_facts_expires_at`, `idx_memory_facts_superseded`; **UNIQUE** `uniq_memory_facts_dedup` na `(shopify_customer_id, slot, value, source_message_id)`.
+
+**Retencja / RODO:** rekordy z `expires_at` mogą być usuwane po wygaśnięciu; pełne usunięcie danych klienta wymaga kasowania po `shopify_customer_id` (np. żądanie usunięcia danych, webhook `customers/redact`) — spójnie z operacjami erase w workerze czatu.
+
+---
+
+#### `memory_events` (migracja 010)
+
+**Cel:** wyłącznie **referencje audytowe** dotyczące użycia polityk, FAQ, produktów lub koszyka — **bez** pełnego tekstu polityki jako nowego źródła prawdy. Umożliwia powiązanie „co zostało wywołane / kiedy” z `shopify_customer_id` i opcjonalnie `tool_call_id` (deduplikacja).
+
+**Powiązanie z tożsamością:** **`shopify_customer_id`** — każdy zapis jest per klient.
+
+| Kolumna | Typ | Opis |
+|--------|-----|------|
+| `id` | TEXT PK | Identyfikator zdarzenia |
+| `shopify_customer_id` | TEXT NOT NULL | Klient Shopify |
+| `kind` | TEXT NOT NULL | `policy_touch` \| `product_touch` \| `cart_touch` \| `faq_touch` (CHECK) |
+| `ref_id` | TEXT NOT NULL | Referencja: np. identyfikator polityki, GID produktu, id koszyka |
+| `ref_version` | TEXT | Wersja / etykieta wersji polityki (gdy znana) |
+| `content_hash` | TEXT | Skrót treści z MCP (fallback audytu, nie drugi „kanon”) |
+| `locale` | TEXT | Kontekst lokalizacji |
+| `market` | TEXT | Kontekst rynku |
+| `session_id` | TEXT | Sesja czatu |
+| `tool_call_id` | TEXT | Id wywołania narzędzia (unikalność per klient, gdy NOT NULL) |
+| `called_at` | INTEGER NOT NULL | Unix epoch (ms) momentu zapisu / wywołania |
+| `meta_json` | TEXT | Dodatkowe metadane JSON (nie zastępują kanonu KB) |
+
+**Indeksy:** `idx_memory_events_customer`, `idx_memory_events_customer_kind`, `idx_memory_events_called_at`; **UNIQUE** częściowy `uniq_memory_events_toolcall` na `(shopify_customer_id, tool_call_id)` WHERE `tool_call_id IS NOT NULL`.
+
+**Retencja / RODO:** polityka retencji zdarzeń audytowych ustala się operacyjnie (np. archiwizacja / purge po czasie); przy żądaniu usunięcia danych klienta rekordy dla danego `shopify_customer_id` są usuwane w ramach tej samej operacji co pozostałe tabele pamięci.
+
+---
+
+#### `memory_raw_turns` (migracja 011)
+
+**Cel:** przechowywanie **surowych wypowiedzi użytkownika** (`role = 'user'`) na potrzeby retrievalu z limitem czasu. Treść asystenta (w tym cytaty polityk) **nie** trafia do tej tabeli — zgodnie z [`EPIR_KB_MCP_POLICY_CONTRACT.md`](EPIR_KB_MCP_POLICY_CONTRACT.md).
+
+**Powiązanie z tożsamością:** **`shopify_customer_id`**; dodatkowo **`session_id`** (powiązanie z konwersacją), opcjonalnie **`message_id`**.
+
+| Kolumna | Typ | Opis |
+|--------|-----|------|
+| `id` | TEXT PK | Identyfikator wiersza |
+| `shopify_customer_id` | TEXT NOT NULL | Klient Shopify |
+| `session_id` | TEXT NOT NULL | Id sesji czatu |
+| `message_id` | TEXT | Id wiadomości źródłowej |
+| `role` | TEXT NOT NULL DEFAULT `'user'` | Musi być `'user'` (CHECK) |
+| `text` | TEXT NOT NULL | Treść wypowiedzi (może być maskowana PII warstwą aplikacji) |
+| `text_masked` | INTEGER NOT NULL DEFAULT 0 | Flaga maskowania |
+| `created_at` | INTEGER NOT NULL | Unix epoch (ms) |
+| `expires_at` | INTEGER NOT NULL | Unix epoch (ms) — **twardy horyzont retencji** |
+
+**Retencja / RODO:** **`expires_at`** realizuje **twardy TTL** dla surowych wypowiedzi. Kontrakt operacyjny EPIR: **180 dni** od zapisu (wartość ustawiana w warstwie aplikacji przy insert; w schemacie D1 obowiązuje niepuste `expires_at` i okresowe czyszczenie wygasłych wierszy). Usunięcie na żądanie klienta: kasowanie po `shopify_customer_id` (wszystkie powiązane wiersze + synchronizacja z magazynami wektorowymi po stronie aplikacji).
+
+**Indeksy:** `idx_memory_raw_turns_customer`, `idx_memory_raw_turns_expires_at`, `idx_memory_raw_turns_session`.
 
 ### Durable Objects
 
