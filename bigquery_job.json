@@ -1,0 +1,8 @@
+{
+  "configuration": {
+    "query": {
+      "useLegacySql": false,
+      "query": "WITH chat_sessions AS (\n  SELECT DISTINCT session_id FROM `analytics_435783047.messages_raw` WHERE role = 'user'\n),\npurchase_sessions AS (\n  SELECT DISTINCT session_id FROM `analytics_435783047.epir_pixel_events_raw`\n  WHERE event_type = 'purchase_completed'\n)\nSELECT 'with_chat' AS segment, COUNT(DISTINCT c.session_id) AS sessions_with_chat, COUNT(DISTINCT p.session_id) AS sessions_with_purchase\nFROM chat_sessions c LEFT JOIN purchase_sessions p ON c.session_id = p.session_id\nUNION ALL\nSELECT 'without_chat',\n  (SELECT COUNT(DISTINCT session_id) FROM `analytics_435783047.epir_pixel_events_raw`) - (SELECT COUNT(*) FROM chat_sessions),\n  (SELECT COUNT(DISTINCT session_id) FROM purchase_sessions) - (SELECT COUNT(DISTINCT c.session_id) FROM chat_sessions c JOIN purchase_sessions p ON c.session_id = p.session_id)"
+    }
+  }
+}
