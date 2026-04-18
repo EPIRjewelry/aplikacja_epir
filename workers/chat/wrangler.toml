@@ -35,32 +35,22 @@ database_id = "475a1cb7-f1b5-47ba-94ed-40fd64c32451"
 # queue = "epir-index-queue"
 
 # ---------------------------------------------------------------------------
-# Memory pipeline (Etap 3 — semantyczna pamięć klienta, KB-clamped)
-# Włącz dopiero po: (1) stworzeniu kolejek, (2) utworzeniu indeksu Vectorize,
-# (3) uruchomieniu migracji 009-011. Flaga `MEMORY_EXTRACT_ENABLED` kontroluje
-# producenta w SessionDO, `MEMORY_V2_ENABLED` — assembler promptu.
-#
-# Provisioning (na planie płatnym):
-#   wrangler queues create memory-extract
-#   wrangler queues create memory-extract-dlq
-#   wrangler vectorize create memory_customer --dimensions=384 --metric=cosine
+# Memory pipeline (Etap 3) — kolejka + Vectorize `memory_customer` + migracje 009–011.
 # ---------------------------------------------------------------------------
-# Po pełnym provisioning można odkomentować poniższe bindingi albo przenieść je
-# do sekcji środowiskowej (np. [env.production]).
-# [[queues.producers]]
-# binding = "MEMORY_EXTRACT_QUEUE"
-# queue = "memory-extract"
-#
-# [[queues.consumers]]
-# queue = "memory-extract"
-# max_batch_size = 10
-# max_batch_timeout = 5
-# max_retries = 5
-# dead_letter_queue = "memory-extract-dlq"
-#
-# [[vectorize]]
-# binding = "MEMORY_INDEX"
-# index_name = "memory_customer"
+[[queues.producers]]
+binding = "MEMORY_EXTRACT_QUEUE"
+queue = "memory-extract"
+
+[[queues.consumers]]
+queue = "memory-extract"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "memory-extract-dlq"
+
+[[vectorize]]
+binding = "MEMORY_INDEX"
+index_name = "memory_customer"
 
 [[migrations]]
 tag = "v1"
@@ -121,9 +111,9 @@ ALLOWED_ORIGIN = "https://epir-art-silver-jewellery.myshopify.com"
 # MEMORY_EXTRACT_ENABLED = "true" — producer enqueue w streamAssistant + consumer aktywny.
 # MEMORY_V2_ENABLED = "true" — assembler promptu używa deterministic summary + retrieval.
 # MEMORY_RAW_RETRIEVAL_ENABLED = "true" — włącza dodatkowe top-k po user-turns.
-MEMORY_EXTRACT_ENABLED = "false"
-MEMORY_V2_ENABLED = "false"
-MEMORY_RAW_RETRIEVAL_ENABLED = "false"
+MEMORY_EXTRACT_ENABLED = "true"
+MEMORY_V2_ENABLED = "true"
+MEMORY_RAW_RETRIEVAL_ENABLED = "true"
 # `null` = literal Origin string from Shopify Web Pixel sandbox (opaque origin), not a TOML null
 ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://epir-art-silver-jewellery.myshopify.com,https://asystent.epirbizuteria.pl,https://kazka.epirbizuteria.pl,https://zareczyny.epirbizuteria.pl,null"
 SHOP_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
