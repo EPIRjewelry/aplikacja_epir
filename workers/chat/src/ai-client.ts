@@ -226,6 +226,21 @@ function extractTextFromAiResult(result: unknown): string | null {
     }
   }
 
+  // Legacy / alternative response shapes: OpenAI-style `choices[].text`
+  if (Array.isArray(result.choices) && result.choices.length > 0) {
+    const firstChoice = result.choices[0];
+    if (isRecord(firstChoice) && typeof firstChoice.text === 'string' && firstChoice.text.trim()) {
+      return firstChoice.text.trim();
+    }
+
+    // Join text fields from multiple choices if present
+    const texts: string[] = [];
+    for (const ch of result.choices) {
+      if (isRecord(ch) && typeof ch.text === 'string' && ch.text.trim()) texts.push(ch.text.trim());
+    }
+    if (texts.length > 0) return texts.join('\n\n');
+  }
+
   if (result.result !== undefined && result.result !== result) {
     return extractTextFromAiResult(result.result);
   }
@@ -262,6 +277,11 @@ function describeEmptyAiResult(result: unknown): Record<string, unknown> {
         if (Array.isArray(message.tool_calls)) {
           meta.tool_calls_count = message.tool_calls.length;
         }
+      }
+      // Legacy OpenAI-style `text` field on choices
+      if (typeof first.text === 'string') {
+        meta.content_preview = first.text.slice(0, 200);
+        meta.content_len = first.text.length;
       }
     }
   }

@@ -23,17 +23,30 @@ export type ExtractedFact = {
   confidence: number;
 };
 
-const METALS = [
-  'srebro',
-  'złoto',
-  'zloto',
-  'złoto białe',
-  'zloto biale',
-  'złoto różowe',
-  'zloto rozowe',
-  'platyna',
-  'pallad',
-  'stal chirurgiczna',
+const METALS: Array<{ pattern: RegExp; value: string; valueRaw: string }> = [
+  { pattern: /\bsrebr(?:o|e|ny|na|nej|nym|ze)\b/iu, value: 'srebro', valueRaw: 'srebro' },
+  {
+    pattern: /\b(?:złot(?:o|a|e|y|ym|ej|em|cie)|zloto)\s+biał(?:e|ego|ym|ej)?\b/iu,
+    value: 'złoto_białe',
+    valueRaw: 'złoto białe',
+  },
+  {
+    pattern: /\b(?:złot(?:o|a|e|y|ym|ej|em|cie)|zloto)\s+różow(?:e|ego|ym|ej)?\b/iu,
+    value: 'złoto_różowe',
+    valueRaw: 'złoto różowe',
+  },
+  {
+    pattern: /\b(?:złot(?:o|a|e|y|ym|ej|em|cie)|zloto)\b/iu,
+    value: 'złoto',
+    valueRaw: 'złoto',
+  },
+  { pattern: /\bplatyn(?:a|ie|y|ą)\b/iu, value: 'platyna', valueRaw: 'platyna' },
+  { pattern: /\bpallad(?:|u|zie|em)\b/iu, value: 'pallad', valueRaw: 'pallad' },
+  {
+    pattern: /\bstal\s+chirurgiczn(?:a|ej|ą)\b/iu,
+    value: 'stal_chirurgiczna',
+    valueRaw: 'stal chirurgiczna',
+  },
 ];
 const STONES = [
   'diament',
@@ -99,7 +112,7 @@ export function extractFactsDeterministic(userTexts: string[]): ExtractedFact[] 
     if (!text) continue;
 
     // budget
-    const budgetMatch = text.match(/\b(\d{2,5})\s*(zł|zl|pln)\b/i);
+    const budgetMatch = text.match(/(?:^|\s)(\d{2,5})\s*(zł|zl|pln)(?=$|[\s.,!?;:])/iu);
     if (budgetMatch) {
       const amount = Number(budgetMatch[1]);
       if (amount >= 50 && amount <= 200000) {
@@ -129,11 +142,11 @@ export function extractFactsDeterministic(userTexts: string[]): ExtractedFact[] 
     // metals
     const textLow = text.toLowerCase();
     for (const metal of METALS) {
-      if (textLow.includes(metal)) {
+      if (metal.pattern.test(text)) {
         dedupePush(out, {
           slot: 'metal',
-          value: metal.replace(/\s+/g, '_'),
-          valueRaw: metal,
+          value: metal.value,
+          valueRaw: metal.valueRaw,
           confidence: 0.8,
         });
       }

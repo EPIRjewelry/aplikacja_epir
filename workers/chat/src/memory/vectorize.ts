@@ -60,10 +60,12 @@ export async function embedMemoryText(
   const timeoutMs = Math.max(500, options?.timeoutMs ?? 4000);
 
   try {
-    const run = env.AI.run as (model: string, input: unknown) => Promise<unknown>;
+    // Musi być `ai.run(...)`, nie `const run = ai.run; run(...)` — inaczej tracony jest `this`
+    // i Workers AI rzuca: Cannot set properties of undefined (setting '#options').
+    const ai = env.AI;
     const raw = (await Promise.race([
-      run(MEMORY_EMBEDDING_MODEL, { text: [input] }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('embed_timeout')), timeoutMs)),
+      ai.run!(MEMORY_EMBEDDING_MODEL, { text: [input] }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('embed_timeout')), timeoutMs)),
     ])) as { data?: number[][] } | null;
     const vec = Array.isArray(raw?.data) && Array.isArray(raw?.data[0]) ? (raw!.data[0] as number[]) : null;
     if (!vec || vec.length === 0) {

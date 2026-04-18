@@ -222,7 +222,7 @@ describe('person_memory helpers', () => {
     expect(summary).toBe('Klient preferuje srebro i szafiry.');
   });
 
-  it('mergeSessionIntoPersonSummary throws when model returns empty or invalid output', async () => {
+  it('mergeSessionIntoPersonSummary falls back deterministically when model returns empty output', async () => {
     mockedGetGroqResponse.mockResolvedValueOnce('');
     mockedGetGroqResponse.mockResolvedValueOnce('   ');
 
@@ -236,6 +236,8 @@ describe('person_memory helpers', () => {
           'user: Najlepiej delikatny model',
         ].join('\n'),
       ),
-    ).rejects.toThrow('Workers AI returned an empty or invalid response');
+    ).resolves.toBe(
+      'Preferuje biżuterię srebrną. Szukam pierścionka z szafirem Najlepiej delikatny model',
+    );
   });
 });

@@ -5,6 +5,8 @@ dist
 .dev.vars
 *.log
 **/service-account.json
+# Lokalne zrzuty klucza SA (np. temp_sa.json) — nigdy nie commitować
+temp_sa.json
 .shopify
 **/public/build
 # Root package-lock.json jest wymagany przez CI (npm ci w .github/workflows/deploy-pages.yml).

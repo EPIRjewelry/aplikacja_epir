@@ -52,6 +52,19 @@ describe('getGroqResponse polymorphic parsing', () => {
     await expect(getGroqResponse(messages, env)).resolves.toBe('Pierwsza część. Druga część.');
   });
 
+  it('returns content from legacy choices.text shape', async () => {
+    const env = {
+      AI: {
+        run: vi.fn().mockResolvedValue({
+          choices: [{ text: 'Odpowiedź z legacy choices.text' }],
+          model: '@cf/moonshotai/kimi-k2.5',
+        }),
+      },
+    };
+
+    await expect(getGroqResponse(messages, env)).resolves.toBe('Odpowiedź z legacy choices.text');
+  });
+
   it('throws on invalid response shape', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
