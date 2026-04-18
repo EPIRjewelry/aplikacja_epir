@@ -51,6 +51,10 @@ export interface Env {
   /** Opcjonalnie: GID wpisu metaobject z tabelą rozmiarów (gdy handle wpisu ≠ `tabela_rozmiarow`). */
   SIZE_TABLE_METAOBJECT_GID?: string;
   MCP_ENDPOINT?: string;
+  /** JSON service account (secret) — używane przez google-auth do Bearer tokenów do Google MCP / BigQuery. */
+  GCP_SERVICE_ACCOUNT_KEY?: string;
+  /** Np. `SERVICE_ACCOUNT` — wymusza JWT OAuth do endpointów MCP wymagających Google (obok heurystyki `bigquery.googleapis.com`). */
+  MCP_AUTH_METHOD?: string;
 
   PUBLIC_STOREFRONT_API_TOKEN_KAZKA?: string;
   PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY?: string;
@@ -82,6 +86,7 @@ export const OPTIONAL_SECRETS = [
   'SHOPIFY_ADMIN_TOKEN',
   'EPIR_CHAT_SHARED_SECRET',
   'X-EPIR-SHARED-SECRET',
+  'GCP_SERVICE_ACCOUNT_KEY',
 ] as const;
 
 export const REQUIRED_VARS = ['SHOP_DOMAIN', 'ALLOWED_ORIGIN'] as const;
