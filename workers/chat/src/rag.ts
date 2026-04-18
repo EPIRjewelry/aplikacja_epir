@@ -505,7 +505,8 @@ export async function searchShopPoliciesAndFaqsWithMCP(
   shopDomain: string | undefined,
   vectorIndex?: VectorizeIndex,
   aiBinding?: any,
-  topK: number = 3
+  topK: number = 3,
+  locale?: string,
 ): Promise<RagSearchResult> {
   const binding = isBindingPolicyQuery(query);
 
@@ -514,6 +515,7 @@ export async function searchShopPoliciesAndFaqsWithMCP(
     // on every binding policy fallback path.
     emitKbClampBlocked({
       intent: 'faq',
+      locale,
       query,
       source: 'chat-worker-local-fallback',
     });

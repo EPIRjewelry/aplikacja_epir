@@ -142,7 +142,8 @@ export async function searchShopPoliciesAndFaqsWithMCP(
   shopDomain: string | undefined,
   vectorIndex?: VectorizeIndex,
   aiBinding?: any,
-  topK: number = 3
+  topK: number = 3,
+  locale?: string,
 ): Promise<LocalRAG.RagSearchResult> {
   // Check if shopDomain is actually an Env object (with RAG_WORKER binding)
   let env: Env | undefined = undefined;
@@ -160,7 +161,7 @@ export async function searchShopPoliciesAndFaqsWithMCP(
       const response = await env.RAG_WORKER!.fetch('https://rag-worker/search/policies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, topK }),
+        body: JSON.stringify({ query, topK, locale }),
       });
 
       if (!response.ok) {
@@ -187,7 +188,7 @@ export async function searchShopPoliciesAndFaqsWithMCP(
 
   // Fallback: Local rag.ts
   console.log('[RAG Wrapper] Using local rag.ts for FAQ search');
-  return LocalRAG.searchShopPoliciesAndFaqsWithMCP(query, shopDomain, vectorIndex, aiBinding, topK);
+  return LocalRAG.searchShopPoliciesAndFaqsWithMCP(query, shopDomain, vectorIndex, aiBinding, topK, locale);
 }
 
 /**

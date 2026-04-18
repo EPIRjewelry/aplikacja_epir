@@ -79,8 +79,8 @@ export const BINDING_POLICY_PATTERNS: readonly RegExp[] = [
   /\b(inpost|dpd|dhl|fedex|ups|orlen\s*paczka)\b/i,
   /czas\s+(dostaw|wysyl|realizac)/i,
   /koszt(y|u|em)?\s+(dostaw|wysyl|zwrot)/i,
-  /oplat[ayę]\s+(za\s+)?(wysyl|dostaw|zwrot)/i,
-  /darmow[aąe]\s+(wysyl|dostaw)/i,
+  /oplat[aye]\s+(za\s+)?(wysyl|dostaw|zwrot)/i,
+  /darmow[aae]\s+(wysyl|dostaw)/i,
   // terms / policy / privacy / GDPR / invoicing
   /regulamin/i,
   /polityk/i,
@@ -89,7 +89,7 @@ export const BINDING_POLICY_PATTERNS: readonly RegExp[] = [
   /\brodo\b/i,
   /ochrona\s+danych/i,
   /cookie/i,
-  /plik(i|ów)\s+cookies?/i,
+  /plik(i|ow)\s+cookies?/i,
   /paragon/i,
   /faktur/i,
   /prawo\s+konsument/i,
@@ -178,6 +178,17 @@ export interface KbClampLogParams {
   source?: string;
 }
 
+const MAX_RAW_QUERY_LOG_CHARS = 512;
+
+function sanitizeRawQueryForLog(query: string): string {
+  const normalized = typeof query === 'string' ? query : '';
+  const piiMasked = normalized
+    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[EMAIL]')
+    .replace(/\b(?:\+?\d{1,3}[\s-]?)?(?:\d[\s-]?){7,14}\d\b/g, '[PHONE_OR_ID]');
+  if (piiMasked.length <= MAX_RAW_QUERY_LOG_CHARS) return piiMasked;
+  return `${piiMasked.slice(0, MAX_RAW_QUERY_LOG_CHARS)}…[truncated]`;
+}
+
 /**
  * Emits a structured `console.warn(JSON.stringify(...))` that Cloudflare
  * Logpush / BigQuery can aggregate by `metric: kb_clamp_blocked_total`.
@@ -192,7 +203,7 @@ export function emitKbClampBlocked(params: KbClampLogParams): void {
       intent: params.intent ?? null,
       locale: params.locale ?? 'unknown',
       source: params.source ?? 'unknown',
-      raw_query: params.query,
+      raw_query: sanitizeRawQueryForLog(params.query),
     }),
   );
 }

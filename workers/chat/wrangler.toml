@@ -45,20 +45,22 @@ database_id = "475a1cb7-f1b5-47ba-94ed-40fd64c32451"
 #   wrangler queues create memory-extract-dlq
 #   wrangler vectorize create memory_customer --dimensions=384 --metric=cosine
 # ---------------------------------------------------------------------------
-[[queues.producers]]
-binding = "MEMORY_EXTRACT_QUEUE"
-queue = "memory-extract"
-
-[[queues.consumers]]
-queue = "memory-extract"
-max_batch_size = 10
-max_batch_timeout = 5
-max_retries = 5
-dead_letter_queue = "memory-extract-dlq"
-
-[[vectorize]]
-binding = "MEMORY_INDEX"
-index_name = "memory_customer"
+# Po pełnym provisioning można odkomentować poniższe bindingi albo przenieść je
+# do sekcji środowiskowej (np. [env.production]).
+# [[queues.producers]]
+# binding = "MEMORY_EXTRACT_QUEUE"
+# queue = "memory-extract"
+#
+# [[queues.consumers]]
+# queue = "memory-extract"
+# max_batch_size = 10
+# max_batch_timeout = 5
+# max_retries = 5
+# dead_letter_queue = "memory-extract-dlq"
+#
+# [[vectorize]]
+# binding = "MEMORY_INDEX"
+# index_name = "memory_customer"
 
 [[migrations]]
 tag = "v1"
@@ -147,4 +149,3 @@ WORKER_ORIGIN = "https://asystent.epirbizuteria.pl"
 # - W Cloudflare: ustawione powyższe sekrety dla danego kanału (fallback: SHOPIFY_STOREFRONT_TOKEN).
 # - W Shopify Admin: metaobject typu ai_profile — wpis dla handle (np. zareczyny) opublikowany (Storefront), pola brand_voice itd. niepuste.
 # - W logach: [ai-profile] unavailable (pre-flight) = brak GID/tokenu/domeny; Metaobject not found = zły GID lub brak publikacji.
-

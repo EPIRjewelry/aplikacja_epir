@@ -138,6 +138,7 @@ describe('isBindingPolicyQuery (KB-clamp)', () => {
       'czas realizacji zamówienia',
       'paczkomat czy kurier DHL?',
       'śledzenie przesyłki — gdzie jest?',      // "przesyłk"
+      'jaką opłatę za dostawę pobieracie?',
       'opłata za dostawę ekspresową',
     ];
     for (const s of q) {
@@ -150,6 +151,7 @@ describe('isBindingPolicyQuery (KB-clamp)', () => {
       'regulamin sklepu',
       'polityka prywatności',
       'polityka plików cookies',
+      'czy zbieracie plików cookies?',
       'RODO — dane osobowe',
       'ochrona danych osobowych',
       'czy wystawicie fakturę VAT?',

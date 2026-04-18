@@ -22,6 +22,7 @@ export type { Env } from './config/bindings';
 
 // Importy bezpieczeństwa i DO
 import { verifyAppProxyHmac, replayCheck } from './security';
+import { verifyHmac } from './hmac';
 import { RateLimiterDO } from './rate-limiter';
 import { TokenVaultDO, TokenVault } from './token-vault';
 
@@ -2533,21 +2534,24 @@ async function streamAssistantResponse(
         const memoryExtractEnabled = String(env.MEMORY_EXTRACT_ENABLED ?? '').toLowerCase() === 'true';
         if (memoryExtractEnabled) {
           try {
-            const turns = history.slice(-6).map((h) => ({
-              role: h.role === 'system' ? ('user' as const) : (h.role as 'user' | 'assistant' | 'tool'),
-              content: h.content ?? '',
-              ts: h.ts,
-              toolName: h.name,
-              toolCallId: h.tool_call_id,
-              toolCalls: Array.isArray(h.tool_calls)
-                ? (h.tool_calls as Array<{ id?: string; function?: { name?: string; arguments?: string } }>).map((tc) => ({
-                    id: String(tc?.id ?? ''),
-                    name: String(tc?.function?.name ?? ''),
-                    arguments: tc?.function?.arguments,
-                  }))
-                : undefined,
-              messageId: h.message_uid,
-            }));
+            const turns = history
+              .slice(-6)
+              .filter((h) => h.role !== 'system')
+              .map((h) => ({
+                role: h.role as 'user' | 'assistant' | 'tool',
+                content: h.content ?? '',
+                ts: h.ts,
+                toolName: h.name,
+                toolCallId: h.tool_call_id,
+                toolCalls: Array.isArray(h.tool_calls)
+                  ? (h.tool_calls as Array<{ id?: string; function?: { name?: string; arguments?: string } }>).map((tc) => ({
+                      id: String(tc?.id ?? ''),
+                      name: String(tc?.function?.name ?? ''),
+                      arguments: tc?.function?.arguments,
+                    }))
+                  : undefined,
+                messageId: h.message_uid,
+              }));
             const idempotencyKey = await makeIdempotencyKey(effectiveShopifyCustomerId, String(userMessageTs));
             const message: MemoryExtractMessage = {
               v: MEMORY_EXTRACT_MESSAGE_VERSION,
@@ -3452,25 +3456,15 @@ export default {
     // Kontrakt: POST z body { customer: { id }, shop_id, shop_domain } + nagłówek X-Shopify-Hmac-Sha256.
     if (request.method === 'POST' && url.pathname === '/webhooks/customers/redact') {
       try {
-        const rawBody = await request.text();
+        const rawBodyBuffer = await request.arrayBuffer();
+        const rawBodyBytes = new Uint8Array(rawBodyBuffer);
+        const rawBody = new TextDecoder().decode(rawBodyBytes);
         const hmac = request.headers.get('X-Shopify-Hmac-Sha256');
         if (!env.SHOPIFY_APP_SECRET || !hmac) {
           return new Response('Unauthorized', { status: 401 });
         }
-        const enc = new TextEncoder();
-        const key = await crypto.subtle.importKey(
-          'raw',
-          enc.encode(env.SHOPIFY_APP_SECRET),
-          { name: 'HMAC', hash: 'SHA-256' },
-          false,
-          ['sign'],
-        );
-        const signature = await crypto.subtle.sign('HMAC', key, enc.encode(rawBody));
-        const bytes = new Uint8Array(signature);
-        let bin = '';
-        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-        const expected = btoa(bin);
-        if (expected !== hmac) {
+        const validWebhook = await verifyHmac(hmac, env.SHOPIFY_APP_SECRET, rawBodyBytes);
+        if (!validWebhook) {
           return new Response('Unauthorized', { status: 401 });
         }
         const payload = JSON.parse(rawBody) as { customer?: { id?: string | number } };
