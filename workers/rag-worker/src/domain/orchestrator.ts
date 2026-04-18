@@ -20,14 +20,20 @@ import {
 } from '../services/shopify-mcp';
 import { searchFaqVectorize, VectorizeIndex, AIBinding } from '../services/vectorize';
 import { RagSearchResult, RagResultItem } from './formatter';
+import {
+  POLICY_SYSTEM_UNAVAILABLE,
+  POLICY_SYSTEM_UNAVAILABLE_MESSAGE,
+  emitKbClampBlocked,
+  isBindingPolicyQuery,
+} from '../../../shared/kb-clamp';
 
 /**
  * User intent types
  */
 export type UserIntent = 'search' | 'cart' | 'order' | 'faq' | null;
 
-/** Error code returned when MCP cannot serve binding policy content — callers MUST NOT substitute Vectorize/RAG. */
-export const POLICY_SYSTEM_UNAVAILABLE = 'POLICY_SYSTEM_UNAVAILABLE' as const;
+// Re-exports for downstream callers (tests, wrappers).
+export { POLICY_SYSTEM_UNAVAILABLE, isBindingPolicyQuery };
 
 export type OrchestrateRagSuccess = { ok: true; context: string };
 export type OrchestrateRagFailure = {
@@ -35,183 +41,6 @@ export type OrchestrateRagFailure = {
   error: { code: typeof POLICY_SYSTEM_UNAVAILABLE; message: string };
 };
 export type OrchestrateRagResult = OrchestrateRagSuccess | OrchestrateRagFailure;
-
-/**
- * Normalize for PL/EN matching: lowercase + strip diacritics + fold `ł→l`.
- *
- * We intentionally fold PL diacritics so stem-substrings match all inflections
- * (`zwrócić` → `zwrocic`, `wysyłka` → `wysylka`, `odesłać` → `odeslac`).
- */
-function normalizePolicyQuery(query: string): string {
-  return query
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/ł/g, 'l');
-}
-
-/** DJB2 hash of NFD-stripped + ł→l normalized query — logs without raw PII. */
-export function hashQueryForKbClampLog(query: string): string {
-  const n = normalizePolicyQuery(query);
-  let h = 5381;
-  for (let i = 0; i < n.length; i++) {
-    h = ((h << 5) + h) ^ n.charCodeAt(i);
-  }
-  return (h >>> 0).toString(16).padStart(8, '0');
-}
-
-/** Structured log for dashboards / logpush counts (`metric: kb_clamp_blocked_total`). */
-function emitKbClampBlocked(params: {
-  intent: UserIntent;
-  locale?: string;
-  query: string;
-}): void {
-  console.warn(
-    JSON.stringify({
-      event: 'POLICY_SYSTEM_UNAVAILABLE',
-      metric: 'kb_clamp_blocked_total',
-      code: POLICY_SYSTEM_UNAVAILABLE,
-      intent: params.intent ?? null,
-      locale: params.locale ?? 'unknown',
-      query_hash: hashQueryForKbClampLog(params.query),
-    }),
-  );
-}
-
-/**
- * Patterns that mark a query as **binding store policy** (returns, shipping,
- * warranty, terms, privacy/GDPR, etc.). When any pattern matches, Vectorize
- * fallback is FORBIDDEN (KB-clamp).
- *
- * Design bias: **over-detect rather than leak**. False positives here only
- * downgrade MCP-empty fallback for FAQ-shaped queries to a controlled
- * `POLICY_SYSTEM_UNAVAILABLE` message — never a wrong binding answer from RAG.
- *
- * Keep in sync with `workers/chat/src/rag.ts` (`BINDING_POLICY_PATTERNS`).
- *
- * English `policy`/`policies` use contextual phrases only (return/privacy/… policy
- * or policy on/for/…, our/your/the … policies) — not bare “policy”, to reduce
- * non-store false positives while keeping over-detect elsewhere.
- */
-const BINDING_POLICY_PATTERNS: readonly RegExp[] = [
-  // --- Polish stems (operate on diacritic-stripped text) ---
-  // returns / exchanges / withdrawal from contract
-  /zwrot/i,
-  /zwroc/i,
-  /zwraca/i,
-  /zwruot/i,  // common typo
-  /zwrut/i,
-  /odesl/i,   // odesłać, odesłanie, odeslij
-  /odsyl/i,   // odsyłam, odsyłka
-  /wymian/i,  // wymiana, wymianę, wymianie
-  /wymien/i,  // wymienić, wymieniać
-  /odstap/i,  // odstąpienie od umowy
-  /14\s*dni/i,
-  /30\s*dni/i,
-  // complaints / warranty / repair
-  /reklamac/i,
-  /napraw/i,
-  /gwaranc/i,
-  /rekojm/i,  // rękojmia → rekojm
-  // shipping / delivery / courier
-  /wysyl/i,   // wysyłka, wysyłki, wysyłać
-  /przesylk/i,
-  /dostaw/i,  // dostawa, dostawy, dostawą
-  /dostarc/i, // dostarczyć, dostarczenie
-  /kurier/i,
-  /paczk/i,
-  /paczkomat/i,
-  /\b(inpost|dpd|dhl|fedex|ups|orlen\s*paczka)\b/i,
-  /czas\s+(dostaw|wysyl|realizac)/i,
-  /koszt(y|u|em)?\s+(dostaw|wysyl|zwrot)/i,
-  /oplat[ayę]\s+(za\s+)?(wysyl|dostaw|zwrot)/i,
-  /darmow[aąe]\s+(wysyl|dostaw)/i,
-  // terms / policy / privacy / GDPR / invoicing
-  /regulamin/i,
-  /polityk/i,          // polityka zwrotów, wysyłki, prywatności, sklepu…
-  /prywatno/i,         // prywatność / prywatności
-  /dane\s+osobow/i,
-  /\brodo\b/i,
-  /ochrona\s+danych/i,
-  /cookie/i,
-  /plik(i|ów)\s+cookies?/i,
-  /paragon/i,
-  /faktur/i,
-  /prawo\s+konsument/i,
-  /ustawa\s+o\s+prawach\s+konsument/i,
-
-  // --- English (word-boundary) ---
-  // returns / refund / exchange / withdrawal
-  /\breturn(s|ed|ing|able)?\b/i,
-  /\brefund(s|ed|ing|able)?\b/i,
-  /\bexchange(s|d|ing)?\b/i,
-  /\bmoney[-\s]?back\b/i,
-  /\bcooling[-\s]?off\b/i,
-  /\bwithdraw(al)?\b/i,
-  /\b(14|30)[-\s]?day(s)?\b/i,
-  // warranty / complaint / repair
-  /\bwarrant(y|ies)\b/i,
-  /\bguarantee(s|d)?\b/i,
-  /\bcomplaint(s)?\b/i,
-  /\brepair(s|ed|ing)?\b/i,
-  // shipping / delivery / courier / tracking / fees
-  /\bship(ping|ment|ments|ped|s)?\b/i,
-  /\bdeliver(y|ies|ed|ing)\b/i,
-  /\bcourier(s)?\b/i,
-  /\bpostage\b/i,
-  /\btracking\b/i,
-  /\bparcel(s)?\b/i,
-  /\bpickup\s+point(s)?\b/i,
-  /\bfree\s+(ship|delivery)/i,
-  // terms / policy / privacy / GDPR / consumer rights
-  /\bterms\s+(of\s+(service|use|sale)|and\s+conditions)\b/i,
-  /\bt&c(s)?\b/i,
-  /\btos\b/i,
-  /\bprivacy\b/i,
-  /\bgdpr\b/i,
-  /\bdata\s+protection\b/i,
-  /\bconsumer\s+rights?\b/i,
-  /\bstatutory\s+rights?\b/i,
-  // English "policy/policies": contextual only — avoids bare "policy" (e.g. non-store copy).
-  /\b(return|refund|shipping|delivery|privacy|exchange|warranty|cancellation|cookie|store|sale)\s+polic(y|ies)\b/i,
-  /\bpolic(y|ies)\s+(on|for|regarding|about|covering)\b/i,
-  /\b(our|your|the)\s+(store\s+)?polic(y|ies)\b/i,
-  /\breceipt(s)?\b/i,
-  /\binvoice(s)?\b/i,
-];
-
-/**
- * Explicitly NON-binding exceptions — narrow list of phrases that may mention
- * the words above but ask for non-regulatory context (e.g. gemmological care,
- * editorial content). Used ONLY when no stronger binding pattern matched.
- */
-// Soft-exemption patterns run against the DIACRITIC-STRIPPED lowercase text.
-const BINDING_POLICY_SOFT_EXEMPTIONS: readonly RegExp[] = [
-  /\bfaq\s+o\s+(kamieni|kolekcji|stylu|pielegnacj)/i,
-  /\bpytania\s+i\s+odpowiedzi\s+o\s+(kamieni|kolekcji|stylu|pielegnacj)/i,
-];
-
-/**
- * True when the query targets binding shop obligations (returns, shipping,
- * warranty, terms, privacy/GDPR, invoicing). Over-detects deliberately — false
- * positives are acceptable; leaking to RAG is NOT. Mirror of the implementation
- * in `workers/chat/src/rag.ts`.
- */
-export function isBindingPolicyQuery(query: string): boolean {
-  if (!query || typeof query !== 'string') return false;
-  const normalized = normalizePolicyQuery(query);
-  const matched = BINDING_POLICY_PATTERNS.some((re) => re.test(normalized));
-  if (!matched) return false;
-  // Soft exemptions apply only if no strong binding keyword is present alongside.
-  if (BINDING_POLICY_SOFT_EXEMPTIONS.some((re) => re.test(normalized))) {
-    const strongBinding =
-      /zwrot|refund|reklamac|complaint|wysyl|ship|dostaw|deliver|gwaranc|warrant|rekojm|regulamin|polityk|prywatno|gdpr|rodo|terms|withdraw|odstap/i.test(
-        normalized,
-      );
-    return strongBinding;
-  }
-  return true;
-}
 
 function extractMcpFaqPlainText(mcpFaq: unknown): string | null {
   if (!mcpFaq || typeof mcpFaq !== 'object') return null;
@@ -395,13 +224,13 @@ export async function orchestrateRag(options: RagOptions): Promise<OrchestrateRa
           intent: intent ?? 'faq',
           locale: options.locale,
           query,
+          source: 'rag-worker',
         });
         return {
           ok: false,
           error: {
             code: POLICY_SYSTEM_UNAVAILABLE,
-            message:
-              'Shopify policy service (Storefront MCP) did not return usable content; Vectorize fallback is disabled for binding policy queries per EPIR_KB_MCP_POLICY_CONTRACT.',
+            message: POLICY_SYSTEM_UNAVAILABLE_MESSAGE,
           },
         };
       }
@@ -462,14 +291,14 @@ export async function buildRagContext(options: RagOptions): Promise<RagSearchRes
           intent: intent ?? 'faq',
           locale: options.locale,
           query,
+          source: 'rag-worker',
         });
         return {
           query,
           results: [],
           error: {
             code: POLICY_SYSTEM_UNAVAILABLE,
-            message:
-              'Shopify policy service (Storefront MCP) did not return usable content; Vectorize fallback is disabled for binding policy queries per EPIR_KB_MCP_POLICY_CONTRACT.',
+            message: POLICY_SYSTEM_UNAVAILABLE_MESSAGE,
           },
         };
       }

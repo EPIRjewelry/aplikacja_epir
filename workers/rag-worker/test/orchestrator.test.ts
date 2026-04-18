@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   detectIntent,
   isBindingPolicyQuery,
-  hashQueryForKbClampLog,
+  orchestrateRag,
   type UserIntent,
 } from '../src/domain/orchestrator';
 
@@ -256,12 +256,40 @@ describe('isBindingPolicyQuery (KB-clamp)', () => {
   });
 });
 
-describe('hashQueryForKbClampLog', () => {
-  it('is stable for the same normalized input and differs across queries', () => {
-    const a = hashQueryForKbClampLog('Polityka ZWROTÓW');
-    const b = hashQueryForKbClampLog('polityka zwrotow');
-    expect(a).toBe(b);
-    expect(hashQueryForKbClampLog('inne pytanie')).not.toBe(a);
+describe('KB-clamp structured log (raw_query, metric: kb_clamp_blocked_total)', () => {
+  it('emits a single console.warn with raw_query + metric when binding MCP is unavailable', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await orchestrateRag({
+      query: 'polityka zwrotów 30 dni',
+      intent: 'faq',
+      // no mcpEndpoint → MCP unreachable → binding path triggers KB-clamp
+      locale: 'pl-PL',
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('POLICY_SYSTEM_UNAVAILABLE');
+    }
+
+    const structuredCalls = warnSpy.mock.calls
+      .map(([arg]) => (typeof arg === 'string' ? arg : ''))
+      .filter((s) => s.includes('"metric":"kb_clamp_blocked_total"'));
+
+    expect(structuredCalls).toHaveLength(1);
+    const payload = JSON.parse(structuredCalls[0]);
+    expect(payload).toMatchObject({
+      event: 'POLICY_SYSTEM_UNAVAILABLE',
+      metric: 'kb_clamp_blocked_total',
+      code: 'POLICY_SYSTEM_UNAVAILABLE',
+      intent: 'faq',
+      locale: 'pl-PL',
+      source: 'rag-worker',
+      raw_query: 'polityka zwrotów 30 dni',
+    });
+    expect(payload).not.toHaveProperty('query_hash');
+
+    warnSpy.mockRestore();
   });
 });
 

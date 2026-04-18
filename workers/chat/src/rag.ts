@@ -64,119 +64,19 @@ export interface RagSearchResult {
   error?: { code: string; message?: string };
 }
 
-/** Must match `POLICY_SYSTEM_UNAVAILABLE` in workers/rag-worker. */
-export const POLICY_SYSTEM_UNAVAILABLE = 'POLICY_SYSTEM_UNAVAILABLE' as const;
-
 /**
- * Binding policy / regulatory query — Vectorize fallback forbidden
- * (EPIR_KB_MCP_POLICY_CONTRACT). Kept in sync with
- * `workers/rag-worker/src/domain/orchestrator.ts` `isBindingPolicyQuery`.
- * Biased to over-detect (false positives are safer than RAG leakage).
+ * KB-clamp heuristic is centralized in `workers/shared/kb-clamp.ts` to avoid
+ * drift between the RAG worker and the chat worker's local fallback path.
+ * Re-exported here so existing downstream imports keep working.
  */
-function normalizePolicyQuery(query: string): string {
-  return query
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/ł/g, 'l');
-}
+import {
+  POLICY_SYSTEM_UNAVAILABLE,
+  POLICY_SYSTEM_UNAVAILABLE_MESSAGE,
+  emitKbClampBlocked,
+  isBindingPolicyQuery,
+} from '../../shared/kb-clamp';
 
-const BINDING_POLICY_PATTERNS: readonly RegExp[] = [
-  /zwrot/i,
-  /zwroc/i,
-  /zwraca/i,
-  /zwruot/i,
-  /zwrut/i,
-  /odesl/i,
-  /odsyl/i,
-  /wymian/i,
-  /wymien/i,
-  /odstap/i,
-  /14\s*dni/i,
-  /30\s*dni/i,
-  /reklamac/i,
-  /napraw/i,
-  /gwaranc/i,
-  /rekojm/i,
-  /wysyl/i,
-  /przesylk/i,
-  /dostaw/i,
-  /dostarc/i,
-  /kurier/i,
-  /paczk/i,
-  /paczkomat/i,
-  /\b(inpost|dpd|dhl|fedex|ups|orlen\s*paczka)\b/i,
-  /czas\s+(dostaw|wysyl|realizac)/i,
-  /koszt(y|u|em)?\s+(dostaw|wysyl|zwrot)/i,
-  /oplat[ayę]\s+(za\s+)?(wysyl|dostaw|zwrot)/i,
-  /darmow[aąe]\s+(wysyl|dostaw)/i,
-  /regulamin/i,
-  /polityk/i,
-  /prywatno/i,
-  /dane\s+osobow/i,
-  /\brodo\b/i,
-  /ochrona\s+danych/i,
-  /cookie/i,
-  /plik(i|ów)\s+cookies?/i,
-  /paragon/i,
-  /faktur/i,
-  /prawo\s+konsument/i,
-  /ustawa\s+o\s+prawach\s+konsument/i,
-
-  /\breturn(s|ed|ing|able)?\b/i,
-  /\brefund(s|ed|ing|able)?\b/i,
-  /\bexchange(s|d|ing)?\b/i,
-  /\bmoney[-\s]?back\b/i,
-  /\bcooling[-\s]?off\b/i,
-  /\bwithdraw(al)?\b/i,
-  /\b(14|30)[-\s]?day(s)?\b/i,
-  /\bwarrant(y|ies)\b/i,
-  /\bguarantee(s|d)?\b/i,
-  /\bcomplaint(s)?\b/i,
-  /\brepair(s|ed|ing)?\b/i,
-  /\bship(ping|ment|ments|ped|s)?\b/i,
-  /\bdeliver(y|ies|ed|ing)\b/i,
-  /\bcourier(s)?\b/i,
-  /\bpostage\b/i,
-  /\btracking\b/i,
-  /\bparcel(s)?\b/i,
-  /\bpickup\s+point(s)?\b/i,
-  /\bfree\s+(ship|delivery)/i,
-  /\bterms\s+(of\s+(service|use|sale)|and\s+conditions)\b/i,
-  /\bt&c(s)?\b/i,
-  /\btos\b/i,
-  /\bprivacy\b/i,
-  /\bgdpr\b/i,
-  /\bdata\s+protection\b/i,
-  /\bconsumer\s+rights?\b/i,
-  /\bstatutory\s+rights?\b/i,
-  /\b(return|refund|shipping|delivery|privacy|exchange|warranty|cancellation|cookie|store|sale)\s+polic(y|ies)\b/i,
-  /\bpolic(y|ies)\s+(on|for|regarding|about|covering)\b/i,
-  /\b(our|your|the)\s+(store\s+)?polic(y|ies)\b/i,
-  /\breceipt(s)?\b/i,
-  /\binvoice(s)?\b/i,
-];
-
-// Soft-exemption patterns run against the DIACRITIC-STRIPPED lowercase text.
-const BINDING_POLICY_SOFT_EXEMPTIONS: readonly RegExp[] = [
-  /\bfaq\s+o\s+(kamieni|kolekcji|stylu|pielegnacj)/i,
-  /\bpytania\s+i\s+odpowiedzi\s+o\s+(kamieni|kolekcji|stylu|pielegnacj)/i,
-];
-
-export function isBindingPolicyQuery(query: string): boolean {
-  if (!query || typeof query !== 'string') return false;
-  const normalized = normalizePolicyQuery(query);
-  const matched = BINDING_POLICY_PATTERNS.some((re) => re.test(normalized));
-  if (!matched) return false;
-  if (BINDING_POLICY_SOFT_EXEMPTIONS.some((re) => re.test(normalized))) {
-    const strongBinding =
-      /zwrot|refund|reklamac|complaint|wysyl|ship|dostaw|deliver|gwaranc|warrant|rekojm|regulamin|polityk|prywatno|gdpr|rodo|terms|withdraw|odstap/i.test(
-        normalized,
-      );
-    return strongBinding;
-  }
-  return true;
-}
+export { POLICY_SYSTEM_UNAVAILABLE, isBindingPolicyQuery };
 
 // --- Additional lightweight TS types and defensive guards for RAG inputs ---
 export type RagDoc = {
@@ -609,15 +509,23 @@ export async function searchShopPoliciesAndFaqsWithMCP(
 ): Promise<RagSearchResult> {
   const binding = isBindingPolicyQuery(query);
 
-  const policyUnavailable = (): RagSearchResult => ({
-    query,
-    results: [],
-    error: {
-      code: POLICY_SYSTEM_UNAVAILABLE,
-      message:
-        'Shopify policy service (Storefront MCP) did not return usable content; Vectorize fallback is disabled for binding policy queries per EPIR_KB_MCP_POLICY_CONTRACT.',
-    },
-  });
+  const policyUnavailable = (): RagSearchResult => {
+    // Observability parity with rag-worker: emit structured kb-clamp log
+    // on every binding policy fallback path.
+    emitKbClampBlocked({
+      intent: 'faq',
+      query,
+      source: 'chat-worker-local-fallback',
+    });
+    return {
+      query,
+      results: [],
+      error: {
+        code: POLICY_SYSTEM_UNAVAILABLE,
+        message: POLICY_SYSTEM_UNAVAILABLE_MESSAGE,
+      },
+    };
+  };
 
   async function runVectorizeForNonBinding(): Promise<RagSearchResult> {
     if (!vectorIndex || !aiBinding || binding) {
