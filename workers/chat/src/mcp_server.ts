@@ -27,6 +27,7 @@ import type { Env } from './index';
 import { TOOL_SCHEMAS } from './mcp_tools';
 import { normalizeCartId, isValidCartGid } from './utils/cart';
 import { getSizeTable } from './size-table';
+import { getAccessTokenFromServiceAccount, clearAccessTokenCache } from './utils/google-auth';
 type JsonRpcId = string | number | null;
 
 function json(headers: HeadersInit = {}) {
@@ -439,12 +440,41 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       const fetchStarted = Date.now();
       try {
+        // Prepare headers and optionally attach Google Service Account Bearer token
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        let usedGoogleAuth = false;
+        try {
+          const useServiceAccount = ((env as any)?.MCP_AUTH_METHOD === 'SERVICE_ACCOUNT') || endpoint.includes('bigquery.googleapis.com');
+          const saKey = (env as any)?.GCP_SERVICE_ACCOUNT_KEY || (process.env as any)?.GCP_SERVICE_ACCOUNT_KEY;
+          if (useServiceAccount && saKey) {
+            const token = await getAccessTokenFromServiceAccount(saKey, 'https://www.googleapis.com/auth/bigquery');
+            if (token?.access_token) {
+              headers['Authorization'] = `Bearer ${token.access_token}`;
+              usedGoogleAuth = true;
+            } else {
+              console.warn('[mcp] could not obtain Google access token for MCP request');
+            }
+          }
+        } catch (e) {
+          console.warn('[mcp] google auth helper error', e);
+        }
+
         res = await fetch(endpoint, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify(rpc),
           signal: controller.signal
         });
+
+        // If Google MCP returned 401/403, clear token cache and retry (if attempts remain)
+        if ((res.status === 401 || res.status === 403) && usedGoogleAuth) {
+          try { clearAccessTokenCache(); } catch (e) {}
+          if (attempt < maxFetchAttempts) {
+            console.warn('[mcp] Google MCP auth failed (401/403), cleared token cache and will retry');
+            await sleepMs(100 * attempt);
+            continue;
+          }
+        }
 
         const queryPreview =
           toolName === 'search_catalog' && typeof args?.catalog?.query === 'string'
