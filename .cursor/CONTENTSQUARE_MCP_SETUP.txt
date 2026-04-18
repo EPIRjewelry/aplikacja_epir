@@ -1,0 +1,50 @@
+Contentsquare MCP — co jest potrzebne (Cursor + portal CSQ)
+=========================================================
+
+1) Konto i portal
+-----------------
+- Konto Contentsquare z dostępem do projektu (witryna sklepu).
+- Rola pozwalająca na integracje / API (administrator konta lub projektu w konsoli).
+- Konsola: https://console.contentsquare.com/
+- W interfeście Contentsquare szukaj sekcji dot. **Model Context Protocol (MCP)** — konfiguracja po stronie CSQ (artykuł Help Center: „How to set up and use Model Context Protocol (MCP)”).
+
+2) Po stronie Cursor (zalecane: OAuth)
+---------------------------------------
+- Plik projektu: `.cursor/mcp.json` — wpis `contentsquare` z `url`: `https://api.contentsquare.com/mcp`.
+- Cursor: **Settings → Tools & MCP** (lub Features → MCP) — serwer **contentsquare** powinien być widoczny.
+- Jeśli status to „Needs authentication” / podobny: użyj **Connect** i zaloguj się do Contentsquare w przeglądarce (token zapisuje Cursor).
+
+3) OAuth — redirect URI (gdy CSQ wymaga rejestracji aplikacji OAuth)
+--------------------------------------------------------------------
+Cursor używa stałego adresu callback:
+  cursor://anysphere.cursor-mcp/oauth/callback
+Dodaj go jako dozwolony redirect URI w konfiguracji aplikacji OAuth u dostawcy (Contentsquare / IdP), jeśli jest taka wymóg.
+
+4) Statyczne OAuth w mcp.json (gdy CSQ podaje stały Client ID / Secret)
+-----------------------------------------------------------------------
+Zgodnie z dokumentacją Cursor możesz dodać do wpisu z `url` obiekt:
+  "auth": {
+    "CLIENT_ID": "${env:CONTENTSQUARE_MCP_CLIENT_ID}",
+    "CLIENT_SECRET": "${env:CONTENTSQUARE_MCP_CLIENT_SECRET}",
+    "scopes": [ "... wg dokumentacji CSQ ..." ]
+  }
+Ustaw zmienne środowiskowe w systemie lub profilu użytkownika (nie commituj wartości).
+
+5) Alternatywa: Bearer token (tylko jeśli endpoint /mcp akceptuje ten sam token co API)
+---------------------------------------------------------------------------------------
+- OAuth 2LO w CSQ: `POST https://api.contentsquare.com/v1/oauth/token` (client_credentials, scope m.in. `data-export` — dokładne scope wg docs.contentsquare.com).
+- Token JWT ~1 h; odświeżanie przez ponowne żądanie tokena.
+- W `mcp.json` można dodać:
+    "headers": { "Authorization": "Bearer ${env:CONTENTSQUARE_MCP_BEARER}" }
+Ustaw `CONTENTSQUARE_MCP_BEARER` lokalnie (np. zmienna użytkownika Windows). Nie commituj.
+Uwaga: jeśli serwer ogłasza OAuth discovery, Cursor może preferować przepływ OAuth zamiast nagłówków — wtedy użyj przycisku Connect.
+
+6) Credential OAuth do API (console)
+--------------------------------------
+- Tworzenie par client_id / client_secret: Help Center „How to create API credentials”.
+- API keys są przestarzałe (od 2024-04-30) — wymagane OAuth.
+
+7) Diagnostyka
+--------------
+- Output w Cursor: **MCP Logs** (View → Output → MCP).
+- Błąd 401 przy `api.contentsquare.com/mcp` = brak ważnej autoryzacji (najpierw Connect OAuth lub poprawny Bearer).
