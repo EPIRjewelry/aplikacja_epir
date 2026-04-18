@@ -34,6 +34,34 @@ database_id = "475a1cb7-f1b5-47ba-94ed-40fd64c32451"
 # binding = "INDEX_QUEUE"
 # queue = "epir-index-queue"
 
+# ---------------------------------------------------------------------------
+# Memory pipeline (Etap 3 — semantyczna pamięć klienta, KB-clamped)
+# Włącz dopiero po: (1) stworzeniu kolejek, (2) utworzeniu indeksu Vectorize,
+# (3) uruchomieniu migracji 009-011. Flaga `MEMORY_EXTRACT_ENABLED` kontroluje
+# producenta w SessionDO, `MEMORY_V2_ENABLED` — assembler promptu.
+#
+# Provisioning (na planie płatnym):
+#   wrangler queues create memory-extract
+#   wrangler queues create memory-extract-dlq
+#   wrangler vectorize create memory_customer --dimensions=384 --metric=cosine
+# ---------------------------------------------------------------------------
+# Po pełnym provisioning można odkomentować poniższe bindingi albo przenieść je
+# do sekcji środowiskowej (np. [env.production]).
+# [[queues.producers]]
+# binding = "MEMORY_EXTRACT_QUEUE"
+# queue = "memory-extract"
+#
+# [[queues.consumers]]
+# queue = "memory-extract"
+# max_batch_size = 10
+# max_batch_timeout = 5
+# max_retries = 5
+# dead_letter_queue = "memory-extract-dlq"
+#
+# [[vectorize]]
+# binding = "MEMORY_INDEX"
+# index_name = "memory_customer"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SessionDO"]
@@ -89,6 +117,13 @@ invocation_logs = true
 
 [vars]
 ALLOWED_ORIGIN = "https://epir-art-silver-jewellery.myshopify.com"
+# Memory v2 feature flags (kontrolują rollout; domyślnie wyłączone, włączamy stopniowo):
+# MEMORY_EXTRACT_ENABLED = "true" — producer enqueue w streamAssistant + consumer aktywny.
+# MEMORY_V2_ENABLED = "true" — assembler promptu używa deterministic summary + retrieval.
+# MEMORY_RAW_RETRIEVAL_ENABLED = "true" — włącza dodatkowe top-k po user-turns.
+MEMORY_EXTRACT_ENABLED = "false"
+MEMORY_V2_ENABLED = "false"
+MEMORY_RAW_RETRIEVAL_ENABLED = "false"
 # `null` = literal Origin string from Shopify Web Pixel sandbox (opaque origin), not a TOML null
 ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://epir-art-silver-jewellery.myshopify.com,https://asystent.epirbizuteria.pl,https://kazka.epirbizuteria.pl,https://zareczyny.epirbizuteria.pl,null"
 SHOP_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
@@ -114,4 +149,3 @@ WORKER_ORIGIN = "https://asystent.epirbizuteria.pl"
 # - W Cloudflare: ustawione powyższe sekrety dla danego kanału (fallback: SHOPIFY_STOREFRONT_TOKEN).
 # - W Shopify Admin: metaobject typu ai_profile — wpis dla handle (np. zareczyny) opublikowany (Storefront), pola brand_voice itd. niepuste.
 # - W logach: [ai-profile] unavailable (pre-flight) = brak GID/tokenu/domeny; Metaobject not found = zły GID lub brak publikacji.
-

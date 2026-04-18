@@ -3,7 +3,8 @@
  * - Captures click coordinates, scroll depth, time on page
  * - Publishes custom events via Shopify.analytics.publish so Web Pixel can subscribe
  * - Debounces scroll events to reduce noise
- * - Uses navigator.sendBeacon on unload for reliability where appropriate
+ * - page_exit: tylko Shopify.analytics.publish → Web Pixel → fetch /pixel (enrichment).
+ *   Bez sendBeacon na /pixel (unik duplikatów i rekordów anonymous w workerze).
  */
 (function () {
   if (typeof Shopify === 'undefined' || !Shopify.analytics || !Shopify.analytics.publish) {
@@ -57,10 +58,14 @@
   }
   window.addEventListener('scroll', handleScroll, { passive: true });
 
-  // Time on page / before unload
+  // Time on page / before unload (single publish per page lifecycle; shared by both listeners)
   const startTime = Date.now();
+  let pageExitSent = false;
   function sendTimeOnPage() {
     try {
+      if (pageExitSent) return;
+      pageExitSent = true;
+
       const timeOnPage = Math.round((Date.now() - startTime) / 1000);
       const payload = {
         time_on_page_seconds: timeOnPage,
@@ -69,28 +74,10 @@
         timestamp: Date.now()
       };
 
-      // Use analytics.publish first (so Web Pixel can pick it up)
+      // Kanoniczny tor: Web Pixel wzbogaca i wysyła POST /pixel (session, storefront, customer).
       Shopify.analytics.publish('epir:page_exit', payload);
-
-      // Also attempt navigator.sendBeacon to analytics worker as a fallback for reliability
-      try {
-        const beaconData = JSON.stringify({ type: 'epir:page_exit', data: payload });
-        // Endpoint z sekcji (data-worker-endpoint) lub domyślny produkcyjny
-        let pixelEndpoint = 'https://asystent.epirbizuteria.pl/pixel';
-        const sectionEl = document.getElementById('epir-assistant-section');
-        if (sectionEl && sectionEl.dataset && sectionEl.dataset.workerEndpoint) {
-          try {
-            const url = new URL(sectionEl.dataset.workerEndpoint);
-            pixelEndpoint = url.origin + '/pixel';
-          } catch (e) { /* keep default */ }
-        }
-        if (navigator.sendBeacon) {
-          navigator.sendBeacon(pixelEndpoint, beaconData);
-        }
-      } catch (err) {
-        // ignore
-      }
     } catch (err) {
+      pageExitSent = false;
       console.warn('[EPIR Tracking] sendTimeOnPage error', err);
     }
   }

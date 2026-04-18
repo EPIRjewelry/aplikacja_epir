@@ -20,6 +20,8 @@ Ten katalog jest częścią jedynego kanonicznego pakietu dokumentacji EPIR. Ten
 ### Dokumenty techniczne w `docs/`
 
 - [`EPIR_INGRESS_AND_RUNTIME.md`](EPIR_INGRESS_AND_RUNTIME.md) — techniczny kontrakt ingressu, runtime i aktualnych przepływów czatu
+- [`EPIR_KB_MCP_POLICY_CONTRACT.md`](EPIR_KB_MCP_POLICY_CONTRACT.md) — jedyna prawda o politykach/FAQ: Shopify Knowledge Base + Storefront MCP; brak RAG jako źródła treści wiążących
+- [`EPIR_MEMORY_ARCHITECTURE.md`](EPIR_MEMORY_ARCHITECTURE.md) — semantyczna pamięć klienta (typed facts w D1 + Vectorize `memory_customer`), deterministyczny skrót, KB-clamp i pipeline async Etap 3
 - [`EPIR_DATA_SCHEMA_CONTRACT.md`](EPIR_DATA_SCHEMA_CONTRACT.md) — kontrakt danych Shopify, D1, Vectorize i BigQuery
 - [`EPIR_DEPLOYMENT_AND_OPERATIONS.md`](EPIR_DEPLOYMENT_AND_OPERATIONS.md) — sekrety, migracje, deploy i runbook operacyjny
 - [`EPIR_BLUEPRINTS_AND_EXCEPTIONS.md`](EPIR_BLUEPRINTS_AND_EXCEPTIONS.md) — Project B, automatyzacje, limity API i zasady agentowe

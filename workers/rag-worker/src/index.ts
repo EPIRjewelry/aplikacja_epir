@@ -3,12 +3,12 @@
  * 
  * Reusable RAG orchestration worker exposing REST API for:
  * - Product search (MCP primary source)
- * - Policy/FAQ search (MCP + Vectorize fallback)
+ * - Policy/FAQ search (MCP primary; Vectorize only for non-binding FAQ — KB-clamp)
  * - Full context building (all sources)
  * 
  * DESIGN PRINCIPLES:
  * - MCP ALWAYS primary source (anti-hallucination strategy)
- * - Vectorize as fallback when MCP unavailable
+ * - Vectorize only as fallback for non-binding FAQ/blog-like queries when MCP is empty (KB-clamp: no Vectorize for binding policies)
  * - Clean REST API for Service Binding integration
  * - No hardcoded secrets (env.SHOP_DOMAIN from wrangler.toml vars)
  * 
@@ -24,7 +24,6 @@
 
 import {
   orchestrateRag,
-  buildRagContext,
   detectIntent,
   UserIntent,
 } from './domain/orchestrator';
@@ -100,6 +99,14 @@ function getMcpEndpoint(env: Env): string | undefined {
   return env.CANONICAL_MCP_URL?.trim() || (env.SHOP_DOMAIN ? `https://${env.SHOP_DOMAIN.replace(/\/$/, '')}/api/mcp` : undefined);
 }
 
+/** First Accept-Language tag (trimmed), for KB-clamp observability only. */
+function localeFromRequest(request: Request): string | undefined {
+  const al = request.headers.get('accept-language');
+  if (!al) return undefined;
+  const first = al.split(',')[0]?.trim();
+  return first ? first.slice(0, 24) : undefined;
+}
+
 /**
  * Main Worker fetch handler
  */
@@ -158,14 +165,22 @@ export default {
           );
         }
 
-        const contextText = await orchestrateRag({
+        const ragResult = await orchestrateRag({
           query,
           intent: 'search',
           mcpEndpoint: getMcpEndpoint(env),
+          locale: localeFromRequest(request),
         });
 
+        if (!ragResult.ok) {
+          return new Response(
+            JSON.stringify({ ok: false, query, error: ragResult.error }),
+            { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+          );
+        }
+
         return new Response(
-          JSON.stringify({ query, context: contextText }),
+          JSON.stringify({ ok: true, query, context: ragResult.context }),
           { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
         );
       }
@@ -184,17 +199,30 @@ export default {
           );
         }
 
-        const contextText = await orchestrateRag({
+        const ragResult = await orchestrateRag({
           query,
           intent: 'faq',
           vectorIndex: env.VECTOR_INDEX,
           aiBinding: env.AI,
           topK,
           mcpEndpoint: getMcpEndpoint(env),
+          locale: localeFromRequest(request),
         });
 
+        if (!ragResult.ok) {
+          return new Response(
+            JSON.stringify({
+              ok: false,
+              query,
+              error: ragResult.error,
+              code: ragResult.error.code,
+            }),
+            { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+          );
+        }
+
         return new Response(
-          JSON.stringify({ query, context: contextText }),
+          JSON.stringify({ ok: true, query, context: ragResult.context }),
           { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
         );
       }
@@ -216,8 +244,7 @@ export default {
         // Auto-detect intent if not provided
         const finalIntent = intent || detectIntent(query);
 
-        // Use orchestrator with detected/provided intent
-        const contextText = await orchestrateRag({
+        const ragResult = await orchestrateRag({
           query,
           intent: finalIntent,
           cartId,
@@ -225,24 +252,29 @@ export default {
           aiBinding: env.AI,
           topK,
           mcpEndpoint: getMcpEndpoint(env),
+          locale: localeFromRequest(request),
         });
 
-        // Alternative: Use buildRagContext for structured result
-        // const ragResult = await buildRagContext({
-        //   query,
-        //   intent: finalIntent,
-        //   vectorIndex: env.VECTOR_INDEX,
-        //   aiBinding: env.AI,
-        //   topK,
-        // });
-        // const contextText = formatRagForPrompt(ragResult);
+        if (!ragResult.ok) {
+          return new Response(
+            JSON.stringify({
+              ok: false,
+              query,
+              intent: finalIntent,
+              error: ragResult.error,
+              code: ragResult.error.code,
+            }),
+            { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+          );
+        }
 
         return new Response(
           JSON.stringify({
+            ok: true,
             query,
             intent: finalIntent,
-            context: contextText,
-            hasHighConfidence: true, // Could use hasHighConfidenceResults() for structured results
+            context: ragResult.context,
+            hasHighConfidence: true,
           }),
           { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
         );

@@ -60,7 +60,23 @@ export interface RagResultItem {
 export interface RagSearchResult {
   query?: string;
   results: RagResultItem[];
+  /** KB-clamp: MCP failed for binding policy query — do not use Vectorize. */
+  error?: { code: string; message?: string };
 }
+
+/**
+ * KB-clamp heuristic is centralized in `workers/shared/kb-clamp.ts` to avoid
+ * drift between the RAG worker and the chat worker's local fallback path.
+ * Re-exported here so existing downstream imports keep working.
+ */
+import {
+  POLICY_SYSTEM_UNAVAILABLE,
+  POLICY_SYSTEM_UNAVAILABLE_MESSAGE,
+  emitKbClampBlocked,
+  isBindingPolicyQuery,
+} from '../../shared/kb-clamp';
+
+export { POLICY_SYSTEM_UNAVAILABLE, isBindingPolicyQuery };
 
 // --- Additional lightweight TS types and defensive guards for RAG inputs ---
 export type RagDoc = {
@@ -482,74 +498,42 @@ export async function searchProductsAndCartWithMCP(
 
 /**
  * searchShopPoliciesAndFaqsWithMCP
- * - Wyszukuje FAQ/policies używając Vectorize (similarity search)
- * - Zwraca RagSearchResult z listą elementów (id, snippet, source)
+ * - MCP primary; Vectorize only for non-binding informational queries (KB-clamp).
  */
 export async function searchShopPoliciesAndFaqsWithMCP(
   query: string,
   shopDomain: string | undefined,
   vectorIndex?: VectorizeIndex,
   aiBinding?: any,
-  topK: number = 3
+  topK: number = 3,
+  locale?: string,
 ): Promise<RagSearchResult> {
-  try {
-    // MCP path
-    if (shopDomain) {
-  // Use the canonical, hardcoded shop MCP endpoint for policies/FAQ lookups
-  const mcpEndpoint = CANONICAL_MCP_URL;
-      const payload = {
-        jsonrpc: '2.0',
-        method: 'tools/call',
-        params: {
-          name: 'search_shop_policies_and_faqs',
-          arguments: { query }
-        },
-        id: Date.now()
-      };
-      const res = await fetch(mcpEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => '<no body>');
-        throw new Error(`MCP search_shop_policies_and_faqs error ${res.status}: ${txt}`);
-      }
-      let j: unknown = await res.json().catch(() => null);
-      if (isString(j)) {
-        const parsed = safeJsonParse(j);
-        if (parsed) j = parsed as unknown;
-      }
-      if (isRecord(j) && 'error' in j && j.error) {
-        const errStr = JSON.stringify((j as Record<string, unknown>).error);
-        throw new Error(`MCP tool call failed: ${errStr}`);
-      }
-      // Standard MCP result: j.result.content[]
-      let results: RagResultItem[] = [];
-      if (isRecord(j) && 'result' in j && isRecord(j.result) && Array.isArray((j.result as McpResult).content)) {
-        results = (j.result as McpResult).content!
-          .filter((c: McpContentItem) => c.type === 'text')
-          .map((c: McpContentItem, idx: number) => {
-            // Try to parse double-encoded text content
-            const parsedText = safeJsonParse(c.text);
-            const text = isString(parsedText) ? parsedText : (c.text || '');
-            return ({
-            id: `faq_${idx + 1}`,
-            title: c.title || undefined,
-              text,
-              snippet: (text || '').slice(0, 500),
-            source: 'mcp',
-            score: undefined,
-            metadata: c,
-            full: c
-            });
-          });
-      }
-      return { query, results };
+  const binding = isBindingPolicyQuery(query);
+
+  const policyUnavailable = (): RagSearchResult => {
+    // Observability parity with rag-worker: emit structured kb-clamp log
+    // on every binding policy fallback path.
+    emitKbClampBlocked({
+      intent: 'faq',
+      locale,
+      query,
+      source: 'chat-worker-local-fallback',
+    });
+    return {
+      query,
+      results: [],
+      error: {
+        code: POLICY_SYSTEM_UNAVAILABLE,
+        message: POLICY_SYSTEM_UNAVAILABLE_MESSAGE,
+      },
+    };
+  };
+
+  async function runVectorizeForNonBinding(): Promise<RagSearchResult> {
+    if (!vectorIndex || !aiBinding || binding) {
+      return { query, results: [] };
     }
-    // Fallback: Vectorize
-    if (vectorIndex && aiBinding) {
-      // Run embedding
+    try {
       const embedding = await aiBinding.run('@cf/baai/bge-large-en-v1.5', { text: [query] });
       const vector = embedding?.data?.[0] || [];
       const vectorResults = await vectorIndex.query(vector, { topK });
@@ -560,15 +544,90 @@ export async function searchShopPoliciesAndFaqsWithMCP(
         source: 'vectorize',
         score: match.score,
         metadata: match.metadata,
-        full: match
+        full: match,
       }));
       return { query, results };
+    } catch (ve) {
+      console.error('Vectorize fallback error:', ve);
+      return { query, results: [] };
     }
-    // No MCP, no Vectorize
-    return { query, results: [] };
+  }
+
+  try {
+    if (shopDomain) {
+      const mcpEndpoint = CANONICAL_MCP_URL;
+      const payload = {
+        jsonrpc: '2.0',
+        method: 'tools/call',
+        params: {
+          name: 'search_shop_policies_and_faqs',
+          arguments: { query },
+        },
+        id: Date.now(),
+      };
+      const res = await fetch(mcpEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '<no body>');
+        if (binding) {
+          console.error(`MCP search_shop_policies_and_faqs error ${res.status}: ${txt}`);
+          return policyUnavailable();
+        }
+        console.warn(`MCP search_shop_policies_and_faqs HTTP ${res.status} (non-binding; will try Vectorize): ${txt}`);
+      } else {
+        let j: unknown = await res.json().catch(() => null);
+        if (isString(j)) {
+          const parsed = safeJsonParse(j);
+          if (parsed) j = parsed as unknown;
+        }
+        if (isRecord(j) && 'error' in j && j.error) {
+          if (binding) {
+            console.error('MCP tool call failed (binding query):', j.error);
+            return policyUnavailable();
+          }
+          console.warn('MCP tool call failed (non-binding; will try Vectorize):', j.error);
+        } else {
+          let results: RagResultItem[] = [];
+          if (isRecord(j) && 'result' in j && isRecord(j.result) && Array.isArray((j.result as McpResult).content)) {
+            results = (j.result as McpResult).content!
+              .filter((c: McpContentItem) => c.type === 'text')
+              .map((c: McpContentItem, idx: number) => {
+                const parsedText = safeJsonParse(c.text);
+                const text = isString(parsedText) ? parsedText : (c.text || '');
+                return {
+                  id: `faq_${idx + 1}`,
+                  title: c.title || undefined,
+                  text,
+                  snippet: (text || '').slice(0, 500),
+                  source: 'mcp',
+                  score: undefined,
+                  metadata: c,
+                  full: c,
+                };
+              });
+          }
+          if (results.length > 0) {
+            return { query, results };
+          }
+          if (binding) {
+            return policyUnavailable();
+          }
+        }
+      }
+    } else if (binding) {
+      return policyUnavailable();
+    }
+
+    return runVectorizeForNonBinding();
   } catch (err) {
     console.error('searchShopPoliciesAndFaqsWithMCP error:', err);
-    return { query, results: [] };
+    if (binding) {
+      return policyUnavailable();
+    }
+    return runVectorizeForNonBinding();
   }
 }
 
@@ -627,6 +686,12 @@ function logError(message: string, data?: any) {
  * - łączy wyniki z różnych źródeł (MCP, Vectorize)
  */
 export function formatRagContextForPrompt(rag: RagSearchResult): string {
+  if (rag?.error?.code === POLICY_SYSTEM_UNAVAILABLE) {
+    return (
+      '[SYSTEM: Policy service unavailable — MCP did not return binding store policies. ' +
+      'Do not answer from Vectorize or general knowledge about returns/shipping/terms; tell the user the policy system is temporarily unavailable.]'
+    );
+  }
   if (!rag || !Array.isArray(rag.results) || rag.results.length === 0) return '';
 
   let output = '';

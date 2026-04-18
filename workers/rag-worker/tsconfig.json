@@ -13,6 +13,6 @@
     "noEmit": true,
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "../shared/**/*.ts", "test/**/*.ts"],
   "exclude": ["node_modules"]
 }

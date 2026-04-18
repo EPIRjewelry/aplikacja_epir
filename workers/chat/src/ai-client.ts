@@ -119,6 +119,51 @@ function requireAi(env: Env): AIBinding {
   return env.AI;
 }
 
+/**
+ * Mierzy czas w `wrangler tail`: (1) `stream_ready_ms` — do zwrócenia strumienia przez `ai.run`,
+ * (2) `first_byte_ms` — do pierwszego bajtu odpowiedzi (proxy za TTFT), (3) `stream_total_ms` — do końca strumienia.
+ */
+function wrapUint8StreamWithWorkersAiTiming(
+  stream: ReadableStream<Uint8Array>,
+  timingLabel: string,
+  t0: number,
+): ReadableStream<Uint8Array> {
+  const reader = stream.getReader();
+  let firstByte = true;
+  return new ReadableStream({
+    async start(controller) {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            console.log(
+              `[Workers AI] ${timingLabel} stream_total_ms=${Date.now() - t0} model=${CHAT_MODEL_ID}`,
+            );
+            controller.close();
+            return;
+          }
+          if (firstByte && value && value.byteLength > 0) {
+            firstByte = false;
+            console.log(
+              `[Workers AI] ${timingLabel} first_byte_ms=${Date.now() - t0} model=${CHAT_MODEL_ID}`,
+            );
+          }
+          controller.enqueue(value);
+        }
+      } catch (err) {
+        console.error(
+          `[Workers AI] ${timingLabel} stream_error_ms=${Date.now() - t0} model=${CHAT_MODEL_ID}`,
+          stringifyForLog(err),
+        );
+        controller.error(err);
+      }
+    },
+    cancel(reason) {
+      return reader.cancel(reason);
+    },
+  });
+}
+
 function stringifyForLog(value: unknown): string {
   try {
     if (value instanceof Error) {
@@ -188,6 +233,46 @@ function extractTextFromAiResult(result: unknown): string | null {
   return null;
 }
 
+/**
+ * Produkuje drobne metadane diagnostyczne z pustej odpowiedzi Workers AI,
+ * żeby odróżnić pustą generację od refusal/content_filter/length.
+ */
+function describeEmptyAiResult(result: unknown): Record<string, unknown> {
+  if (!isRecord(result)) return { shape: typeof result };
+  const meta: Record<string, unknown> = {};
+  if (Array.isArray(result.choices) && result.choices.length > 0) {
+    const first = result.choices[0];
+    if (isRecord(first)) {
+      if (typeof first.finish_reason === 'string') meta.finish_reason = first.finish_reason;
+      const message = isRecord(first.message) ? first.message : null;
+      if (message) {
+        const c = message.content;
+        if (typeof c === 'string') {
+          meta.content_preview = c.slice(0, 200);
+          meta.content_len = c.length;
+        } else if (c === null) {
+          meta.content_preview = null;
+        } else if (Array.isArray(c)) {
+          meta.content_preview = '[array]';
+          meta.content_len = c.length;
+        }
+        if (typeof message.refusal === 'string') {
+          meta.refusal_preview = message.refusal.slice(0, 200);
+        }
+        if (Array.isArray(message.tool_calls)) {
+          meta.tool_calls_count = message.tool_calls.length;
+        }
+      }
+    }
+  }
+  if (isRecord(result.usage)) {
+    const u = result.usage as Record<string, unknown>;
+    if (typeof u.completion_tokens === 'number') meta.completion_tokens = u.completion_tokens;
+    if (typeof u.prompt_tokens === 'number') meta.prompt_tokens = u.prompt_tokens;
+  }
+  return meta;
+}
+
 async function runModelStream(
   messages: GroqMessage[],
   env: Env,
@@ -195,9 +280,13 @@ async function runModelStream(
     tools?: GroqToolCallDefinition[];
     tool_choice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
     sessionId?: string;
+    /** Etykieta w logach `[Workers AI]` (np. iteracja narzędzi). */
+    timingLabel?: string;
   },
 ): Promise<ReadableStream<Uint8Array>> {
   const ai = requireAi(env);
+  const timingLabel = options?.timingLabel ?? 'runModelStream';
+  const t0 = Date.now();
   const stream = (await ai.run(
     CHAT_MODEL_ID,
     {
@@ -211,11 +300,16 @@ async function runModelStream(
     workersAiRunOptions(options?.sessionId),
   )) as ReadableStream<Uint8Array>;
 
+  const streamReadyMs = Date.now() - t0;
+  console.log(
+    `[Workers AI] ${timingLabel} stream_ready_ms=${streamReadyMs} model=${CHAT_MODEL_ID}`,
+  );
+
   if (!stream || typeof stream.getReader !== 'function') {
     throw new Error('Workers AI did not return a stream');
   }
 
-  return stream;
+  return wrapUint8StreamWithWorkersAiTiming(stream, timingLabel, t0);
 }
 
 export async function streamGroqResponse(
@@ -224,7 +318,10 @@ export async function streamGroqResponse(
   sessionId?: string,
 ): Promise<ReadableStream<string>> {
   let buffer = '';
-  const stream = await runModelStream(messages, env, { sessionId });
+  const stream = await runModelStream(messages, env, {
+    sessionId,
+    timingLabel: 'streamGroqResponse',
+  });
 
   return stream
     .pipeThrough(new TextDecoderStream() as unknown as TransformStream<Uint8Array, string>)
@@ -415,11 +512,14 @@ export async function streamGroqEvents(
   env: Env,
   tools?: GroqToolCallDefinition[],
   sessionId?: string,
+  /** Np. `tool_loop_0` — w logach `wrangler tail` odróżnia kolejne wywołania modelu w pętli narzędzi. */
+  timingLabel?: string,
 ): Promise<ReadableStream<GroqStreamEvent>> {
   const stream = await runModelStream(messages, env, {
     tools,
     tool_choice: tools && tools.length > 0 ? 'auto' : undefined,
     sessionId,
+    timingLabel: timingLabel ?? 'streamGroqEvents',
   });
 
   return stream
@@ -451,16 +551,24 @@ export async function getGroqResponse(
     const content = extractTextFromAiResult(result);
     if (!content) {
       if (result && typeof result === 'object') {
+        const elapsed = Date.now() - startTime;
         console.warn(
           '[getGroqResponse] unexpected result keys',
-          Date.now() - startTime,
+          elapsed,
           'ms',
           JSON.stringify(Object.keys(result)),
+        );
+        console.warn(
+          '[getGroqResponse] empty_response_meta',
+          JSON.stringify({ elapsed_ms: elapsed, ...describeEmptyAiResult(result) }),
         );
       }
       throw new Error('Workers AI returned an empty or invalid response');
     }
 
+    console.log(
+      `[Workers AI] getGroqResponse total_ms=${Date.now() - startTime} model=${CHAT_MODEL_ID}`,
+    );
     return String(content);
   } catch (e) {
     console.error('[getGroqResponse] failed', Date.now() - startTime, 'ms', stringifyForLog(e));

@@ -1,9 +1,21 @@
 /**
  * Pamięć międzysesyjna (MVP): skrót preferencji per zalogowany klient Shopify.
  * Źródło person_id: query `logged_in_customer_id` (App Proxy) — ten sam identyfikator co w URL.
+ *
+ * Od Etapu 3 (Memory v2) `mergeSessionIntoPersonSummary` preferuje deterministyczny
+ * builder z typed facts (`memory_facts` w D1) zamiast LLM-merge. LLM zostaje jako
+ * best-effort „stylistyczny enricher” z timeoutem i pełnym fallbackiem —
+ * nigdy nie blokuje produkcji (fix dla pustej generacji z logów 18.04).
  */
 import type { Env } from './config/bindings';
 import { getGroqResponse, type GroqMessage } from './ai-client';
+import { listActiveMemoryFacts } from './memory/repo';
+import { buildDeterministicSummary } from './memory/summary-builder';
+import { emitMemoryMetric } from './memory/metrics';
+
+function isMemoryV2Enabled(env: Env): boolean {
+  return String(env.MEMORY_V2_ENABLED ?? '').toLowerCase() === 'true';
+}
 
 export type PersonMemoryRecord = {
   shopifyCustomerId: string;
@@ -196,13 +208,63 @@ function buildFallbackPersonSummary(
 }
 
 /**
- * Łączy poprzedni skrót z nową rozmową (jedno wywołanie modelu, krótki output).
+ * Łączy poprzedni skrót z nową rozmową.
+ *
+ * Memory v2 path (MEMORY_V2_ENABLED=true lub podano shopifyCustomerId):
+ *   1. Czyta typed facts z D1 (`memory_facts`) — deterministyczny skrót.
+ *   2. Jeśli fakty istnieją — zwraca szablon; LLM nie jest potrzebny.
+ *   3. Jeśli faktów brak, a mamy poprzedni skrót dłuższy niż 50 znaków → zostawiamy go.
+ *   4. W ostatniej instancji próbuje LLM best-effort (z timeoutem); fallback deterministyczny.
+ *
+ * Dzięki temu pipeline person_memory NIGDY nie rzuca "Workers AI returned empty" do
+ * produkcji — rozwiązuje problem z logów 18.04.2026.
  */
 export async function mergeSessionIntoPersonSummary(
   env: Env,
   previousSummary: string | null,
   conversationSnippet: string,
+  context?: { shopifyCustomerId?: string },
 ): Promise<string> {
+  const customerId = context?.shopifyCustomerId;
+  const v2 = isMemoryV2Enabled(env);
+
+  if (customerId && env.DB_CHATBOT) {
+    try {
+      const facts = await listActiveMemoryFacts(env.DB_CHATBOT, customerId, { limit: 80 });
+      const deterministic = buildDeterministicSummary(facts);
+      if (deterministic && deterministic.length > 0) {
+        emitMemoryMetric({
+          tag: 'chat.memory',
+          phase: 'summary_build',
+          source: 'deterministic',
+          chars: deterministic.length,
+          customer_id: customerId,
+        });
+        return deterministic;
+      }
+    } catch (err) {
+      console.warn('[person_memory] deterministic summary skipped:', (err as Error).message);
+    }
+  }
+
+  if (previousSummary && previousSummary.trim().length > 50) {
+    emitMemoryMetric({
+      tag: 'chat.memory',
+      phase: 'summary_build',
+      source: 'fallback',
+      chars: previousSummary.length,
+      customer_id: customerId ?? 'unknown',
+    });
+    return previousSummary;
+  }
+
+  if (v2) {
+    const deterministic = buildFallbackPersonSummary(previousSummary, conversationSnippet);
+    if (deterministic && deterministic.length > 0) {
+      return deterministic;
+    }
+  }
+
   const system: GroqMessage = {
     role: 'system',
     content: `Jesteś asystentem archiwizacji dla sklepu jubilerskiego. Otrzymujesz:
@@ -226,19 +288,52 @@ Nie wymyślaj faktów. Nie opisuj zamówień ani numerów zamówień — tylko p
       console.log('[person_memory] AI call success', Date.now() - startTime, 'ms');
       if (out && out.trim().length > 20) break;
     } catch (e) {
-      if (attempt === 1) throw e;
+      if (attempt === 1) {
+        console.warn('[person_memory] LLM merge failed — deterministic fallback');
+        const det = buildFallbackPersonSummary(previousSummary, conversationSnippet);
+        if (det) {
+          emitMemoryMetric({
+            tag: 'chat.memory',
+            phase: 'summary_build',
+            source: 'fallback',
+            chars: det.length,
+            customer_id: customerId ?? 'unknown',
+          });
+          return det;
+        }
+        throw e;
+      }
     }
   }
   try {
     const normalized = normalizePersonMemorySummary(out ?? '');
-    if (normalized && normalized.length > 0) return normalized;
+    if (normalized && normalized.length > 0) {
+      emitMemoryMetric({
+        tag: 'chat.memory',
+        phase: 'summary_build',
+        source: 'llm_enriched',
+        chars: normalized.length,
+        customer_id: customerId ?? 'unknown',
+      });
+      return normalized;
+    }
   } catch (error) {
     // przechwyć poniżej
   }
-  // fallback z warunkiem: nie nadpisuj dobrego previousSummary
   console.warn('[person_memory] merge fallback activated:', out);
   if (previousSummary && previousSummary.trim().length > 50) {
-    return previousSummary; // zachowaj dobry poprzedni summary
+    return previousSummary;
+  }
+  const finalFallback = buildFallbackPersonSummary(previousSummary, conversationSnippet);
+  if (finalFallback) {
+    emitMemoryMetric({
+      tag: 'chat.memory',
+      phase: 'summary_build',
+      source: 'fallback',
+      chars: finalFallback.length,
+      customer_id: customerId ?? 'unknown',
+    });
+    return finalFallback;
   }
   if (!out || out.trim().length <= 20) throw new Error('Workers AI returned an empty or invalid response');
   return buildFallbackPersonSummary(previousSummary, conversationSnippet);
