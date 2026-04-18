@@ -46,7 +46,12 @@ export function normalizePolicyQuery(query: string): string {
 
 /**
  * Patterns that mark a query as BINDING store policy. Any match ⇒ Vectorize
- * fallback is FORBIDDEN. Patterns run against the normalized text.
+ * fallback is FORBIDDEN. Patterns run against **normalized** text only
+ * (`normalizePolicyQuery`: NFD strip + `ł→l`).
+ *
+ * IMPORTANT: every `RegExp` literal here MUST use **ASCII letters only** (no
+ * ą/ć/ę/ł/ń/ó/ś/ź/ż in the pattern). Non-ASCII input is matched only after
+ * normalization, so diacritics in regexes would never match.
  */
 export const BINDING_POLICY_PATTERNS: readonly RegExp[] = [
   // --- Polish stems (diacritic-stripped) ---
@@ -79,7 +84,8 @@ export const BINDING_POLICY_PATTERNS: readonly RegExp[] = [
   /\b(inpost|dpd|dhl|fedex|ups|orlen\s*paczka)\b/i,
   /czas\s+(dostaw|wysyl|realizac)/i,
   /koszt(y|u|em)?\s+(dostaw|wysyl|zwrot)/i,
-  /oplat[aye]\s+(za\s+)?(wysyl|dostaw|zwrot)/i,
+  // oplata / oplaty / opłatę → oplate … (stem `oplat` after normalization)
+  /oplat/i,
   /darmow[aae]\s+(wysyl|dostaw)/i,
   // terms / policy / privacy / GDPR / invoicing
   /regulamin/i,

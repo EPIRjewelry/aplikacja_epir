@@ -5,6 +5,13 @@ import {
   orchestrateRag,
   type UserIntent,
 } from '../src/domain/orchestrator';
+import {
+  BINDING_POLICY_PATTERNS,
+  BINDING_POLICY_SOFT_EXEMPTIONS,
+} from '../../shared/kb-clamp';
+
+/** Must not appear inside KB-clamp regex sources — patterns run on NFD-stripped text. */
+const POLISH_DIACRITICS_IN_PATTERN = /[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/;
 
 describe('detectIntent', () => {
   it('returns "cart" for Polish cart keywords', () => {
@@ -98,6 +105,26 @@ describe('detectIntent', () => {
     expect(detectIntent('KOSZYK')).toBe('cart');
     expect(detectIntent('STATUS ZAMÓWIENIA')).toBe('order');
     expect(detectIntent('POLITYKA ZWROTÓW')).toBe('faq');
+  });
+});
+
+describe('KB-clamp regex contract (ASCII-only patterns)', () => {
+  it('BINDING_POLICY_* regex sources contain no Polish diacritics', () => {
+    for (const re of BINDING_POLICY_PATTERNS) {
+      expect(re.source, `pattern source: ${re.source}`).not.toMatch(
+        POLISH_DIACRITICS_IN_PATTERN,
+      );
+    }
+    for (const re of BINDING_POLICY_SOFT_EXEMPTIONS) {
+      expect(re.source, `soft-exempt: ${re.source}`).not.toMatch(
+        POLISH_DIACRITICS_IN_PATTERN,
+      );
+    }
+  });
+
+  it('matches fee/cookie phrasing after normalization (opłatę, plików)', () => {
+    expect(isBindingPolicyQuery('jaką opłatę za dostawę pobieracie?')).toBe(true);
+    expect(isBindingPolicyQuery('polityka plików cookies')).toBe(true);
   });
 });
 
