@@ -186,6 +186,10 @@ interface ChatRequestBody {
   route?: string;
   /** Handle kolekcji, gdy na stronie kolekcji */
   collectionHandle?: string;
+  /** Hint z frontendu (wyłącznie diagnostyka; nieautorytatywne dla pamięci międzysesyjnej) */
+  customer_id_hint?: string;
+  /** Źródło hintu customer_id (dataset/shopify-analytics/shopify-st/cache/none) */
+  customer_id_hint_source?: string;
 }
 
 const IMAGE_ATTACHMENT_PLACEHOLDER = '(załącznik obrazu)';
@@ -322,6 +326,90 @@ function resolveEffectiveShopifyCustomerId(
     customerId: null,
     source: 'none',
   };
+}
+
+function buildCurrentSessionVisibilityContext(historyEntries: number): string | null {
+  const normalizedHistoryEntries = Number.isFinite(historyEntries)
+    ? Math.max(0, Math.trunc(historyEntries))
+    : 0;
+  const priorConversationEntries = Math.max(0, normalizedHistoryEntries - 1);
+  if (priorConversationEntries <= 0) {
+    return null;
+  }
+
+  return [
+    'Kontekst systemowy: W wiadomościach poniżej znajduje się historia bieżącej sesji.',
+    `Masz dostęp do ${priorConversationEntries} wcześniejszych wpisów z tej rozmowy przed aktualną wiadomością użytkownika.`,
+    'Jeśli klient pyta o to, co było wcześniej w tej rozmowie, odpowiadaj na podstawie tej historii.',
+    'Nie twierdź, że nie widzisz bieżącej rozmowy, jeśli ta historia jest obecna.',
+  ].join(' ');
+}
+
+function normalizeIntentText(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const SESSION_RECAP_PATTERNS: RegExp[] = [
+  /o czym rozmawial/i,
+  /co (wczesniej|wcześniej) (mowil(?:em|am|o)|pisal(?:em|am|o)|ustalil(?:ismy|iśmy))/i,
+  /czego (szukal(?:em|am)|szukalismy|szukaliśmy)/i,
+  /(podsumuj|przypomnij) (ta|tę|te|tą)? ?rozmow/i,
+  /(co|jakie) byly (wczesniejsze|wcześniejsze) (punkty|ustalenia|tematy)/i,
+];
+
+function isCurrentSessionRecapQuestion(userMessage: string): boolean {
+  const normalized = normalizeIntentText(userMessage);
+  if (!normalized) return false;
+  return SESSION_RECAP_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function sanitizeRecapTopic(value: string): string {
+  const cleaned = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned || cleaned === IMAGE_ATTACHMENT_PLACEHOLDER) return '';
+  if (cleaned.length <= 2) return '';
+  if (cleaned.length <= 140) return cleaned;
+  return `${cleaned.slice(0, 137)}...`;
+}
+
+function buildCurrentSessionRecapResponse(
+  userMessage: string,
+  history: HistoryEntry[],
+  currentUserMessageTs: number,
+): string | null {
+  if (!isCurrentSessionRecapQuestion(userMessage)) {
+    return null;
+  }
+
+  const previousUserTopics = history
+    .filter((entry) => entry.role === 'user' && Number(entry.ts) < currentUserMessageTs)
+    .map((entry) => sanitizeRecapTopic(entry.content))
+    .filter((topic) => topic.length > 0);
+
+  if (previousUserTopics.length === 0) {
+    return null;
+  }
+
+  const uniqueTopics: string[] = [];
+  const seenTopics = new Set<string>();
+  for (const topic of previousUserTopics) {
+    const key = normalizeIntentText(topic);
+    if (!key || seenTopics.has(key)) continue;
+    seenTopics.add(key);
+    uniqueTopics.push(topic);
+  }
+
+  const recentTopics = uniqueTopics.slice(-3);
+  const listedTopics = recentTopics.map((topic, index) => `${index + 1}) „${topic}”`).join(' ');
+  const header = recentTopics.length > 1
+    ? 'W tej rozmowie wcześniej poruszyliśmy tematy:'
+    : 'W tej rozmowie wcześniej poruszyliśmy temat:';
+
+  return `${header} ${listedTopics} Jeśli chcesz, mogę od razu kontynuować od ostatniego wątku.`;
 }
 
 function isChatRole(value: unknown): value is ChatRole {
@@ -547,6 +635,14 @@ function parseChatRequestBody(
   const channel = contextOverride?.channel ?? channelFromBody ?? inferredChannel;
   const route = typeof maybe.route === 'string' && maybe.route.trim().length > 0 ? maybe.route.trim() : undefined;
   const collectionHandle = typeof maybe.collectionHandle === 'string' && maybe.collectionHandle.trim().length > 0 ? maybe.collectionHandle.trim() : undefined;
+  const customerIdHint =
+    typeof maybe.customer_id_hint === 'string' && maybe.customer_id_hint.trim().length > 0
+      ? maybe.customer_id_hint.trim()
+      : undefined;
+  const customerIdHintSource =
+    typeof maybe.customer_id_hint_source === 'string' && maybe.customer_id_hint_source.trim().length > 0
+      ? maybe.customer_id_hint_source.trim()
+      : undefined;
   return {
     message: resolvedMessage,
     session_id: sessionId,
@@ -558,6 +654,8 @@ function parseChatRequestBody(
     channel,
     route,
     collectionHandle,
+    customer_id_hint: customerIdHint,
+    customer_id_hint_source: customerIdHintSource,
   };
 }
 
@@ -2291,12 +2389,42 @@ async function handleChat(
   // [TOKEN VAULT] Bez zmian
   const url = new URL(request.url);
   const customerId = normalizeOptionalString(url.searchParams.get('logged_in_customer_id'));
+  const customerIdHint = normalizeOptionalString(payload.customer_id_hint);
+  const customerIdHintSource = normalizeOptionalString(payload.customer_id_hint_source) ?? 'none';
   const shopId = normalizeOptionalString(url.searchParams.get('shop')) ?? normalizeOptionalString(env.SHOP_DOMAIN);
   
   // 🔴 POPRAWKA SESJI: Używamy `payload.session_id` LUB generujemy nowy
   const sessionId = payload.session_id ?? crypto.randomUUID();
   const doId = env.SESSION_DO.idFromName(sessionId);
   const stub = env.SESSION_DO.get(doId);
+
+  console.log(
+    JSON.stringify({
+      tag: 'chat.ingress.customer_context',
+      session_id: sessionId,
+      storefrontId: payload.storefrontId ?? contextOverride?.storefrontId ?? null,
+      channel: payload.channel ?? contextOverride?.channel ?? null,
+      raw_request_customer_id_present: Boolean(customerId),
+      client_customer_hint_present: Boolean(customerIdHint),
+      client_customer_hint_source: customerIdHintSource,
+      client_customer_hint_matches_request_customer:
+        Boolean(customerIdHint) && Boolean(customerId) ? customerIdHint === customerId : null,
+      shop_param_present: Boolean(shopId),
+      session_id_from_request: Boolean(payload.session_id),
+    }),
+  );
+
+  if (!customerId && customerIdHint) {
+    console.warn(
+      '[handleChat] App Proxy logged_in_customer_id missing despite frontend hint; cross-session memory remains disabled until trusted App Proxy identity is present',
+      {
+        session_id: sessionId,
+        storefrontId: payload.storefrontId ?? contextOverride?.storefrontId ?? null,
+        channel: payload.channel ?? contextOverride?.channel ?? null,
+        client_customer_hint_source: customerIdHintSource,
+      },
+    );
+  }
   
   let customerToken: string | undefined;
   if (customerId && shopId) {
@@ -2493,6 +2621,8 @@ async function streamAssistantResponse(
       };
       const sessionCustomer = customerData?.customer ?? null;
       customerFirstName = normalizeOptionalString(sessionCustomer?.first_name ?? null);
+      const rawRequestCustomerIdPresent = Boolean(shopifyCustomerId);
+      const sessionCustomerPresent = Boolean(normalizeOptionalString(sessionCustomer?.customer_id ?? null));
       const effectiveCustomerContext = resolveEffectiveShopifyCustomerId(
         shopifyCustomerId,
         sessionCustomer?.customer_id ?? null,
@@ -2662,6 +2792,36 @@ async function streamAssistantResponse(
         void task();
       };
 
+      const currentSessionRecap = buildCurrentSessionRecapResponse(userMessage, history, userMessageTs);
+      if (currentSessionRecap) {
+        chatPipelineLog({
+          phase: 'session_recap_fastpath',
+          session_id: sessionId,
+          storefrontId: storefrontContext?.storefrontId ?? null,
+          channel: storefrontContext?.channel ?? null,
+          history_entries: history.length,
+        });
+        await sendDelta(currentSessionRecap);
+        await writer.write(encoder.encode('data: [DONE]\n\n'));
+
+        await stub.fetch('https://session/append', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            role: 'assistant',
+            content: currentSessionRecap,
+            ts: now(),
+          } as HistoryEntry),
+        });
+
+        if (imageBase64) {
+          maybePersistImageSurrogate();
+        } else {
+          maybeRefreshPersonMemory();
+        }
+        return;
+      }
+
       // 🔴 KROK 3: ZBUDUJ WIADOMOŚCI DLA AI (Z LOGIKĄ RAG WORKER)
       
       // Filtrujemy historię, aby usunąć pola, których AI nie rozumie
@@ -2674,6 +2834,7 @@ async function streamAssistantResponse(
             ...(h.role === 'tool' && h.tool_call_id && { tool_call_id: h.tool_call_id }),
             ...(h.tool_calls && { tool_calls: h.tool_calls as any }),
         }));
+      const sessionHistoryVisibilityContext = buildCurrentSessionVisibilityContext(aiHistory.length);
         
       const promptBuildT0 = Date.now();
 
@@ -2690,7 +2851,6 @@ async function streamAssistantResponse(
         },
       }));
 
-      const toolSchemaString = JSON.stringify(toolDefinitions, null, 2);
       const activeStorefrontConfig = resolveStorefrontConfig(env, storefrontContext?.storefrontId);
       const aiProfileToken = activeStorefrontConfig?.privateToken ?? activeStorefrontConfig?.apiToken;
       if (activeStorefrontConfig?.aiProfileGid && !aiProfileToken) {
@@ -2716,7 +2876,6 @@ async function streamAssistantResponse(
       const messages: GroqMessage[] = [
         { role: 'system', content: baseSystemPrompt },
         ...(aiProfilePrompt ? [{ role: 'system' as const, content: aiProfilePrompt }] : []),
-        { role: 'system', content: `Oto dostępne schematy narzędzi:\n${toolSchemaString}` },
       ];
 
       // Dodaj kontekst systemowy (jeśli istnieje)
@@ -2787,17 +2946,16 @@ async function streamAssistantResponse(
               content: `<customer_turns_retrieved>\n${retrieved.turnsBlock}\n</customer_turns_retrieved>`,
             });
           }
-          if (!retrieved.deterministicSummary && !crossSessionSummary && retrieved.activeFactsCount === 0) {
-            if (String(env.MEMORY_V2_ENABLED ?? '').toLowerCase() === 'true') {
-              messages.push({
-                role: 'system',
-                content: 'Kontekst systemowy — brak potwierdzonych preferencji klienta w pamięci. Nie udawaj, że pamiętasz wcześniejsze rozmowy; pytaj o potrzeby.',
-              });
-            }
-          }
         } catch (err) {
           console.warn('[memory.retriever] failed (non-fatal):', (err as Error).message);
         }
+      }
+
+      if (sessionHistoryVisibilityContext) {
+        messages.push({
+          role: 'system',
+          content: sessionHistoryVisibilityContext,
+        });
       }
 
       // 🔴 KROK 3b: RAG / katalog — bez wstrzykiwania kontekstu tutaj; model woła narzędzia.
@@ -2831,6 +2989,7 @@ async function streamAssistantResponse(
         ...(m.tool_call_id && { tool_call_id: m.tool_call_id }),
         ...(m.name && { name: m.name }),
       }));
+      const historyEntriesAfterTruncation = truncatedMessages.filter((message) => message.role !== 'system').length;
 
       chatPipelineLog({
         phase: 'prompt_built',
@@ -2838,19 +2997,35 @@ async function streamAssistantResponse(
         duration_ms: Date.now() - promptBuildT0,
         messages_count: truncatedMessages.length,
         history_entries: aiHistory.length,
+        history_entries_after_truncation: historyEntriesAfterTruncation,
         ai_profile_loaded: Boolean(aiProfile),
         storefrontId: storefrontContext?.storefrontId ?? null,
         channel: storefrontContext?.channel ?? null,
         tools_registered: schemasToUse.length,
         cart_id_present: Boolean(cartId),
         cross_session_summary_present: Boolean(crossSessionSummary),
+        raw_request_customer_id_present: rawRequestCustomerIdPresent,
+        session_customer_present: sessionCustomerPresent,
+        effective_customer_source: effectiveCustomerContext.source,
+        session_history_visibility_marker_present: Boolean(sessionHistoryVisibilityContext),
       });
       
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log(`[streamAssistant] Rozpoczynam pętlę AI. Sesja: ${sessionId}`);
       console.log('[streamAssistant] 🤖 Model:', imageBase64 ? `${CHAT_MODEL_ID} (multimodal)` : CHAT_MODEL_ID);
       console.log('[streamAssistant] 📜 System Prompt length:', LUXURY_SYSTEM_PROMPT.length + (aiProfilePrompt?.length ?? 0), 'chars');
-      console.log('[streamAssistant] 📚 History entries (before truncation):', aiHistory.length);
+      console.log('[streamAssistant] 👤 Customer context:', {
+        raw_request_customer_id_present: rawRequestCustomerIdPresent,
+        session_customer_present: sessionCustomerPresent,
+        effective_customer_source: effectiveCustomerContext.source,
+        effective_customer_id_present: Boolean(effectiveShopifyCustomerId),
+        customer_token_present: Boolean(effectiveCustomerToken),
+      });
+      console.log('[streamAssistant] 📚 History entries:', {
+        before_truncation: aiHistory.length,
+        after_truncation: historyEntriesAfterTruncation,
+        session_history_visibility_marker_present: Boolean(sessionHistoryVisibilityContext),
+      });
       console.log('[streamAssistant] 📨 Total messages (after truncation):', truncatedMessages.length);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
@@ -2922,10 +3097,15 @@ async function streamAssistantResponse(
             storefrontId: storefrontContext?.storefrontId ?? null,
             channel: storefrontContext?.channel ?? null,
             shopify_customer_id_present: Boolean(shopifyCustomerId),
+            raw_request_customer_id_present: rawRequestCustomerIdPresent,
+            session_customer_present: sessionCustomerPresent,
             effective_customer_id_present: Boolean(effectiveShopifyCustomerId),
             shopify_customer_id_fallback_used: effectiveCustomerContext.source === 'session',
             effective_customer_source: effectiveCustomerContext.source,
             customer_token_present: Boolean(effectiveCustomerToken),
+            history_entries_before_truncation: aiHistory.length,
+            history_entries_after_truncation: historyEntriesAfterTruncation,
+            session_history_visibility_marker_present: Boolean(sessionHistoryVisibilityContext),
             finish_reason: finishReason,
             tool_calls_count: pendingToolCalls.size,
             usage_prompt_tokens: usageTotals.prompt_tokens,
@@ -3001,10 +3181,7 @@ async function streamAssistantResponse(
                 const brandForMcp = (storefrontContext?.storefrontId === 'kazka' || storefrontContext?.storefrontId === 'zareczyny')
                   ? storefrontContext.storefrontId
                   : brand;
-                return callMcpToolDirect(env, call.name, safeArgs, brandForMcp, {
-                  session_id: sessionId,
-                  tool_loop: i,
-                });
+                return callMcpToolDirect(env, call.name, safeArgs, brandForMcp);
               },
             );
 
@@ -3517,6 +3694,9 @@ export {
   ensureHistoryArray,
   cors,
   handleChat,
+  buildCurrentSessionVisibilityContext,
+  buildCurrentSessionRecapResponse,
+  isCurrentSessionRecapQuestion,
   getSystemPromptForChannel,
   resolveEffectiveShopifyCustomerId,
   verifyAppProxyHmac,

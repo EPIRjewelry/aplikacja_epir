@@ -5,6 +5,8 @@ window.__EPIR_ASSISTANT_RUNTIME_LOADED__=true;
 var EPIR_CHAT_WORKER_ENDPOINT = '/apps/assistant/chat';
 var EPIR_LOGGED_IN_CUSTOMER_CACHE_KEY = 'epir-logged-in-customer-id';
 var EPIR_LOGGED_IN_CUSTOMER_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+var EPIR_LOGGED_IN_CUSTOMER_PREFLIGHT_ATTEMPTS = 3;
+var EPIR_LOGGED_IN_CUSTOMER_PREFLIGHT_DELAY_MS = 75;
 var EPIR_ASSISTANT_SESSION_KEY = 'epir-assistant-session';
 var EPIR_ASSISTANT_TRANSCRIPT_STORAGE_PREFIX = 'epir-assistant-transcript';
 var EPIR_ASSISTANT_HISTORY_ENDPOINT = '/apps/assistant/history';
@@ -30,28 +32,38 @@ function getAssistantShopDomain(section) {
   );
 }
 
-function readShopifyGlobalCustomerId() {
+function readShopifyGlobalCustomerIdentity() {
+  var analyticsId = '';
+  var stId = '';
+
   try {
-    var analyticsId = normalizeLoggedInCustomerId(
+    analyticsId = normalizeLoggedInCustomerId(
       typeof window !== 'undefined' &&
         window.ShopifyAnalytics &&
         window.ShopifyAnalytics.meta &&
         window.ShopifyAnalytics.meta.page &&
         window.ShopifyAnalytics.meta.page.customerId,
     );
-    if (analyticsId) return analyticsId;
   } catch (e) {}
 
   try {
-    var stId = normalizeLoggedInCustomerId(
+    stId = normalizeLoggedInCustomerId(
       typeof window !== 'undefined' &&
         window.__st &&
         (window.__st.cid || window.__st.customerId || window.__st.customer_id),
     );
-    if (stId) return stId;
   } catch (e2) {}
 
-  return '';
+  return {
+    customerId: analyticsId || stId || '',
+    source: analyticsId ? 'shopify-analytics' : stId ? 'shopify-st' : 'none',
+    analyticsId: analyticsId,
+    stId: stId,
+  };
+}
+
+function readShopifyGlobalCustomerId() {
+  return readShopifyGlobalCustomerIdentity().customerId;
 }
 
 function readCachedLoggedInCustomerId(section) {
@@ -99,31 +111,110 @@ function writeCachedLoggedInCustomerId(section, customerId) {
   return normalized;
 }
 
-function resolveLoggedInCustomerId(section) {
+function buildLoggedInCustomerIdentity(section) {
   var datasetId = normalizeLoggedInCustomerId(section && section.dataset && section.dataset.loggedInCustomerId);
-  if (datasetId) {
-    writeCachedLoggedInCustomerId(section, datasetId);
-    return datasetId;
-  }
-
-  var globalId = readShopifyGlobalCustomerId();
-  if (globalId) {
-    if (section && section.dataset) {
-      section.dataset.loggedInCustomerId = globalId;
-    }
-    writeCachedLoggedInCustomerId(section, globalId);
-    return globalId;
-  }
-
+  var globalIdentity = readShopifyGlobalCustomerIdentity();
   var cachedId = readCachedLoggedInCustomerId(section);
-  if (cachedId) {
+  var customerId = '';
+  var source = 'none';
+
+  if (datasetId) {
+    customerId = writeCachedLoggedInCustomerId(section, datasetId);
+    source = 'dataset';
+  } else if (globalIdentity.customerId) {
+    customerId = globalIdentity.customerId;
+    source = globalIdentity.source;
     if (section && section.dataset) {
-      section.dataset.loggedInCustomerId = cachedId;
+      section.dataset.loggedInCustomerId = customerId;
     }
-    return cachedId;
+    writeCachedLoggedInCustomerId(section, customerId);
+  } else if (cachedId) {
+    customerId = cachedId;
+    source = 'cache';
+    if (section && section.dataset) {
+      section.dataset.loggedInCustomerId = customerId;
+    }
   }
 
-  return '';
+  if (section && section.dataset) {
+    section.dataset.loggedInCustomerSource = source;
+  }
+
+  return {
+    customerId: customerId,
+    source: source,
+    diagnostics: {
+      datasetPresent: Boolean(datasetId),
+      shopifyAnalyticsPresent: Boolean(globalIdentity.analyticsId),
+      shopifyStPresent: Boolean(globalIdentity.stId),
+      cachePresent: Boolean(cachedId),
+    },
+  };
+}
+
+function logLoggedInCustomerIdentity(section, reason, identity, attempt, attempts) {
+  if (!identity) return;
+  var shouldLog =
+    identity.source === 'none' ||
+    identity.source === 'cache' ||
+    identity.source === 'shopify-analytics' ||
+    identity.source === 'shopify-st';
+  if (!shouldLog) return;
+
+  try {
+    console.info('[EPIR Assistant] customer identity preflight', {
+      reason: reason || 'unknown',
+      source: identity.source || 'none',
+      customer_id_present: Boolean(identity.customerId),
+      dataset_present: Boolean(identity.diagnostics && identity.diagnostics.datasetPresent),
+      shopify_analytics_present: Boolean(identity.diagnostics && identity.diagnostics.shopifyAnalyticsPresent),
+      shopify_st_present: Boolean(identity.diagnostics && identity.diagnostics.shopifyStPresent),
+      cache_present: Boolean(identity.diagnostics && identity.diagnostics.cachePresent),
+      attempt: attempt,
+      attempts: attempts,
+      shop_domain: normalizeLoggedInCustomerId(getAssistantShopDomain(section)) || null,
+    });
+  } catch (e) {}
+}
+
+function delayLoggedInCustomerPreflight() {
+  return new Promise(function (resolve) {
+    setTimeout(resolve, EPIR_LOGGED_IN_CUSTOMER_PREFLIGHT_DELAY_MS);
+  });
+}
+
+async function resolveLoggedInCustomerIdentityWithPreflight(section, reason) {
+  var attempts = Math.max(1, EPIR_LOGGED_IN_CUSTOMER_PREFLIGHT_ATTEMPTS || 1);
+  var identity = buildLoggedInCustomerIdentity(section);
+
+  for (var attempt = 1; attempt <= attempts; attempt++) {
+    identity = buildLoggedInCustomerIdentity(section);
+    if (identity.customerId || attempt === attempts) {
+      logLoggedInCustomerIdentity(section, reason, identity, attempt, attempts);
+      return identity;
+    }
+    await delayLoggedInCustomerPreflight();
+  }
+
+  logLoggedInCustomerIdentity(section, reason, identity, attempts, attempts);
+  return identity;
+}
+
+function buildAppProxyUrlWithCustomerContext(endpoint, section, customerIdentity) {
+  var nextEndpoint = endpoint || '';
+  var shop = getAssistantShopDomain(section) || '';
+  var customerId = normalizeLoggedInCustomerId(customerIdentity && customerIdentity.customerId);
+  if (shop || customerId) {
+    var params = new URLSearchParams();
+    if (shop) params.set('shop', shop);
+    if (customerId) params.set('logged_in_customer_id', customerId);
+    nextEndpoint = nextEndpoint + (nextEndpoint.indexOf('?') >= 0 ? '&' : '?') + params.toString();
+  }
+  return nextEndpoint;
+}
+
+function resolveLoggedInCustomerId(section) {
+  return buildLoggedInCustomerIdentity(section).customerId;
 }
 
 /* ===== CONSENT GATE (App Proxy POST /apps/assistant/consent) ===== */
@@ -187,27 +278,33 @@ function buildConsentEvent(section) {
 
 function buildConsentFetchUrl(section, basePath) {
   var endpoint = basePath || (section.dataset && section.dataset.consentEndpoint) || '/apps/assistant/consent';
-  var shop = (section.dataset && section.dataset.shopDomain) || '';
-  var customerId = resolveLoggedInCustomerId(section) || '';
-  if (shop || customerId) {
-    var params = new URLSearchParams();
-    if (shop) params.set('shop', shop);
-    if (customerId) params.set('logged_in_customer_id', customerId);
-    endpoint = endpoint + (endpoint.indexOf('?') >= 0 ? '&' : '?') + params.toString();
-  }
-  return endpoint;
+  return resolveLoggedInCustomerIdentityWithPreflight(section, 'consent').then(function (customerIdentity) {
+    return buildAppProxyUrlWithCustomerContext(endpoint, section, customerIdentity);
+  });
 }
 
 function submitConsentEvent(payload, section) {
-  var url = buildConsentFetchUrl(section, (section.dataset && section.dataset.consentEndpoint) || '/apps/assistant/consent');
-  return fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json, text/plain',
-    },
-    credentials: 'include',
-    body: JSON.stringify(payload),
+  return resolveLoggedInCustomerIdentityWithPreflight(section, 'consent').then(function (customerIdentity) {
+    var url = buildAppProxyUrlWithCustomerContext(
+      (section.dataset && section.dataset.consentEndpoint) || '/apps/assistant/consent',
+      section,
+      customerIdentity,
+    );
+    var payloadWithCustomer = payload && typeof payload === 'object'
+      ? Object.assign({}, payload, {
+          customerId: normalizeLoggedInCustomerId(payload.customerId || customerIdentity.customerId) || null,
+        })
+      : payload;
+
+    return fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/plain',
+      },
+      credentials: 'include',
+      body: JSON.stringify(payloadWithCustomer),
+    });
   });
 }
 
@@ -878,15 +975,9 @@ function renderAssistantTranscript(messagesEl, transcript) {
 
 function buildAssistantHistoryFetchUrl(section) {
   var endpoint = getAssistantHistoryEndpoint(section);
-  var shop = getAssistantShopDomain(section) || '';
-  var customerId = resolveLoggedInCustomerId(section) || '';
-  if (shop || customerId) {
-    var params = new URLSearchParams();
-    if (shop) params.set('shop', shop);
-    if (customerId) params.set('logged_in_customer_id', customerId);
-    endpoint = endpoint + (endpoint.indexOf('?') >= 0 ? '&' : '?') + params.toString();
-  }
-  return endpoint;
+  return resolveLoggedInCustomerIdentityWithPreflight(section, 'history').then(function (customerIdentity) {
+    return buildAppProxyUrlWithCustomerContext(endpoint, section, customerIdentity);
+  });
 }
 
 async function fetchAssistantTranscriptFromBackend(section, sessionIdKey) {
@@ -896,7 +987,7 @@ async function fetchAssistantTranscriptFromBackend(section, sessionIdKey) {
   } catch (e) {}
   if (!sessionId) return [];
 
-  var response = await fetch(buildAssistantHistoryFetchUrl(section), {
+  var response = await fetch(await buildAssistantHistoryFetchUrl(section), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -1321,7 +1412,8 @@ async function sendMessageToWorker(
   messagesEl,
   setLoading,
   controller,
-  attachment
+  attachment,
+  customerIdentity
 ) {
   // Small UX helpers: global loader below messages (block or embed)
   const globalLoader = document.getElementById('assistant-loader') || document.getElementById('assistant-loader-embed');
@@ -1373,6 +1465,9 @@ async function sendMessageToWorker(
       cart_id: cartId,
       brand,
       stream: true,
+      customer_id_hint: normalizeLoggedInCustomerId(customerIdentity && customerIdentity.customerId) || undefined,
+      customer_id_hint_source:
+        normalizeLoggedInCustomerId(customerIdentity && customerIdentity.source) || 'none',
     };
     if (parts.length > 0) {
       body.parts = parts;
@@ -1572,14 +1667,8 @@ function doSendFromForm(form, input) {
   (async function() {
     try {
       let endpoint = normalizeAssistantEndpoint();
-      const shop = (sectionEl && sectionEl.dataset && sectionEl.dataset.shopDomain) || '';
-      const customerId = resolveLoggedInCustomerId(sectionEl) || '';
-      if (shop || customerId) {
-        const params = new URLSearchParams();
-        if (shop) params.set('shop', shop);
-        if (customerId) params.set('logged_in_customer_id', customerId);
-        endpoint = endpoint + (endpoint.includes('?') ? '&' : '?') + params.toString();
-      }
+      const customerIdentity = await resolveLoggedInCustomerIdentityWithPreflight(sectionEl, 'chat');
+      endpoint = buildAppProxyUrlWithCustomerContext(endpoint, sectionEl, customerIdentity);
       var attachmentSnap = pendingAttachment;
       setPendingAttachment(form, null);
       // Reset visual indicator on attach button(s) when attachment is consumed
@@ -1587,7 +1676,17 @@ function doSendFromForm(form, input) {
         btn.classList.remove('assistant-attach-btn--active');
         btn.title = '';
       });
-      await sendMessageToWorker(text, endpoint, 'epir-assistant-session', messagesEl, setLoading, controller, attachmentSnap);
+      await sendMessageToWorker(
+        text,
+        endpoint,
+        'epir-assistant-session',
+        messagesEl,
+        setLoading,
+        controller,
+        attachmentSnap,
+        customerIdentity,
+      );
+
     } catch (err) {
       console.error('Fetch error:', err);
     }

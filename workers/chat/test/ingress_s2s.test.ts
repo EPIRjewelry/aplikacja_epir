@@ -355,4 +355,16 @@ describe('parseChatRequestBody', () => {
     expect(payload?.storefrontId).toBe('online-store');
     expect(payload?.channel).toBe('online-store');
   });
+
+  it('passes customer hint fields for ingress diagnostics only', () => {
+    const payload = parseChatRequestBody({
+      message: 'hej',
+      customer_id_hint: 'gid://shopify/Customer/123',
+      customer_id_hint_source: 'shopify-analytics',
+    });
+
+    expect(payload).not.toBeNull();
+    expect(payload?.customer_id_hint).toBe('gid://shopify/Customer/123');
+    expect(payload?.customer_id_hint_source).toBe('shopify-analytics');
+  });
 });
