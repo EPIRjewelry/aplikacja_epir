@@ -26,6 +26,25 @@ function rowToMemoryFact(row: D1Row): MemoryFact {
   };
 }
 
+function rowToMemoryRawTurn(row: D1Row): MemoryRawTurn {
+  return {
+    id: String(row.id ?? ''),
+    shopifyCustomerId: String(row.shopify_customer_id ?? ''),
+    sessionId: String(row.session_id ?? ''),
+    messageId: (row.message_id as string | null) ?? null,
+    role: 'user',
+    text: String(row.text ?? ''),
+    textMasked: Boolean(row.text_masked),
+    createdAt: Number(row.created_at ?? 0),
+    expiresAt: Number(row.expires_at ?? 0),
+  };
+}
+
+function orderByRequestedIds<T extends { id: string }>(ids: string[], rows: T[]): T[] {
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return ids.map((id) => byId.get(id)).filter((row): row is T => Boolean(row));
+}
+
 export async function insertMemoryFact(db: D1Database, fact: MemoryFact): Promise<boolean> {
   const result = await db
     .prepare(
@@ -86,6 +105,33 @@ export async function listActiveMemoryFacts(
     .all<D1Row>();
   const items = Array.isArray(rows.results) ? rows.results : [];
   return items.map(rowToMemoryFact);
+}
+
+export async function listMemoryFactsByIds(
+  db: D1Database,
+  shopifyCustomerId: string,
+  ids: string[],
+  options?: { now?: number },
+): Promise<MemoryFact[]> {
+  const normalizedIds = Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)));
+  if (!normalizedIds.length) return [];
+  const now = options?.now ?? Date.now();
+  const placeholders = normalizedIds.map(() => '?').join(', ');
+  const rows = await db
+    .prepare(
+      `SELECT id, shopify_customer_id, slot, value, value_raw, confidence,
+              source_session_id, source_message_id, source_kind,
+              created_at, expires_at, superseded_by
+       FROM memory_facts
+       WHERE shopify_customer_id = ?
+         AND id IN (${placeholders})
+         AND superseded_by IS NULL
+         AND (expires_at IS NULL OR expires_at > ?)`
+    )
+    .bind(shopifyCustomerId, ...normalizedIds, now)
+    .all<D1Row>();
+  const items = Array.isArray(rows.results) ? rows.results.map(rowToMemoryFact) : [];
+  return orderByRequestedIds(normalizedIds, items);
 }
 
 export async function deleteMemoryFactsForCustomer(
@@ -159,6 +205,32 @@ export async function insertMemoryRawTurn(db: D1Database, turn: MemoryRawTurn): 
     .run();
   const changes = Number((result as { meta?: { changes?: number } })?.meta?.changes ?? 0);
   return changes > 0;
+}
+
+export async function listMemoryRawTurnsByIds(
+  db: D1Database,
+  shopifyCustomerId: string,
+  ids: string[],
+  options?: { now?: number },
+): Promise<MemoryRawTurn[]> {
+  const normalizedIds = Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean)));
+  if (!normalizedIds.length) return [];
+  const now = options?.now ?? Date.now();
+  const placeholders = normalizedIds.map(() => '?').join(', ');
+  const rows = await db
+    .prepare(
+      `SELECT id, shopify_customer_id, session_id, message_id, role, text,
+              text_masked, created_at, expires_at
+       FROM memory_raw_turns
+       WHERE shopify_customer_id = ?
+         AND id IN (${placeholders})
+         AND role = 'user'
+         AND expires_at > ?`
+    )
+    .bind(shopifyCustomerId, ...normalizedIds, now)
+    .all<D1Row>();
+  const items = Array.isArray(rows.results) ? rows.results.map(rowToMemoryRawTurn) : [];
+  return orderByRequestedIds(normalizedIds, items);
 }
 
 export async function deleteMemoryRawTurnsForCustomer(

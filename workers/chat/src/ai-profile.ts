@@ -7,9 +7,6 @@ export interface AIProfile {
   promotion_rules: string;
 }
 
-const SIZE_TABLE_PROMPT_INSTRUCTION =
-  'Size Table Tool: Gdy klient pyta o rozmiar pierścionka lub jak zmierzyć palec – użyj narzędzia get_size_table aby pobrać aktualną tabelę rozmiarów.';
-
 interface MetaobjectFieldNode {
   key?: string | null;
   value?: string | null;
@@ -98,13 +95,14 @@ export async function fetchAIProfile(
 }
 
 export function buildAIProfilePrompt(profile: AIProfile): string {
-  return [
-    `Brand Voice: ${profile.brand_voice}`,
-    `Core Values: ${profile.core_values}`,
-    `FAQ Focus: ${profile.faq_theme}`,
-    `Active Promotions: ${profile.promotion_rules}`,
-    SIZE_TABLE_PROMPT_INSTRUCTION,
-  ].join('\n');
+  const sections = [
+    profile.brand_voice && `Głos marki: ${profile.brand_voice}`,
+    profile.core_values && `Wartości: ${profile.core_values}`,
+    profile.faq_theme && `Tematy rozmów: ${profile.faq_theme}`,
+    profile.promotion_rules && `Komunikacja korzyści: ${profile.promotion_rules}`,
+  ].filter((value): value is string => value.trim().length > 0);
+
+  return ['Profil marki i styl rozmowy:', ...sections.map((value) => `- ${value}`)].join('\n');
 }
 
 export function clearAIProfileCache(): void {

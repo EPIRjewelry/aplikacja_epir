@@ -1666,9 +1666,14 @@ function doSendFromForm(form, input) {
   };
   (async function() {
     try {
-      let endpoint = normalizeAssistantEndpoint();
+      const endpoint = normalizeAssistantEndpoint();
       const customerIdentity = await resolveLoggedInCustomerIdentityWithPreflight(sectionEl, 'chat');
-      endpoint = buildAppProxyUrlWithCustomerContext(endpoint, sectionEl, customerIdentity);
+      // Celowo NIE wstrzykujemy `?shop=...&logged_in_customer_id=...` do endpointu czatu.
+      // Shopify App Proxy sam dopisuje zaufane parametry (shop, logged_in_customer_id, path_prefix,
+      // timestamp, signature). Wstrzykiwanie klient-side prowadziło do sytuacji, w której App Proxy
+      // nie propagował logged_in_customer_id i SessionDO utrwalało anonimowego klienta. Diagnostyczna
+      // tożsamość `customerIdentity` nadal jest logowana w konsoli przeglądarki oraz wysyłana w body,
+      // ale nie jest źródłem prawdy dla workera.
       var attachmentSnap = pendingAttachment;
       setPendingAttachment(form, null);
       // Reset visual indicator on attach button(s) when attachment is consumed

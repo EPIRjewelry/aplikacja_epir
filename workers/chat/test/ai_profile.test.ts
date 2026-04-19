@@ -16,11 +16,26 @@ describe('AI profile helpers', () => {
       promotion_rules: 'Free shipping over 500 PLN',
     });
 
-    expect(result).toContain('Brand Voice: Warm luxury');
-    expect(result).toContain('Core Values: Craftsmanship');
-    expect(result).toContain('FAQ Focus: Shipping');
-    expect(result).toContain('Active Promotions: Free shipping over 500 PLN');
-    expect(result).toContain('get_size_table');
+    expect(result).toContain('Profil marki i styl rozmowy:');
+    expect(result).toContain('Głos marki: Warm luxury');
+    expect(result).toContain('Wartości: Craftsmanship');
+    expect(result).toContain('Tematy rozmów: Shipping');
+    expect(result).toContain('Komunikacja korzyści: Free shipping over 500 PLN');
+    expect(result).not.toContain('get_size_table');
+  });
+
+  it('omits empty profile fields from the prompt fragment', () => {
+    const result = buildAIProfilePrompt({
+      brand_voice: 'Warm luxury',
+      core_values: '',
+      faq_theme: '',
+      promotion_rules: '',
+    });
+
+    expect(result).toContain('Głos marki: Warm luxury');
+    expect(result).not.toContain('Wartości:');
+    expect(result).not.toContain('Tematy rozmów:');
+    expect(result).not.toContain('Komunikacja korzyści:');
   });
 
   it('returns normalized AI profile from Storefront API response', async () => {

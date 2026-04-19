@@ -6,11 +6,11 @@ $root = $PSScriptRoot
 
 Write-Host "=== EPIR Deploy ===" -ForegroundColor Cyan
 
-# 1. npm install (workspaces)
-Write-Host "`n[1/6] npm install..." -ForegroundColor Yellow
+# 1. npm ci (workspaces)
+Write-Host "`n[1/6] npm ci..." -ForegroundColor Yellow
 Set-Location $root
-npm install
-if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+npm ci
+if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
 
 # 2. Deploy workers (rag → analytics → bigquery-batch → chat; chat wymaga rag + analytics)
 Write-Host "`n[2/7] Deploy epir-rag-worker..." -ForegroundColor Yellow

@@ -2444,24 +2444,43 @@ async function handleChat(
 
   // (Optional) If we recognized customerId, fetch customer profile (firstName) and store to SessionDO.
   if (customerId && stub) {
+    let resolvedFirstName: string | null = null;
+    let resolvedLastName: string | null = null;
     try {
-      // Call a helper in shopify-mcp-client to fetch firstName and lastName
       const { getCustomerById } = await import('./shopify-mcp-client');
       const customer = await getCustomerById(env, customerId);
       console.log('[handleChat] getCustomerById result:', JSON.stringify(customer));
       if (customer && (customer.firstName || customer.lastName)) {
-        await stub.fetch('https://session/set-customer', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ customer_id: customerId, first_name: customer.firstName, last_name: customer.lastName }),
-        });
-        console.log('[handleChat] SessionDO: set customer for session:', customerId);
+        resolvedFirstName = customer.firstName ?? null;
+        resolvedLastName = customer.lastName ?? null;
       }
     } catch (e) {
       console.warn('[handleChat] getCustomerById EXCEPTION:',
         e instanceof Error ? e.message : String(e));
       console.warn('[handleChat] getCustomerById STACK:',
         e instanceof Error ? e.stack : 'no stack');
+    }
+
+    // Backfill tożsamości w SessionDO nawet gdy MCP nie zwrócił imienia.
+    // Dzięki temu kolejne tury tej samej sesji (resolveEffectiveShopifyCustomerId → fallback 'session')
+    // poprawnie rozpoznają zalogowanego klienta, nawet przy chwilowym błędzie getCustomerById.
+    try {
+      await stub.fetch('https://session/set-customer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_id: customerId,
+          first_name: resolvedFirstName,
+          last_name: resolvedLastName,
+        }),
+      });
+      console.log('[handleChat] SessionDO: set customer for session:', customerId, {
+        first_name_present: Boolean(resolvedFirstName),
+        last_name_present: Boolean(resolvedLastName),
+      });
+    } catch (e) {
+      console.warn('[handleChat] SessionDO set-customer failed:',
+        e instanceof Error ? e.message : String(e));
     }
   }
 

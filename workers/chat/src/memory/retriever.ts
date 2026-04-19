@@ -13,9 +13,9 @@
 
 import type { Env } from '../config/bindings';
 import { emitMemoryMetric } from './metrics';
-import { listActiveMemoryFacts } from './repo';
+import { listActiveMemoryFacts, listMemoryFactsByIds, listMemoryRawTurnsByIds } from './repo';
 import { buildDeterministicSummary } from './summary-builder';
-import type { MemoryFact } from './types';
+import type { MemoryFact, MemoryRawTurn } from './types';
 import { embedMemoryText, queryMemoryVectors } from './vectorize';
 
 export type RetrieveMemoryInput = {
@@ -42,6 +42,25 @@ const DEFAULT_MAX_TURNS_CHARS = 400;
 function truncateBlock(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   return text.slice(0, maxChars - 1) + '…';
+}
+
+function uniqueIds(values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.map((value) => (typeof value === 'string' ? value.trim() : '')).filter(Boolean)));
+}
+
+function shortenText(text: string, maxChars: number): string {
+  const compact = text.replace(/\s+/g, ' ').trim();
+  if (compact.length <= maxChars) return compact;
+  return compact.slice(0, maxChars - 1) + '…';
+}
+
+function describeFact(fact: MemoryFact): string {
+  const value = shortenText(fact.valueRaw ?? fact.value, 140);
+  return `- [${fact.slot}] ${value}`;
+}
+
+function describeTurn(turn: MemoryRawTurn): string {
+  return `- Klient wcześniej napisał: „${shortenText(turn.text, 160)}”`;
 }
 
 function isMemoryV2Enabled(env: Env): boolean {
@@ -84,6 +103,8 @@ export async function retrieveCustomerMemory(
   let factsBlock = '';
   let turnsBlock = '';
 
+  const activeFactsById = new Map(activeFacts.map((fact) => [fact.id, fact]));
+
   if (env.MEMORY_INDEX && env.AI?.run) {
     const embed = await embedMemoryText(env, input.queryText, { timeoutMs: 2500 });
     if (embed) {
@@ -101,11 +122,24 @@ export async function retrieveCustomerMemory(
           kind: 'fact',
         });
         if (factMatches.length) {
+          const factIds = uniqueIds(factMatches.map((m) => (typeof m.metadata?.factId === 'string' ? m.metadata.factId : '')));
+          const missingFactIds = factIds.filter((id) => !activeFactsById.has(id));
+          if (missingFactIds.length) {
+            const hydratedFacts = await listMemoryFactsByIds(env.DB_CHATBOT, input.shopifyCustomerId, missingFactIds);
+            hydratedFacts.forEach((fact) => {
+              activeFactsById.set(fact.id, fact);
+            });
+          }
+
           const lines = factMatches
-            .map((m) => {
-              const slot = m.metadata?.slot ?? 'fact';
-              return `- [${slot}] score=${m.score.toFixed(3)} id=${m.id}`;
+            .map((match) => {
+              const factId = typeof match.metadata?.factId === 'string' ? match.metadata.factId : '';
+              const hydrated = factId ? activeFactsById.get(factId) : undefined;
+              if (hydrated) return describeFact(hydrated);
+              const slot = typeof match.metadata?.slot === 'string' ? match.metadata.slot : 'fact';
+              return `- [${slot}] dopasowana preferencja klienta z wcześniejszej wizyty`;
             })
+            .filter((line, index, array) => array.indexOf(line) === index)
             .join('\n');
           factsBlock = truncateBlock(lines, input.maxFactsChars ?? DEFAULT_MAX_FACTS_CHARS);
         }
@@ -124,8 +158,17 @@ export async function retrieveCustomerMemory(
             kind: 'turn',
           });
           if (turnMatches.length) {
+            const turnIds = uniqueIds(turnMatches.map((m) => (typeof m.metadata?.turnId === 'string' ? m.metadata.turnId : '')));
+            const hydratedTurns = await listMemoryRawTurnsByIds(env.DB_CHATBOT, input.shopifyCustomerId, turnIds);
+            const turnsById = new Map(hydratedTurns.map((turn) => [turn.id, turn]));
             const lines = turnMatches
-              .map((m) => `- score=${m.score.toFixed(3)} id=${m.id}`)
+              .map((match) => {
+                const turnId = typeof match.metadata?.turnId === 'string' ? match.metadata.turnId : '';
+                const hydrated = turnId ? turnsById.get(turnId) : undefined;
+                return hydrated ? describeTurn(hydrated) : null;
+              })
+              .filter((line): line is string => Boolean(line))
+              .filter((line, index, array) => array.indexOf(line) === index)
               .join('\n');
             turnsBlock = truncateBlock(lines, input.maxTurnsChars ?? DEFAULT_MAX_TURNS_CHARS);
           }

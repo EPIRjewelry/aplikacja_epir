@@ -18,8 +18,10 @@ chat-secrets.txt
 
 # Cache buildów
 **/.cache/
+.npm-cache-local/
 
 # Python & Local Data
+.venv/
 __pycache__/
 *.pyc
 # Azure local exports / experiments (dirname may appear as untracked file or folder)

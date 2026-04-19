@@ -5,7 +5,8 @@
   "scripts": {
     "shopify:version": "shopify version",
     "shopify:app:build": "shopify app build",
-    "shopify:app:deploy": "shopify app deploy --allow-updates --force"
+    "shopify:app:deploy": "shopify app deploy --allow-updates --force",
+    "pages:deploy:zareczyny": "npm run build -w zareczyny && npm exec -w zareczyny -- wrangler pages deploy public --project-name=zareczyny-hydrogen-pages --branch=main"
   },
   "dependencies": {
     "lodash": "^4.17.23"
