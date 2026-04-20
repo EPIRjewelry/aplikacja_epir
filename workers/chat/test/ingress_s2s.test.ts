@@ -367,6 +367,16 @@ describe('parseChatRequestBody', () => {
     expect(payload?.customer_id_hint).toBe('gid://shopify/Customer/123');
     expect(payload?.customer_id_hint_source).toBe('shopify-analytics');
   });
+
+  it('parses path from body', () => {
+    const payload = parseChatRequestBody({
+      message: 'hej',
+      path: '/collections/galazki',
+    });
+
+    expect(payload).not.toBeNull();
+    expect(payload?.path).toBe('/collections/galazki');
+  });
 });
 
 describe('App Proxy customer_id_hint promotion', () => {

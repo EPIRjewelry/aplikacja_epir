@@ -1,8 +1,12 @@
 import {Link} from '@remix-run/react';
 import {Image, Money} from '@shopify/hydrogen';
+import type {
+  CurrencyCode,
+  Image as ShopifyImage,
+} from '@shopify/hydrogen-react/storefront-api-types';
 
 type ProductVariant = {
-  image?: {url?: string; altText?: string; width?: number; height?: number};
+  image?: ShopifyImage | null;
 };
 
 type ProductNode = {
@@ -11,7 +15,9 @@ type ProductNode = {
   handle?: string;
   productType?: string;
   variants?: {nodes?: ProductVariant[]};
-  priceRange?: {minVariantPrice?: {amount?: string; currencyCode?: string}};
+  priceRange?: {
+    minVariantPrice?: {amount?: string; currencyCode?: CurrencyCode} | null;
+  };
 };
 
 export type SectionFeaturedProductsProps = {
@@ -58,9 +64,9 @@ export function SectionFeaturedProducts(props: SectionFeaturedProductsProps) {
               >
                 <div className="grid gap-4 fadeIn">
                   <div className="card-image aspect-square bg-gray-100 overflow-hidden">
-                      {variant?.image ? (
+                    {variant?.image ? (
                       <Image
-                        data={variant.image as any}
+                        data={variant.image}
                         alt={product.title ?? ''}
                         className="w-full h-full object-cover"
                         sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw"
@@ -81,7 +87,7 @@ export function SectionFeaturedProducts(props: SectionFeaturedProductsProps) {
                     {showPrices && price && (
                       <Money
                         withoutTrailingZeros
-                        data={price as any}
+                        data={price}
                         className="font-semibold"
                       />
                     )}

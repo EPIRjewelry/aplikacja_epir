@@ -61,36 +61,43 @@ function parseMetafieldValue(node: MetaobjectField): unknown {
   }
 }
 
-function lift<T extends Record<string, unknown>, K extends keyof T>(
-  value: T,
-  keyToRemove: K,
-): T {
-  if (!value || typeof value !== 'object') return value;
-  const isArray = Array.isArray(value);
-
-  function liftObject(val: Record<string, unknown>) {
-    const entries = Object.entries(val)
-      .filter(([prop]) => String(prop) !== String(keyToRemove))
-      .map(([prop, val]) => [prop as string, lift(val as Record<string, unknown>, keyToRemove as any)]);
-    const target = Object.fromEntries(entries);
-    const source = keyToRemove in val ? (val as Record<string, unknown>)[keyToRemove as any] : {};
-    const lifted = Array.isArray(source)
-      ? source
-      : Object.assign(target, source);
-    return lifted;
-  }
-
-  return (isArray
-    ? (value as unknown[]).map((item) => liftObject(item as Record<string, unknown>))
-    : liftObject(value as Record<string, unknown>)) as T;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function liftEach<T extends Record<string, unknown>, K extends readonly (keyof T)[]>(
-  obj: T,
-  keys: K,
-): T {
-  return keys.reduce(
-    (result, keyToLift) => lift(result as Record<string, unknown>, keyToLift as any) as T,
-    obj,
+function liftValue(value: unknown, keyToRemove: string): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => liftValue(item, keyToRemove));
+  }
+
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const target = Object.fromEntries(
+    Object.entries(value)
+      .filter(([prop]) => prop !== keyToRemove)
+      .map(([prop, child]) => [prop, liftValue(child, keyToRemove)]),
   );
+
+  const source = value[keyToRemove];
+  if (Array.isArray(source)) {
+    return source.map((item) => liftValue(item, keyToRemove));
+  }
+
+  if (isRecord(source)) {
+    return Object.assign(target, source);
+  }
+
+  return target;
+}
+
+function liftEach<T extends Record<string, unknown>>(
+  obj: T,
+  keys: readonly string[],
+): T {
+  return keys.reduce((result, keyToLift) => {
+    const lifted = liftValue(result, keyToLift);
+    return isRecord(lifted) ? (lifted as T) : result;
+  }, obj);
 }

@@ -1,10 +1,10 @@
-import {json, LoaderArgs} from '@remix-run/cloudflare';
+import {json, type LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {useLoaderData} from '@remix-run/react';
 import {ProductGallery, ProductOptions, ProductForm} from '@epir/ui';
 import {Money, ShopPayButton} from '@shopify/hydrogen';
 import React from 'react';
 
-export async function loader({params, context, request}: LoaderArgs) {
+export async function loader({params, context, request}: LoaderFunctionArgs) {
   const {handle} = params;
   const searchParams = new URL(request.url).searchParams;
   const selectedOptions: {name: string; value: string}[] = [];
@@ -38,8 +38,9 @@ export async function loader({params, context, request}: LoaderArgs) {
 }
 
 export default function ProductHandle() {
-  const {product, selectedVariant, storeDomain} = useLoaderData();
-  const orderable = selectedVariant?.availableForSale || false;
+  const {product, selectedVariant, storeDomain} = useLoaderData<typeof loader>();
+  const variantId = selectedVariant?.id;
+  const orderable = Boolean(selectedVariant?.availableForSale && variantId);
 
   return (
     <section className="w-full gap-4 md:gap-8 grid px-6 md:px-8 lg:px-12">
@@ -69,10 +70,10 @@ export default function ProductHandle() {
             <div className="space-y-2">
               <ShopPayButton
                 storeDomain={storeDomain}
-                variantIds={[selectedVariant?.id]}
+                variantIds={variantId ? [variantId] : []}
                 width={'400px'}
               />
-              <ProductForm variantId={selectedVariant?.id} />
+              <ProductForm variantId={variantId} />
             </div>
           )}
           <div

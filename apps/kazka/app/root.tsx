@@ -25,7 +25,7 @@ import {
 } from '@epir/ui';
 import type {PersonaUi} from '@epir/ui';
 import {Seo, Storefront} from '@shopify/hydrogen';
-import type {LinksFunction, LoaderArgs} from '@remix-run/cloudflare';
+import type {LinksFunction, LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {CART_QUERY} from '~/queries/cart';
 import {defer} from '@remix-run/cloudflare';
 import {resolveChatApiUrl} from '~/lib/resolve-chat-api-url';
@@ -53,7 +53,7 @@ export const links: LinksFunction = () => {
   ];
 };
 
-export async function loader({context, request}: LoaderArgs) {
+export async function loader({context, request}: LoaderFunctionArgs) {
   const cartId = await context.session.get('cartId');
   const configuredChatApiUrl = context.env.CHAT_API_URL as string | undefined;
   const chatApiUrl = resolveChatApiUrl(configuredChatApiUrl);

@@ -4,6 +4,6 @@ import type {
 } from '@shopify/hydrogen-react/storefront-api-types';
 
 export type MyCollection =
-    {myField: string} &
+  {myField?: string} &
     Partial<Collection>;
 

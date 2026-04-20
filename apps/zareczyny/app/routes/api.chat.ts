@@ -2,7 +2,11 @@
  * BFF: przeglądarka → POST /api/chat (same origin) → S2S POST na worker `/chat`.
  * Wymaga sekretu `EPIR_CHAT_SHARED_SECRET` (Pages) = ten sam co na workerze `wrangler secret put EPIR_CHAT_SHARED_SECRET`.
  */
-import {json, type ActionArgs, type LoaderArgs} from '@remix-run/cloudflare';
+import {
+  json,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+} from '@remix-run/cloudflare';
 import {getEpirChatSharedSecret} from '~/lib/chat-proxy-secret';
 import {
   ZARECZYNY_CHANNEL,
@@ -14,7 +18,7 @@ const MISSING_SECRET_ERROR =
   'Chat proxy: brak EPIR_CHAT_SHARED_SECRET w Cloudflare Pages (Production env).';
 
 function getEnvFromActionContext(
-  context: ActionArgs['context'],
+  context: ActionFunctionArgs['context'],
 ): Record<string, unknown> {
   const raw = context as unknown as Record<string, unknown> | undefined;
   const envDirect = raw?.env;
@@ -29,14 +33,14 @@ function getEnvFromActionContext(
   return {};
 }
 
-export async function loader({request}: LoaderArgs) {
+export async function loader({request}: LoaderFunctionArgs) {
   if (request.method !== 'GET') {
     return json({error: 'Method not allowed'}, {status: 405});
   }
   return json({ok: true, hint: 'POST JSON body to chat'});
 }
 
-export async function action({request, context}: ActionArgs) {
+export async function action({request, context}: ActionFunctionArgs) {
   if (request.method !== 'POST') {
     return json({error: 'Method not allowed'}, {status: 405});
   }

@@ -2,7 +2,7 @@
 /// <reference types="@remix-run/cloudflare" />
 
 import type {Storefront} from '@shopify/hydrogen';
-import {HydrogenCloudflareSession} from "./src/session";
+import {HydrogenCloudflareSession} from './src/session';
 
 declare global {
   /**
@@ -35,7 +35,7 @@ declare global {
  */
 declare module '@remix-run/cloudflare' {
   export interface AppLoadContext {
-    cloudflare?: EventContext<Env, string, unknown>;
+    cloudflare: EventContext<Env, string, unknown>;
     session: HydrogenCloudflareSession;
     storefront: Storefront;
     env: Env;

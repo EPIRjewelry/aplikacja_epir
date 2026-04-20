@@ -1248,11 +1248,39 @@ function createAssistantMessage(messagesEl) {
 /** Bezpieczne **pogrubienie** w treści asystenta (bez pełnego Markdown). */
 function formatAssistantMarkdownLite(text) {
   if (!text || typeof text !== 'string') return '';
-  var esc = text
+  var links = [];
+  var marked = String(text).replace(
+    /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,
+    function (_m, label, url) {
+      var i = links.length;
+      links.push({ label: label, url: url });
+      return '\uE000LINK' + i + '\uE001';
+    },
+  );
+  var esc = marked
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
-  return esc.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
+  esc = esc.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
+  function escAttr(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+  var j;
+  for (j = 0; j < links.length; j++) {
+    var ph = '\uE000LINK' + j + '\uE001';
+    var anchor =
+      '<a href="' +
+      escAttr(links[j].url) +
+      '" target="_blank" rel="noopener noreferrer">' +
+      escAttr(links[j].label) +
+      '</a>';
+    esc = esc.split(ph).join(anchor);
+  }
+  return esc;
 }
 
 function updateAssistantMessage(id, text) {
@@ -1465,6 +1493,7 @@ async function sendMessageToWorker(
       cart_id: cartId,
       brand,
       stream: true,
+      path: window.location.pathname,
       customer_id_hint: normalizeLoggedInCustomerId(customerIdentity && customerIdentity.customerId) || undefined,
       customer_id_hint_source:
         normalizeLoggedInCustomerId(customerIdentity && customerIdentity.source) || 'none',

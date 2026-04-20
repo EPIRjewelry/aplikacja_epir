@@ -1,9 +1,11 @@
 import {Link, useLoaderData} from '@remix-run/react';
-import {MyCollection} from '~/models/collection';
-import {CollectionConnection} from '@shopify/hydrogen/dist/storefront-api-types';
 import {Image} from '@shopify/hydrogen';
-import {LoaderArgs} from '@remix-run/cloudflare';
-import {RouteContent, ROUTE_CONTENT_QUERY} from '@epir/ui';
+import type {LoaderFunctionArgs} from '@remix-run/cloudflare';
+import {
+  RouteContent,
+  ROUTE_CONTENT_QUERY,
+  type RouteContentProps,
+} from '@epir/ui';
 
 export function meta() {
   return [
@@ -15,22 +17,26 @@ export function meta() {
   ];
 }
 
-type RouteSectionField = {
-  references?: {nodes?: unknown[]};
-  nodes?: unknown[];
+type FeaturedCollection = {
+  id: string;
+  title: string;
+  handle: string;
+  image?: {
+    altText?: string | null;
+    width?: number | null;
+    height?: number | null;
+    url: string;
+  } | null;
 };
 
 type LoaderData = {
-  route: {
-    id?: string;
-    sections?: RouteSectionField;
-    featured_collections?: RouteSectionField;
-    featured_products?: RouteSectionField;
-  } | null;
-  collections: any;
+  route: RouteContentProps['route'];
+  collections: {
+    nodes: FeaturedCollection[];
+  };
 };
 
-export async function loader({context}: LoaderArgs): Promise<LoaderData> {
+export async function loader({context}: LoaderFunctionArgs): Promise<LoaderData> {
   const filter = context.env.COLLECTION_FILTER;
   const allowedHandles = filter
     ? filter
@@ -44,7 +50,7 @@ export async function loader({context}: LoaderArgs): Promise<LoaderData> {
   const routeHandles = ['route-zareczyny-home', 'route-home'];
 
   const fetchRouteByHandle = (handle: string) =>
-    context.storefront.query(
+    context.storefront.query<{route: RouteContentProps['route']}>(
       ROUTE_CONTENT_QUERY,
       {variables: {handle: {type: 'route', handle}}},
     );
@@ -53,19 +59,18 @@ export async function loader({context}: LoaderArgs): Promise<LoaderData> {
     (async () => {
       for (const handle of routeHandles) {
         const result = await fetchRouteByHandle(handle);
-        if ((result as any).route) return result as any;
+        if (result.route) return result;
       }
 
       return {route: null};
     })(),
-    context.storefront.query(COLLECTIONS_QUERY),
+    context.storefront.query<{
+      collections: {nodes: FeaturedCollection[]};
+    }>(COLLECTIONS_QUERY),
   ]);
 
-  // Debug: raw result from Storefront for route content
-  console.log('ROUTE_RESULT', JSON.stringify(routeResult, null, 2));
-
-  const {route} = routeResult as any;
-  const {collections} = collectionsResult as any;
+  const {route} = routeResult;
+  const {collections} = collectionsResult;
 
   const nodes = allowedHandles?.length
     ? collections.nodes.filter((c: {handle: string}) =>
@@ -79,7 +84,7 @@ export async function loader({context}: LoaderArgs): Promise<LoaderData> {
   };
 }
 
-function FallbackView({collections}: {collections: CollectionConnection}) {
+function FallbackView({collections}: {collections: LoaderData['collections']}) {
   return (
     <section className="w-full gap-8 md:gap-12">
       <div className="text-center mb-8 md:mb-12 fadeIn">
@@ -92,7 +97,7 @@ function FallbackView({collections}: {collections: CollectionConnection}) {
       </div>
 
       <div className="swimlane md:grid md:grid-flow-row md:grid-cols-2 lg:grid-cols-3 md:gap-6 md:overflow-visible md:snap-none md:scroll-px-0 md:px-0">
-        {collections.nodes.map((collection: any, i: number) => (
+        {collections.nodes.map((collection, i: number) => (
           <Link
             to={`/collections/${collection.handle}`}
             key={collection.id}
@@ -130,7 +135,7 @@ function FallbackView({collections}: {collections: CollectionConnection}) {
 }
 
 export default function Index() {
-  const {route, collections} = useLoaderData<LoaderData>();
+  const {route, collections} = useLoaderData<typeof loader>();
   const heroCount =
     route?.sections?.references?.nodes?.length ??
     route?.sections?.nodes?.length ??
@@ -145,29 +150,6 @@ export default function Index() {
     0;
   const hasRouteSections =
     (heroCount > 0 || collectionsCount > 0 || productsCount > 0) && route;
-
-  // Debug: what the component receives and how it computes counts
-  console.log(
-    'COMPONENT_ROUTE_DEBUG',
-    JSON.stringify(
-      {
-        route: route
-          ? {
-              id: route.id,
-              sections: route.sections,
-              featured_collections: route.featured_collections,
-              featured_products: route.featured_products,
-            }
-          : null,
-        heroCount,
-        collectionsCount,
-        productsCount,
-        hasRouteSections,
-      },
-      null,
-      2,
-    ),
-  );
 
   if (hasRouteSections) {
     return (

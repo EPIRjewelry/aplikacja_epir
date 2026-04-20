@@ -3,9 +3,15 @@ import {Await} from '@remix-run/react';
 import {CartLineItems} from './CartLineItems';
 import {CartSummary} from './CartSummary';
 import {CartActions} from './CartActions';
-import type {Cart} from '@shopify/hydrogen-react/storefront-api-types';
+import type {CartDrawerData, DeferredCart} from './types';
 
-export function CartDrawer({cart, close}: {cart: any; close: () => void}) {
+export function CartDrawer({
+  cart,
+  close,
+}: {
+  cart: DeferredCart<CartDrawerData>;
+  close: () => void;
+}) {
   return (
     <Suspense>
       <Await resolve={cart}>
@@ -20,7 +26,7 @@ export function CartDrawer({cart, close}: {cart: any; close: () => void}) {
                 </div>
                 <div className="w-full md:px-12 px-4 py-6 space-y-6 border border-1 border-gray-00">
                   <CartSummary cost={data.cost} />
-                  <CartActions checkoutUrl={data.checkoutUrl} />
+                  <CartActions checkoutUrl={data.checkoutUrl ?? undefined} />
                 </div>
               </>
             ) : (

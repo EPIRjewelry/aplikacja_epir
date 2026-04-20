@@ -1,9 +1,11 @@
 import {Link, useLoaderData} from '@remix-run/react';
-import {MyCollection} from '~/models/collection';
-import {CollectionConnection} from '@shopify/hydrogen/dist/storefront-api-types';
 import {Image} from '@shopify/hydrogen';
-import {LoaderArgs} from '@remix-run/cloudflare';
-import {RouteContent, ROUTE_CONTENT_QUERY} from '@epir/ui';
+import type {LoaderFunctionArgs} from '@remix-run/cloudflare';
+import {
+  RouteContent,
+  ROUTE_CONTENT_QUERY,
+  type RouteContentProps,
+} from '@epir/ui';
 
 export function meta() {
   return [
@@ -15,22 +17,26 @@ export function meta() {
   ];
 }
 
-type RouteSectionField = {
-  references?: {nodes?: unknown[]};
-  nodes?: unknown[];
+type FeaturedCollection = {
+  id: string;
+  title: string;
+  handle: string;
+  image?: {
+    altText?: string | null;
+    width?: number | null;
+    height?: number | null;
+    url: string;
+  } | null;
 };
 
 type LoaderData = {
-  route: {
-    id?: string;
-    sections?: RouteSectionField;
-    featured_collections?: RouteSectionField;
-    featured_products?: RouteSectionField;
-  } | null;
-  collections: CollectionConnection;
+  route: RouteContentProps['route'];
+  collections: {
+    nodes: FeaturedCollection[];
+  };
 };
 
-export async function loader({context}: LoaderArgs): Promise<LoaderData> {
+export async function loader({context}: LoaderFunctionArgs): Promise<LoaderData> {
   const brand = context.env.BRAND ?? 'zareczyny';
   const filter = context.env.COLLECTION_FILTER;
   const allowedHandles = filter
@@ -41,11 +47,13 @@ export async function loader({context}: LoaderArgs): Promise<LoaderData> {
     brand === 'zareczyny' ? 'route-home' : `route-${brand}-home`;
 
   const [routeResult, collectionsResult] = await Promise.all([
-    context.storefront.query<{route: LoaderData['route']}>(
+    context.storefront.query<{route: RouteContentProps['route']}>(
       ROUTE_CONTENT_QUERY,
       {variables: {handle: {type: 'route', handle: routeHandle}}},
     ),
-    context.storefront.query<{collections: CollectionConnection}>(COLLECTIONS_QUERY),
+    context.storefront.query<{
+      collections: {nodes: FeaturedCollection[]};
+    }>(COLLECTIONS_QUERY),
   ]);
 
   const route = routeResult.route;
@@ -63,7 +71,7 @@ export async function loader({context}: LoaderArgs): Promise<LoaderData> {
   };
 }
 
-function FallbackView({collections}: {collections: CollectionConnection}) {
+function FallbackView({collections}: {collections: LoaderData['collections']}) {
   return (
     <section className="w-full gap-8 md:gap-12">
       <div className="text-center mb-8 md:mb-12 fadeIn">
@@ -76,7 +84,7 @@ function FallbackView({collections}: {collections: CollectionConnection}) {
       </div>
 
       <div className="swimlane md:grid md:grid-flow-row md:grid-cols-2 lg:grid-cols-3 md:gap-6 md:overflow-visible md:snap-none md:scroll-px-0 md:px-0">
-        {collections.nodes.map((collection: MyCollection, i: number) => (
+        {collections.nodes.map((collection, i: number) => (
           <Link
             to={`/collections/${collection.handle}`}
             key={collection.id}
@@ -114,7 +122,7 @@ function FallbackView({collections}: {collections: CollectionConnection}) {
 }
 
 export default function Index() {
-  const {route, collections} = useLoaderData<LoaderData>();
+  const {route, collections} = useLoaderData<typeof loader>();
 
   const heroCount = route?.sections?.references?.nodes?.length ?? route?.sections?.nodes?.length ?? 0;
   const collectionsCount =

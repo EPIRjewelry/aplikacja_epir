@@ -1,6 +1,10 @@
 import {Link, useLoaderData} from '@remix-run/react';
-import {json, LoaderArgs} from '@remix-run/cloudflare';
+import {json, type LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {Storefront} from '@shopify/hydrogen';
+import type {
+  BaseCartLineConnection,
+  CartCost,
+} from '@shopify/hydrogen-react/storefront-api-types';
 import {
   AttributeInput,
   CartInput,
@@ -11,6 +15,28 @@ import {CART_QUERY} from '~/queries/cart';
 import {CartLineItems, CartSummary, CartActions} from '@epir/ui';
 
 const EPIR_SESSION_ATTR_KEY = '_epir_session_id';
+
+type CartData = {
+  id: string;
+  checkoutUrl?: string | null;
+  totalQuantity?: number | null;
+  lines: BaseCartLineConnection;
+  cost: CartCost;
+  attributes?: CartAttribute[] | null;
+};
+
+type CartQueryData = {
+  cart: CartData | null;
+};
+
+type CartAttributesQueryData = {
+  cart: Pick<CartData, 'attributes'> | null;
+};
+
+type CartMutationResult = {
+  cart: {id: string};
+  errors?: unknown[];
+};
 
 /** 128-bitowy identyfikator (32 znaki hex) — bez znaków specjalnych dla atrybutu koszyka. */
 function generateEpirSessionId(): string {
@@ -54,12 +80,12 @@ function getEpirSessionFromCartAttributes(
   return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
 }
 
-export async function loader({context}: LoaderArgs) {
+export async function loader({context}: LoaderFunctionArgs) {
   const cartId = await context.session.get('cartId');
 
   const cart = cartId
     ? (
-        await context.storefront.query(CART_QUERY, {
+        await context.storefront.query<CartQueryData>(CART_QUERY, {
           variables: {
             cartId,
             country: context.storefront.i18n.country,
@@ -73,7 +99,7 @@ export async function loader({context}: LoaderArgs) {
   return {cart};
 }
 
-export async function action({request, context}: LoaderArgs) {
+export async function action({request, context}: LoaderFunctionArgs) {
   const {session, storefront} = context;
   const headers = new Headers();
 
@@ -87,7 +113,7 @@ export async function action({request, context}: LoaderArgs) {
   let cartId = storedCartId as string | undefined;
 
   let status = 200;
-  let result;
+  let result: CartMutationResult;
 
   const cartAction = formData.get('cartAction');
   const countryCode = formData.get('countryCode')
@@ -105,14 +131,17 @@ export async function action({request, context}: LoaderArgs) {
         null;
 
       if (resolvedCartId) {
-        const {cart: cartForAttrs} = (await storefront.query(CART_ATTRIBUTES_QUERY, {
+        const {cart: cartForAttrs} = await storefront.query<CartAttributesQueryData>(
+          CART_ATTRIBUTES_QUERY,
+          {
           variables: {
             cartId: resolvedCartId,
             country: storefront.i18n.country,
             language: storefront.i18n.language,
           },
           cache: storefront.CacheNone(),
-        })) as any;
+          },
+        );
         if (!cartForAttrs) {
           resolvedCartId = undefined;
         } else {
@@ -147,6 +176,10 @@ export async function action({request, context}: LoaderArgs) {
           );
           result = updateResult;
           resolvedCartId = updateResult.cart.id;
+        }
+
+        if (!resolvedCartId) {
+          throw new Error('Missing cart ID before cartLinesAdd');
         }
 
         const addResult = await cartAdd(resolvedCartId, lines, storefront);
@@ -199,9 +232,10 @@ export async function action({request, context}: LoaderArgs) {
 }
 
 export default function Cart() {
-  const {cart} = useLoaderData() as any;
+  const {cart} = useLoaderData<typeof loader>();
+  const hasItems = (cart?.totalQuantity ?? 0) > 0;
 
-  if (cart?.totalQuantity > 0)
+  if (hasItems && cart)
     return (
       <div className="w-full max-w-6xl mx-auto pb-12 grid md:grid-cols-2 md:items-start gap-8 md:gap-8 lg:gap-12">
         <div className="flex-grow md:translate-y-4">
@@ -209,7 +243,7 @@ export default function Cart() {
         </div>
         <div className="fixed left-0 right-0 bottom-0 md:sticky md:top-[65px] grid gap-6 p-4 md:px-6 md:translate-y-4 bg-gray-100 rounded-md w-full">
           <CartSummary cost={cart.cost} />
-          <CartActions checkoutUrl={cart.checkoutUrl} />
+          <CartActions checkoutUrl={cart.checkoutUrl ?? undefined} />
         </div>
       </div>
     );

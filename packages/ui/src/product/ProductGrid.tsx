@@ -10,6 +10,18 @@ export type ProductGridProps = {
   endCursor: string;
 };
 
+type ProductGridFetcherData = {
+  collection: {
+    products: {
+      nodes: Product[];
+      pageInfo: {
+        hasNextPage: boolean;
+        endCursor: string;
+      };
+    };
+  };
+};
+
 export default function ProductGrid({
   products: initProducts,
   url,
@@ -20,7 +32,7 @@ export default function ProductGrid({
   const [endCursor, setEndCursor] = useState(initEndCursor);
   const [products, setProducts] = useState(initProducts || []);
 
-  const fetcher = useFetcher();
+  const fetcher = useFetcher<ProductGridFetcherData>();
 
   function fetchMoreProducts() {
     fetcher.load(`${url}?index&cursor=${endCursor}`);
@@ -28,7 +40,7 @@ export default function ProductGrid({
 
   useEffect(() => {
     if (!fetcher.data) return;
-    const {collection} = fetcher.data as any;
+    const {collection} = fetcher.data;
     setProducts((prev) => [...prev, ...collection.products.nodes]);
     setNextPage(collection.products.pageInfo.hasNextPage);
     setEndCursor(collection.products.pageInfo.endCursor);
