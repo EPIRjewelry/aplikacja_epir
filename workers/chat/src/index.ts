@@ -39,6 +39,7 @@ import { CHAT_MODEL_ID } from './config/model-params';
 import { INTERNAL_DASHBOARD_SYSTEM_PROMPT } from './prompts/internal-dashboard-system-prompt';
 import { LUXURY_SYSTEM_PROMPT } from './prompts/luxury-system-prompt'; // 🟢 Używa nowego promptu v2
 import { TOOL_SCHEMAS } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2
+import { detectPolicyInformationIntent } from './intent/policy-information';
 import { truncateWithSummary, type Message as HistoryMessage } from './utils/history'; // 🔵 History truncation
 import { stripLeakedToolCallsLiterals } from './utils/stripLeakedToolCallsLiterals';
 import { executeToolWithParsedArguments } from './utils/tool-call-args';
@@ -184,6 +185,8 @@ interface ChatRequestBody {
   channel?: string;
   /** Aktualna ścieżka (np. "/collections/kazka-xyz") */
   route?: string;
+  /** Kanoniczna ścieżka URL strony (pathname), np. /products/xyz */
+  path?: string;
   /** Handle kolekcji, gdy na stronie kolekcji */
   collectionHandle?: string;
   /** Hint z frontendu (wyłącznie diagnostyka; nieautorytatywne dla pamięci międzysesyjnej) */
@@ -647,6 +650,7 @@ function parseChatRequestBody(
   const inferredChannel = storefrontFromBrand ? STOREFRONTS[storefrontFromBrand]?.channel : undefined;
   const channel = contextOverride?.channel ?? channelFromBody ?? inferredChannel;
   const route = typeof maybe.route === 'string' && maybe.route.trim().length > 0 ? maybe.route.trim() : undefined;
+  const path = typeof maybe.path === 'string' && maybe.path.trim().length > 0 ? maybe.path.trim() : undefined;
   const collectionHandle = typeof maybe.collectionHandle === 'string' && maybe.collectionHandle.trim().length > 0 ? maybe.collectionHandle.trim() : undefined;
   const customerIdHint =
     typeof maybe.customer_id_hint === 'string' && maybe.customer_id_hint.trim().length > 0
@@ -666,6 +670,7 @@ function parseChatRequestBody(
     storefrontId,
     channel,
     route,
+    path,
     collectionHandle,
     customer_id_hint: customerIdHint,
     customer_id_hint_source: customerIdHintSource,
@@ -2595,6 +2600,7 @@ async function handleChat(
     channel: payload.channel,
     route: payload.route,
     collectionHandle: payload.collectionHandle,
+    path: payload.path,
   }, customerId, executionCtx, customerIdFromUrl);
 }
 
@@ -2607,6 +2613,7 @@ interface StorefrontContext {
   channel?: string;
   route?: string;
   collectionHandle?: string;
+  path?: string;
 }
 
 async function streamAssistantResponse(
@@ -2956,6 +2963,7 @@ async function streamAssistantResponse(
         ];
         if (storefrontContext.route) ctxParts.push(`route: ${storefrontContext.route}`);
         if (storefrontContext.collectionHandle) ctxParts.push(`collectionHandle: ${storefrontContext.collectionHandle}`);
+        if (storefrontContext.path) ctxParts.push(`currentPath: ${storefrontContext.path}`);
         if (sfKey === 'kazka') {
           ctxParts.push('Odpowiadaj w kontekście marki Kazka Jewelry – kamienie szlachetne, biżuteria artystyczna.');
         } else if (sfKey === 'zareczyny') {
@@ -3122,50 +3130,112 @@ async function streamAssistantResponse(
       // Świadomie bez „Code Mode” (wykonywalny TS generowany przez model) na kanale storefront — wymagałby osobnej
       // piaskownicy i przeglądu ESOG; opóźnienia MCP ogranicza pętla i MAX_TOOL_CALLS.
       const MAX_TOOL_CALLS = 5;
-      
+
+      // Wymuszenie MCP dla intencji „polityka/zwroty/regulamin": w pierwszej turze narzędzi
+      // pchamy model bezpośrednio do `search_shop_policies_and_faqs` zamiast pozwolić mu
+      // odpowiedzieć z pamięci parametrycznej. Wyłącznie kanał buyer; heurystyka na wejściu
+      // użytkownika, lista markerów nie trafia do promptu.
+      const policyToolAvailable = toolDefinitions.some(
+        (t) => t.function.name === 'search_shop_policies_and_faqs',
+      );
+      const forcePolicyMcp =
+        storefrontContext?.channel !== 'internal-dashboard' &&
+        policyToolAvailable &&
+        detectPolicyInformationIntent(userMessage).match;
+      if (forcePolicyMcp) {
+        console.log(
+          JSON.stringify({
+            tag: 'chat.policy_intent',
+            session_id: sessionId,
+            storefrontId: storefrontContext?.storefrontId ?? null,
+            forced_tool: 'search_shop_policies_and_faqs',
+          }),
+        );
+      }
+
       // 🔴 FIX: accumulatedResponse poza pętlą - nie resetuj w każdej iteracji
       let finalTextResponse = ''; 
 
       for (let i = 0; i < MAX_TOOL_CALLS; i++) {
-        const groqStream = await streamGroqEvents(
-          currentMessages,
-          env,
-          toolDefinitions,
-          sessionId,
-          `tool_loop_${i}`,
-        );
-        const reader = groqStream.getReader();
         let iterationText = ''; // Tymczasowy buffer dla tej iteracji
-        const pendingToolCalls = new Map<string, { id: string; name: string; arguments: string }>();
+        let pendingToolCalls = new Map<string, { id: string; name: string; arguments: string }>();
         let finishReason: string | null = null;
         let usageTotals = { prompt_tokens: 0, completion_tokens: 0 };
+        let attemptUsed = 0;
 
-        while (true) {
-          const { done, value: event } = await reader.read();
-          if (done) break;
+        const maxAttempts = i === 0 && forcePolicyMcp ? 2 : 1;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          iterationText = '';
+          pendingToolCalls = new Map();
+          finishReason = null;
+          usageTotals = { prompt_tokens: 0, completion_tokens: 0 };
+          attemptUsed = attempt;
 
-          switch (event.type) {
+          const toolChoiceResolved =
+            toolDefinitions.length === 0
+              ? undefined
+              : i === 0 && forcePolicyMcp
+                ? { type: 'function' as const, function: { name: 'search_shop_policies_and_faqs' } }
+                : ('auto' as const);
+
+          const timingLabel =
+            attempt === 0 ? `tool_loop_${i}` : `tool_loop_${i}_policy_retry`;
+
+          const groqStream = await streamGroqEvents(
+            currentMessages,
+            env,
+            toolDefinitions,
+            sessionId,
+            timingLabel,
+            toolChoiceResolved !== undefined ? { toolChoice: toolChoiceResolved } : undefined,
+          );
+          const reader = groqStream.getReader();
+
+          while (true) {
+            const { done, value: event } = await reader.read();
+            if (done) break;
+
+            switch (event.type) {
               case 'text':
                 iterationText += event.delta;
-              break;
+                break;
 
-            case 'tool_call':
-              console.log(`[streamAssistant] 🤖 Wykryto wywołanie narzędzia: ${event.call.name}`);
-              pendingToolCalls.set(event.call.id, event.call);
-              break;
+              case 'tool_call':
+                console.log(`[streamAssistant] 🤖 Wykryto wywołanie narzędzia: ${event.call.name}`);
+                pendingToolCalls.set(event.call.id, event.call);
+                break;
 
-            case 'usage':
-              // Nie sumuj wielu zdarzeń usage w jednej turze: Workers AI może powtarzać chunki
-              // z tym samym lub rosnącym skumulowanym usage — sumowanie zawyżało metryki w logach.
-              usageTotals.prompt_tokens = event.prompt_tokens;
-              usageTotals.completion_tokens = event.completion_tokens;
-              break;
+              case 'usage':
+                // Nie sumuj wielu zdarzeń usage w jednej turze: Workers AI może powtarzać chunki
+                // z tym samym lub rosnącym skumulowanym usage — sumowanie zawyżało metryki w logach.
+                usageTotals.prompt_tokens = event.prompt_tokens;
+                usageTotals.completion_tokens = event.completion_tokens;
+                break;
 
-            case 'done':
-              finishReason = event.finish_reason ?? finishReason;
-              break;
-          }
-        } // koniec while(reader)
+              case 'done':
+                finishReason = event.finish_reason ?? finishReason;
+                break;
+            }
+          } // koniec while(reader)
+
+          const shouldRetry =
+            i === 0 &&
+            forcePolicyMcp &&
+            attempt === 0 &&
+            pendingToolCalls.size === 0 &&
+            finishReason !== 'tool_calls';
+
+          if (!shouldRetry) break;
+
+          console.log(
+            JSON.stringify({
+              tag: 'chat.policy_intent.retry',
+              session_id: sessionId,
+              attempt,
+              finish_reason: finishReason,
+            }),
+          );
+        } // koniec for(attempt)
 
         console.log(
           JSON.stringify({
@@ -3208,7 +3278,7 @@ async function streamAssistantResponse(
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              usage_uid: `${sessionId}:usage:${userMessageTs}:${i}`,
+              usage_uid: `${sessionId}:usage:${userMessageTs}:${i}:${attemptUsed}`,
               model: CHAT_MODEL_ID,
               prompt_tokens: usageTotals.prompt_tokens,
               completion_tokens: usageTotals.completion_tokens,

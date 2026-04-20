@@ -25,7 +25,7 @@ import {
 } from '@epir/ui';
 import type {PersonaUi} from '@epir/ui';
 import {Seo, Storefront} from '@shopify/hydrogen';
-import type {LinksFunction, LoaderArgs} from '@remix-run/cloudflare';
+import type {LinksFunction, LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {CART_QUERY} from '~/queries/cart';
 import {defer} from '@remix-run/cloudflare';
 import {resolveChatApiUrl} from '~/lib/resolve-chat-api-url';
@@ -53,7 +53,7 @@ export const links: LinksFunction = () => {
   ];
 };
 
-export async function loader({context, request}: LoaderArgs) {
+export async function loader({context, request}: LoaderFunctionArgs) {
   const cartId = await context.session.get('cartId');
   const configuredChatApiUrl = context.env.CHAT_API_URL as string | undefined;
   const chatApiUrl = resolveChatApiUrl(configuredChatApiUrl);
@@ -67,20 +67,19 @@ export async function loader({context, request}: LoaderArgs) {
     : null;
   const route = new URL(request.url).pathname;
 
-  const [layoutResult, collectionsResult, personaUi] = await Promise.all([
-    context.storefront.query(LAYOUT_QUERY),
-    context.storefront.query(COLLECTIONS_QUERY),
+  const [layout, collectionsResult, personaUi] = await Promise.all([
+    context.storefront.query<{shop: Shop}>(LAYOUT_QUERY),
+    context.storefront.query<{
+      collections: {nodes: {id: string; title: string; handle: string}[]};
+    }>(COLLECTIONS_QUERY),
     loadZareczynyPersonaUi(context.env),
   ]);
 
-  const layout = (layoutResult as any)?.shop ?? layoutResult;
-  const collectionsObj = collectionsResult as any;
-
   const nodes = allowedHandles?.length
-    ? collectionsObj.collections.nodes.filter((c: {handle: string}) =>
+    ? collectionsResult.collections.nodes.filter((c: {handle: string}) =>
         allowedHandles.includes(c.handle),
       )
-    : collectionsObj.collections.nodes;
+    : collectionsResult.collections.nodes;
 
   return defer({
     layout,

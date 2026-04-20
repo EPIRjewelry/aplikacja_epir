@@ -527,6 +527,19 @@ function createGroqStreamTransform(): TransformStream<string, GroqStreamEvent> {
   });
 }
 
+export type StreamGroqEventsToolChoice =
+  | 'auto'
+  | 'none'
+  | { type: 'function'; function: { name: string } };
+
+export type StreamGroqEventsOptions = {
+  /**
+   * Opcjonalne wymuszenie wyboru narzędzia w pierwszej turze pętli `streamAssistantResponse`.
+   * Gdy `undefined`, zachowujemy zachowanie domyślne: `'auto'` jeżeli są narzędzia, inaczej `undefined`.
+   */
+  toolChoice?: StreamGroqEventsToolChoice;
+};
+
 export async function streamGroqEvents(
   messages: GroqMessage[],
   env: Env,
@@ -534,10 +547,15 @@ export async function streamGroqEvents(
   sessionId?: string,
   /** Np. `tool_loop_0` — w logach `wrangler tail` odróżnia kolejne wywołania modelu w pętli narzędzi. */
   timingLabel?: string,
+  options?: StreamGroqEventsOptions,
 ): Promise<ReadableStream<GroqStreamEvent>> {
+  const defaultToolChoice = tools && tools.length > 0 ? 'auto' : undefined;
+  const resolvedToolChoice =
+    options?.toolChoice !== undefined ? options.toolChoice : defaultToolChoice;
+
   const stream = await runModelStream(messages, env, {
     tools,
-    tool_choice: tools && tools.length > 0 ? 'auto' : undefined,
+    tool_choice: resolvedToolChoice,
     sessionId,
     timingLabel: timingLabel ?? 'streamGroqEvents',
   });

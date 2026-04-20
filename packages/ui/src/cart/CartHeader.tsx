@@ -1,12 +1,12 @@
 import {Suspense} from 'react';
 import {Await} from '@remix-run/react';
-import type {Cart} from '@shopify/hydrogen-react';
+import type {CartHeaderData, DeferredCart} from './types';
 
 export function CartHeader({
   cart,
   openDrawer,
 }: {
-  cart: Cart;
+  cart: DeferredCart<CartHeaderData>;
   openDrawer: () => void;
 }) {
   return (

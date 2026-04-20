@@ -5,7 +5,25 @@
  * TODO: Add canTrack / cookie consent check when integrating analytics.
  */
 import {useState, useCallback, useRef, useEffect} from 'react';
+import ReactMarkdown, {type Components} from 'react-markdown';
 import {DEFAULT_PERSONA_UI, type PersonaUi} from './persona-ui';
+
+const assistantMarkdownComponents: Partial<Components> = {
+  a: ({href, children}) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-blue-600 underline hover:text-blue-800"
+    >
+      {children}
+    </a>
+  ),
+};
+
+function AssistantMessageMarkdown({text}: {text: string}) {
+  return <ReactMarkdown components={assistantMarkdownComponents}>{text}</ReactMarkdown>;
+}
 
 export type ChatMessage = {
   id: string;
@@ -444,6 +462,7 @@ function ChatWidgetFallback({
           brand,
           stream: true,
           ...(route ? {route} : {}),
+          ...(typeof window !== 'undefined' ? {path: window.location.pathname} : {}),
         };
         if (parts.length > 0) {
           body.parts = parts;
@@ -614,8 +633,16 @@ function ChatWidgetFallback({
                       alt="Załączone zdjęcie użytkownika"
                       className="max-h-44 w-full rounded border border-blue-200 object-cover"
                     />
-                    {m.text ? <p className="m-0 whitespace-pre-wrap">{m.text}</p> : null}
+                    {m.text ? (
+                      m.role === 'assistant' ? (
+                        <AssistantMessageMarkdown text={m.text} />
+                      ) : (
+                        <p className="m-0 whitespace-pre-wrap">{m.text}</p>
+                      )
+                    ) : null}
                   </div>
+                ) : m.role === 'assistant' ? (
+                  <AssistantMessageMarkdown text={m.text} />
                 ) : (
                   m.text
                 )}

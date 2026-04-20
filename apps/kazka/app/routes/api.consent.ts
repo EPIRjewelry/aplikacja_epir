@@ -2,7 +2,11 @@
  * BFF: przeglądarka → POST /api/consent (same origin) → S2S POST na worker `/consent`.
  * Wymaga `EPIR_CHAT_SHARED_SECRET` w Cloudflare Pages (jak api.chat).
  */
-import {json, type ActionArgs, type LoaderArgs} from '@remix-run/cloudflare';
+import {
+  json,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+} from '@remix-run/cloudflare';
 import {getEpirChatSharedSecret} from '~/lib/chat-proxy-secret';
 import {KAZKA_CHANNEL, KAZKA_STOREFRONT_ID} from '~/lib/chat-widget-context';
 
@@ -11,7 +15,7 @@ const MISSING_SECRET_ERROR =
   'Consent proxy: brak EPIR_CHAT_SHARED_SECRET w Cloudflare Pages (Production env).';
 
 function getEnvFromActionContext(
-  context: ActionArgs['context'],
+  context: ActionFunctionArgs['context'],
 ): Record<string, unknown> {
   const raw = context as unknown as Record<string, unknown> | undefined;
   const envDirect = raw?.env;
@@ -62,11 +66,11 @@ function validateConsentBody(input: unknown): string | null {
   return null;
 }
 
-export async function loader(_args: LoaderArgs) {
+export async function loader(_args: LoaderFunctionArgs) {
   return json({error: 'Method not allowed'}, {status: 405});
 }
 
-export async function action({request, context}: ActionArgs) {
+export async function action({request, context}: ActionFunctionArgs) {
   if (request.method !== 'POST') {
     return json({error: 'Method not allowed'}, {status: 405});
   }

@@ -2,7 +2,11 @@
  * BFF: przeglądarka → POST /api/chat-history (same origin) → S2S POST na worker `/history`.
  * Wymaga sekretu `EPIR_CHAT_SHARED_SECRET` w Cloudflare Pages.
  */
-import {json, type ActionArgs, type LoaderArgs} from '@remix-run/cloudflare';
+import {
+  json,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+} from '@remix-run/cloudflare';
 import {getEpirChatSharedSecret} from '~/lib/chat-proxy-secret';
 import {
   ZARECZYNY_CHANNEL,
@@ -14,7 +18,7 @@ const MISSING_SECRET_ERROR =
   'History proxy: brak EPIR_CHAT_SHARED_SECRET w Cloudflare Pages (Production env).';
 
 function getEnvFromActionContext(
-  context: ActionArgs['context'],
+  context: ActionFunctionArgs['context'],
 ): Record<string, unknown> {
   const raw = context as unknown as Record<string, unknown> | undefined;
   const envDirect = raw?.env;
@@ -41,7 +45,7 @@ function parseHistoryBody(bodyText: string): {session_id: string} | null {
   }
 }
 
-export async function loader({request}: LoaderArgs) {
+export async function loader({request}: LoaderFunctionArgs) {
   if (request.method !== 'GET') {
     return json({error: 'Method not allowed'}, {status: 405});
   }
@@ -51,7 +55,7 @@ export async function loader({request}: LoaderArgs) {
   });
 }
 
-export async function action({request, context}: ActionArgs) {
+export async function action({request, context}: ActionFunctionArgs) {
   if (request.method !== 'POST') {
     return json({error: 'Method not allowed'}, {status: 405});
   }

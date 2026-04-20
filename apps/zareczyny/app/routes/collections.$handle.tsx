@@ -5,7 +5,11 @@ import {
   type CollectionEnhancedFlat,
   ProductGrid,
 } from '@epir/ui';
-import {json, redirect, LoaderArgs} from '@remix-run/cloudflare';
+import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
+
+type CollectionsQueryData = {
+  collections: {nodes: {handle: string}[]};
+};
 
 type CollectionEnhancedFieldReference = {
   mediaContentType?: string | null;
@@ -121,7 +125,11 @@ export function mapCollectionEnhancedData(
   return empty ? null : out;
 }
 
-export async function loader({context, params, request}: LoaderArgs) {
+export async function loader({
+  context,
+  params,
+  request,
+}: LoaderFunctionArgs) {
   const {handle} = params;
 
   if (!handle) {
@@ -145,15 +153,17 @@ export async function loader({context, params, request}: LoaderArgs) {
           .map((h: string) => h.trim())
           .filter(Boolean)
       : null;
-      const {collections} = (await context.storefront.query(`#graphql
+      const {collections} = await context.storefront.query<CollectionsQueryData>(`#graphql
       query FirstCollections {
         collections(first: 20) {
           nodes { handle }
         }
       }
-    `)) as any;
+      `);
     const nodes = allowedHandles?.length
-      ? collections.nodes.filter((c: any) => allowedHandles.includes(c.handle))
+        ? collections.nodes.filter((c: {handle: string}) =>
+            allowedHandles.includes(c.handle),
+          )
       : collections.nodes;
     const firstHandle = nodes[0]?.handle ?? allowedHandles?.[0];
     if (firstHandle && firstHandle !== handle) {

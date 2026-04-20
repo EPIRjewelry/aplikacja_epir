@@ -4,21 +4,24 @@ import {Image, Money} from '@shopify/hydrogen';
 import type {
   BaseCartLineConnection,
   CartLine,
+  ComponentizableCartLine,
 } from '@shopify/hydrogen/dist/storefront-api-types';
 import {ItemRemoveButton} from './ItemRemove';
+
+type LineItemData = CartLine | ComponentizableCartLine;
 
 export function CartLineItems({linesObj}: {linesObj: BaseCartLineConnection}) {
   const lines = flattenConnection(linesObj);
   return (
     <div className="space-y-8">
       {lines.map((line) => {
-        return <LineItem key={line.id} lineItem={line as any} />;
+        return <LineItem key={line.id} lineItem={line} />;
       })}
     </div>
   );
 }
 
-function LineItem({lineItem}: {lineItem: any}) {
+function LineItem({lineItem}: {lineItem: LineItemData}) {
   const {merchandise, quantity} = lineItem;
 
   return (

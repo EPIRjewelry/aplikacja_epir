@@ -5,23 +5,29 @@ import {useEffect} from 'react';
 
 export type NavCollection = {id: string; title: string; handle: string};
 
-export type LayoutProps = {
+export type LayoutProps<TCart = unknown> = {
   children: React.ReactNode;
   title: string;
   collections?: NavCollection[];
-  cart?: unknown;
-  renderCartHeader: (props: {cart: unknown; openDrawer: () => void}) => React.ReactNode;
-  renderCartDrawer: (props: {cart: unknown; close: () => void}) => React.ReactNode;
+  cart?: TCart;
+  renderCartHeader: (props: {
+    cart: TCart | undefined;
+    openDrawer: () => void;
+  }) => React.ReactNode;
+  renderCartDrawer: (props: {
+    cart: TCart | undefined;
+    close: () => void;
+  }) => React.ReactNode;
 };
 
-export function Layout({
+export function Layout<TCart = unknown>({
   children,
   title,
   collections = [],
   cart,
   renderCartHeader,
   renderCartDrawer,
-}: LayoutProps) {
+}: LayoutProps<TCart>) {
   const {isOpen, openDrawer, closeDrawer} = useDrawer();
   const fetchers = useFetchers();
 

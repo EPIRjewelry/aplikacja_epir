@@ -1,7 +1,11 @@
 import {useLoaderData} from '@remix-run/react';
 import {SeoHandleFunction} from '@shopify/hydrogen';
 import {ProductGrid} from '@epir/ui';
-import {json, redirect, LoaderArgs} from '@remix-run/cloudflare';
+import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
+
+type CollectionsQueryData = {
+  collections: {nodes: {handle: string}[]};
+};
 
 const FIRST_COLLECTION_QUERY = `#graphql
   query FirstCollections {
@@ -11,7 +15,11 @@ const FIRST_COLLECTION_QUERY = `#graphql
   }
 `;
 
-export async function loader({context, params, request}: LoaderArgs) {
+export async function loader({
+  context,
+  params,
+  request,
+}: LoaderFunctionArgs) {
   const {handle} = params;
   const searchParams = new URL(request.url).searchParams;
   const cursor = searchParams.get('cursor');
@@ -26,11 +34,13 @@ export async function loader({context, params, request}: LoaderArgs) {
     const allowedHandles = filter
       ? filter.split(',').map((h) => h.trim()).filter(Boolean)
       : null;
-    const {collections} = await context.storefront.query<{
-      collections: {nodes: {handle: string}[]};
-    }>(FIRST_COLLECTION_QUERY);
+    const {collections} = await context.storefront.query<CollectionsQueryData>(
+      FIRST_COLLECTION_QUERY,
+    );
     const nodes = allowedHandles?.length
-      ? collections.nodes.filter((c) => allowedHandles.includes(c.handle))
+      ? collections.nodes.filter((c: {handle: string}) =>
+          allowedHandles.includes(c.handle),
+        )
       : collections.nodes;
     const firstHandle = nodes[0]?.handle ?? allowedHandles?.[0];
     if (firstHandle && firstHandle !== handle) {
@@ -45,7 +55,7 @@ export async function loader({context, params, request}: LoaderArgs) {
 }
 
 export default function Collection() {
-  const {collection} = useLoaderData();
+  const {collection} = useLoaderData<typeof loader>();
 
   return (
     <section className="w-full gap-8">

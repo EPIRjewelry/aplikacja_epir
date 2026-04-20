@@ -1,14 +1,33 @@
 import {Link} from '@remix-run/react';
 import {MediaFile} from '@shopify/hydrogen-react';
+import type {MediaContentType} from '@shopify/hydrogen-react/storefront-api-types';
 
-type MediaReference = {
-  __typename?: string;
-  mediaContentType?: string;
+type PreviewImage = {url?: string};
+
+type MediaImageReference = {
+  __typename?: 'MediaImage';
+  mediaContentType?: MediaContentType;
   alt?: string;
-  previewImage?: {url?: string};
+  previewImage?: PreviewImage;
   image?: {url?: string; altText?: string; width?: number; height?: number};
+};
+
+type VideoReference = {
+  __typename?: 'Video';
+  mediaContentType?: MediaContentType;
+  alt?: string;
+  previewImage?: PreviewImage;
   sources?: {mimeType?: string; url?: string}[];
 };
+
+type GenericFileReference = {
+  __typename?: 'GenericFile';
+  alt?: string;
+  previewImage?: PreviewImage;
+  url?: string;
+};
+
+type MediaReference = MediaImageReference | VideoReference | GenericFileReference;
 
 export type SectionHeroProps = {
   type?: string;
@@ -38,6 +57,23 @@ function getValue(
   return field.value;
 }
 
+function isRenderableMedia(
+  mediaRef: MediaReference | undefined,
+): mediaRef is MediaImageReference | VideoReference {
+  return mediaRef?.__typename === 'MediaImage' || mediaRef?.__typename === 'Video';
+}
+
+function getMediaFallbackUrl(mediaRef: MediaReference | undefined): string | undefined {
+  if (!mediaRef) return undefined;
+  if (mediaRef.__typename === 'MediaImage') {
+    return mediaRef.image?.url ?? mediaRef.previewImage?.url;
+  }
+  if (mediaRef.__typename === 'Video') {
+    return mediaRef.previewImage?.url;
+  }
+  return 'url' in mediaRef ? mediaRef.url ?? mediaRef.previewImage?.url : mediaRef.previewImage?.url;
+}
+
 export function SectionHero(props: SectionHeroProps) {
   const section = parseSectionFields(props);
   const {
@@ -56,17 +92,8 @@ export function SectionHero(props: SectionHeroProps) {
   const openInNewTab = targetVal === '_blank';
 
   const mediaRef = image?.reference;
-  const hasMedia =
-    mediaRef &&
-    (mediaRef.__typename === 'MediaImage' || mediaRef.__typename === 'Video');
-
-  const ref = mediaRef as {
-    url?: string;
-    image?: {url?: string};
-    previewImage?: {url?: string};
-  };
-  const imageUrl =
-    ref?.image?.url ?? ref?.url ?? ref?.previewImage?.url;
+  const hasMedia = isRenderableMedia(mediaRef);
+  const imageUrl = getMediaFallbackUrl(mediaRef);
   const fallbackBackgroundImage =
     imageUrl && !hasMedia ? `url("${imageUrl}")` : undefined;
 
@@ -80,7 +107,7 @@ export function SectionHero(props: SectionHeroProps) {
       {hasMedia && (
         <div className="absolute inset-0 -z-10">
           <MediaFile
-            data={mediaRef as any}
+            data={mediaRef}
             className="block object-cover w-full h-full"
             mediaOptions={{
               video: {
@@ -106,7 +133,7 @@ export function SectionHero(props: SectionHeroProps) {
       {showFallbackImage && (
         <img
           src={imageUrl}
-          alt={(mediaRef as {alt?: string})?.alt ?? ''}
+          alt={mediaRef?.alt ?? ''}
           className="absolute inset-0 w-full h-full object-cover -z-10"
         />
       )}

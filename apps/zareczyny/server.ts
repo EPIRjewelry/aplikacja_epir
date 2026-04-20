@@ -1,19 +1,31 @@
-import {createPagesFunctionHandler} from '@remix-run/cloudflare-pages';
+import {
+  createPagesFunctionHandler,
+  type GetLoadContextFunction,
+} from '@remix-run/cloudflare-pages';
 import * as build from '@remix-run/dev/server-build';
 import {HydrogenCloudflareSession} from './src/session';
 import {getStoreFrontClient} from '@epir/utils';
 
-type Context = EventContext<Env, string, unknown>;
+const getLoadContext: GetLoadContextFunction<Env> = async ({
+  context,
+  request,
+}) => {
+  const cloudflare = context.cloudflare;
+  const storefront = (await getStoreFrontClient(cloudflare)).storefront;
+  const session = await HydrogenCloudflareSession.init(request, [
+    cloudflare.env.SESSION_SECRET,
+  ]);
+
+  return {
+    cloudflare,
+    storefront,
+    session,
+    env: cloudflare.env,
+  };
+};
 
 export const onRequest = createPagesFunctionHandler({
   build,
-  getLoadContext: async (context: Context) => ({
-    cloudflare: context,
-    storefront: (await getStoreFrontClient(context)).storefront,
-    session: await HydrogenCloudflareSession.init(context.request, [
-      context.env.SESSION_SECRET,
-    ]),
-    env: context.env,
-  }),
+  getLoadContext,
   mode: process.env.NODE_ENV,
-} as any);
+});

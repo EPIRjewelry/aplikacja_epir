@@ -1,6 +1,10 @@
 import {Link, useLoaderData} from '@remix-run/react';
-import {json, LoaderArgs} from '@remix-run/cloudflare';
+import {json, type LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {Storefront} from '@shopify/hydrogen';
+import type {
+  BaseCartLineConnection,
+  CartCost,
+} from '@shopify/hydrogen-react/storefront-api-types';
 import {
   CartInput,
   CartLineInput,
@@ -9,12 +13,24 @@ import {
 import {CART_QUERY} from '~/queries/cart';
 import {CartLineItems, CartSummary, CartActions} from '@epir/ui';
 
-export async function loader({context}: LoaderArgs) {
+type CartData = {
+  id: string;
+  checkoutUrl?: string | null;
+  totalQuantity?: number | null;
+  lines: BaseCartLineConnection;
+  cost: CartCost;
+};
+
+type CartQueryData = {
+  cart: CartData | null;
+};
+
+export async function loader({context}: LoaderFunctionArgs) {
   const cartId = await context.session.get('cartId');
 
   const cart = cartId
     ? (
-        await context.storefront.query(CART_QUERY, {
+        await context.storefront.query<CartQueryData>(CART_QUERY, {
           variables: {
             cartId,
             country: context.storefront.i18n.country,
@@ -28,7 +44,7 @@ export async function loader({context}: LoaderArgs) {
   return {cart};
 }
 
-export async function action({request, context}: LoaderArgs) {
+export async function action({request, context}: LoaderFunctionArgs) {
   const {session, storefront} = context;
   const headers = new Headers();
 
@@ -95,9 +111,10 @@ export async function action({request, context}: LoaderArgs) {
 }
 
 export default function Cart() {
-  const {cart} = useLoaderData();
+  const {cart} = useLoaderData<typeof loader>();
+  const hasItems = (cart?.totalQuantity ?? 0) > 0;
 
-  if (cart?.totalQuantity > 0)
+  if (hasItems && cart)
     return (
       <div className="w-full max-w-6xl mx-auto pb-12 grid md:grid-cols-2 md:items-start gap-8 md:gap-8 lg:gap-12">
         <div className="flex-grow md:translate-y-4">
@@ -105,7 +122,7 @@ export default function Cart() {
         </div>
         <div className="fixed left-0 right-0 bottom-0 md:sticky md:top-[65px] grid gap-6 p-4 md:px-6 md:translate-y-4 bg-gray-100 rounded-md w-full">
           <CartSummary cost={cart.cost} />
-          <CartActions checkoutUrl={cart.checkoutUrl} />
+          <CartActions checkoutUrl={cart.checkoutUrl ?? undefined} />
         </div>
       </div>
     );

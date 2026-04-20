@@ -1,6 +1,6 @@
-import {json, useLoaderData} from '@remix-run/react';
+import {useLoaderData} from '@remix-run/react';
 import type {MetaFunction} from '@remix-run/react';
-import type {LoaderArgs} from '@remix-run/cloudflare';
+import {json, type LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {ChatWidget} from '~/components/ChatWidget';
 import {resolveChatApiUrl} from '~/lib/resolve-chat-api-url';
 import {KAZKA_CHANNEL, KAZKA_STOREFRONT_ID} from '~/lib/chat-widget-context';
@@ -16,7 +16,7 @@ export const meta: MetaFunction<typeof loader> = ({data}) => {
   ];
 };
 
-export async function loader({context, request}: LoaderArgs) {
+export async function loader({context, request}: LoaderFunctionArgs) {
   const configuredChatApiUrl = context.env.CHAT_API_URL as string | undefined;
   const chatApiUrl = resolveChatApiUrl(configuredChatApiUrl);
   const cartId = await context.session.get('cartId');
