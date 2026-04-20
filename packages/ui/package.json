@@ -27,6 +27,7 @@
     "typescript": "^5.2.2"
   },
   "dependencies": {
-    "react-markdown": "^10.1.0"
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   }
 }

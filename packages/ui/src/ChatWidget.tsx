@@ -6,6 +6,7 @@
  */
 import {useState, useCallback, useRef, useEffect} from 'react';
 import ReactMarkdown, {type Components} from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {DEFAULT_PERSONA_UI, type PersonaUi} from './persona-ui';
 
 const assistantMarkdownComponents: Partial<Components> = {
@@ -22,7 +23,11 @@ const assistantMarkdownComponents: Partial<Components> = {
 };
 
 function AssistantMessageMarkdown({text}: {text: string}) {
-  return <ReactMarkdown components={assistantMarkdownComponents}>{text}</ReactMarkdown>;
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={assistantMarkdownComponents}>
+      {text}
+    </ReactMarkdown>
+  );
 }
 
 export type ChatMessage = {
