@@ -5,6 +5,10 @@
 export function stripLeakedToolCallsLiterals(text: string): string {
   if (!text || typeof text !== 'string') return '';
   let out = text;
+  // Kimi / Workers AI: wycieki sekcji narzędzi jako zwykły tekst (np. <|tool_call_begin|> …)
+  out = out.replace(/<\|[^>]+\|>/gi, '');
+  // Literały typu "functions.update_cart:0" z kanału narzędziowego
+  out = out.replace(/\bfunctions\.[a-z_][a-z0-9_]*\s*:\s*\d+/gi, '');
   for (let guard = 0; guard < 12; guard++) {
     const m = /\btool_calls\s*:/i.exec(out);
     if (!m) break;

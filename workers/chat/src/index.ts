@@ -42,6 +42,7 @@ import { TOOL_SCHEMAS } from './mcp_tools'; // 🔵 Używa poprawionych schemat�
 import { detectPolicyInformationIntent } from './intent/policy-information';
 import { truncateWithSummary, type Message as HistoryMessage } from './utils/history'; // 🔵 History truncation
 import { stripLeakedToolCallsLiterals } from './utils/stripLeakedToolCallsLiterals';
+import { buildMessagesForToolFailureRecovery } from './utils/buildRecoveryMessages';
 import { executeToolWithParsedArguments } from './utils/tool-call-args';
 import { callMcpToolDirect, handleMcpRequest } from './mcp_server';
 import { STOREFRONTS, resolveStorefrontConfig } from './config/storefronts';
@@ -189,9 +190,9 @@ interface ChatRequestBody {
   path?: string;
   /** Handle kolekcji, gdy na stronie kolekcji */
   collectionHandle?: string;
-  /** Hint z frontendu (wyłącznie diagnostyka; nieautorytatywne dla pamięci międzysesyjnej) */
+  /** Pole opcjonalne z body — nie jest tożsamością Shopify w kanale App Proxy (ADR docs/adr/0001-tae-app-proxy-customer-identity.md). */
   customer_id_hint?: string;
-  /** Źródło hintu customer_id (dataset/shopify-analytics/shopify-st/cache/none) */
+  /** Źródło hintu (telemetria); bez wpływu na wiarygodne ID klienta. */
   customer_id_hint_source?: string;
 }
 
@@ -282,6 +283,8 @@ async function authorizeAppProxyRequest(request: Request, env: Env): Promise<Res
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 20;
 const MAX_HISTORY_FOR_AI = 20; // Ogranicz liczbę wiadomości wysyłanych do AI
+/** Mniejsze okno historii dla Liquid / online-store — niższy koszt promptu i szybsze tury. */
+const MAX_HISTORY_FOR_AI_ONLINE_STORE = 12;
 const MAX_HISTORY_IN_DO = 200; // Ogranicz przechowywanie w DO
 const PERSON_MEMORY_LOCK_TTL_MS = 15_000;
 const PERSON_MEMORY_RECENT_TTL_MS = 5 * 60_000;
@@ -300,8 +303,8 @@ type EffectiveShopifyCustomerIdResolution = {
 };
 
 /**
- * Normalizacja ID klienta z body (`customer_id_hint`) — tylko gdy wygląda jak Shopify Customer ID.
- * Używane wyłącznie po zweryfikowanym App Proxy HMAC (nie dla S2S / niezaufanych ingressów).
+ * Normalizacja stringu wyglądającego jak Shopify Customer ID (np. testy / narzędzia).
+ * W kanale TAE → App Proxy **nie** służy do ustalania tożsamości — patrz ADR `docs/adr/0001-tae-app-proxy-customer-identity.md`.
  */
 function normalizeShopifyCustomerIdFromHint(hint: string): string | null {
   const t = String(hint || '').trim();
@@ -342,6 +345,11 @@ function resolveEffectiveShopifyCustomerId(
     customerId: null,
     source: 'none',
   };
+}
+
+function containsLikelyToolMarkupLeak(text: string): boolean {
+  if (!text || typeof text !== 'string') return false;
+  return /<\|/i.test(text) || /\bfunctions\.[a-z_][a-z0-9_]*/i.test(text) || /redacted_tool/i.test(text);
 }
 
 function buildCurrentSessionVisibilityContext(historyEntries: number): string | null {
@@ -2363,6 +2371,21 @@ type ChatIngressOptions = {
   appProxyVerified?: boolean;
 };
 
+type CustomerAccountsModeLog = 'classic' | 'new' | 'unknown';
+
+function resolveCustomerAccountsModeForLog(env: Env): CustomerAccountsModeLog {
+  const v = String(env.SHOPIFY_CUSTOMER_ACCOUNTS_MODE ?? '').toLowerCase().trim();
+  if (v === 'classic' || v === 'new') return v;
+  return 'unknown';
+}
+
+/** Tożsamość w kanale TAE → App Proxy (§ planu); `s2s` = inny zaufany ingress (np. headless). */
+type LiquidChatIdentity = {
+  level: 'customer' | 'anonymous' | 's2s';
+  customer_accounts_mode: CustomerAccountsModeLog;
+  app_proxy_verified: boolean;
+};
+
 async function handleChat(
   request: Request,
   env: Env,
@@ -2417,15 +2440,21 @@ async function handleChat(
   const customerIdHintSource = normalizeOptionalString(payload.customer_id_hint_source) ?? 'none';
   const shopId = normalizeOptionalString(url.searchParams.get('shop')) ?? normalizeOptionalString(env.SHOP_DOMAIN);
 
-  let customerIdPromotedFromHint = false;
-  let customerId = customerIdFromUrl;
-  if (!customerId && ingressOptions?.appProxyVerified && customerIdHint) {
-    const fromHint = normalizeShopifyCustomerIdFromHint(customerIdHint);
-    if (fromHint) {
-      customerId = fromHint;
-      customerIdPromotedFromHint = true;
-    }
-  }
+  const customerAccountsMode = resolveCustomerAccountsModeForLog(env);
+
+  const customerId = customerIdFromUrl;
+
+  const liquidIdentity: LiquidChatIdentity = ingressOptions?.appProxyVerified
+    ? {
+        level: customerIdFromUrl ? 'customer' : 'anonymous',
+        customer_accounts_mode: customerAccountsMode,
+        app_proxy_verified: true,
+      }
+    : {
+        level: 's2s',
+        customer_accounts_mode: customerAccountsMode,
+        app_proxy_verified: false,
+      };
   
   // 🔴 POPRAWKA SESJI: Używamy `payload.session_id` LUB generujemy nowy
   const sessionId = payload.session_id ?? crypto.randomUUID();
@@ -2439,7 +2468,6 @@ async function handleChat(
       storefrontId: payload.storefrontId ?? contextOverride?.storefrontId ?? null,
       channel: payload.channel ?? contextOverride?.channel ?? null,
       raw_request_customer_id_present: Boolean(customerIdFromUrl),
-      customer_id_promoted_from_hint: customerIdPromotedFromHint,
       effective_customer_id_present: Boolean(customerId),
       client_customer_hint_present: Boolean(customerIdHint),
       client_customer_hint_source: customerIdHintSource,
@@ -2447,17 +2475,22 @@ async function handleChat(
         Boolean(customerIdHint) && Boolean(customerIdFromUrl) ? customerIdHint === customerIdFromUrl : null,
       shop_param_present: Boolean(shopId),
       session_id_from_request: Boolean(payload.session_id),
+      identity_level: liquidIdentity.level,
+      customer_accounts_mode: liquidIdentity.customer_accounts_mode,
     }),
   );
 
   if (!customerId && customerIdHint) {
-    console.warn('[handleChat] Brak rozpoznanego customer_id (URL i hint nie dały znormalizowanego ID)', {
+    console.warn(
+      '[handleChat] Brak pewnego customer_id z App Proxy (pusty logged_in_customer_id); customer_id_hint w body nie ustanawia tożsamości — docs/adr/0001-tae-app-proxy-customer-identity.md',
+      {
       session_id: sessionId,
       storefrontId: payload.storefrontId ?? contextOverride?.storefrontId ?? null,
       channel: payload.channel ?? contextOverride?.channel ?? null,
       client_customer_hint_source: customerIdHintSource,
       app_proxy_verified: Boolean(ingressOptions?.appProxyVerified),
-    });
+      },
+    );
   }
   
   let customerToken: string | undefined;
@@ -2601,7 +2634,7 @@ async function handleChat(
     route: payload.route,
     collectionHandle: payload.collectionHandle,
     path: payload.path,
-  }, customerId, executionCtx, customerIdFromUrl);
+  }, customerId, executionCtx, customerIdFromUrl, liquidIdentity);
 }
 
 // ============================================================================
@@ -2628,12 +2661,14 @@ async function streamAssistantResponse(
   imageBase64?: string,
   storefrontContext?: StorefrontContext,
   /**
-   * Rozpoznany ID klienta Shopify (URL `logged_in_customer_id` lub — przy zweryfikowanym App Proxy — `customer_id_hint`).
+   * Rozpoznany ID klienta Shopify: wyłącznie z query `logged_in_customer_id` po zweryfikowanym App Proxy (HMAC). `customer_id_hint` z body nie jest tożsamością — ADR `docs/adr/0001-tae-app-proxy-customer-identity.md`.
    */
   shopifyCustomerId?: string | null,
   executionCtx?: ExecutionContext,
   /** Wyłącznie wartość z query `logged_in_customer_id` (diagnostyka raw_request_*; bez promocji z hint). */
   loggedInCustomerIdFromUrl?: string | null,
+  /** Model wiary w tożsamość (Liquid App Proxy vs S2S); brak = zachowanie jak `s2s`. */
+  liquidIdentity?: LiquidChatIdentity,
 ): Promise<Response> {
   const { readable, writable } = new TransformStream();
   const encoder = new TextEncoder();
@@ -2679,19 +2714,31 @@ async function streamAssistantResponse(
         } | null;
       };
       const sessionCustomer = customerData?.customer ?? null;
-      customerFirstName = normalizeOptionalString(sessionCustomer?.first_name ?? null);
+      const identityLevel = liquidIdentity?.level ?? 's2s';
+      const customerAccountsMode = liquidIdentity?.customer_accounts_mode ?? 'unknown';
+      const anonymousAppProxySession = identityLevel === 'anonymous';
+
+      if (!anonymousAppProxySession) {
+        customerFirstName = normalizeOptionalString(sessionCustomer?.first_name ?? null);
+      }
       const rawRequestCustomerIdPresent = Boolean(
         normalizeOptionalString(loggedInCustomerIdFromUrl ?? null),
       );
       const sessionCustomerPresent = Boolean(normalizeOptionalString(sessionCustomer?.customer_id ?? null));
-      const effectiveCustomerContext = resolveEffectiveShopifyCustomerId(
-        shopifyCustomerId,
-        sessionCustomer?.customer_id ?? null,
-      );
+      const effectiveCustomerContext = anonymousAppProxySession
+        ? { customerId: null, source: 'none' as const }
+        : resolveEffectiveShopifyCustomerId(shopifyCustomerId, sessionCustomer?.customer_id ?? null);
       const effectiveShopifyCustomerId = effectiveCustomerContext.customerId;
+      const verifiedUrlCustomerId = normalizeOptionalString(loggedInCustomerIdFromUrl ?? null);
+      const memoryShopifyCustomerId =
+        identityLevel === 'anonymous'
+          ? null
+          : identityLevel === 'customer'
+            ? verifiedUrlCustomerId
+            : effectiveShopifyCustomerId;
       const shopId = normalizeOptionalString(new URL(request.url).searchParams.get('shop')) ?? normalizeOptionalString(env.SHOP_DOMAIN);
 
-      let effectiveCustomerToken = customerToken;
+      let effectiveCustomerToken = anonymousAppProxySession ? undefined : customerToken;
       if (!effectiveCustomerToken && effectiveShopifyCustomerId && shopId) {
         try {
           const tokenVaultId = env.TOKEN_VAULT_DO.idFromName('global');
@@ -2707,9 +2754,9 @@ async function streamAssistantResponse(
       }
 
       let crossSessionSummary: string | null = null;
-      if (effectiveShopifyCustomerId && env.DB_CHATBOT) {
+      if (memoryShopifyCustomerId && env.DB_CHATBOT) {
         try {
-          crossSessionSummary = await loadPersonMemory(env.DB_CHATBOT, effectiveShopifyCustomerId);
+          crossSessionSummary = await loadPersonMemory(env.DB_CHATBOT, memoryShopifyCustomerId);
         } catch (e) {
           console.warn('[person_memory] load failed:', e);
         }
@@ -2719,7 +2766,7 @@ async function streamAssistantResponse(
         `${sessionId}:person_memory:${userMessageTs}:${reason}`;
 
       const refreshPersonMemory = async (reason: 'chat_turn' | 'image_surrogate') => {
-        if (!effectiveShopifyCustomerId || !env.DB_CHATBOT) return;
+        if (!memoryShopifyCustomerId || !env.DB_CHATBOT) return;
         const requestId = buildPersonMemoryRequestId(reason);
 
         const memoryExtractEnabled = String(env.MEMORY_EXTRACT_ENABLED ?? '').toLowerCase() === 'true';
@@ -2743,12 +2790,12 @@ async function streamAssistantResponse(
                   : undefined,
                 messageId: h.message_uid,
               }));
-            const idempotencyKey = await makeIdempotencyKey(effectiveShopifyCustomerId, String(userMessageTs));
+            const idempotencyKey = await makeIdempotencyKey(memoryShopifyCustomerId, String(userMessageTs));
             const message: MemoryExtractMessage = {
               v: MEMORY_EXTRACT_MESSAGE_VERSION,
               kind: 'chat_turn_archive',
               sessionId,
-              shopifyCustomerId: effectiveShopifyCustomerId,
+              shopifyCustomerId: memoryShopifyCustomerId,
               idempotencyKey,
               turns,
               locale: undefined,
@@ -2763,7 +2810,7 @@ async function streamAssistantResponse(
               emitMemoryMetric({
                 tag: 'chat.memory',
                 phase: 'queue_enqueue',
-                customer_id: effectiveShopifyCustomerId,
+                customer_id: memoryShopifyCustomerId,
                 idempotency_key: idempotencyKey,
                 turns: turns.length,
               });
@@ -2786,7 +2833,7 @@ async function streamAssistantResponse(
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              shopify_customer_id: effectiveShopifyCustomerId,
+              shopify_customer_id: memoryShopifyCustomerId,
               request_id: requestId,
               reason,
             }),
@@ -2803,7 +2850,7 @@ async function streamAssistantResponse(
       };
 
       const maybeRefreshPersonMemory = () => {
-        if (!effectiveShopifyCustomerId || !env.DB_CHATBOT) return;
+        if (!memoryShopifyCustomerId || !env.DB_CHATBOT) return;
         const task = refreshPersonMemory('chat_turn');
         if (executionCtx) {
           executionCtx.waitUntil(task);
@@ -2886,8 +2933,10 @@ async function streamAssistantResponse(
       // 🔴 KROK 3: ZBUDUJ WIADOMOŚCI DLA AI (Z LOGIKĄ RAG WORKER)
       
       // Filtrujemy historię, aby usunąć pola, których AI nie rozumie
+      const isOnlineStoreLiquid = storefrontContext?.channel === 'online-store';
+      const maxHistoryAi = isOnlineStoreLiquid ? MAX_HISTORY_FOR_AI_ONLINE_STORE : MAX_HISTORY_FOR_AI;
       const aiHistory = history
-        .slice(-MAX_HISTORY_FOR_AI) // Weź tylko X ostatnich wiadomości
+        .slice(-maxHistoryAi) // Weź tylko X ostatnich wiadomości (mniej dla Liquid / online-store)
         .map(h => ({
             role: h.role,
             content: h.content ?? '',
@@ -2943,7 +2992,13 @@ async function streamAssistantResponse(
       if (cartId) {
         messages.push({ role: 'system', content: `Kontekst systemowy: Aktualny cart_id sesji to: ${cartId}` });
       }
-      if (effectiveCustomerToken || effectiveShopifyCustomerId) {
+      if (anonymousAppProxySession) {
+        messages.push({
+          role: 'system',
+          content:
+            'Kontekst systemowy: żądanie pochodzi z podpisanego App Proxy Shopify (HMAC poprawny), ale sklep nie przekazał pewnego ID zalogowanego klienta (logged_in_customer_id puste — typowe przy New Customer Accounts lub dla gościa). Traktuj rozmówcę jak gościa w witrynie: nie twierdź, że rozpoznajesz konto Shopify ani nie zwracaj się po imieniu z profilu klienta, chyba że poda je w tej rozmowie.',
+        });
+      } else if (effectiveCustomerToken || effectiveShopifyCustomerId) {
         const loginContextParts = ['Kontekst systemowy: Klient jest zalogowany.'];
         if (customerFirstName) {
           loginContextParts.push(`Imię klienta: ${customerFirstName}.`);
@@ -2986,10 +3041,10 @@ async function streamAssistantResponse(
       // przez `search_shop_policies_and_faqs` (luxury-system-prompt.ts).
       let memoryRetrievalFailed = false;
       let memoryRetrieveResult: RetrieveMemoryOutput | null = null;
-      if (effectiveShopifyCustomerId) {
+      if (memoryShopifyCustomerId) {
         try {
           memoryRetrieveResult = await retrieveCustomerMemory(env, {
-            shopifyCustomerId: effectiveShopifyCustomerId,
+            shopifyCustomerId: memoryShopifyCustomerId,
             queryText: userMessage,
           });
           if (memoryRetrieveResult.deterministicSummary && !crossSessionSummary) {
@@ -3033,7 +3088,7 @@ async function streamAssistantResponse(
           !String(memoryRetrieveResult.turnsBlock ?? '').trim());
       if (
         memoryV2Enabled &&
-        effectiveShopifyCustomerId &&
+        memoryShopifyCustomerId &&
         !crossSessionSummary &&
         memoryRetrievalEmpty
       ) {
@@ -3068,7 +3123,13 @@ async function streamAssistantResponse(
         ...(m.tool_call_id && { tool_call_id: m.tool_call_id }),
         ...(m.name && { name: m.name }),
       }));
-      const truncatedMessages: GroqMessage[] = truncateWithSummary(messagesForTruncate, 8000, 12).map((m) => ({
+      const truncateMaxTokens = isOnlineStoreLiquid ? 5600 : 8000;
+      const truncateKeepRecent = isOnlineStoreLiquid ? 8 : 12;
+      const truncatedMessages: GroqMessage[] = truncateWithSummary(
+        messagesForTruncate,
+        truncateMaxTokens,
+        truncateKeepRecent,
+      ).map((m) => ({
         role: m.role,
         content: m.content,
         ...(m.tool_calls && { tool_calls: m.tool_calls }),
@@ -3094,6 +3155,10 @@ async function streamAssistantResponse(
         session_customer_present: sessionCustomerPresent,
         effective_customer_source: effectiveCustomerContext.source,
         session_history_visibility_marker_present: Boolean(sessionHistoryVisibilityContext),
+        identity_level: identityLevel,
+        customer_accounts_mode: customerAccountsMode,
+        memory_shopify_customer_id_present: Boolean(memoryShopifyCustomerId),
+        online_store_context_tightening: isOnlineStoreLiquid,
       });
       
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -3106,6 +3171,9 @@ async function streamAssistantResponse(
         effective_customer_source: effectiveCustomerContext.source,
         effective_customer_id_present: Boolean(effectiveShopifyCustomerId),
         customer_token_present: Boolean(effectiveCustomerToken),
+        identity_level: identityLevel,
+        customer_accounts_mode: customerAccountsMode,
+        memory_shopify_customer_id_present: Boolean(memoryShopifyCustomerId),
       });
       console.log('[streamAssistant] 📚 History entries:', {
         before_truncation: aiHistory.length,
@@ -3258,6 +3326,9 @@ async function streamAssistantResponse(
             tool_calls_count: pendingToolCalls.size,
             usage_prompt_tokens: usageTotals.prompt_tokens,
             usage_completion_tokens: usageTotals.completion_tokens,
+            identity_level: identityLevel,
+            customer_accounts_mode: customerAccountsMode,
+            memory_shopify_customer_id_present: Boolean(memoryShopifyCustomerId),
           }),
         );
 
@@ -3447,13 +3518,19 @@ async function streamAssistantResponse(
                 });
               }
             }
-            const toolResultString = toolResult.error
+            let toolResultString = toolResult.error
               ? JSON.stringify({
                   notice:
                     'Narzędzie sklepu (Shopify MCP) nie zwróciło wyniku — nie twierdź o politykach ani usługach z pamięci marki; zaproponuj Kontakt lub ponowienie.',
                   ...toolResult,
                 })
               : JSON.stringify(toolResult.result);
+
+            if (isOnlineStoreLiquid && toolResultString.length > 14_000) {
+              toolResultString =
+                toolResultString.slice(0, 14_000) +
+                '\n[Wynik narzędzia został skrócony ze względu na limit kontekstu kanału online-store.]';
+            }
 
             console.log(`[streamAssistant] 🛠️ Wynik narzędzia ${call.name}: ${toolResultString.substring(0, 100)}...`);
 
@@ -3489,6 +3566,12 @@ async function streamAssistantResponse(
           // NIE - To była finalna odpowiedź tekstowa (bez wywołań narzędzi)
           // Model czasem powiela z promptu literalny tekst `tool_calls: [...]` — nie pokazuj tego klientowi.
           finalTextResponse = stripLeakedToolCallsLiterals(iterationText);
+          if (containsLikelyToolMarkupLeak(finalTextResponse)) {
+            console.warn(
+              '[streamAssistant] final iteration text still contained tool-like markup after strip; clearing for UX fallback',
+            );
+            finalTextResponse = '';
+          }
           if (finalTextResponse) {
             await sendDelta(finalTextResponse);
           }
@@ -3501,9 +3584,15 @@ async function streamAssistantResponse(
       if (!finalTextResponse.trim()) {
         console.warn('[streamAssistant] ⚠️ Brak finalnego tekstu po pętli tool_calls. Uruchamiam fallback getGroqResponse().');
         try {
-          const recoveryText = await getGroqResponse(currentMessages, env, { sessionId });
+          const recoveryMessages = buildMessagesForToolFailureRecovery(currentMessages);
+          const recoveryText = await getGroqResponse(recoveryMessages, env, { sessionId });
           if (typeof recoveryText === 'string' && recoveryText.trim()) {
-            finalTextResponse = stripLeakedToolCallsLiterals(recoveryText);
+            let cleaned = stripLeakedToolCallsLiterals(recoveryText);
+            if (containsLikelyToolMarkupLeak(cleaned)) {
+              console.warn('[streamAssistant] recovery getGroqResponse still contained tool-like markup; discarding');
+              cleaned = '';
+            }
+            finalTextResponse = cleaned;
             if (finalTextResponse) await sendDelta(finalTextResponse);
           }
         } catch (recoveryErr) {

@@ -1257,6 +1257,15 @@ function formatAssistantMarkdownLite(text) {
       return '\uE000LINK' + i + '\uE001';
     },
   );
+  var bareUrls = [];
+  marked = marked.replace(/(https?:\/\/[^\s<>"']+)/gi, function (raw) {
+    var u = raw.replace(/[.,;:!?)\]]+$/g, '');
+    if (!/^https?:\/\//i.test(u)) return raw;
+    if (!u.replace(/^https?:\/\//i, '').replace(/^\/+/, '')) return raw;
+    var k = bareUrls.length;
+    bareUrls.push(u);
+    return '\uE002RAW' + k + '\uE003' + raw.slice(u.length);
+  });
   var esc = marked
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -1279,6 +1288,17 @@ function formatAssistantMarkdownLite(text) {
       escAttr(links[j].label) +
       '</a>';
     esc = esc.split(ph).join(anchor);
+  }
+  for (j = 0; j < bareUrls.length; j++) {
+    var rph = '\uE002RAW' + j + '\uE003';
+    var u = bareUrls[j];
+    var rawAnchor =
+      '<a href="' +
+      escAttr(u) +
+      '" target="_blank" rel="noopener noreferrer">' +
+      escAttr(u) +
+      '</a>';
+    esc = esc.split(rph).join(rawAnchor);
   }
   return esc;
 }

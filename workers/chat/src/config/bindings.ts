@@ -42,6 +42,8 @@ export interface Env {
   MEMORY_RAW_RETRIEVAL_ENABLED?: string;
 
   SHOPIFY_APP_SECRET: string;
+  /** Admin: Settings → Customer accounts — `classic` | `new` (diagnostyka App Proxy / logged_in_customer_id). */
+  SHOPIFY_CUSTOMER_ACCOUNTS_MODE?: string;
   ALLOWED_ORIGIN?: string;
   ALLOWED_ORIGINS?: string;
 
@@ -91,7 +93,7 @@ export const OPTIONAL_SECRETS = [
 
 export const REQUIRED_VARS = ['SHOP_DOMAIN', 'ALLOWED_ORIGIN'] as const;
 
-export const OPTIONAL_VARS = ['WORKER_ORIGIN', 'DEV_BYPASS'] as const;
+export const OPTIONAL_VARS = ['WORKER_ORIGIN', 'DEV_BYPASS', 'SHOPIFY_CUSTOMER_ACCOUNTS_MODE'] as const;
 
 export function getEnvBinding<K extends keyof Env>(env: Env, key: K): NonNullable<Env[K]> {
   const value = env[key];

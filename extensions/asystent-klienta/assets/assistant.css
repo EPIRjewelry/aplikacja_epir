@@ -881,6 +881,23 @@
   font-weight: 600;
 }
 
+/* Linki w bańce asystenta — dopasowanie do Hydrogen ChatWidget (text-blue-600 underline hover:text-blue-800) */
+#epir-assistant-section .msg-assistant .epir-message__bubble a,
+#epir-assistant-embed .msg-assistant .epir-message__bubble a {
+  color: #2563eb;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 400;
+}
+#epir-assistant-section .msg-assistant .epir-message__bubble a:hover,
+#epir-assistant-embed .msg-assistant .epir-message__bubble a:hover {
+  color: #1e40af;
+}
+#epir-assistant-section .msg-assistant .epir-message__bubble a:visited,
+#epir-assistant-embed .msg-assistant .epir-message__bubble a:visited {
+  color: #2563eb;
+}
+
 .assistant-status { padding: 8px 12px; color: var(--epir-primary-color); }
 
 @media (max-width: 640px) {

@@ -12,4 +12,14 @@ describe('stripLeakedToolCallsLiterals', () => {
     const t = 'Polecam Pani kolczyki z kolekcji Aura.';
     expect(stripLeakedToolCallsLiterals(t)).toBe(t);
   });
+
+  it('strips Kimi redacted tool markers and functions.* leaks', () => {
+    const raw =
+      'Cześć <|tool_calls_section_begin|> <|tool_call_begin|> functions.update_cart:0 <|tool_call_end|> oto propozycja.';
+    const out = stripLeakedToolCallsLiterals(raw).replace(/\s+/g, ' ').trim();
+    expect(out).not.toMatch(/redacted_tool/i);
+    expect(out).not.toMatch(/functions\.update_cart/i);
+    expect(out).toContain('Cześć');
+    expect(out).toContain('propozycja');
+  });
 });
