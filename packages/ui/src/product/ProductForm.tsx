@@ -2,7 +2,7 @@ import {useFetcher, useMatches} from '@remix-run/react';
 
 export function ProductForm(props: {variantId: string}) {
   const [root] = useMatches();
-  const selectedLocale = root?.data?.selectedLocale;
+  const selectedLocale = (root?.data as any)?.selectedLocale;
   const fetcher = useFetcher();
 
   const lines = [{merchandiseId: props.variantId, quantity: 1}];

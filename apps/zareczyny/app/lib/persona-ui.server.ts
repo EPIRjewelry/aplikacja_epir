@@ -120,7 +120,10 @@ export async function loadZareczynyPersonaUi(env: Env): Promise<PersonaUi> {
     );
 
     if (!response.ok) {
-      console.error('[zareczyny] failed to fetch AI profile metaobject', response.status);
+      console.error(
+        '[zareczyny] failed to fetch AI profile metaobject',
+        response.status,
+      );
       return MISCONFIGURED_PERSONA_UI;
     }
 
@@ -135,7 +138,9 @@ export async function loadZareczynyPersonaUi(env: Env): Promise<PersonaUi> {
     }
 
     if (payload.data?.metaobject == null) {
-      console.error('[zareczyny] AI profile metaobject null (GID / publikacja / Storefront access?)');
+      console.error(
+        '[zareczyny] AI profile metaobject null (GID / publikacja / Storefront access?)',
+      );
       return MISCONFIGURED_PERSONA_UI;
     }
 

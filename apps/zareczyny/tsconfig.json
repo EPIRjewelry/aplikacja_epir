@@ -8,12 +8,12 @@
     "moduleResolution": "node",
     "resolveJsonModule": true,
     "target": "ES2022",
-    "strict": true,
+    "strict": false,
     "allowJs": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "baseUrl": ".",
-    "types": ["@shopify/oxygen-workers-types"],
+    "types": ["@cloudflare/workers-types"],
     "paths": {
       "~/*": ["app/*"]
     },

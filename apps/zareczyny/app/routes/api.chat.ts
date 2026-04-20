@@ -13,7 +13,9 @@ const CHAT_S2S_URL = 'https://asystent.epirbizuteria.pl/chat';
 const MISSING_SECRET_ERROR =
   'Chat proxy: brak EPIR_CHAT_SHARED_SECRET w Cloudflare Pages (Production env).';
 
-function getEnvFromActionContext(context: ActionArgs['context']): Record<string, unknown> {
+function getEnvFromActionContext(
+  context: ActionArgs['context'],
+): Record<string, unknown> {
   const raw = context as unknown as Record<string, unknown> | undefined;
   const envDirect = raw?.env;
   if (envDirect && typeof envDirect === 'object') {
@@ -42,9 +44,18 @@ export async function action({request, context}: ActionArgs) {
   const env = getEnvFromActionContext(context);
   const secret = getEpirChatSharedSecret(env);
   if (!secret) {
-    const hasMainKey = Object.prototype.hasOwnProperty.call(env, 'EPIR_CHAT_SHARED_SECRET');
-    const hasLegacyKey = Object.prototype.hasOwnProperty.call(env, 'CHAT_SHARED_SECRET');
-    const hasHeaderNamedKey = Object.prototype.hasOwnProperty.call(env, 'X-EPIR-SHARED-SECRET');
+    const hasMainKey = Object.prototype.hasOwnProperty.call(
+      env,
+      'EPIR_CHAT_SHARED_SECRET',
+    );
+    const hasLegacyKey = Object.prototype.hasOwnProperty.call(
+      env,
+      'CHAT_SHARED_SECRET',
+    );
+    const hasHeaderNamedKey = Object.prototype.hasOwnProperty.call(
+      env,
+      'X-EPIR-SHARED-SECRET',
+    );
     console.error('[api.chat] Missing shared secret in Pages runtime', {
       hasMainKey,
       hasLegacyKey,
@@ -54,8 +65,7 @@ export async function action({request, context}: ActionArgs) {
     return json(
       {
         error: MISSING_SECRET_ERROR,
-        hint:
-          'Ustaw sekret EPIR_CHAT_SHARED_SECRET (albo X-EPIR-SHARED-SECRET) w Cloudflare Pages -> zareczyny-hydrogen-pages -> Variables and Secrets -> Production i Preview, a potem wykonaj redeploy.',
+        hint: 'Ustaw sekret EPIR_CHAT_SHARED_SECRET (albo X-EPIR-SHARED-SECRET) w Cloudflare Pages -> zareczyny-hydrogen-pages -> Variables and Secrets -> Production i Preview, a potem wykonaj redeploy.',
         debug: {
           hasEpirChatSharedSecretKey: hasMainKey,
           hasChatSharedSecretKey: hasLegacyKey,

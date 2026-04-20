@@ -28,7 +28,7 @@ export default function ProductGrid({
 
   useEffect(() => {
     if (!fetcher.data) return;
-    const {collection} = fetcher.data;
+    const {collection} = fetcher.data as any;
     setProducts((prev) => [...prev, ...collection.products.nodes]);
     setNextPage(collection.products.pageInfo.hasNextPage);
     setEndCursor(collection.products.pageInfo.endCursor);

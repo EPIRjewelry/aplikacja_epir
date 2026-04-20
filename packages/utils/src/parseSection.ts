@@ -70,10 +70,10 @@ function lift<T extends Record<string, unknown>, K extends keyof T>(
 
   function liftObject(val: Record<string, unknown>) {
     const entries = Object.entries(val)
-      .filter(([prop]) => prop !== keyToRemove)
-      .map(([prop, val]) => [prop, lift(val as Record<string, unknown>, keyToRemove)]);
+      .filter(([prop]) => String(prop) !== String(keyToRemove))
+      .map(([prop, val]) => [prop as string, lift(val as Record<string, unknown>, keyToRemove as any)]);
     const target = Object.fromEntries(entries);
-    const source = keyToRemove in val ? (val as Record<string, unknown>)[keyToRemove as string] : {};
+    const source = keyToRemove in val ? (val as Record<string, unknown>)[keyToRemove as any] : {};
     const lifted = Array.isArray(source)
       ? source
       : Object.assign(target, source);
@@ -90,7 +90,7 @@ function liftEach<T extends Record<string, unknown>, K extends readonly (keyof T
   keys: K,
 ): T {
   return keys.reduce(
-    (result, keyToLift) => lift(result as Record<string, unknown>, keyToLift as keyof T) as T,
+    (result, keyToLift) => lift(result as Record<string, unknown>, keyToLift as any) as T,
     obj,
   );
 }

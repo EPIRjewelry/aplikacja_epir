@@ -81,14 +81,17 @@ export function mapCollectionEnhancedData(
         const sources = field.reference?.sources;
         const first =
           Array.isArray(sources) && sources.length > 0
-            ? sources.find((s) => typeof s?.url === 'string' && s.url.length > 0)
+            ? sources.find(
+                (s) => typeof s?.url === 'string' && s.url.length > 0,
+              )
             : undefined;
         out.heroVideoUrl = first?.url ?? null;
         break;
       }
       case 'texture_overlay': {
         const url = field.reference?.image?.url;
-        out.textureOverlayUrl = typeof url === 'string' && url.length > 0 ? url : null;
+        out.textureOverlayUrl =
+          typeof url === 'string' && url.length > 0 ? url : null;
         break;
       }
       case 'lookbook_images': {
@@ -139,20 +142,18 @@ export async function loader({context, params, request}: LoaderArgs) {
     const allowedHandles = filter
       ? filter
           .split(',')
-          .map((h) => h.trim())
+          .map((h: string) => h.trim())
           .filter(Boolean)
       : null;
-    const {collections} = await context.storefront.query<{
-      collections: {nodes: {handle: string}[]};
-    }>(`#graphql
+      const {collections} = (await context.storefront.query(`#graphql
       query FirstCollections {
         collections(first: 20) {
           nodes { handle }
         }
       }
-    `);
+    `)) as any;
     const nodes = allowedHandles?.length
-      ? collections.nodes.filter((c) => allowedHandles.includes(c.handle))
+      ? collections.nodes.filter((c: any) => allowedHandles.includes(c.handle))
       : collections.nodes;
     const firstHandle = nodes[0]?.handle ?? allowedHandles?.[0];
     if (firstHandle && firstHandle !== handle) {
@@ -162,7 +163,10 @@ export async function loader({context, params, request}: LoaderArgs) {
   }
 
   const enhancedData = mapCollectionEnhancedData(
-    collection.metafield?.reference as CollectionEnhancedMetaobject | null | undefined,
+    collection.metafield?.reference as
+      | CollectionEnhancedMetaobject
+      | null
+      | undefined,
   );
 
   return json({

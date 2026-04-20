@@ -80,7 +80,7 @@ export function SectionHero(props: SectionHeroProps) {
       {hasMedia && (
         <div className="absolute inset-0 -z-10">
           <MediaFile
-            data={mediaRef}
+            data={mediaRef as any}
             className="block object-cover w-full h-full"
             mediaOptions={{
               video: {

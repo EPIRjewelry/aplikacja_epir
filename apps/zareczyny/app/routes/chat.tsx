@@ -3,7 +3,10 @@ import type {MetaFunction} from '@remix-run/react';
 import type {LoaderArgs} from '@remix-run/cloudflare';
 import {ChatWidget} from '~/components/ChatWidget';
 import {resolveChatApiUrl} from '~/lib/resolve-chat-api-url';
-import {ZARECZYNY_CHANNEL, ZARECZYNY_STOREFRONT_ID} from '~/lib/chat-widget-context';
+import {
+  ZARECZYNY_CHANNEL,
+  ZARECZYNY_STOREFRONT_ID,
+} from '~/lib/chat-widget-context';
 import {loadZareczynyPersonaUi} from '~/lib/persona-ui.server';
 
 export const meta: MetaFunction<typeof loader> = ({data}) => {
@@ -43,7 +46,8 @@ export default function ChatPage() {
     <div className="mx-auto max-w-2xl px-4 py-8">
       <h1 className="mb-4 text-2xl font-semibold">{personaUi.chatTitle}</h1>
       <p className="mb-8 text-gray-600">
-        Zadaj pytanie do {personaUi.displayName} o produkty lub usługi. Jesteśmy tu, aby pomóc.
+        Zadaj pytanie do {personaUi.displayName} o produkty lub usługi. Jesteśmy
+        tu, aby pomóc.
       </p>
       <ChatWidget
         chatApiUrl={chatApiUrl}

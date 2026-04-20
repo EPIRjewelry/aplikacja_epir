@@ -46,7 +46,10 @@ function validateConsentBody(input: unknown): string | null {
   if (typeof input.granted !== 'boolean') return 'granted must be a boolean';
   if (!trimString(input.source)) return 'source required';
   if (!trimString(input.sessionId)) return 'sessionId required';
-  if (typeof input.timestamp !== 'number' || !Number.isFinite(input.timestamp)) {
+  if (
+    typeof input.timestamp !== 'number' ||
+    !Number.isFinite(input.timestamp)
+  ) {
     return 'timestamp must be a finite number';
   }
   if (Math.trunc(input.timestamp) < 0) return 'timestamp must be non-negative';
@@ -60,7 +63,8 @@ function validateConsentBody(input: unknown): string | null {
   if (typeof input.route !== 'string') return 'route required';
   if (typeof input.anonymousId !== 'string') return 'anonymousId required';
   if (input.customerId !== undefined && input.customerId !== null) {
-    if (typeof input.customerId !== 'string') return 'customerId must be a string or null';
+    if (typeof input.customerId !== 'string')
+      return 'customerId must be a string or null';
   }
   return null;
 }
@@ -98,8 +102,7 @@ export async function action({request, context}: ActionArgs) {
     return json(
       {
         error: MISSING_SECRET_ERROR,
-        hint:
-          'Ustaw sekret EPIR_CHAT_SHARED_SECRET w Cloudflare Pages -> zareczyny-hydrogen-pages -> Variables and Secrets, potem redeploy.',
+        hint: 'Ustaw sekret EPIR_CHAT_SHARED_SECRET w Cloudflare Pages -> zareczyny-hydrogen-pages -> Variables and Secrets, potem redeploy.',
         debug: {
           hasEpirChatSharedSecretKey: hasMainKey,
           hasChatSharedSecretKey: hasLegacyKey,
@@ -163,7 +166,12 @@ export async function action({request, context}: ActionArgs) {
     console.error('[api.consent] Upstream error', upstream.status, errText);
     return json(
       {error: errText || `Upstream HTTP ${upstream.status}`},
-      {status: upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502},
+      {
+        status:
+          upstream.status >= 400 && upstream.status < 600
+            ? upstream.status
+            : 502,
+      },
     );
   }
 
@@ -173,6 +181,9 @@ export async function action({request, context}: ActionArgs) {
 
   return new Response(upstream.body, {
     status: upstream.status,
-    headers: {'Content-Type': upstream.headers.get('content-type') ?? 'application/json'},
+    headers: {
+      'Content-Type':
+        upstream.headers.get('content-type') ?? 'application/json',
+    },
   });
 }

@@ -105,16 +105,14 @@ export async function action({request, context}: LoaderArgs) {
         null;
 
       if (resolvedCartId) {
-        const {cart: cartForAttrs} = await storefront.query<{
-          cart: {attributes?: CartAttribute[] | null} | null;
-        }>(CART_ATTRIBUTES_QUERY, {
+        const {cart: cartForAttrs} = (await storefront.query(CART_ATTRIBUTES_QUERY, {
           variables: {
             cartId: resolvedCartId,
             country: storefront.i18n.country,
             language: storefront.i18n.language,
           },
           cache: storefront.CacheNone(),
-        });
+        })) as any;
         if (!cartForAttrs) {
           resolvedCartId = undefined;
         } else {
@@ -201,7 +199,7 @@ export async function action({request, context}: LoaderArgs) {
 }
 
 export default function Cart() {
-  const {cart} = useLoaderData();
+  const {cart} = useLoaderData() as any;
 
   if (cart?.totalQuantity > 0)
     return (
