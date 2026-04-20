@@ -1,9 +1,9 @@
+import {Sections} from './Sections';
 import {
   SECTIONS_HERO_FRAGMENT,
   SECTIONS_FEATURED_COLLECTIONS_FRAGMENT,
   SECTIONS_FEATURED_PRODUCTS_FRAGMENT,
-  Sections,
-} from './Sections';
+} from './fragments';
 
 type SectionField = {
   references?: {nodes?: unknown[]};
