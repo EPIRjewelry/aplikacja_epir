@@ -1,14 +1,9 @@
-import {Sections} from './Sections';
+import {Sections, type SectionField} from './Sections';
 import {
   SECTIONS_HERO_FRAGMENT,
   SECTIONS_FEATURED_COLLECTIONS_FRAGMENT,
   SECTIONS_FEATURED_PRODUCTS_FRAGMENT,
 } from './fragments';
-
-type SectionField = {
-  references?: {nodes?: unknown[]};
-  nodes?: unknown[];
-};
 
 export type RouteContentProps = {
   route: {

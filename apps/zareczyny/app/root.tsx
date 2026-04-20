@@ -67,19 +67,20 @@ export async function loader({context, request}: LoaderArgs) {
     : null;
   const route = new URL(request.url).pathname;
 
-  const [layout, collectionsResult, personaUi] = await Promise.all([
-    context.storefront.query<{shop: Shop}>(LAYOUT_QUERY),
-    context.storefront.query<{
-      collections: {nodes: {id: string; title: string; handle: string}[]};
-    }>(COLLECTIONS_QUERY),
+  const [layoutResult, collectionsResult, personaUi] = await Promise.all([
+    context.storefront.query(LAYOUT_QUERY),
+    context.storefront.query(COLLECTIONS_QUERY),
     loadZareczynyPersonaUi(context.env),
   ]);
 
+  const layout = (layoutResult as any)?.shop ?? layoutResult;
+  const collectionsObj = collectionsResult as any;
+
   const nodes = allowedHandles?.length
-    ? collectionsResult.collections.nodes.filter((c: {handle: string}) =>
+    ? collectionsObj.collections.nodes.filter((c: {handle: string}) =>
         allowedHandles.includes(c.handle),
       )
-    : collectionsResult.collections.nodes;
+    : collectionsObj.collections.nodes;
 
   return defer({
     layout,

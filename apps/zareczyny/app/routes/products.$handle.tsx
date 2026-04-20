@@ -38,7 +38,7 @@ export async function loader({params, context, request}: LoaderArgs) {
 }
 
 export default function ProductHandle() {
-  const {product, selectedVariant, storeDomain} = useLoaderData();
+  const {product, selectedVariant, storeDomain} = useLoaderData() as any;
   const orderable = selectedVariant?.availableForSale || false;
 
   return (

@@ -15,8 +15,8 @@ export {SectionHero} from './sections/SectionHero';
 export {SectionFeaturedProducts} from './sections/SectionFeaturedProducts';
 export {SectionFeaturedCollections} from './sections/SectionFeaturedCollections';
 export * from './sections/CollectionEnhancedHero';
-export { Sections } from './sections/Sections';
-export { SECTIONS_HERO_FRAGMENT, SECTIONS_FEATURED_COLLECTIONS_FRAGMENT, SECTIONS_FEATURED_PRODUCTS_FRAGMENT } from './sections/fragments';
+export {Sections} from './sections/Sections';
+export {SECTIONS_HERO_FRAGMENT,SECTIONS_FEATURED_COLLECTIONS_FRAGMENT,SECTIONS_FEATURED_PRODUCTS_FRAGMENT} from './sections/fragments';
 export {RouteContent, ROUTE_CONTENT_QUERY} from './sections/RouteContent';
 export {
   ChatWidget,

@@ -18,16 +18,14 @@ export async function loader({context}: LoaderArgs) {
   const allowedHandles = filter
     ? filter
         .split(',')
-        .map((h) => h.trim())
+        .map((h: string) => h.trim())
         .filter(Boolean)
     : null;
 
-  const {collections} = await context.storefront.query<{
-    collections: {nodes: {handle: string}[]};
-  }>(COLLECTIONS_QUERY);
+  const {collections} = (await context.storefront.query(COLLECTIONS_QUERY)) as any;
 
   const nodes = allowedHandles?.length
-    ? collections.nodes.filter((c) => allowedHandles.includes(c.handle))
+    ? collections.nodes.filter((c: any) => allowedHandles.includes(c.handle))
     : collections.nodes;
 
   const firstHandle = nodes[0]?.handle ?? allowedHandles?.[0];

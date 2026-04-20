@@ -5,7 +5,7 @@ import {CartSummary} from './CartSummary';
 import {CartActions} from './CartActions';
 import type {Cart} from '@shopify/hydrogen-react/storefront-api-types';
 
-export function CartDrawer({cart, close}: {cart: Cart; close: () => void}) {
+export function CartDrawer({cart, close}: {cart: any; close: () => void}) {
   return (
     <Suspense>
       <Await resolve={cart}>

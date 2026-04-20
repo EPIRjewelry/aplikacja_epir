@@ -10,6 +10,18 @@ Opisuje docelową warstwę pamięci konwersacyjnej dla buyer-facing Gemmy w `wor
 
 Dev-asystent i `rag-worker` FAQ-fallback pozostają poza zakresem tego dokumentu.
 
+## Knowledge Base (MCP) vs pamięć semantyczna — formalny podział
+
+Ta sekcja jest **jednym miejscem** opisującym, skąd model bierze *jaką klasę* wiedzy. Nie dotyczy języka odpowiedzi klientowi — tylko **źródła faktów** i **warstwy technicznej**.
+
+| Klasa treści | Źródło prawdy | Jak trafia do modelu w `workers/chat` | Czym **nie** jest |
+|--------------|---------------|--------------------------------------|-------------------|
+| Polityki sklepu, regulamin, zwroty, reklamacje, wysyłka, prywatność, płatności, **wiążące** FAQ i dane kontaktowe / lokalizacja pracowni w sensie oficjalnym | **Shopify Knowledge Base**, wyłącznie przez **Storefront MCP** (`search_shop_policies_and_faqs` → `POST https://{shop_domain}/api/mcp`) | Narzędzie MCP w pętli AI; wynik jako wiadomość `role: tool`. Szczegóły kontraktu: [`EPIR_KB_MCP_POLICY_CONTRACT.md`](EPIR_KB_MCP_POLICY_CONTRACT.md) | Nie Vectorize `memory_customer`, nie „pamięć ogólna” modelu, nie RAG pod wiążące obowiązki prawne |
+| Preferencje i ustalenia **konkretnego zalogowanego klienta** (np. rozmiar, budżet, styl), skrót międzysesyjny, opisy wcześniejszych tur użytkownika do personalizacji | **D1** (`memory_facts`, `memory_raw_turns`, `person_memory`) + opcjonalnie **Vectorize** `memory_customer` (embedding `@cf/baai/bge-small-en-v1.5`, retrieval semantyczny filtrowany po `customerId`) | `retrieveCustomerMemory` → bloki systemowe (`deterministicSummary`, `<customer_facts_retrieved>`, `<customer_turns_retrieved>`) przed turą modelu | Nie zastępuje KB dla polityk sklepu; KB-clamp blokuje trwałe magazynowanie treści polityk w tej warstwie |
+| Katalog, produkty, ceny, dostępność | Shopify / UCP przez MCP (`search_catalog` itd.) | Narzędzia MCP (`workers/chat/src/mcp_tools.ts`, wykonanie `callMcpToolDirect` → `mcp_server.ts`) | Osobno od KB polityk i od pamięci preferencji klienta |
+
+**Zasada skrócona:** pytanie o to, *co sklep obiecuje w regulaminie / jak działa zwrot* → **MCP Knowledge Base**. Pytanie o to, *co ten klient wcześniej powiedział lub co zapamiętaliśmy o jego preferencjach* → **D1 + opcjonalnie semantyka `memory_customer`** (po `customerId`).
+
 ## Zasady nienegocjowalne
 
 1. **KB-clamp.** Treść polityk/FAQ sklepu żyje wyłącznie w Shopify Knowledge Base. Dostęp zawsze przez `search_shop_policies_and_faqs` (Storefront MCP). Indeks Vectorize `memory_customer` **nie zawiera** tekstu polityk — policy-touch to tylko `memory_events` (audit-ref). Patrz `docs/EPIR_KB_MCP_POLICY_CONTRACT.md`.

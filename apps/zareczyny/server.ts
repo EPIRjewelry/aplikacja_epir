@@ -16,4 +16,4 @@ export const onRequest = createPagesFunctionHandler({
     env: context.env,
   }),
   mode: process.env.NODE_ENV,
-});
+} as any);

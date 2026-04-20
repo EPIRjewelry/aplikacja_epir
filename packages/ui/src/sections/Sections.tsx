@@ -2,13 +2,13 @@ import {SectionHero} from './SectionHero';
 import {SectionFeaturedProducts} from './SectionFeaturedProducts';
 import {SectionFeaturedCollections} from './SectionFeaturedCollections';
 
-type SectionNode = {
+export type SectionNode = {
   type?: string;
   id?: string;
   [key: string]: unknown;
 };
 
-type SectionField = {
+export type SectionField = {
   references?: {nodes?: SectionNode[]};
   nodes?: SectionNode[];
 };

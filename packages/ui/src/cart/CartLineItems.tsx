@@ -12,13 +12,13 @@ export function CartLineItems({linesObj}: {linesObj: BaseCartLineConnection}) {
   return (
     <div className="space-y-8">
       {lines.map((line) => {
-        return <LineItem key={line.id} lineItem={line} />;
+        return <LineItem key={line.id} lineItem={line as any} />;
       })}
     </div>
   );
 }
 
-function LineItem({lineItem}: {lineItem: CartLine}) {
+function LineItem({lineItem}: {lineItem: any}) {
   const {merchandise, quantity} = lineItem;
 
   return (

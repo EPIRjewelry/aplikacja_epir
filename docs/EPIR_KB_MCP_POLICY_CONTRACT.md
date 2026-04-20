@@ -4,6 +4,8 @@
 
 This document is the **normative contract** for how EPIR AI agents obtain **binding** store policies and FAQs. It complements [`EPIR_INGRESS_AND_RUNTIME.md`](EPIR_INGRESS_AND_RUNTIME.md) (transport) and [`EPIR_DATA_SCHEMA_CONTRACT.md`](EPIR_DATA_SCHEMA_CONTRACT.md) (data stores). If anything conflicts with [`EPIR_AI_BIBLE.md`](../EPIR_AI_BIBLE.md) or [`EPIR_AI_ECOSYSTEM_MASTER.md`](../EPIR_AI_ECOSYSTEM_MASTER.md), those base documents win.
 
+**KB vs semantic memory (formal split):** see [`EPIR_MEMORY_ARCHITECTURE.md`](EPIR_MEMORY_ARCHITECTURE.md) — section *Knowledge Base (MCP) vs pamięć semantyczna — formalny podział* (which source is used for policies vs per-customer D1/Vectorize retrieval).
+
 **Language:** English for shared engineering review; implementation lives in `workers/chat` and related workers.
 
 ---

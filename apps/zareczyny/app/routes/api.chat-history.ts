@@ -13,7 +13,9 @@ const HISTORY_S2S_URL = 'https://asystent.epirbizuteria.pl/history';
 const MISSING_SECRET_ERROR =
   'History proxy: brak EPIR_CHAT_SHARED_SECRET w Cloudflare Pages (Production env).';
 
-function getEnvFromActionContext(context: ActionArgs['context']): Record<string, unknown> {
+function getEnvFromActionContext(
+  context: ActionArgs['context'],
+): Record<string, unknown> {
   const raw = context as unknown as Record<string, unknown> | undefined;
   const envDirect = raw?.env;
   if (envDirect && typeof envDirect === 'object') {
@@ -43,7 +45,10 @@ export async function loader({request}: LoaderArgs) {
   if (request.method !== 'GET') {
     return json({error: 'Method not allowed'}, {status: 405});
   }
-  return json({ok: true, hint: 'POST JSON body with session_id to chat-history'});
+  return json({
+    ok: true,
+    hint: 'POST JSON body with session_id to chat-history',
+  });
 }
 
 export async function action({request, context}: ActionArgs) {

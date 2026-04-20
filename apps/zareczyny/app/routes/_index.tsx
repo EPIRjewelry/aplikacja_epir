@@ -27,7 +27,7 @@ type LoaderData = {
     featured_collections?: RouteSectionField;
     featured_products?: RouteSectionField;
   } | null;
-  collections: CollectionConnection;
+  collections: any;
 };
 
 export async function loader({context}: LoaderArgs): Promise<LoaderData> {
@@ -35,7 +35,7 @@ export async function loader({context}: LoaderArgs): Promise<LoaderData> {
   const allowedHandles = filter
     ? filter
         .split(',')
-        .map((h) => h.trim())
+        .map((h: string) => h.trim())
         .filter(Boolean)
     : null;
 
@@ -44,7 +44,7 @@ export async function loader({context}: LoaderArgs): Promise<LoaderData> {
   const routeHandles = ['route-zareczyny-home', 'route-home'];
 
   const fetchRouteByHandle = (handle: string) =>
-    context.storefront.query<{route: LoaderData['route']}>(
+    context.storefront.query(
       ROUTE_CONTENT_QUERY,
       {variables: {handle: {type: 'route', handle}}},
     );
@@ -53,21 +53,19 @@ export async function loader({context}: LoaderArgs): Promise<LoaderData> {
     (async () => {
       for (const handle of routeHandles) {
         const result = await fetchRouteByHandle(handle);
-        if (result.route) return result;
+        if ((result as any).route) return result as any;
       }
 
       return {route: null};
     })(),
-    context.storefront.query<{collections: CollectionConnection}>(
-      COLLECTIONS_QUERY,
-    ),
+    context.storefront.query(COLLECTIONS_QUERY),
   ]);
 
   // Debug: raw result from Storefront for route content
   console.log('ROUTE_RESULT', JSON.stringify(routeResult, null, 2));
 
-  const {route} = routeResult;
-  const {collections} = collectionsResult;
+  const {route} = routeResult as any;
+  const {collections} = collectionsResult as any;
 
   const nodes = allowedHandles?.length
     ? collections.nodes.filter((c: {handle: string}) =>
@@ -94,7 +92,7 @@ function FallbackView({collections}: {collections: CollectionConnection}) {
       </div>
 
       <div className="swimlane md:grid md:grid-flow-row md:grid-cols-2 lg:grid-cols-3 md:gap-6 md:overflow-visible md:snap-none md:scroll-px-0 md:px-0">
-        {collections.nodes.map((collection: MyCollection, i: number) => (
+        {collections.nodes.map((collection: any, i: number) => (
           <Link
             to={`/collections/${collection.handle}`}
             key={collection.id}

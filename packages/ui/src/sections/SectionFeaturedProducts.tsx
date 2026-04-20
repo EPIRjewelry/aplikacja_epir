@@ -58,9 +58,9 @@ export function SectionFeaturedProducts(props: SectionFeaturedProductsProps) {
               >
                 <div className="grid gap-4 fadeIn">
                   <div className="card-image aspect-square bg-gray-100 overflow-hidden">
-                    {variant?.image ? (
+                      {variant?.image ? (
                       <Image
-                        data={variant.image}
+                        data={variant.image as any}
                         alt={product.title ?? ''}
                         className="w-full h-full object-cover"
                         sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw"
@@ -81,7 +81,7 @@ export function SectionFeaturedProducts(props: SectionFeaturedProductsProps) {
                     {showPrices && price && (
                       <Money
                         withoutTrailingZeros
-                        data={price}
+                        data={price as any}
                         className="font-semibold"
                       />
                     )}
