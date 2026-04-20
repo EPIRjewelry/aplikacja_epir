@@ -356,7 +356,7 @@ describe('parseChatRequestBody', () => {
     expect(payload?.channel).toBe('online-store');
   });
 
-  it('passes customer hint fields for ingress diagnostics only', () => {
+  it('parses customer hint fields from body (used when App Proxy URL id is empty)', () => {
     const payload = parseChatRequestBody({
       message: 'hej',
       customer_id_hint: 'gid://shopify/Customer/123',
@@ -366,5 +366,29 @@ describe('parseChatRequestBody', () => {
     expect(payload).not.toBeNull();
     expect(payload?.customer_id_hint).toBe('gid://shopify/Customer/123');
     expect(payload?.customer_id_hint_source).toBe('shopify-analytics');
+  });
+});
+
+describe('App Proxy customer_id_hint promotion', () => {
+  it('accepts signed /chat when logged_in_customer_id empty but body hint is valid numeric id', async () => {
+    const { env } = makeEnv();
+    const nowTs = Math.floor(Date.now() / 1000);
+    // Krótkie powitanie + stream:false → JSON (jak inne testy S2S/App Proxy), nie SSE.
+    const request = await makeSignedAppProxyRequest(
+      `https://asystent.epirbizuteria.pl/chat?shop=epir-art-silver-jewellery.myshopify.com&timestamp=${nowTs}`,
+      {
+        message: 'hej',
+        stream: false,
+        customer_id_hint: '1848062312553',
+        customer_id_hint_source: 'dataset',
+      },
+    );
+
+    const response = await worker.fetch(request, env, noopCtx);
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { reply?: string; session_id?: string };
+    expect(payload.session_id).toBeTruthy();
+    expect(payload.reply).toBeTruthy();
   });
 });

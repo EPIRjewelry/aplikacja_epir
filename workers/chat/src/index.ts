@@ -139,7 +139,7 @@ import {
   type MemoryExtractMessage,
 } from './memory/queue-message';
 import { eraseCustomerMemory, handleMemoryExtractBatch, processMemoryExtractMessage } from './memory/consumer';
-import { retrieveCustomerMemory } from './memory/retriever';
+import { retrieveCustomerMemory, type RetrieveMemoryOutput } from './memory/retriever';
 import { emitMemoryMetric } from './memory/metrics';
 
 // Importy RAG (teraz używane tylko przez narzędzia, a nie przez index.ts)
@@ -295,6 +295,19 @@ type EffectiveShopifyCustomerIdResolution = {
   customerId: string | null;
   source: 'request' | 'session' | 'none';
 };
+
+/**
+ * Normalizacja ID klienta z body (`customer_id_hint`) — tylko gdy wygląda jak Shopify Customer ID.
+ * Używane wyłącznie po zweryfikowanym App Proxy HMAC (nie dla S2S / niezaufanych ingressów).
+ */
+function normalizeShopifyCustomerIdFromHint(hint: string): string | null {
+  const t = String(hint || '').trim();
+  if (!t) return null;
+  const gid = /^gid:\/\/shopify\/Customer\/(\d{1,20})$/i.exec(t);
+  if (gid) return gid[1];
+  if (/^\d{5,20}$/.test(t)) return t;
+  return null;
+}
 
 function normalizeOptionalString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -2340,11 +2353,17 @@ export class SessionDO {
 // GŁÓWNY HANDLER CZATU (handleChat)
 // ZMIENIONY: Usuwa logikę RAG, zawsze wywołuje streaming.
 // ============================================================================
+type ChatIngressOptions = {
+  /** true tylko gdy request przeszedł authorizeAppProxyRequest (podpis Shopify). */
+  appProxyVerified?: boolean;
+};
+
 async function handleChat(
   request: Request,
   env: Env,
   contextOverride?: ChatContextOverride,
   executionCtx?: ExecutionContext,
+  ingressOptions?: ChatIngressOptions,
 ): Promise<Response> {
   const xBrand = request.headers.get('X-Brand');
   const raw = await request.json().catch(() => null);
@@ -2388,10 +2407,20 @@ async function handleChat(
 
   // [TOKEN VAULT] Bez zmian
   const url = new URL(request.url);
-  const customerId = normalizeOptionalString(url.searchParams.get('logged_in_customer_id'));
+  const customerIdFromUrl = normalizeOptionalString(url.searchParams.get('logged_in_customer_id'));
   const customerIdHint = normalizeOptionalString(payload.customer_id_hint);
   const customerIdHintSource = normalizeOptionalString(payload.customer_id_hint_source) ?? 'none';
   const shopId = normalizeOptionalString(url.searchParams.get('shop')) ?? normalizeOptionalString(env.SHOP_DOMAIN);
+
+  let customerIdPromotedFromHint = false;
+  let customerId = customerIdFromUrl;
+  if (!customerId && ingressOptions?.appProxyVerified && customerIdHint) {
+    const fromHint = normalizeShopifyCustomerIdFromHint(customerIdHint);
+    if (fromHint) {
+      customerId = fromHint;
+      customerIdPromotedFromHint = true;
+    }
+  }
   
   // 🔴 POPRAWKA SESJI: Używamy `payload.session_id` LUB generujemy nowy
   const sessionId = payload.session_id ?? crypto.randomUUID();
@@ -2404,26 +2433,26 @@ async function handleChat(
       session_id: sessionId,
       storefrontId: payload.storefrontId ?? contextOverride?.storefrontId ?? null,
       channel: payload.channel ?? contextOverride?.channel ?? null,
-      raw_request_customer_id_present: Boolean(customerId),
+      raw_request_customer_id_present: Boolean(customerIdFromUrl),
+      customer_id_promoted_from_hint: customerIdPromotedFromHint,
+      effective_customer_id_present: Boolean(customerId),
       client_customer_hint_present: Boolean(customerIdHint),
       client_customer_hint_source: customerIdHintSource,
       client_customer_hint_matches_request_customer:
-        Boolean(customerIdHint) && Boolean(customerId) ? customerIdHint === customerId : null,
+        Boolean(customerIdHint) && Boolean(customerIdFromUrl) ? customerIdHint === customerIdFromUrl : null,
       shop_param_present: Boolean(shopId),
       session_id_from_request: Boolean(payload.session_id),
     }),
   );
 
   if (!customerId && customerIdHint) {
-    console.warn(
-      '[handleChat] App Proxy logged_in_customer_id missing despite frontend hint; cross-session memory remains disabled until trusted App Proxy identity is present',
-      {
-        session_id: sessionId,
-        storefrontId: payload.storefrontId ?? contextOverride?.storefrontId ?? null,
-        channel: payload.channel ?? contextOverride?.channel ?? null,
-        client_customer_hint_source: customerIdHintSource,
-      },
-    );
+    console.warn('[handleChat] Brak rozpoznanego customer_id (URL i hint nie dały znormalizowanego ID)', {
+      session_id: sessionId,
+      storefrontId: payload.storefrontId ?? contextOverride?.storefrontId ?? null,
+      channel: payload.channel ?? contextOverride?.channel ?? null,
+      client_customer_hint_source: customerIdHintSource,
+      app_proxy_verified: Boolean(ingressOptions?.appProxyVerified),
+    });
   }
   
   let customerToken: string | undefined;
@@ -2566,7 +2595,7 @@ async function handleChat(
     channel: payload.channel,
     route: payload.route,
     collectionHandle: payload.collectionHandle,
-  }, customerId, executionCtx);
+  }, customerId, executionCtx, customerIdFromUrl);
 }
 
 // ============================================================================
@@ -2591,9 +2620,13 @@ async function streamAssistantResponse(
   brand?: string,
   imageBase64?: string,
   storefrontContext?: StorefrontContext,
-  /** Shopify customer id z query App Proxy (`logged_in_customer_id`) — pamięć międzysesyjna tylko gdy ustawione */
+  /**
+   * Rozpoznany ID klienta Shopify (URL `logged_in_customer_id` lub — przy zweryfikowanym App Proxy — `customer_id_hint`).
+   */
   shopifyCustomerId?: string | null,
   executionCtx?: ExecutionContext,
+  /** Wyłącznie wartość z query `logged_in_customer_id` (diagnostyka raw_request_*; bez promocji z hint). */
+  loggedInCustomerIdFromUrl?: string | null,
 ): Promise<Response> {
   const { readable, writable } = new TransformStream();
   const encoder = new TextEncoder();
@@ -2640,7 +2673,9 @@ async function streamAssistantResponse(
       };
       const sessionCustomer = customerData?.customer ?? null;
       customerFirstName = normalizeOptionalString(sessionCustomer?.first_name ?? null);
-      const rawRequestCustomerIdPresent = Boolean(shopifyCustomerId);
+      const rawRequestCustomerIdPresent = Boolean(
+        normalizeOptionalString(loggedInCustomerIdFromUrl ?? null),
+      );
       const sessionCustomerPresent = Boolean(normalizeOptionalString(sessionCustomer?.customer_id ?? null));
       const effectiveCustomerContext = resolveEffectiveShopifyCustomerId(
         shopifyCustomerId,
@@ -2941,31 +2976,34 @@ async function streamAssistantResponse(
       // KB-clamp: retriever filtruje po `customerId` i `kind='fact'|'turn'`; treści polityk
       // tam nie trafiają (blokada w consumer/extractor). Pytania o politykę dalej idą
       // przez `search_shop_policies_and_faqs` (luxury-system-prompt.ts).
+      let memoryRetrievalFailed = false;
+      let memoryRetrieveResult: RetrieveMemoryOutput | null = null;
       if (effectiveShopifyCustomerId) {
         try {
-          const retrieved = await retrieveCustomerMemory(env, {
+          memoryRetrieveResult = await retrieveCustomerMemory(env, {
             shopifyCustomerId: effectiveShopifyCustomerId,
             queryText: userMessage,
           });
-          if (retrieved.deterministicSummary && !crossSessionSummary) {
+          if (memoryRetrieveResult.deterministicSummary && !crossSessionSummary) {
             messages.push({
               role: 'system',
-              content: `Kontekst systemowy — deterministyczny skrót preferencji klienta: ${retrieved.deterministicSummary}`,
+              content: `Kontekst systemowy — deterministyczny skrót preferencji klienta: ${memoryRetrieveResult.deterministicSummary}`,
             });
           }
-          if (retrieved.factsBlock) {
+          if (memoryRetrieveResult.factsBlock) {
             messages.push({
               role: 'system',
-              content: `<customer_facts_retrieved>\n${retrieved.factsBlock}\n</customer_facts_retrieved>`,
+              content: `<customer_facts_retrieved>\n${memoryRetrieveResult.factsBlock}\n</customer_facts_retrieved>`,
             });
           }
-          if (retrieved.turnsBlock) {
+          if (memoryRetrieveResult.turnsBlock) {
             messages.push({
               role: 'system',
-              content: `<customer_turns_retrieved>\n${retrieved.turnsBlock}\n</customer_turns_retrieved>`,
+              content: `<customer_turns_retrieved>\n${memoryRetrieveResult.turnsBlock}\n</customer_turns_retrieved>`,
             });
           }
         } catch (err) {
+          memoryRetrievalFailed = true;
           console.warn('[memory.retriever] failed (non-fatal):', (err as Error).message);
         }
       }
@@ -2974,6 +3012,27 @@ async function streamAssistantResponse(
         messages.push({
           role: 'system',
           content: sessionHistoryVisibilityContext,
+        });
+      }
+
+      const memoryV2Enabled = String(env.MEMORY_V2_ENABLED ?? '').toLowerCase() === 'true';
+      const memoryRetrievalEmpty =
+        memoryRetrievalFailed ||
+        (memoryRetrieveResult !== null &&
+          !memoryRetrieveResult.deterministicSummary &&
+          memoryRetrieveResult.activeFactsCount === 0 &&
+          !String(memoryRetrieveResult.factsBlock ?? '').trim() &&
+          !String(memoryRetrieveResult.turnsBlock ?? '').trim());
+      if (
+        memoryV2Enabled &&
+        effectiveShopifyCustomerId &&
+        !crossSessionSummary &&
+        memoryRetrievalEmpty
+      ) {
+        messages.push({
+          role: 'system',
+          content:
+            'Kontekst systemowy — brak potwierdzonych preferencji klienta w pamięci. Nie udawaj, że pamiętasz wcześniejsze rozmowy; pytaj o potrzeby.',
         });
       }
 
@@ -3540,7 +3599,7 @@ export default {
 
     // Endpoint czatu (zabezpieczony przez App Proxy)
     if (url.pathname === '/apps/assistant/chat' && request.method === 'POST') {
-      return handleChat(request, env, APP_PROXY_CHAT_CONTEXT_OVERRIDE, ctx);
+      return handleChat(request, env, APP_PROXY_CHAT_CONTEXT_OVERRIDE, ctx, { appProxyVerified: true });
     }
 
     // Consent Gate (App Proxy — auth jak wyżej dla /apps/assistant/*)
@@ -3562,7 +3621,7 @@ export default {
         if (appProxyAuthError) {
           return appProxyAuthError;
         }
-        return handleChat(request, env, APP_PROXY_CHAT_CONTEXT_OVERRIDE, ctx);
+        return handleChat(request, env, APP_PROXY_CHAT_CONTEXT_OVERRIDE, ctx, { appProxyVerified: true });
       }
 
       const s2sResult = verifyS2SChatRequest(request, env);
@@ -3721,4 +3780,5 @@ export {
   verifyAppProxyHmac,
   handleMcpRequest,
   getGroqResponse,
+  normalizeShopifyCustomerIdFromHint,
 };
