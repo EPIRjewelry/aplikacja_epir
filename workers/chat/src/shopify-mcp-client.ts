@@ -13,9 +13,39 @@ export interface Env {
   /** MCP endpoint - zmienna z wrangler.toml [vars] */
   MCP_ENDPOINT?: string;
   SHOPIFY_ADMIN_TOKEN?: string;
+  /** KV cache dla powtarzalnych `search_shop_policies_and_faqs` (klucz = sha256 znormalizowanego query). */
+  POLICIES_CACHE?: KVNamespace;
 }
 
 const MCP_TIMEOUT_MS = 5000;
+
+/** TTL KV cache dla policies/FAQ — polityki zmieniają się rzadko; 6h to bezpieczny kompromis świeżość/hit-rate. */
+const POLICIES_CACHE_TTL_S = 6 * 3600;
+/** Wersja klucza — bump gdy zmienimy format wyniku lub inwalidujemy masowo. */
+const POLICIES_CACHE_KEY_VERSION = 'v1';
+
+/**
+ * Kanonizuje zapytanie do polityk: trim, lowercase, compact whitespace.
+ * Cel: różne warianty ("Zwroty?", "zwroty", " ZWROTY ") trafiają w ten sam klucz KV.
+ */
+function normalizePolicyQuery(query: string): string {
+  return query.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  const view = new Uint8Array(digest);
+  let hex = '';
+  for (let i = 0; i < view.length; i++) hex += view[i].toString(16).padStart(2, '0');
+  return hex;
+}
+
+async function policiesCacheKey(query: string): Promise<string> {
+  return `policies:${POLICIES_CACHE_KEY_VERSION}:${await sha256Hex(normalizePolicyQuery(query))}`;
+}
+
+type PoliciesCacheEntry = { payload: unknown; cached_at: number };
 
 const CATALOG_FALLBACK = {
   products: [],
@@ -222,6 +252,47 @@ export async function callShopifyMcpTool(
       : args ?? {};
   validateNormalizedArgs(toolName, normalizedArgs);
 
+  // KV short-circuit dla policies/FAQ: w produkcji to zapytanie potrafi zająć ~8s,
+  // a polityki zmieniają się rzadko — powtarzalne pytania serwujemy z KV w ~10ms.
+  const policiesCacheEnabled =
+    toolName === 'search_shop_policies_and_faqs' &&
+    !!env.POLICIES_CACHE &&
+    typeof (normalizedArgs as any)?.query === 'string' &&
+    ((normalizedArgs as any).query as string).trim().length > 0;
+
+  let policiesCacheKeyComputed: string | null = null;
+  if (policiesCacheEnabled) {
+    try {
+      policiesCacheKeyComputed = await policiesCacheKey((normalizedArgs as any).query as string);
+      const cached = (await env.POLICIES_CACHE!.get(
+        policiesCacheKeyComputed,
+        'json',
+      )) as PoliciesCacheEntry | null;
+      if (cached && cached.payload !== undefined) {
+        const ageS = typeof cached.cached_at === 'number'
+          ? Math.max(0, Math.floor((Date.now() - cached.cached_at) / 1000))
+          : null;
+        console.log(
+          JSON.stringify({
+            tag: 'chat.mcp.policies_cache.hit',
+            key: policiesCacheKeyComputed,
+            age_s: ageS,
+          }),
+        );
+        return cached.payload;
+      }
+      console.log(
+        JSON.stringify({
+          tag: 'chat.mcp.policies_cache.miss',
+          key: policiesCacheKeyComputed,
+        }),
+      );
+    } catch (cacheErr) {
+      console.warn('[Shopify MCP] policies_cache read failed', cacheErr);
+      policiesCacheKeyComputed = null;
+    }
+  }
+
   const request: McpRequest = {
     jsonrpc: '2.0',
     method: 'tools/call',
@@ -262,7 +333,28 @@ export async function callShopifyMcpTool(
     if (mcpResponse.error) {
       throw new Error(`Shopify MCP error ${mcpResponse.error.code}: ${mcpResponse.error.message}`);
     }
-    return (mcpResponse as any).result ?? mcpResponse;
+    const result = (mcpResponse as any).result ?? mcpResponse;
+
+    // Zapis do KV tylko dla udanych responses policies (nigdy błędów / fallbacków).
+    if (policiesCacheEnabled && policiesCacheKeyComputed && env.POLICIES_CACHE) {
+      try {
+        const entry: PoliciesCacheEntry = { payload: result, cached_at: Date.now() };
+        await env.POLICIES_CACHE.put(policiesCacheKeyComputed, JSON.stringify(entry), {
+          expirationTtl: POLICIES_CACHE_TTL_S,
+        });
+        console.log(
+          JSON.stringify({
+            tag: 'chat.mcp.policies_cache.set',
+            key: policiesCacheKeyComputed,
+            ttl_s: POLICIES_CACHE_TTL_S,
+          }),
+        );
+      } catch (cacheErr) {
+        console.warn('[Shopify MCP] policies_cache write failed', cacheErr);
+      }
+    }
+
+    return result;
   } catch (err: any) {
     const isAbortError = err instanceof Error && err.name === 'AbortError';
     const isNetworkError = err instanceof TypeError;
@@ -274,6 +366,8 @@ export async function callShopifyMcpTool(
     clearTimeout(timeoutId);
   }
 }
+
+export const __test = { normalizePolicyQuery, policiesCacheKey, sha256Hex };
 
 /**
  * Wyszukuje produkty w katalogu Shopify przez MCP endpoint

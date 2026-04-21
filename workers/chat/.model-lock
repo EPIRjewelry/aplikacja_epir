@@ -1,6 +1,10 @@
 # MODEL LOCK FILE
 # Produkcja: wyłącznie Workers AI `@cf/moonshotai/kimi-k2.5` (multimodal).
 # Konfiguracja runtime: `workers/chat/src/config/model-params.ts` (`CHAT_MODEL_ID`).
+#
+# Warianty alternatywne (benchmark / A-B): `MODEL_VARIANTS` w model-params.ts.
+# Routing: nagłówek `X-Epir-Model-Variant` (WYMAGA `ADMIN_KEY` bearer token).
+# W produkcji bez nagłówka default pozostaje `@cf/moonshotai/kimi-k2.5`.
 
 LOCKED_MODEL_ID=@cf/moonshotai/kimi-k2.5
 LOCKED_PROVIDER=cloudflare-workers-ai

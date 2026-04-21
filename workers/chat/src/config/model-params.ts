@@ -7,10 +7,67 @@
  */
 
 /**
- * Kanoniczny model inference dla Workera (tekst + obraz + tool calls).
+ * Capabilities pojedynczego wariantu modelu. Używane do guardów runtime:
+ * - `multimodal: false` → ignoruj wariant dla requestów z obrazem (fallback do default).
+ * - `toolLeak: true`   → uruchom `stripLeakedToolCallsLiterals` na output (Kimi-specific bug).
+ */
+export type ModelCapabilities = {
+  readonly id: string;
+  readonly multimodal: boolean;
+  readonly toolLeak: boolean;
+  /** Opcjonalny opis dla logów / bench raportów. */
+  readonly label?: string;
+};
+
+/**
+ * Zbiór wariantów modelu dostępnych za headerem `X-Epir-Model-Variant` (admin-only).
+ * `default` MUSI pozostać `@cf/moonshotai/kimi-k2.5` — to kanoniczny model z `.model-lock`.
+ * Nowe warianty dodawaj tu, żeby benchmark harness (`scripts/bench-models.ts`) automatycznie
+ * je pokrył.
+ *
  * @see https://developers.cloudflare.com/workers-ai/models/kimi-k2.5/
  */
-export const CHAT_MODEL_ID = '@cf/moonshotai/kimi-k2.5' as const;
+export const MODEL_VARIANTS = {
+  default: {
+    id: '@cf/moonshotai/kimi-k2.5',
+    multimodal: true,
+    toolLeak: true,
+    label: 'Kimi K2.5 (canonical)',
+  },
+  k26: {
+    id: '@cf/moonshotai/kimi-k2.6',
+    multimodal: true,
+    toolLeak: true,
+    label: 'Kimi K2.6 (candidate — larger context, similar arch)',
+  },
+  glm_flash: {
+    id: '@cf/zai-org/glm-4.7-flash',
+    multimodal: false,
+    toolLeak: false,
+    label: 'GLM-4.7-flash (candidate — lightweight router / classifier)',
+  },
+} as const satisfies Record<string, ModelCapabilities>;
+
+export type ModelVariantKey = keyof typeof MODEL_VARIANTS;
+
+/**
+ * Kanoniczny model inference dla Workera (tekst + obraz + tool calls). W produkcji zawsze ten.
+ * Warianty ALT dostępne tylko za adminskim nagłówkiem; patrz `resolveModelVariant`.
+ */
+export const CHAT_MODEL_ID = MODEL_VARIANTS.default.id;
+
+/**
+ * Zwraca capabilities dla danego klucza wariantu (z fallbackiem na `default`).
+ * Gwarantuje, że caller zawsze dostaje prawidłowy, istniejący wariant.
+ */
+export function resolveModelVariant(key: string | undefined | null): ModelCapabilities {
+  if (!key) return MODEL_VARIANTS.default;
+  const candidate = (MODEL_VARIANTS as Record<string, ModelCapabilities | undefined>)[key];
+  return candidate ?? MODEL_VARIANTS.default;
+}
+
+/** Lista kluczy wariantów — przydatna w bench scripts i testach. */
+export const MODEL_VARIANT_KEYS = Object.keys(MODEL_VARIANTS) as readonly ModelVariantKey[];
 
 /**
  * Model parameters for chat completions

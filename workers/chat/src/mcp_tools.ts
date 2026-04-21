@@ -233,10 +233,205 @@ export const TOOL_SCHEMAS = {
 };
 
 /**
- * Returns tool schemas as array for OpenAI function-calling format.
+ * TOOL_SCHEMAS_SLIM — odchudzony wariant schematów narzędzi.
+ *
+ * Cel: zredukować `prompt_tokens` wysyłane w KAŻDEJ turze (model musi przetwarzać
+ * definicje narzędzi przy każdym wywołaniu). Szacowany zysk vs TOOL_SCHEMAS:
+ * z ~3000 tokenów do ~1200–1500.
+ *
+ * Reguły redukcji:
+ * - `description` na poziomie toola: 1 zwięzłe zdanie (nie 2-3).
+ * - `description` sub-parametrów: usunięte (model wnioskuje z nazwy pola).
+ * - Semantyka (`enum`, `minimum`, `required`, `type`) — ZACHOWANA (to nie dokumentacja, to walidacja).
+ * - Struktura (zagnieżdżenia) — ZACHOWANA (Shopify MCP wymaga konkretnego kształtu).
+ *
+ * Wybór wariantu: flaga `SLIM_TOOL_SCHEMAS` w `wrangler.toml [vars]`.
+ * Włączenie / wyłączenie wymaga redeploy (bezpieczniej niż runtime toggle).
  */
-export function getToolDefinitions() {
-  return Object.values(TOOL_SCHEMAS).map((schema) => ({
+export const TOOL_SCHEMAS_SLIM = {
+  search_catalog: {
+    name: 'search_catalog',
+    description: 'Szuka produktów w katalogu sklepu.',
+    parameters: {
+      type: 'object',
+      properties: {
+        catalog: {
+          type: 'object',
+          properties: {
+            query: { type: 'string' },
+            context: {
+              type: 'object',
+              properties: {
+                address_country: { type: 'string' },
+                address_region: { type: 'string' },
+                postal_code: { type: 'string' },
+                language: { type: 'string' },
+                currency: { type: 'string' },
+                intent: { type: 'string' },
+              },
+            },
+            filters: {
+              type: 'object',
+              properties: {
+                categories: { type: 'array', items: { type: 'string' } },
+                price: {
+                  type: 'object',
+                  properties: {
+                    min: { type: 'number' },
+                    max: { type: 'number' },
+                  },
+                },
+              },
+            },
+            pagination: {
+              type: 'object',
+              properties: {
+                cursor: { type: 'string' },
+                limit: { type: 'number' },
+              },
+            },
+          },
+        },
+      },
+      required: ['catalog'],
+    },
+  },
+
+  search_shop_policies_and_faqs: {
+    name: 'search_shop_policies_and_faqs',
+    description: 'Odpowiedzi na pytania o polityki sklepu, wysyłkę, zwroty, FAQ.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+        context: { type: 'string' },
+      },
+      required: ['query'],
+    },
+  },
+
+  get_size_table: {
+    name: 'get_size_table',
+    description: 'Zwraca tabelę rozmiarów pierścionków (PL/US/UK/mm).',
+    parameters: { type: 'object', properties: {}, required: [] },
+  },
+
+  get_cart: {
+    name: 'get_cart',
+    description: 'Pobiera zawartość koszyka po cart_id.',
+    parameters: {
+      type: 'object',
+      properties: {
+        cart_id: { type: 'string' },
+      },
+      required: ['cart_id'],
+    },
+  },
+
+  run_analytics_query: {
+    name: 'run_analytics_query',
+    description: 'Wykonuje whitelistowane zapytanie analityczne (internal-dashboard only).',
+    parameters: {
+      type: 'object',
+      properties: {
+        queryId: {
+          type: 'string',
+          enum: [
+            'Q1_CONVERSION_CHAT',
+            'Q2_CONVERSION_PATHS',
+            'Q3_TOP_CHAT_QUESTIONS',
+            'Q4_STOREFRONT_SEGMENTATION',
+            'Q5_TOP_PRODUCTS',
+            'Q6_CHAT_ENGAGEMENT',
+            'Q7_PRODUCT_TO_PURCHASE',
+            'Q8_DAILY_EVENTS',
+            'Q9_TOOL_USAGE',
+            'Q10_SESSION_DURATION',
+          ],
+        },
+        dateFrom: { type: 'number' },
+        dateTo: { type: 'number' },
+      },
+      required: ['queryId'],
+    },
+  },
+
+  update_cart: {
+    name: 'update_cart',
+    description: 'Aktualizuje koszyk: dodaj/zmień/usuń pozycje, buyer identity, notatka.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        cart_id: { type: 'string' },
+        add_items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              product_variant_id: { type: 'string' },
+              quantity: { type: 'integer', minimum: 1 },
+            },
+            required: ['product_variant_id', 'quantity'],
+          },
+        },
+        update_items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              quantity: { type: 'integer', minimum: 0 },
+            },
+            required: ['id', 'quantity'],
+          },
+        },
+        remove_line_ids: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+        buyer_identity: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            email: { type: 'string' },
+            phone: { type: 'string' },
+            country_code: { type: 'string' },
+          },
+        },
+        note: { type: 'string' },
+      },
+    },
+  },
+} as const;
+
+/**
+ * Sprawdza flagę SLIM_TOOL_SCHEMAS w env (`"true"` string).
+ * Defensywnie interpretujemy brak / różne warianty jako false — zachowawczo (full schemas).
+ */
+export function shouldUseSlimToolSchemas(env: { SLIM_TOOL_SCHEMAS?: string | boolean }): boolean {
+  const raw = env.SLIM_TOOL_SCHEMAS;
+  if (typeof raw === 'boolean') return raw;
+  if (typeof raw !== 'string') return false;
+  return raw.trim().toLowerCase() === 'true' || raw.trim() === '1';
+}
+
+/**
+ * Zwraca aktywny zestaw schematów (full lub slim) w zależności od env flag.
+ */
+export function resolveToolSchemas(env: { SLIM_TOOL_SCHEMAS?: string | boolean }) {
+  return shouldUseSlimToolSchemas(env)
+    ? (TOOL_SCHEMAS_SLIM as unknown as typeof TOOL_SCHEMAS)
+    : TOOL_SCHEMAS;
+}
+
+/**
+ * Returns tool schemas as array for OpenAI function-calling format.
+ * W pełni kompatybilne z wcześniejszym zachowaniem (full schemas) gdy env nie ma flagi.
+ */
+export function getToolDefinitions(env?: { SLIM_TOOL_SCHEMAS?: string | boolean }) {
+  const schemas = env ? resolveToolSchemas(env) : TOOL_SCHEMAS;
+  return Object.values(schemas).map((schema) => ({
     type: 'function' as const,
     function: {
       name: schema.name,

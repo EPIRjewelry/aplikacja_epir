@@ -41,6 +41,21 @@ export interface Env {
   MEMORY_V2_ENABLED?: string;
   MEMORY_RAW_RETRIEVAL_ENABLED?: string;
 
+  /**
+   * Flaga: użyj odchudzonego wariantu `TOOL_SCHEMAS_SLIM` zamiast pełnych
+   * schematów przy każdej turze modelu. Redukuje `prompt_tokens` o rząd wielkości
+   * 1500 tokenów w typowym zapytaniu. `"true"` = slim; inaczej = full (bezpieczny default).
+   * Wymaga redeploy — nie zmienia się w runtime (stabilność prefix cache).
+   */
+  SLIM_TOOL_SCHEMAS?: string;
+
+  /**
+   * KV namespace do cache'owania wyników `search_shop_policies_and_faqs`.
+   * Klucz: `policies:v1:${sha256(normalized_query)}`. TTL 6h.
+   * Brak bindingu = cache wyłączony (zero regresji).
+   */
+  POLICIES_CACHE?: KVNamespace;
+
   SHOPIFY_APP_SECRET: string;
   /** Admin: Settings → Customer accounts — `classic` | `new` (diagnostyka App Proxy / logged_in_customer_id). */
   SHOPIFY_CUSTOMER_ACCOUNTS_MODE?: string;

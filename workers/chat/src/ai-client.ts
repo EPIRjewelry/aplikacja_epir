@@ -4,7 +4,7 @@
  * Nazwy typów/historycznych funkcji pozostają dla kompatybilności z istniejącym kodem.
  */
 
-import { CHAT_MODEL_ID, MODEL_PARAMS } from './config/model-params';
+import { CHAT_MODEL_ID, MODEL_PARAMS, resolveModelVariant, type ModelCapabilities } from './config/model-params';
 
 export type GroqToolCall = {
   id: string;
@@ -40,7 +40,17 @@ export type GroqMessage = {
 export type GroqStreamEvent =
   | { type: 'text'; delta: string }
   | { type: 'tool_call'; call: GroqToolCall }
-  | { type: 'usage'; prompt_tokens: number; completion_tokens: number }
+  | {
+      type: 'usage';
+      prompt_tokens: number;
+      completion_tokens: number;
+      /**
+       * Workers AI (OpenAI-compat) zwraca `usage.prompt_tokens_details.cached_tokens`
+       * tylko gdy prefix cache trafił. `0` = cache miss lub brak pola w odpowiedzi modelu.
+       * Używane do wyliczenia `cache_hit_ratio = cached_tokens / prompt_tokens`.
+       */
+      cached_tokens?: number;
+    }
   | { type: 'done'; finish_reason?: string };
 
 type AIBinding = {
@@ -302,13 +312,20 @@ async function runModelStream(
     sessionId?: string;
     /** Etykieta w logach `[Workers AI]` (np. iteracja narzędzi). */
     timingLabel?: string;
+    /**
+     * Override ID modelu; jeśli `undefined` → CHAT_MODEL_ID (canonical).
+     * Używane przez admin-only X-Epir-Model-Variant routing. Caller jest odpowiedzialny
+     * za guardy (multimodal / toolLeak) przed przekazaniem tu override'u.
+     */
+    modelId?: string;
   },
 ): Promise<ReadableStream<Uint8Array>> {
   const ai = requireAi(env);
   const timingLabel = options?.timingLabel ?? 'runModelStream';
+  const resolvedModel = options?.modelId ?? CHAT_MODEL_ID;
   const t0 = Date.now();
   const stream = (await ai.run(
-    CHAT_MODEL_ID,
+    resolvedModel,
     {
       messages: messages.map(mapMessageForWorkersAI),
       stream: true,
@@ -322,7 +339,7 @@ async function runModelStream(
 
   const streamReadyMs = Date.now() - t0;
   console.log(
-    `[Workers AI] ${timingLabel} stream_ready_ms=${streamReadyMs} model=${CHAT_MODEL_ID}`,
+    `[Workers AI] ${timingLabel} stream_ready_ms=${streamReadyMs} model=${resolvedModel}${resolvedModel !== CHAT_MODEL_ID ? ' variant_override=true' : ''}`,
   );
 
   if (!stream || typeof stream.getReader !== 'function') {
@@ -463,7 +480,25 @@ function createGroqStreamTransform(): TransformStream<string, GroqStreamEvent> {
     if (usage && typeof usage === 'object') {
       const p = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0);
       const c = Number(usage.completion_tokens ?? usage.output_tokens ?? 0);
-      controller.enqueue({ type: 'usage', prompt_tokens: p, completion_tokens: c });
+      const cachedRaw =
+        usage.prompt_tokens_details?.cached_tokens ??
+        usage.cached_tokens ??
+        usage.prompt_cache_hit_tokens ??
+        0;
+      const cached = Number.isFinite(Number(cachedRaw)) ? Number(cachedRaw) : 0;
+      const cachedNormalized = cached > 0 ? cached : 0;
+      controller.enqueue({
+        type: 'usage',
+        prompt_tokens: p,
+        completion_tokens: c,
+        cached_tokens: cachedNormalized,
+      });
+      if (p > 0 && cachedNormalized > 0) {
+        const ratio = cachedNormalized / p;
+        console.log(
+          `[Workers AI] cache_hit cached_tokens=${cachedNormalized} prompt_tokens=${p} ratio=${ratio.toFixed(3)} model=${CHAT_MODEL_ID}`,
+        );
+      }
     }
 
     if (isFlush && toolBuffers.size > 0) {
@@ -538,6 +573,11 @@ export type StreamGroqEventsOptions = {
    * Gdy `undefined`, zachowujemy zachowanie domyślne: `'auto'` jeżeli są narzędzia, inaczej `undefined`.
    */
   toolChoice?: StreamGroqEventsToolChoice;
+  /**
+   * Override ID modelu (admin-only A/B). Caller powinien użyć `resolveModelVariant`
+   * i samemu zastosować guardy (np. fallback dla multimodal).
+   */
+  modelId?: string;
 };
 
 export async function streamGroqEvents(
@@ -558,6 +598,7 @@ export async function streamGroqEvents(
     tool_choice: resolvedToolChoice,
     sessionId,
     timingLabel: timingLabel ?? 'streamGroqEvents',
+    modelId: options?.modelId,
   });
 
   return stream
@@ -565,7 +606,56 @@ export async function streamGroqEvents(
     .pipeThrough(createGroqStreamTransform());
 }
 
-export const __test = { createGroqStreamTransform, normalizeWorkersAiSessionId };
+/**
+ * Rozstrzyga wariant modelu na podstawie nagłówka `X-Epir-Model-Variant`.
+ * ZWRACA `null` (użyj default), gdy:
+ * - brak nagłówka,
+ * - brak / zły `ADMIN_KEY` bearer token,
+ * - variant wymaga multimodal, ale request ma obraz (`hasImage: true`), a variant `multimodal: false`,
+ * - klucz nie pasuje do żadnego wariantu (defensywnie silent-fallback).
+ *
+ * Caller (index.ts) dostaje albo `ModelCapabilities` albo `null` i decyduje co zrobić.
+ *
+ * UWAGA bezpieczeństwo: nagłówek DZIAŁA WYŁĄCZNIE z poprawnym `Authorization: Bearer ${ADMIN_KEY}`.
+ * Dla ruchu buyer-facing (bez admin tokenu) zawsze zwracamy `null` → default model.
+ */
+export function resolveAdminModelVariantFromHeaders(
+  headers: {
+    get(name: string): string | null;
+  },
+  env: { ADMIN_KEY?: string },
+  context: { hasImage?: boolean } = {},
+): ModelCapabilities | null {
+  const raw = headers.get('x-epir-model-variant') || headers.get('X-Epir-Model-Variant');
+  if (!raw) return null;
+  const variantKey = raw.trim();
+  if (!variantKey) return null;
+
+  const authHeader = headers.get('authorization') || headers.get('Authorization');
+  const adminKey = env.ADMIN_KEY;
+  if (!adminKey || !authHeader) return null;
+  const expected = `Bearer ${adminKey}`;
+  if (authHeader.trim() !== expected) return null;
+
+  const variant = resolveModelVariant(variantKey);
+  // Jeżeli resolveModelVariant dał fallback na default (bo klucz nieznany) → zwracamy null
+  // zamiast default, żeby caller mógł rozróżnić "brak overridu" od "zły klucz".
+  if (variant.id === CHAT_MODEL_ID && variantKey !== 'default') return null;
+
+  if (context.hasImage && !variant.multimodal) {
+    console.warn(
+      `[resolveAdminModelVariantFromHeaders] variant=${variantKey} is not multimodal; ignoring override because request has image`,
+    );
+    return null;
+  }
+  return variant;
+}
+
+export const __test = {
+  createGroqStreamTransform,
+  normalizeWorkersAiSessionId,
+  resolveAdminModelVariantFromHeaders,
+};
 
 export async function getGroqResponse(
   messages: GroqMessage[],

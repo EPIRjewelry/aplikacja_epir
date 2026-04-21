@@ -34,13 +34,15 @@ import {
   KimiContentPart,
   shouldUseWorkersAi,
   injectKimiMultimodalUserContent,
+  resolveAdminModelVariantFromHeaders,
 } from './ai-client';
-import { CHAT_MODEL_ID } from './config/model-params';
+import { CHAT_MODEL_ID, type ModelCapabilities } from './config/model-params';
 import { INTERNAL_DASHBOARD_SYSTEM_PROMPT } from './prompts/internal-dashboard-system-prompt';
 import { LUXURY_SYSTEM_PROMPT } from './prompts/luxury-system-prompt'; // 🟢 Używa nowego promptu v2
-import { TOOL_SCHEMAS } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2
+import { TOOL_SCHEMAS, resolveToolSchemas, shouldUseSlimToolSchemas } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2 (+ slim wariant za flagą)
 import { detectPolicyInformationIntent } from './intent/policy-information';
 import { truncateWithSummary, type Message as HistoryMessage } from './utils/history'; // 🔵 History truncation
+import { hashPromptPrefix } from './utils/prompt-stability';
 import { stripLeakedToolCallsLiterals } from './utils/stripLeakedToolCallsLiterals';
 import { buildMessagesForToolFailureRecovery } from './utils/buildRecoveryMessages';
 import { executeToolWithParsedArguments } from './utils/tool-call-args';
@@ -1393,6 +1395,7 @@ export class SessionDO {
         model?: string;
         prompt_tokens?: number;
         completion_tokens?: number;
+        cached_tokens?: number;
         total_tokens?: number;
         timestamp?: number;
       } | null;
@@ -1404,6 +1407,7 @@ export class SessionDO {
         model: payload.model,
         prompt_tokens: payload.prompt_tokens,
         completion_tokens: payload.completion_tokens,
+        cached_tokens: payload.cached_tokens,
         total_tokens: payload.total_tokens,
         timestamp: payload.timestamp,
       });
@@ -2003,6 +2007,7 @@ export class SessionDO {
     model: string;
     prompt_tokens?: number;
     completion_tokens?: number;
+    cached_tokens?: number;
     total_tokens?: number;
     timestamp?: number;
   }): Promise<void> {
@@ -2012,6 +2017,7 @@ export class SessionDO {
     const usageUid = payload.usage_uid ?? this.makeSessionUid('usage', 'usage_seq');
     const promptTokens = typeof payload.prompt_tokens === 'number' ? Math.max(0, Math.trunc(payload.prompt_tokens)) : 0;
     const completionTokens = typeof payload.completion_tokens === 'number' ? Math.max(0, Math.trunc(payload.completion_tokens)) : 0;
+    const cachedTokens = typeof payload.cached_tokens === 'number' ? Math.max(0, Math.trunc(payload.cached_tokens)) : 0;
     const totalTokens = typeof payload.total_tokens === 'number'
       ? Math.max(0, Math.trunc(payload.total_tokens))
       : promptTokens + completionTokens;
@@ -2020,13 +2026,14 @@ export class SessionDO {
       await this.env.DB_CHATBOT
         .prepare(
           `INSERT INTO usage_stats (
-            session_id, model, prompt_tokens, completion_tokens, total_tokens, timestamp, usage_uid
+            session_id, model, prompt_tokens, completion_tokens, cached_tokens, total_tokens, timestamp, usage_uid
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(usage_uid) DO UPDATE SET
             model = excluded.model,
             prompt_tokens = excluded.prompt_tokens,
             completion_tokens = excluded.completion_tokens,
+            cached_tokens = excluded.cached_tokens,
             total_tokens = excluded.total_tokens,
             timestamp = excluded.timestamp`
         )
@@ -2035,6 +2042,7 @@ export class SessionDO {
           payload.model,
           promptTokens,
           completionTokens,
+          cachedTokens,
           totalTokens,
           timestamp,
           usageUid,
@@ -2949,9 +2957,11 @@ async function streamAssistantResponse(
       const promptBuildT0 = Date.now();
 
       // run_analytics_query tylko gdy channel === "internal-dashboard" (MUST z planu)
+      // Wariant schematów (full vs slim) kontrolowany przez env.SLIM_TOOL_SCHEMAS.
+      const activeSchemas = resolveToolSchemas(env as { SLIM_TOOL_SCHEMAS?: string | boolean });
       const schemasToUse = storefrontContext?.channel === 'internal-dashboard'
-        ? Object.values(TOOL_SCHEMAS)
-        : Object.values(TOOL_SCHEMAS).filter((s) => s.name !== 'run_analytics_query');
+        ? Object.values(activeSchemas)
+        : Object.values(activeSchemas).filter((s) => s.name !== 'run_analytics_query');
       const toolDefinitions = schemasToUse.map((schema) => ({
         type: 'function' as const,
         function: {
@@ -3187,6 +3197,29 @@ async function streamAssistantResponse(
         throw new Error('Workers AI binding missing. Add [ai] binding in wrangler.toml.');
       }
 
+      // Admin A/B: nagłówek X-Epir-Model-Variant (wymaga Authorization: Bearer ADMIN_KEY).
+      // Dla buyer-facing bez tokenu — zawsze zwraca null → default model. Guard multimodal
+      // wewnątrz resolveAdminModelVariantFromHeaders chroni przed wysłaniem obrazu do modelu
+      // bez multimodal. Kolizja z prefix cache: inny ID modelu = inny prefix = nowy cache scope.
+      const adminVariant: ModelCapabilities | null = resolveAdminModelVariantFromHeaders(
+        request.headers,
+        env,
+        { hasImage: Boolean(imageBase64) },
+      );
+      const activeModelVariant = adminVariant ?? null;
+      if (activeModelVariant) {
+        console.log(
+          JSON.stringify({
+            tag: 'chat.model.variant_override',
+            session_id: sessionId,
+            variant_model: activeModelVariant.id,
+            variant_label: activeModelVariant.label ?? null,
+            multimodal: activeModelVariant.multimodal,
+            tool_leak: activeModelVariant.toolLeak,
+          }),
+        );
+      }
+
       // Workers AI: nagłówek x-session-affinity (ses_<sessionId>) — workersAiRunOptions(sessionId) w ai-client.ts;
       // stabilizuje routing/cache prefiksu (niższy TTFT przy tej samej sesji). sessionId musi przejść
       // normalizeWorkersAiSessionId — domyślny UUID z klienta / crypto.randomUUID() jest zgodny.
@@ -3228,7 +3261,7 @@ async function streamAssistantResponse(
         let iterationText = ''; // Tymczasowy buffer dla tej iteracji
         let pendingToolCalls = new Map<string, { id: string; name: string; arguments: string }>();
         let finishReason: string | null = null;
-        let usageTotals = { prompt_tokens: 0, completion_tokens: 0 };
+        let usageTotals = { prompt_tokens: 0, completion_tokens: 0, cached_tokens: 0 };
         let attemptUsed = 0;
 
         const maxAttempts = i === 0 && forcePolicyMcp ? 2 : 1;
@@ -3236,7 +3269,7 @@ async function streamAssistantResponse(
           iterationText = '';
           pendingToolCalls = new Map();
           finishReason = null;
-          usageTotals = { prompt_tokens: 0, completion_tokens: 0 };
+          usageTotals = { prompt_tokens: 0, completion_tokens: 0, cached_tokens: 0 };
           attemptUsed = attempt;
 
           const toolChoiceResolved =
@@ -3249,13 +3282,43 @@ async function streamAssistantResponse(
           const timingLabel =
             attempt === 0 ? `tool_loop_${i}` : `tool_loop_${i}_policy_retry`;
 
+          // Diagnostyka prefix cache: hash z pierwszych ~8KB promptu. Stabilny hash w tej samej
+          // sesji → prefix cache powinien trafiać; zmienny → coś podmienia początek między turami
+          // (sys prompt / injected context / zmieniona kolejność tool definitions).
+          try {
+            const prefixHash = await hashPromptPrefix(
+              currentMessages as unknown as Array<{ role: string; content: unknown }>,
+              toolDefinitions,
+            );
+            console.log(
+              JSON.stringify({
+                tag: 'chat.prompt.prefix_hash',
+                session_id: sessionId,
+                tool_loop: i,
+                attempt,
+                prefix_hash: prefixHash,
+                messages_count: currentMessages.length,
+                tools_count: toolDefinitions.length,
+              }),
+            );
+          } catch (err) {
+            console.warn('[streamAssistant] prefix_hash failed', err);
+          }
+
+          const streamOptions: {
+            toolChoice?: typeof toolChoiceResolved;
+            modelId?: string;
+          } = {};
+          if (toolChoiceResolved !== undefined) streamOptions.toolChoice = toolChoiceResolved;
+          if (activeModelVariant) streamOptions.modelId = activeModelVariant.id;
+
           const groqStream = await streamGroqEvents(
             currentMessages,
             env,
             toolDefinitions,
             sessionId,
             timingLabel,
-            toolChoiceResolved !== undefined ? { toolChoice: toolChoiceResolved } : undefined,
+            Object.keys(streamOptions).length > 0 ? streamOptions : undefined,
           );
           const reader = groqStream.getReader();
 
@@ -3278,6 +3341,9 @@ async function streamAssistantResponse(
                 // z tym samym lub rosnącym skumulowanym usage — sumowanie zawyżało metryki w logach.
                 usageTotals.prompt_tokens = event.prompt_tokens;
                 usageTotals.completion_tokens = event.completion_tokens;
+                if (typeof event.cached_tokens === 'number' && event.cached_tokens >= 0) {
+                  usageTotals.cached_tokens = event.cached_tokens;
+                }
                 break;
 
               case 'done':
@@ -3326,6 +3392,11 @@ async function streamAssistantResponse(
             tool_calls_count: pendingToolCalls.size,
             usage_prompt_tokens: usageTotals.prompt_tokens,
             usage_completion_tokens: usageTotals.completion_tokens,
+            usage_cached_tokens: usageTotals.cached_tokens,
+            cache_hit_ratio:
+              usageTotals.prompt_tokens > 0
+                ? Number((usageTotals.cached_tokens / usageTotals.prompt_tokens).toFixed(3))
+                : 0,
             identity_level: identityLevel,
             customer_accounts_mode: customerAccountsMode,
             memory_shopify_customer_id_present: Boolean(memoryShopifyCustomerId),
@@ -3341,6 +3412,7 @@ async function streamAssistantResponse(
           tool_calls_pending: pendingToolCalls.size,
           usage_prompt_tokens: usageTotals.prompt_tokens,
           usage_completion_tokens: usageTotals.completion_tokens,
+          usage_cached_tokens: usageTotals.cached_tokens,
         });
 
         const iterationUsageTotal = usageTotals.prompt_tokens + usageTotals.completion_tokens;
@@ -3353,6 +3425,7 @@ async function streamAssistantResponse(
               model: CHAT_MODEL_ID,
               prompt_tokens: usageTotals.prompt_tokens,
               completion_tokens: usageTotals.completion_tokens,
+              cached_tokens: usageTotals.cached_tokens,
               total_tokens: iterationUsageTotal,
               timestamp: now(),
             }),
@@ -3565,7 +3638,10 @@ async function streamAssistantResponse(
         } else {
           // NIE - To była finalna odpowiedź tekstowa (bez wywołań narzędzi)
           // Model czasem powiela z promptu literalny tekst `tool_calls: [...]` — nie pokazuj tego klientowi.
-          finalTextResponse = stripLeakedToolCallsLiterals(iterationText);
+          // Warianty z `toolLeak: false` (np. GLM) nie mają tego buga → skip stripping.
+          finalTextResponse = activeModelVariant && activeModelVariant.toolLeak === false
+            ? iterationText
+            : stripLeakedToolCallsLiterals(iterationText);
           if (containsLikelyToolMarkupLeak(finalTextResponse)) {
             console.warn(
               '[streamAssistant] final iteration text still contained tool-like markup after strip; clearing for UX fallback',

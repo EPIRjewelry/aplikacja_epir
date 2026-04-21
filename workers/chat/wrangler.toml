@@ -52,6 +52,17 @@ dead_letter_queue = "memory-extract-dlq"
 binding = "MEMORY_INDEX"
 index_name = "memory_customer"
 
+# ---------------------------------------------------------------------------
+# KV cache dla powtarzalnych wywołań MCP `search_shop_policies_and_faqs`.
+# Klucz: `policies:v1:${sha256(normalized_query)}`, TTL 6h.
+# Utworzenie: wrangler kv namespace create policies-cache
+#            → wklej zwrócone `id` poniżej; dla dev: dodatkowo `preview_id`.
+# ---------------------------------------------------------------------------
+[[kv_namespaces]]
+binding = "POLICIES_CACHE"
+id = "79b8871d6e664440b648308ee9493d6d"
+preview_id = "6673996135e04c30a90f9f807d42391e"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SessionDO"]
@@ -114,6 +125,10 @@ ALLOWED_ORIGIN = "https://epir-art-silver-jewellery.myshopify.com"
 MEMORY_EXTRACT_ENABLED = "true"
 MEMORY_V2_ENABLED = "true"
 MEMORY_RAW_RETRIEVAL_ENABLED = "true"
+# SLIM_TOOL_SCHEMAS: gdy "true", worker używa TOOL_SCHEMAS_SLIM (odchudzone definicje narzędzi
+# dla modelu) zamiast pełnych TOOL_SCHEMAS. Oszczędza ~1500 prompt_tokens/turę. Wymaga redeploy
+# (nie runtime toggle) dla stabilności prefix cache Workers AI.
+SLIM_TOOL_SCHEMAS = "true"
 # `null` = literal Origin string from Shopify Web Pixel sandbox (opaque origin), not a TOML null
 ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://epir-art-silver-jewellery.myshopify.com,https://asystent.epirbizuteria.pl,https://kazka.epirbizuteria.pl,https://zareczyny.epirbizuteria.pl,null"
 SHOP_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
