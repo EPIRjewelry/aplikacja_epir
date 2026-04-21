@@ -12,6 +12,25 @@ var EPIR_ASSISTANT_TRANSCRIPT_STORAGE_PREFIX = 'epir-assistant-transcript';
 var EPIR_ASSISTANT_HISTORY_ENDPOINT = '/apps/assistant/history';
 var EPIR_ASSISTANT_TRANSCRIPT_MAX_ENTRIES = 100;
 var EPIR_IMAGE_ATTACHMENT_PLACEHOLDER = '(załącznik obrazu)';
+/** Flaga stanu panelu, przeżywa nawigację w obrębie karty (`sessionStorage`). */
+var EPIR_ASSISTANT_UI_OPEN_KEY = 'epir-assistant-ui-open';
+/** Hosty sklepu EPIR — linki na nie otwieramy w tej samej karcie. */
+var EPIR_IN_STORE_HOSTS = ['epirbizuteria.pl', 'www.epirbizuteria.pl'];
+
+function isInStoreUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  try {
+    if (url.charAt(0) === '/') return true;
+    var parsed = new URL(url, window.location.href);
+    if (parsed.host === window.location.host) return true;
+    for (var i = 0; i < EPIR_IN_STORE_HOSTS.length; i++) {
+      if (parsed.host === EPIR_IN_STORE_HOSTS[i]) return true;
+    }
+    return false;
+  } catch (_err) {
+    return false;
+  }
+}
 /** Ostatnio wybrany obraz, izolowany per formularz czatu. */
 var epirPendingAttachmentByForm = new WeakMap();
 /** Maksymalny rozmiar załącznika obrazu (4 MB po stronie klienta przed base64). */
@@ -1063,6 +1082,7 @@ function initAssistantUIForSection(section) {
         if (toggleTarget) {
           toggleTarget.classList.remove('is-closed');
           launcher.setAttribute('aria-expanded', 'true');
+          try { sessionStorage.setItem(EPIR_ASSISTANT_UI_OPEN_KEY, '1'); } catch (_e) {}
         }
       });
 
@@ -1072,9 +1092,18 @@ function initAssistantUIForSection(section) {
           if (toggleTarget) {
             toggleTarget.classList.add('is-closed');
             launcher.setAttribute('aria-expanded', 'false');
+            try { sessionStorage.removeItem(EPIR_ASSISTANT_UI_OPEN_KEY); } catch (_e) {}
           }
         });
       }
+
+      // Odtwórz stan panelu po nawigacji w obrębie karty (klik w link produktu zapisuje flagę).
+      try {
+        if (toggleTarget && sessionStorage.getItem(EPIR_ASSISTANT_UI_OPEN_KEY) === '1') {
+          toggleTarget.classList.remove('is-closed');
+          launcher.setAttribute('aria-expanded', 'true');
+        }
+      } catch (_e) {}
 
       if (toggleTarget && !toggleTarget.classList.contains('is-closed')) {
         launcher.setAttribute('aria-expanded', 'true');
@@ -1092,6 +1121,24 @@ function initAssistantUIForSection(section) {
     }
     if (messagesEl) {
       syncAssistantTranscriptFromBackend(section, messagesEl, EPIR_ASSISTANT_SESSION_KEY);
+    }
+
+    // Delegacja kliku w linki in-store: zapisz flagę otwartego panelu, żeby
+    // po nawigacji w tej samej karcie panel był dalej widoczny nad nową stroną.
+    if (messagesEl && !messagesEl.dataset.epirLinkDelegation) {
+      messagesEl.dataset.epirLinkDelegation = '1';
+      messagesEl.addEventListener('click', (event) => {
+        const anchor = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+        if (!anchor) return;
+        if (anchor.getAttribute('data-epir-in-store') !== '1') return;
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1) return;
+        try {
+          const shellEl = section.querySelector('#assistant-panel') || section.querySelector('#assistant-panel-embed') || content;
+          if (shellEl && !shellEl.classList.contains('is-closed')) {
+            sessionStorage.setItem(EPIR_ASSISTANT_UI_OPEN_KEY, '1');
+          }
+        } catch (_err) {}
+      });
     }
 
     let localName = null;
@@ -1257,9 +1304,11 @@ function formatAssistantMarkdownLite(text) {
       return '\uE000LINK' + i + '\uE001';
     },
   );
+  // Sam goły URL w **…** psuje autolink (gwiazdki wchodzą w dopasowanie URL). Rozwiń przed gołymi linkami.
+  marked = marked.replace(/\*\*(https?:\/\/[^*\s]+)\*\*/g, '$1');
   var bareUrls = [];
   marked = marked.replace(/(https?:\/\/[^\s<>"']+)/gi, function (raw) {
-    var u = raw.replace(/[.,;:!?)\]]+$/g, '');
+    var u = raw.replace(/[.,;:!?)\]]+$/g, '').replace(/\*+$/g, '');
     if (!/^https?:\/\//i.test(u)) return raw;
     if (!u.replace(/^https?:\/\//i, '').replace(/^\/+/, '')) return raw;
     var k = bareUrls.length;
@@ -1281,10 +1330,15 @@ function formatAssistantMarkdownLite(text) {
   var j;
   for (j = 0; j < links.length; j++) {
     var ph = '\uE000LINK' + j + '\uE001';
+    var inStore = isInStoreUrl(links[j].url);
     var anchor =
       '<a href="' +
       escAttr(links[j].url) +
-      '" target="_blank" rel="noopener noreferrer">' +
+      '"' +
+      (inStore
+        ? ' data-epir-in-store="1"'
+        : ' target="_blank" rel="noopener noreferrer"') +
+      '>' +
       escAttr(links[j].label) +
       '</a>';
     esc = esc.split(ph).join(anchor);
@@ -1292,10 +1346,15 @@ function formatAssistantMarkdownLite(text) {
   for (j = 0; j < bareUrls.length; j++) {
     var rph = '\uE002RAW' + j + '\uE003';
     var u = bareUrls[j];
+    var rawInStore = isInStoreUrl(u);
     var rawAnchor =
       '<a href="' +
       escAttr(u) +
-      '" target="_blank" rel="noopener noreferrer">' +
+      '"' +
+      (rawInStore
+        ? ' data-epir-in-store="1"'
+        : ' target="_blank" rel="noopener noreferrer"') +
+      '>' +
       escAttr(u) +
       '</a>';
     esc = esc.split(rph).join(rawAnchor);

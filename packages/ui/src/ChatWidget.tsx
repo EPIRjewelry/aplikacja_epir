@@ -9,17 +9,49 @@ import ReactMarkdown, {type Components} from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {DEFAULT_PERSONA_UI, type PersonaUi} from './persona-ui';
 
+/**
+ * Linki do własnego sklepu (tego samego hosta lub popularnej domeny EPIR)
+ * otwieramy w tej samej karcie, żeby `sessionStorage` czatu (session_id,
+ * transcript) pozostał nienaruszony. Zewnętrzne linki dalej w nowej karcie.
+ */
+const IN_STORE_HOSTS = new Set<string>(['epirbizuteria.pl', 'www.epirbizuteria.pl']);
+const UI_OPEN_KEY = 'epir-assistant-ui-open';
+
+function isInStoreHref(href: string | undefined): boolean {
+  if (!href) return false;
+  try {
+    if (href.startsWith('/')) return true;
+    const url = new URL(href, typeof window !== 'undefined' ? window.location.href : 'https://localhost');
+    if (typeof window !== 'undefined' && url.host === window.location.host) return true;
+    return IN_STORE_HOSTS.has(url.host);
+  } catch {
+    return false;
+  }
+}
+
 const assistantMarkdownComponents: Partial<Components> = {
-  a: ({href, children}) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-blue-600 underline hover:text-blue-800"
-    >
-      {children}
-    </a>
-  ),
+  a: ({href, children}) => {
+    const sameTab = isInStoreHref(href);
+    const onClick = sameTab
+      ? () => {
+          try {
+            sessionStorage.setItem(UI_OPEN_KEY, '1');
+          } catch {
+            /* ignore — sessionStorage może być zablokowany */
+          }
+        }
+      : undefined;
+    return (
+      <a
+        href={href}
+        {...(sameTab ? {} : {target: '_blank', rel: 'noopener noreferrer'})}
+        onClick={onClick}
+        className="text-blue-600 underline hover:text-blue-800"
+      >
+        {children}
+      </a>
+    );
+  },
 };
 
 function AssistantMessageMarkdown({text}: {text: string}) {
@@ -754,6 +786,29 @@ export function ChatWidget({
 }: ChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const personaUi = {...DEFAULT_PERSONA_UI, ...personaUiProp};
+
+  // Przywróć stan panelu po nawigacji w obrębie karty (klik w link produktu
+  // otwiera stronę w tym samym tabie i zapisuje flagę `epir-assistant-ui-open`).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (sessionStorage.getItem(UI_OPEN_KEY) === '1') {
+        setIsOpen(true);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (isOpen) sessionStorage.setItem(UI_OPEN_KEY, '1');
+      else sessionStorage.removeItem(UI_OPEN_KEY);
+    } catch {
+      /* ignore */
+    }
+  }, [isOpen]);
 
   return (
     <ChatWidgetFallback
