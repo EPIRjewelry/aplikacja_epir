@@ -1,15 +1,16 @@
 name: Preview (Cloudflare Pages)
 
+# Preview PR wyłączony. Ręczny deploy: podaj suffix gałęzi Pages (np. pr-123 lub smoke-1).
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "apps/**"
-      - "packages/**"
-      - ".github/workflows/preview.yml"
+  workflow_dispatch:
+    inputs:
+      branch_label:
+        description: "Suffix gałęzi w Cloudflare Pages (np. pr-42)"
+        required: true
+        default: "manual"
 
 concurrency:
-  group: preview-${{ github.event.pull_request.number }}-${{ github.workflow }}
+  group: preview-${{ github.event.inputs.branch_label }}-${{ github.workflow }}
   cancel-in-progress: true
 
 jobs:
@@ -74,7 +75,7 @@ jobs:
         run: |
           npx wrangler pages deploy public \
             --project-name=${{ matrix.project }} \
-            --branch=pr-${{ github.event.pull_request.number }}
+            --branch=${{ github.event.inputs.branch_label }}
 
       - name: Skip (no relevant changes)
         if: steps.changes.outputs.relevant != 'true'

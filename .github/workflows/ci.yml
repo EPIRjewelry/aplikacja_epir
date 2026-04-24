@@ -1,10 +1,7 @@
 name: CI
 
+# Auto-triggery wyłączone (oszczędność minut Actions). Uruchom ręcznie: Actions → CI → Run workflow.
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

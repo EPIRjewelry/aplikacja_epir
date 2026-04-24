@@ -1,8 +1,7 @@
 name: Scheduled Maintenance - Stale Cleanup
 
+# Harmonogram wyłączony (oszczędność minut). Opcjonalnie uruchom ręcznie.
 on:
-  schedule:
-    - cron: "0 4 * * 1"
   workflow_dispatch:
 
 permissions:

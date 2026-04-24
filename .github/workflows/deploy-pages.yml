@@ -1,8 +1,8 @@
 name: Deploy to Cloudflare Pages
 
+# Duplikat deployu Pages — wyłączony auto-trigger; użyj „Deploy (Cloudflare)” lub uruchom ręcznie.
 on:
-  push:
-    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   deploy:

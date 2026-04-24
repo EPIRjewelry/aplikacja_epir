@@ -1,8 +1,7 @@
 name: Deploy (Cloudflare)
 
+# Auto-deploy wyłączony. Uruchom ręcznie: Actions → Deploy (Cloudflare) → Run workflow.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       deploy_workers:
@@ -24,7 +23,7 @@ jobs:
   deploy-workers:
     name: deploy-workers
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || inputs.deploy_workers == true
+    if: inputs.deploy_workers == true
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -58,7 +57,7 @@ jobs:
   deploy-pages:
     name: deploy-pages
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || inputs.deploy_pages == true
+    if: inputs.deploy_pages == true
     strategy:
       fail-fast: false
       matrix:
