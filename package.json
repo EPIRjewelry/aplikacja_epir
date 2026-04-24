@@ -18,8 +18,8 @@
     "lodash": "^4.17.23"
   },
   "devDependencies": {
-    "@shopify/cli": "3.91.0",
-    "wrangler": "4.46.0"
+    "@shopify/cli": "3.93.2",
+    "wrangler": "4.84.1"
   },
   "overrides": {
     "react": "18.3.1",

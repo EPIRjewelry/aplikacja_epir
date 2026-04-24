@@ -9,22 +9,22 @@
     "./styles/base.css": "./styles/base.css"
   },
   "peerDependencies": {
-    "@headlessui/react": "^1.7.15",
+    "@headlessui/react": "^2.2.10",
     "@remix-run/react": "^2.15.0",
-    "@shopify/hydrogen": "^2024.10.0",
+    "@shopify/hydrogen": "^2026.4.1",
     "@shopify/hydrogen-react": "^2024.10.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@headlessui/react": "^1.7.15",
+    "@headlessui/react": "^2.2.10",
     "@remix-run/react": "^2.15.0",
-    "@shopify/hydrogen": "^2024.10.0",
-    "@types/react": "^18.2.22",
-    "@types/react-dom": "^18.2.7",
+    "@shopify/hydrogen": "^2026.4.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "typescript": "^5.2.2"
+    "typescript": "^6.0.3"
   },
   "dependencies": {
     "react-markdown": "^10.1.0",
