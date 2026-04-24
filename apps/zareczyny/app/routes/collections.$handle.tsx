@@ -1,4 +1,4 @@
-import {useLoaderData} from '@remix-run/react';
+import {Link, useLoaderData} from '@remix-run/react';
 import {SeoHandleFunction} from '@shopify/hydrogen';
 import {
   CollectionEnhancedHero,
@@ -6,6 +6,7 @@ import {
   ProductGrid,
 } from '@epir/ui';
 import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
+import {parseCollectionFilter} from '~/lib/collection-filters';
 
 type CollectionsQueryData = {
   collections: {nodes: {handle: string}[]};
@@ -125,6 +126,33 @@ export function mapCollectionEnhancedData(
   return empty ? null : out;
 }
 
+function resolveHubHandle(env: {COLLECTION_HUB_HANDLE?: string}): string {
+  return env.COLLECTION_HUB_HANDLE?.trim() || 'pierscionki-zareczynowe';
+}
+
+const METAL_SUBCOLLECTIONS = [
+  {suffix: 'zlote', label: 'Złote'},
+  {suffix: 'srebrne', label: 'Srebrne'},
+] as const;
+
+function subcollectionEntries(hubHandle: string) {
+  return METAL_SUBCOLLECTIONS.map(({suffix, label}) => ({
+    handle: `${hubHandle}-${suffix}`,
+    label,
+  }));
+}
+
+function subMetaForHandle(
+  hubHandle: string,
+  collectionHandle: string,
+): {label: string} | null {
+  return (
+    subcollectionEntries(hubHandle).find(
+      (e) => e.handle === collectionHandle,
+    ) ?? null
+  );
+}
+
 export async function loader({
   context,
   params,
@@ -137,22 +165,21 @@ export async function loader({
   }
 
   const searchParams = new URL(request.url).searchParams;
-  const cursor = searchParams.get('cursor');
+  const hubHandle = resolveHubHandle(context.env);
+  const isHub = handle === hubHandle;
+  const subMeta = !isHub ? subMetaForHandle(hubHandle, handle) : null;
+  const cursor = isHub ? null : searchParams.get('cursor');
+  const productFirst = isHub ? 0 : 12;
   const {collection} = await context.storefront.query(COLLECTION_QUERY, {
     variables: {
       handle,
       cursor,
+      productFirst,
     },
   });
 
   if (!collection) {
-    const filter = context.env.COLLECTION_FILTER;
-    const allowedHandles = filter
-      ? filter
-          .split(',')
-          .map((h: string) => h.trim())
-          .filter(Boolean)
-      : null;
+    const allowedHandles = parseCollectionFilter(context.env.COLLECTION_FILTER);
       const {collections} = await context.storefront.query<CollectionsQueryData>(`#graphql
       query FirstCollections {
         collections(first: 20) {
@@ -182,41 +209,101 @@ export async function loader({
   return json({
     collection,
     enhancedData,
+    hubMode: isHub,
+    subcollectionLinks: isHub ? subcollectionEntries(hubHandle) : null,
+    breadcrumb: subMeta
+      ? {
+          parentHandle: hubHandle,
+          parentLabel: 'Pierścionki zaręczynowe',
+          currentLabel: subMeta.label,
+        }
+      : null,
   });
 }
 
 export default function Collection() {
-  const {collection, enhancedData} = useLoaderData<typeof loader>();
+  const {collection, enhancedData, hubMode, subcollectionLinks, breadcrumb} =
+    useLoaderData<typeof loader>();
 
   return (
     <section className="w-full gap-8">
+      {breadcrumb ? (
+        <nav
+          className="text-sm text-[rgb(var(--color-primary))]/70 -mb-2 px-1"
+          aria-label="Ścieżka nawigacji"
+        >
+          <Link
+            to={`/collections/${breadcrumb.parentHandle}`}
+            className="underline decoration-[rgb(var(--color-primary))]/30 hover:decoration-[rgb(var(--color-primary))]"
+          >
+            {breadcrumb.parentLabel}
+          </Link>
+          <span className="mx-2" aria-hidden>
+            /
+          </span>
+          <span className="text-[rgb(var(--color-primary))]">
+            {breadcrumb.currentLabel}
+          </span>
+        </nav>
+      ) : null}
       <CollectionEnhancedHero
         collectionTitle={collection.title}
         collectionDescription={collection.description ?? undefined}
         enhancedData={enhancedData}
       />
 
-      <div className="fadeIn" style={{animationDelay: '100ms'}}>
-        {collection.products?.nodes?.length ? (
-          <ProductGrid
-            products={collection.products.nodes}
-            url={`/collections/${collection.handle}`}
-            hasNextPage={collection.products.pageInfo.hasNextPage}
-            endCursor={collection.products.pageInfo.endCursor}
-          />
-        ) : (
-          <p className="text-[rgb(var(--color-primary))]/70 py-12">
-            Brak produktów w tej kolekcji. Upewnij się, że produkty są
-            opublikowane w kanale Pierścionki Zaręczynowe.
-          </p>
-        )}
-      </div>
+      {hubMode && subcollectionLinks?.length ? (
+        <div
+          className="fadeIn w-full max-w-3xl mx-auto px-1"
+          style={{animationDelay: '100ms'}}
+        >
+          <h2 className="sr-only">Wybierz kruszec</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            {subcollectionLinks.map((sub) => (
+              <Link
+                key={sub.handle}
+                to={`/collections/${sub.handle}`}
+                className="group flex flex-col items-center justify-center rounded-lg border border-[rgb(var(--color-primary))]/20 bg-white/5 px-6 py-10 text-center transition hover:border-[rgb(var(--color-primary))]/40 hover:shadow-md"
+              >
+                <span className="text-xl font-semibold text-[rgb(var(--color-primary))] group-hover:opacity-80">
+                  {sub.label}
+                </span>
+                <span className="mt-2 text-sm text-[rgb(var(--color-primary))]/60">
+                  Zobacz pierścionki
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {!hubMode ? (
+        <div className="fadeIn" style={{animationDelay: '100ms'}}>
+          {collection.products?.nodes?.length ? (
+            <ProductGrid
+              products={collection.products.nodes}
+              url={`/collections/${collection.handle}`}
+              hasNextPage={collection.products.pageInfo.hasNextPage}
+              endCursor={collection.products.pageInfo.endCursor}
+            />
+          ) : (
+            <p className="text-[rgb(var(--color-primary))]/70 py-12">
+              Brak produktów w tej kolekcji. Upewnij się, że produkty są
+              opublikowane w kanale Pierścionki Zaręczynowe.
+            </p>
+          )}
+        </div>
+      ) : null}
     </section>
   );
 }
 
 const COLLECTION_QUERY = `#graphql
-  query CollectionDetails($handle: String!, $cursor: String) {
+  query CollectionDetails(
+    $handle: String!
+    $cursor: String
+    $productFirst: Int!
+  ) {
     collection(handle: $handle) {
       id
       title
@@ -256,7 +343,7 @@ const COLLECTION_QUERY = `#graphql
           }
         }
       }
-      products(first: 12, after: $cursor) {
+      products(first: $productFirst, after: $cursor) {
         pageInfo {
           hasNextPage
           endCursor

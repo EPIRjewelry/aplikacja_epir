@@ -36,6 +36,10 @@ import {
   ZARECZYNY_STOREFRONT_ID,
 } from '~/lib/chat-widget-context';
 import {loadZareczynyPersonaUi} from '~/lib/persona-ui.server';
+import {
+  filterCollectionsForNav,
+  parseCollectionFilter,
+} from '~/lib/collection-filters';
 
 export const links: LinksFunction = () => {
   return [
@@ -58,13 +62,8 @@ export async function loader({context, request}: LoaderFunctionArgs) {
   const configuredChatApiUrl = context.env.CHAT_API_URL as string | undefined;
   const chatApiUrl = resolveChatApiUrl(configuredChatApiUrl);
   const brand = (context.env.BRAND as string) || 'zareczyny';
-  const filter = context.env.COLLECTION_FILTER;
-  const allowedHandles = filter
-    ? filter
-        .split(',')
-        .map((h: string) => h.trim())
-        .filter(Boolean)
-    : null;
+  const allowedHandles = parseCollectionFilter(context.env.COLLECTION_FILTER);
+  const hubHandle = context.env.COLLECTION_HUB_HANDLE;
   const route = new URL(request.url).pathname;
 
   const [layout, collectionsResult, personaUi] = await Promise.all([
@@ -75,11 +74,11 @@ export async function loader({context, request}: LoaderFunctionArgs) {
     loadZareczynyPersonaUi(context.env),
   ]);
 
-  const nodes = allowedHandles?.length
-    ? collectionsResult.collections.nodes.filter((c: {handle: string}) =>
-        allowedHandles.includes(c.handle),
-      )
-    : collectionsResult.collections.nodes;
+  const nodes = filterCollectionsForNav({
+    nodes: collectionsResult.collections.nodes,
+    allowedHandles,
+    hideHubHandle: hubHandle ?? null,
+  });
 
   return defer({
     layout,

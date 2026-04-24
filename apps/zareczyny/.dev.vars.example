@@ -7,7 +7,9 @@
 
 SESSION_SECRET=your-secret
 BRAND=zareczyny
-COLLECTION_FILTER=pierscionki-zareczynowe
+# Hub + dwie podkolekcje (złote / srebrne) — utwórz w Adminie te same handle’e i przypisz do kanału Headless
+COLLECTION_FILTER=pierscionki-zareczynowe,pierscionki-zareczynowe-zlote,pierscionki-zareczynowe-srebrne
+COLLECTION_HUB_HANDLE=pierscionki-zareczynowe
 PUBLIC_STORE_DOMAIN=epir-art-silver-jewellery.myshopify.com
 PUBLIC_CHECKOUT_DOMAIN=checkout.shopify.com
 PUBLIC_STOREFRONT_API_TOKEN=your-token

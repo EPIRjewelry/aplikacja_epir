@@ -6,6 +6,10 @@ import {
   ROUTE_CONTENT_QUERY,
   type RouteContentProps,
 } from '@epir/ui';
+import {
+  filterCollectionsForNav,
+  parseCollectionFilter,
+} from '~/lib/collection-filters';
 
 export function meta() {
   return [
@@ -37,13 +41,8 @@ type LoaderData = {
 };
 
 export async function loader({context}: LoaderFunctionArgs): Promise<LoaderData> {
-  const filter = context.env.COLLECTION_FILTER;
-  const allowedHandles = filter
-    ? filter
-        .split(',')
-        .map((h: string) => h.trim())
-        .filter(Boolean)
-    : null;
+  const allowedHandles = parseCollectionFilter(context.env.COLLECTION_FILTER);
+  const hubHandle = context.env.COLLECTION_HUB_HANDLE;
 
   // Prefer explicit storefront-specific route handle.
   // Keep route-home as temporary alias for zero-downtime migration.
@@ -72,11 +71,11 @@ export async function loader({context}: LoaderFunctionArgs): Promise<LoaderData>
   const {route} = routeResult;
   const {collections} = collectionsResult;
 
-  const nodes = allowedHandles?.length
-    ? collections.nodes.filter((c: {handle: string}) =>
-        allowedHandles.includes(c.handle),
-      )
-    : collections.nodes;
+  const nodes = filterCollectionsForNav({
+    nodes: collections.nodes,
+    allowedHandles,
+    hideHubHandle: hubHandle ?? null,
+  });
 
   return {
     route: route ?? null,

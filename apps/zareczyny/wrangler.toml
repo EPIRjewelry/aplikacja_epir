@@ -12,7 +12,8 @@ pages_build_output_dir = "public"
 
 [vars]
 BRAND = "zareczyny"
-COLLECTION_FILTER = "pierscionki-zareczynowe"
+COLLECTION_FILTER = "pierscionki-zareczynowe,pierscionki-zareczynowe-zlote,pierscionki-zareczynowe-srebrne"
+COLLECTION_HUB_HANDLE = "pierscionki-zareczynowe"
 NODE_ENV = "production"
 PUBLIC_STORE_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
 PUBLIC_CHECKOUT_DOMAIN = "checkout.shopify.com"

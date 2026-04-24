@@ -1,5 +1,6 @@
 import {redirect} from '@remix-run/cloudflare';
 import type {LoaderFunctionArgs} from '@remix-run/cloudflare';
+import {parseCollectionFilter} from '~/lib/collection-filters';
 
 type CollectionsQueryData = {
   collections: {nodes: {handle: string}[]};
@@ -18,13 +19,7 @@ const COLLECTIONS_QUERY = `#graphql
  * Naprawia 404 gdy Hero CTA ma cta_href="/collections".
  */
 export async function loader({context}: LoaderFunctionArgs) {
-  const filter = context.env.COLLECTION_FILTER;
-  const allowedHandles = filter
-    ? filter
-        .split(',')
-        .map((h: string) => h.trim())
-        .filter(Boolean)
-    : null;
+  const allowedHandles = parseCollectionFilter(context.env.COLLECTION_FILTER);
 
   const {collections} = await context.storefront.query<CollectionsQueryData>(
     COLLECTIONS_QUERY,

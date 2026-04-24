@@ -17,6 +17,8 @@ declare global {
     SESSION_SECRET: string;
     BRAND?: string;
     COLLECTION_FILTER?: string;
+    /** Kolekcja „hub” (np. łącząca złote/srebrne) — ukrywana w nawigacji; linki widoczne to podkolekcje. */
+    COLLECTION_HUB_HANDLE?: string;
     PUBLIC_STOREFRONT_API_TOKEN: string;
     PRIVATE_STOREFRONT_API_TOKEN: string;
     PUBLIC_STORE_DOMAIN: string;
