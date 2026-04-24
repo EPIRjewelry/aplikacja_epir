@@ -69,7 +69,7 @@ export function calculateMessageTokens(messages: Message[]): number {
  * Truncate history to fit within token limit using sliding window
  * 
  * Strategy:
- * 1. Always keep system message (index 0)
+ * 1. Zachowaj wszystkie wiodące wiadomości `system` (statyczny prompt; ephemera nie są tu)
  * 2. Always keep last N user/assistant exchanges
  * 3. Summarize or drop older messages if needed
  * 4. Keep tool calls/responses together (don't split pairs)
@@ -96,7 +96,7 @@ export function truncateHistory(
   
   console.log(`[truncateHistory] Current tokens: ${currentTokens}, target: ${maxTokens}`);
   
-  // Always keep all leading system messages (base prompt + runtime context)
+  // Wiodące wiadomości system: wyłącznie statyczny prompt (ephemera w ostatniej turze user).
   const { leadingSystemMessages, restMessages } = splitLeadingSystemMessages(messages);
   
   // Keep recent messages (sliding window from end)
@@ -148,7 +148,7 @@ export function truncateWithSummary(
     return messages;
   }
   
-  // Preserve all leading system messages (prompt + injected runtime context)
+  // Preserve all leading system messages (tylko statyczny system; ephemera są w ostatniej turze user)
   const { leadingSystemMessages, restMessages } = splitLeadingSystemMessages(messages);
   const recentMessages = restMessages.slice(-keepRecentCount);
   const oldMessages = restMessages.slice(0, -keepRecentCount);

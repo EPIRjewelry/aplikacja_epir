@@ -43,6 +43,7 @@ import { TOOL_SCHEMAS, resolveToolSchemas, shouldUseSlimToolSchemas } from './mc
 import { detectPolicyInformationIntent } from './intent/policy-information';
 import { truncateWithSummary, type Message as HistoryMessage } from './utils/history'; // 🔵 History truncation
 import { hashPromptPrefix } from './utils/prompt-stability';
+import { mergeEphemeralBlockIntoLastUser } from './utils/merge-ephemeral-last-user';
 import { stripLeakedToolCallsLiterals } from './utils/stripLeakedToolCallsLiterals';
 import { buildMessagesForToolFailureRecovery } from './utils/buildRecoveryMessages';
 import { executeToolWithParsedArguments } from './utils/tool-call-args';
@@ -355,20 +356,9 @@ function containsLikelyToolMarkupLeak(text: string): boolean {
 }
 
 function buildCurrentSessionVisibilityContext(historyEntries: number): string | null {
-  const normalizedHistoryEntries = Number.isFinite(historyEntries)
-    ? Math.max(0, Math.trunc(historyEntries))
-    : 0;
-  const priorConversationEntries = Math.max(0, normalizedHistoryEntries - 1);
-  if (priorConversationEntries <= 0) {
-    return null;
-  }
-
-  return [
-    'Kontekst systemowy: W wiadomościach poniżej znajduje się historia bieżącej sesji.',
-    `Masz dostęp do ${priorConversationEntries} wcześniejszych wpisów z tej rozmowy przed aktualną wiadomością użytkownika.`,
-    'Jeśli klient pyta o to, co było wcześniej w tej rozmowie, odpowiadaj na podstawie tej historii.',
-    'Nie twierdź, że nie widzisz bieżącej rozmowy, jeśli ta historia jest obecna.',
-  ].join(' ');
+  // Zoptymalizowano: Zwracamy null. LLM naturalnie "rozumie" tablicę messages jako historię.
+  // Dynamiczny tekst w tym miejscu psuł systemowy Prefix Caching (zmieniająca się cyfra w prompcie).
+  return null;
 }
 
 function normalizeIntentText(value: string): string {
@@ -2993,32 +2983,24 @@ async function streamAssistantResponse(
 
       const baseSystemPrompt = getSystemPromptForChannel(storefrontContext?.channel);
 
-      const messages: GroqMessage[] = [
-        { role: 'system', content: baseSystemPrompt },
-        ...(aiProfilePrompt ? [{ role: 'system' as const, content: aiProfilePrompt }] : []),
-      ];
+      // Zbudowanie dynamicznych linii (koszyk, sklep, cross-session); trafią do ostatniego usera, nie do systemu.
+      const dynamicContext: string[] = [];
 
-      // Dodaj kontekst systemowy (jeśli istnieje)
       if (cartId) {
-        messages.push({ role: 'system', content: `Kontekst systemowy: Aktualny cart_id sesji to: ${cartId}` });
+        dynamicContext.push(`Aktualny cart_id sesji to: ${cartId}`);
       }
+
       if (anonymousAppProxySession) {
-        messages.push({
-          role: 'system',
-          content:
-            'Kontekst systemowy: żądanie pochodzi z podpisanego App Proxy Shopify (HMAC poprawny), ale sklep nie przekazał pewnego ID zalogowanego klienta (logged_in_customer_id puste — typowe przy New Customer Accounts lub dla gościa). Traktuj rozmówcę jak gościa w witrynie: nie twierdź, że rozpoznajesz konto Shopify ani nie zwracaj się po imieniu z profilu klienta, chyba że poda je w tej rozmowie.',
-        });
+        dynamicContext.push('Żądanie z podpisanego App Proxy Shopify, brak ID klienta (traktuj jak gościa).');
       } else if (effectiveCustomerToken || effectiveShopifyCustomerId) {
-        const loginContextParts = ['Kontekst systemowy: Klient jest zalogowany.'];
+        const loginCtx = ['Klient jest zalogowany.'];
         if (customerFirstName) {
-          loginContextParts.push(`Imię klienta: ${customerFirstName}.`);
+          loginCtx.push(`Imię klienta: ${customerFirstName}.`);
         }
-        if (effectiveCustomerToken) {
-          loginContextParts.push(`Jego anonimowy token to: ${effectiveCustomerToken}`);
-        }
-        messages.push({ role: 'system', content: loginContextParts.join(' ') });
+        // USUNIĘTO: Token autoryzacyjny (LLM nie musi i nie powinien go widzieć w prompcie)
+        dynamicContext.push(loginCtx.join(' '));
       }
-      // Kontekst storefrontu (kazka, zareczyny) – baza wiedzy segmentowana
+
       if (storefrontContext?.storefrontId || storefrontContext?.channel) {
         const sfKey = storefrontContext.storefrontId;
         const sfConfig = resolveStorefrontConfig(env, sfKey);
@@ -3030,25 +3012,22 @@ async function streamAssistantResponse(
         if (storefrontContext.collectionHandle) ctxParts.push(`collectionHandle: ${storefrontContext.collectionHandle}`);
         if (storefrontContext.path) ctxParts.push(`currentPath: ${storefrontContext.path}`);
         if (sfKey === 'kazka') {
-          ctxParts.push('Odpowiadaj w kontekście marki Kazka Jewelry – kamienie szlachetne, biżuteria artystyczna.');
+          ctxParts.push('Marka Kazka Jewelry – kamienie szlachetne, biżuteria artystyczna.');
         } else if (sfKey === 'zareczyny') {
-          ctxParts.push('Odpowiadaj w kontekście pierścionków zaręczynowych EPIR.');
+          ctxParts.push('Kontekst: pierścionki zaręczynowe EPIR.');
         }
-        messages.push({ role: 'system', content: `Kontekst storefrontu: ${ctxParts.join(', ')}` });
+        dynamicContext.push(`Kontekst storefrontu: ${ctxParts.join(', ')}`);
       }
 
       if (crossSessionSummary) {
-        messages.push({
-          role: 'system',
-          content: `Kontekst systemowy — zapamiętane z wcześniejszych wizyt (skrót): ${crossSessionSummary}`,
-        });
+        dynamicContext.push(`Zapamiętane z wcześniejszych wizyt: ${crossSessionSummary}`);
       }
 
+      // Zmienny kontekst tury: dokładany do OSTATNIEJ wiadomości użytkownika (niżej), nie
+      // do osobnych system messages przed historią — maksymalizacja prefix cache (Workers AI).
+
       // --- Memory v2 retrieval (za feature-flag MEMORY_V2_ENABLED) ---
-      // Dokleja deterministyczny skrót + top-k fakty/tury z Vectorize `memory_customer`.
-      // KB-clamp: retriever filtruje po `customerId` i `kind='fact'|'turn'`; treści polityk
-      // tam nie trafiają (blokada w consumer/extractor). Pytania o politykę dalej idą
-      // przez `search_shop_policies_and_faqs` (luxury-system-prompt.ts).
+      // KB-clamp: retriever filtruje po `customerId` i `kind='fact'|'turn'`.
       let memoryRetrievalFailed = false;
       let memoryRetrieveResult: RetrieveMemoryOutput | null = null;
       if (memoryShopifyCustomerId) {
@@ -3057,35 +3036,10 @@ async function streamAssistantResponse(
             shopifyCustomerId: memoryShopifyCustomerId,
             queryText: userMessage,
           });
-          if (memoryRetrieveResult.deterministicSummary && !crossSessionSummary) {
-            messages.push({
-              role: 'system',
-              content: `Kontekst systemowy — deterministyczny skrót preferencji klienta: ${memoryRetrieveResult.deterministicSummary}`,
-            });
-          }
-          if (memoryRetrieveResult.factsBlock) {
-            messages.push({
-              role: 'system',
-              content: `<customer_facts_retrieved>\n${memoryRetrieveResult.factsBlock}\n</customer_facts_retrieved>`,
-            });
-          }
-          if (memoryRetrieveResult.turnsBlock) {
-            messages.push({
-              role: 'system',
-              content: `<customer_turns_retrieved>\n${memoryRetrieveResult.turnsBlock}\n</customer_turns_retrieved>`,
-            });
-          }
         } catch (err) {
           memoryRetrievalFailed = true;
           console.warn('[memory.retriever] failed (non-fatal):', (err as Error).message);
         }
-      }
-
-      if (sessionHistoryVisibilityContext) {
-        messages.push({
-          role: 'system',
-          content: sessionHistoryVisibilityContext,
-        });
       }
 
       const memoryV2Enabled = String(env.MEMORY_V2_ENABLED ?? '').toLowerCase() === 'true';
@@ -3096,43 +3050,79 @@ async function streamAssistantResponse(
           memoryRetrieveResult.activeFactsCount === 0 &&
           !String(memoryRetrieveResult.factsBlock ?? '').trim() &&
           !String(memoryRetrieveResult.turnsBlock ?? '').trim());
+
+      const ephemeralSections: string[] = [];
+      if (dynamicContext.length > 0) {
+        ephemeralSections.push(`[BIEŻĄCY KONTEKST – sklep / sesja]\n${dynamicContext.join('\n')}`);
+      }
+      if (sessionHistoryVisibilityContext) {
+        ephemeralSections.push(sessionHistoryVisibilityContext);
+      }
+      if (memoryRetrieveResult) {
+        if (memoryRetrieveResult.deterministicSummary && !crossSessionSummary) {
+          ephemeralSections.push(
+            `Kontekst systemowy — deterministyczny skrót preferencji klienta: ${memoryRetrieveResult.deterministicSummary}`,
+          );
+        }
+        if (memoryRetrieveResult.factsBlock) {
+          ephemeralSections.push(
+            `<customer_facts_retrieved>\n${memoryRetrieveResult.factsBlock}\n</customer_facts_retrieved>`,
+          );
+        }
+        if (memoryRetrieveResult.turnsBlock) {
+          ephemeralSections.push(
+            `<customer_turns_retrieved>\n${memoryRetrieveResult.turnsBlock}\n</customer_turns_retrieved>`,
+          );
+        }
+      }
       if (
         memoryV2Enabled &&
         memoryShopifyCustomerId &&
         !crossSessionSummary &&
         memoryRetrievalEmpty
       ) {
-        messages.push({
-          role: 'system',
-          content:
-            'Kontekst systemowy — brak potwierdzonych preferencji klienta w pamięci. Nie udawaj, że pamiętasz wcześniejsze rozmowy; pytaj o potrzeby.',
-        });
+        ephemeralSections.push(
+          'Kontekst systemowy — brak potwierdzonych preferencji klienta w pamięci. Nie udawaj, że pamiętasz wcześniejsze rozmowy; pytaj o potrzeby.',
+        );
       }
 
-      // 🔴 KROK 3b: RAG / katalog — bez wstrzykiwania kontekstu tutaj; model woła narzędzia.
-      // `search_catalog` / `search_shop_policies_and_faqs` idą przez Shopify Remote MCP (`callMcpToolDirect` → `mcp_server.ts`).
-      // Osobna ścieżka „RAG worker” jest w `rag-client-wrapper.ts` (logi `chat.pipeline` phase rag_worker).
+      const ephemeralBlock = ephemeralSections.join('\n\n');
 
-      messages.push(...aiHistory);
-      // Wiadomość użytkownika (ostatnia) jest już w `aiHistory`
+      // Statyczny prefiks: wyłącznie systemy niezależne od tury, potem historia z wstrzykniętym blokiem
+      // w ostatniej turze użytkownika (RAG / narzędzia bez zmiany — luxury-system-prompt).
+      const historyWithEphemeral: GroqMessage[] = mergeEphemeralBlockIntoLastUser(
+        aiHistory.map((h) => ({ ...h })),
+        ephemeralBlock,
+      );
+
+      const messages: GroqMessage[] = [
+        { role: 'system', content: baseSystemPrompt },
+        ...(aiProfilePrompt ? [{ role: 'system' as const, content: aiProfilePrompt }] : []),
+        ...historyWithEphemeral,
+      ];
 
       // 🟢 KROK 3c: TRUNCATE HISTORY - zredukuj długość kontekstu przed wysłaniem do AI
-      // Cel: Zapobiegaj overflow kontekstu, oszczędzaj tokeny, zwiększ szybkość
-      const messagesForTruncate: HistoryMessage[] = messages.map((m) => ({
-        role: m.role as HistoryMessage['role'],
-        content:
-          typeof m.content === 'string'
-            ? m.content
-            : Array.isArray(m.content)
-              ? m.content
-                  .filter((part): part is Extract<KimiContentPart, { type: 'text' }> => part.type === 'text')
-                  .map((part) => part.text)
-                  .join('\n')
-              : '',
-        ...(m.tool_calls && { tool_calls: m.tool_calls }),
-        ...(m.tool_call_id && { tool_call_id: m.tool_call_id }),
-        ...(m.name && { name: m.name }),
-      }));
+      const messagesForTruncate: HistoryMessage[] = messages.map((m) => {
+        // Czyszczenie bardzo długich JSONów z poprzednich tur z roli 'tool',
+        // zachowując surowy tekst tylko dla najnowszego wywołania
+        let contentToKeep = typeof m.content === 'string' ? m.content : '';
+        if (m.role === 'tool' && contentToKeep.length > 500) {
+          contentToKeep = '[Wynik narzędzia przeczytany i wykorzystany w poprzednich turach]';
+        }
+
+        return {
+          role: m.role as HistoryMessage['role'],
+          content: Array.isArray(m.content)
+                ? m.content
+                    .filter((part): part is Extract<KimiContentPart, { type: 'text' }> => part.type === 'text')
+                    .map((part) => part.text)
+                    .join('\n')
+                : contentToKeep,
+          ...(m.tool_calls && { tool_calls: m.tool_calls }),
+          ...(m.tool_call_id && { tool_call_id: m.tool_call_id }),
+          ...(m.name && { name: m.name }),
+        };
+      });
       const truncateMaxTokens = isOnlineStoreLiquid ? 5600 : 8000;
       const truncateKeepRecent = isOnlineStoreLiquid ? 8 : 12;
       const truncatedMessages: GroqMessage[] = truncateWithSummary(
@@ -3170,10 +3160,34 @@ async function streamAssistantResponse(
         memory_shopify_customer_id_present: Boolean(memoryShopifyCustomerId),
         online_store_context_tightening: isOnlineStoreLiquid,
       });
+
+      // Admin A/B przed logami startowymi — żeby pokazać realny model (activeChatModelId).
+      const adminVariant: ModelCapabilities | null = resolveAdminModelVariantFromHeaders(
+        request.headers,
+        env,
+        { hasImage: Boolean(imageBase64) },
+      );
+      const activeModelVariant = adminVariant ?? null;
+      if (activeModelVariant) {
+        console.log(
+          JSON.stringify({
+            tag: 'chat.model.variant_override',
+            session_id: sessionId,
+            variant_model: activeModelVariant.id,
+            variant_label: activeModelVariant.label ?? null,
+            multimodal: activeModelVariant.multimodal,
+            tool_leak: activeModelVariant.toolLeak,
+          }),
+        );
+      }
+      const activeChatModelId = activeModelVariant?.id ?? CHAT_MODEL_ID;
       
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log(`[streamAssistant] Rozpoczynam pętlę AI. Sesja: ${sessionId}`);
-      console.log('[streamAssistant] 🤖 Model:', imageBase64 ? `${CHAT_MODEL_ID} (multimodal)` : CHAT_MODEL_ID);
+      console.log(
+        '[streamAssistant] 🤖 Model:',
+        imageBase64 ? `${activeChatModelId} (multimodal)` : activeChatModelId,
+      );
       console.log('[streamAssistant] 📜 System Prompt length:', LUXURY_SYSTEM_PROMPT.length + (aiProfilePrompt?.length ?? 0), 'chars');
       console.log('[streamAssistant] 👤 Customer context:', {
         raw_request_customer_id_present: rawRequestCustomerIdPresent,
@@ -3197,29 +3211,8 @@ async function streamAssistantResponse(
         throw new Error('Workers AI binding missing. Add [ai] binding in wrangler.toml.');
       }
 
-      // Admin A/B: nagłówek X-Epir-Model-Variant (wymaga Authorization: Bearer ADMIN_KEY).
-      // Dla buyer-facing bez tokenu — zawsze zwraca null → default model. Guard multimodal
-      // wewnątrz resolveAdminModelVariantFromHeaders chroni przed wysłaniem obrazu do modelu
-      // bez multimodal. Kolizja z prefix cache: inny ID modelu = inny prefix = nowy cache scope.
-      const adminVariant: ModelCapabilities | null = resolveAdminModelVariantFromHeaders(
-        request.headers,
-        env,
-        { hasImage: Boolean(imageBase64) },
-      );
-      const activeModelVariant = adminVariant ?? null;
-      if (activeModelVariant) {
-        console.log(
-          JSON.stringify({
-            tag: 'chat.model.variant_override',
-            session_id: sessionId,
-            variant_model: activeModelVariant.id,
-            variant_label: activeModelVariant.label ?? null,
-            multimodal: activeModelVariant.multimodal,
-            tool_leak: activeModelVariant.toolLeak,
-          }),
-        );
-      }
-
+      // Admin A/B: activeModelVariant + activeChatModelId ustawione wyżej (przed logami startowymi).
+      // Kolizja z prefix cache: inny ID modelu = inny prefix = nowy cache scope.
       // Workers AI: nagłówek x-session-affinity (ses_<sessionId>) — workersAiRunOptions(sessionId) w ai-client.ts;
       // stabilizuje routing/cache prefiksu (niższy TTFT przy tej samej sesji). sessionId musi przejść
       // normalizeWorkersAiSessionId — domyślny UUID z klienta / crypto.randomUUID() jest zgodny.
@@ -3374,7 +3367,7 @@ async function streamAssistantResponse(
         console.log(
           JSON.stringify({
             tag: 'chat.stream.turn',
-            model: CHAT_MODEL_ID,
+            model: activeChatModelId,
             session_id: sessionId,
             storefrontId: storefrontContext?.storefrontId ?? null,
             channel: storefrontContext?.channel ?? null,
@@ -3407,7 +3400,7 @@ async function streamAssistantResponse(
           phase: 'model_turn',
           session_id: sessionId,
           tool_loop: i,
-          model: CHAT_MODEL_ID,
+          model: activeChatModelId,
           finish_reason: finishReason,
           tool_calls_pending: pendingToolCalls.size,
           usage_prompt_tokens: usageTotals.prompt_tokens,
@@ -3422,7 +3415,7 @@ async function streamAssistantResponse(
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               usage_uid: `${sessionId}:usage:${userMessageTs}:${i}:${attemptUsed}`,
-              model: CHAT_MODEL_ID,
+              model: activeChatModelId,
               prompt_tokens: usageTotals.prompt_tokens,
               completion_tokens: usageTotals.completion_tokens,
               cached_tokens: usageTotals.cached_tokens,
@@ -3599,10 +3592,13 @@ async function streamAssistantResponse(
                 })
               : JSON.stringify(toolResult.result);
 
-            if (isOnlineStoreLiquid && toolResultString.length > 14_000) {
+            // ZOPTYMALIZOWANO: Zmniejszono limit outputu z narzędzi z 14000 do 3000 znaków.
+            // Zapobiega to zapychaniu się okna kontekstowego (Context Overflow) dla Kimi K2.5
+            const MAX_TOOL_OUTPUT_LENGTH = 3000;
+            if (toolResultString.length > MAX_TOOL_OUTPUT_LENGTH) {
               toolResultString =
-                toolResultString.slice(0, 14_000) +
-                '\n[Wynik narzędzia został skrócony ze względu na limit kontekstu kanału online-store.]';
+                toolResultString.slice(0, MAX_TOOL_OUTPUT_LENGTH) +
+                '\n[...Wynik skrócono z uwagi na limity okna kontekstowego]';
             }
 
             console.log(`[streamAssistant] 🛠️ Wynik narzędzia ${call.name}: ${toolResultString.substring(0, 100)}...`);

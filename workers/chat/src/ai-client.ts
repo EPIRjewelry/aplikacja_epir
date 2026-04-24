@@ -220,15 +220,32 @@ function extractTextFromAiContent(content: unknown): string | null {
 function extractTextFromAiResult(result: unknown): string | null {
   if (!isRecord(result)) return null;
 
+  const outText = result.output_text;
+  if (typeof outText === 'string' && outText.trim().length > 0) {
+    return outText.trim();
+  }
+
   const directResponse = extractTextFromAiContent(result.response);
   if (directResponse) return directResponse;
 
   if (Array.isArray(result.choices) && result.choices.length > 0) {
     const firstChoice = result.choices[0];
-    if (isRecord(firstChoice)) {
+      if (isRecord(firstChoice)) {
       const message = isRecord(firstChoice.message) ? firstChoice.message : null;
       const messageContent = extractTextFromAiContent(message?.content);
       if (messageContent) return messageContent;
+
+      if (message) {
+        const mRef = message as Record<string, unknown>;
+        const reasoning = mRef.reasoning;
+        if (typeof reasoning === 'string' && reasoning.trim().length > 0) {
+          return reasoning.trim();
+        }
+        const mText = mRef.text;
+        if (typeof mText === 'string' && mText.trim().length > 0) {
+          return mText.trim();
+        }
+      }
 
       const delta = isRecord(firstChoice.delta) ? firstChoice.delta : null;
       const deltaContent = extractTextFromAiContent(delta?.content);
@@ -268,18 +285,28 @@ function describeEmptyAiResult(result: unknown): Record<string, unknown> {
   if (Array.isArray(result.choices) && result.choices.length > 0) {
     const first = result.choices[0];
     if (isRecord(first)) {
+      meta.first_choice_keys = Object.keys(first);
       if (typeof first.finish_reason === 'string') meta.finish_reason = first.finish_reason;
       const message = isRecord(first.message) ? first.message : null;
       if (message) {
+        meta.message_keys = Object.keys(message);
         const c = message.content;
         if (typeof c === 'string') {
+          meta.content_type = 'string';
           meta.content_preview = c.slice(0, 200);
           meta.content_len = c.length;
         } else if (c === null) {
+          meta.content_type = 'null';
           meta.content_preview = null;
         } else if (Array.isArray(c)) {
-          meta.content_preview = '[array]';
+          meta.content_type = 'array';
           meta.content_len = c.length;
+          if (c.length > 0 && isRecord(c[0])) {
+            const z = c[0] as Record<string, unknown>;
+            meta.content_0_type = typeof z.type === 'string' ? z.type : 'object';
+          }
+        } else {
+          meta.content_type = typeof c;
         }
         if (typeof message.refusal === 'string') {
           meta.refusal_preview = message.refusal.slice(0, 200);
@@ -294,6 +321,9 @@ function describeEmptyAiResult(result: unknown): Record<string, unknown> {
         meta.content_len = first.text.length;
       }
     }
+  }
+  if (typeof result.output_text === 'string') {
+    meta.output_text_len = result.output_text.length;
   }
   if (isRecord(result.usage)) {
     const u = result.usage as Record<string, unknown>;
@@ -657,17 +687,30 @@ export const __test = {
   resolveAdminModelVariantFromHeaders,
 };
 
+/** Opcje `getGroqResponse` (nie-streaming, `env.AI.run`). */
+export type GetGroqResponseOptions = {
+  max_tokens?: number;
+  sessionId?: string;
+  modelId?: string;
+  /**
+   * Ścieżka pamięci (kolejka / person-memory): pusta odpowiedź → `""`, `console.warn` zamiast throw + `console.error`.
+   */
+  forMemory?: boolean;
+};
+
 export async function getGroqResponse(
   messages: GroqMessage[],
   env: Env,
-  options?: { max_tokens?: number; sessionId?: string },
+  options?: GetGroqResponseOptions,
 ): Promise<string> {
   const ai = requireAi(env);
   const startTime = Date.now();
+  const resolvedModel = options?.modelId ?? CHAT_MODEL_ID;
+  const forMemory = options?.forMemory === true;
 
   try {
     const result = (await ai.run(
-      CHAT_MODEL_ID,
+      resolvedModel,
       {
         messages: messages.map(mapMessageForWorkersAI),
         max_tokens: options?.max_tokens ?? MODEL_PARAMS.max_tokens,
@@ -680,6 +723,20 @@ export async function getGroqResponse(
     if (!content) {
       if (result && typeof result === 'object') {
         const elapsed = Date.now() - startTime;
+        const emptyMeta = {
+          elapsed_ms: elapsed,
+          model: resolvedModel,
+          ...describeEmptyAiResult(result),
+        };
+        if (forMemory) {
+          console.warn(
+            '[getGroqResponse][memory] empty body',
+            elapsed,
+            'ms',
+            JSON.stringify(emptyMeta),
+          );
+          return '';
+        }
         console.warn(
           '[getGroqResponse] unexpected result keys',
           elapsed,
@@ -688,17 +745,31 @@ export async function getGroqResponse(
         );
         console.warn(
           '[getGroqResponse] empty_response_meta',
-          JSON.stringify({ elapsed_ms: elapsed, ...describeEmptyAiResult(result) }),
+          JSON.stringify(emptyMeta),
         );
+      } else if (forMemory) {
+        console.warn('[getGroqResponse][memory] empty non-object result', { model: resolvedModel });
+        return '';
       }
       throw new Error('Workers AI returned an empty or invalid response');
     }
 
-    console.log(
-      `[Workers AI] getGroqResponse total_ms=${Date.now() - startTime} model=${CHAT_MODEL_ID}`,
-    );
+    if (!forMemory) {
+      console.log(
+        `[Workers AI] getGroqResponse total_ms=${Date.now() - startTime} model=${resolvedModel}`,
+      );
+    }
     return String(content);
   } catch (e) {
+    if (forMemory) {
+      console.warn(
+        '[getGroqResponse][memory] failed',
+        Date.now() - startTime,
+        'ms',
+        stringifyForLog(e),
+      );
+      return '';
+    }
     console.error('[getGroqResponse] failed', Date.now() - startTime, 'ms', stringifyForLog(e));
     throw e;
   }

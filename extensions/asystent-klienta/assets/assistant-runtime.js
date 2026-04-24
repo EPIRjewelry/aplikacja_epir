@@ -1285,7 +1285,8 @@ function createAssistantMessage(messagesEl) {
   div.setAttribute('role', 'status');
   const bubble = document.createElement('div');
   bubble.className = 'epir-message__bubble';
-  bubble.textContent = '...';
+  /** Stały status zanim nadejdzie pierwsza delta (czytelniej niż same kropki). */
+  bubble.textContent = 'Łączę z asystentem…';
   div.appendChild(bubble);
   messagesEl.appendChild(div);
   messagesEl.scrollTop = messagesEl.scrollHeight;

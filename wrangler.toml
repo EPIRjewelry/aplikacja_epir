@@ -1,0 +1,102 @@
+# Pełna konfiguracja dla Cloudflare Workers „Connected Git” (katalog repozytorium = /).
+# Lokalne wdrożenia z `workers/chat`: `npx wrangler deploy` (tam main = "src/index.ts")
+# trafia do tego samego workera; utrzymuj zgodność pól (bindings, vars) z plikiem w workers/chat.
+# @see workers/chat/wrangler.toml
+
+name = "epir-art-jewellery-worker"
+main = "workers/chat/src/index.ts"
+compatibility_date = "2025-09-30"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+[build]
+command = ""
+
+[durable_objects]
+bindings = [
+  { name = "SESSION_DO", class_name = "SessionDO" },
+  { name = "RATE_LIMITER_DO", class_name = "RateLimiterDO" },
+  { name = "TOKEN_VAULT_DO", class_name = "TokenVaultDO" }
+]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jewelry-analytics-db"
+database_id = "6a4f7cbb-3c1c-42c7-9d79-4ef74d421f23"
+
+[[d1_databases]]
+binding = "DB_CHATBOT"
+database_name = "ai-assistant-sessions-db"
+database_id = "475a1cb7-f1b5-47ba-94ed-40fd64c32451"
+
+[[queues.producers]]
+binding = "MEMORY_EXTRACT_QUEUE"
+queue = "memory-extract"
+
+[[queues.consumers]]
+queue = "memory-extract"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "memory-extract-dlq"
+
+[[vectorize]]
+binding = "MEMORY_INDEX"
+index_name = "memory_customer"
+
+[[kv_namespaces]]
+binding = "POLICIES_CACHE"
+id = "79b8871d6e664440b648308ee9493d6d"
+preview_id = "6673996135e04c30a90f9f807d42391e"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SessionDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["RateLimiterDO"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["TokenVaultDO"]
+
+[ai]
+binding = "AI"
+
+[[services]]
+binding = "RAG_WORKER"
+service = "epir-rag-worker"
+
+[[services]]
+binding = "ANALYTICS_WORKER"
+service = "epir-analityc-worker"
+
+[[services]]
+binding = "BIGQUERY_BATCH"
+service = "epir-bigquery-batch"
+
+[[routes]]
+pattern = "asystent.epirbizuteria.pl/*"
+zone_name = "epirbizuteria.pl"
+
+[observability]
+enabled = true
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+
+[vars]
+ALLOWED_ORIGIN = "https://epir-art-silver-jewellery.myshopify.com"
+MEMORY_EXTRACT_ENABLED = "true"
+MEMORY_V2_ENABLED = "true"
+MEMORY_RAW_RETRIEVAL_ENABLED = "true"
+SLIM_TOOL_SCHEMAS = "true"
+ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://epir-art-silver-jewellery.myshopify.com,https://asystent.epirbizuteria.pl,https://kazka.epirbizuteria.pl,https://zareczyny.epirbizuteria.pl,null"
+SHOP_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
+MCP_ENDPOINT = "https://epir-art-silver-jewellery.myshopify.com/api/mcp"
+WORKER_ORIGIN = "https://asystent.epirbizuteria.pl"

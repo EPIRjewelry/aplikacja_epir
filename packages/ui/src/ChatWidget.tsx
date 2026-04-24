@@ -525,10 +525,11 @@ function ChatWidgetFallback({
           const decoder = new TextDecoder();
           let buffer = '';
           let accumulated = '';
+          let hasAssistantContent = false;
           const msgId = `assistant-${Date.now()}`;
           commitMessages([
             ...messagesRef.current,
-            {id: msgId, role: 'assistant', text: '...'},
+            {id: msgId, role: 'assistant', text: 'Łączę z asystentem…'},
           ]);
           while (true) {
             const {done, value} = await reader.read();
@@ -554,13 +555,25 @@ function ChatWidgetFallback({
                     sessionStorage.setItem(SESSION_ID_KEY, parsed.session_id);
                   }
                   if (parsed.error) throw new Error(parsed.error);
-                  if (parsed.delta) accumulated += parsed.delta;
-                  if (parsed.content) accumulated = parsed.content;
+                  if (parsed.delta) {
+                    accumulated += parsed.delta;
+                    if (accumulated.length > 0) hasAssistantContent = true;
+                  }
+                  if (parsed.content !== undefined) {
+                    accumulated = parsed.content;
+                    if (accumulated.length > 0) hasAssistantContent = true;
+                  }
                   if (parsed.done) break;
+                  const displayText = hasAssistantContent
+                    ? accumulated || '…'
+                    : 'Łączę z asystentem…';
                   commitMessages(
                     messagesRef.current.map((message) =>
                       message.id === msgId
-                        ? {...message, text: accumulated || '...'}
+                        ? {
+                            ...message,
+                            text: displayText,
+                          }
                         : message,
                     ),
                   );

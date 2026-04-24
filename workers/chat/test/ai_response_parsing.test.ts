@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { getGroqResponse, type GroqMessage } from '../src/ai-client';
+import { EXTRACTOR_LLM_MAX_TOKENS } from '../src/config/model-params';
 
 const messages: GroqMessage[] = [{ role: 'user', content: 'Cześć' }];
 
@@ -77,6 +78,78 @@ describe('getGroqResponse polymorphic parsing', () => {
 
     await expect(getGroqResponse(messages, env)).rejects.toThrow(
       'Workers AI returned an empty or invalid response',
+    );
+  });
+
+  it('forMemory: empty body returns without throwing; warns, no error', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const env = {
+      AI: {
+        run: vi
+          .fn()
+          .mockResolvedValue({ choices: [{ message: { content: null }, finish_reason: 'length' }] }),
+      },
+    };
+
+    await expect(getGroqResponse(messages, env, { forMemory: true, modelId: '@cf/x/y' })).resolves.toBe(
+      '',
+    );
+    expect(err).not.toHaveBeenCalled();
+  });
+
+  it('forMemory: ai.run throws returns empty string', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const env = {
+      AI: { run: vi.fn().mockRejectedValue(new Error('bind')) },
+    };
+
+    await expect(
+      getGroqResponse(messages, env, { forMemory: true, modelId: '@cf/x/y' }),
+    ).resolves.toBe('');
+    expect(err).not.toHaveBeenCalled();
+  });
+
+  it('returns top-level output_text when present', async () => {
+    const env = {
+      AI: {
+        run: vi.fn().mockResolvedValue({ output_text: '  z output_text.  ' }),
+      },
+    };
+
+    await expect(getGroqResponse(messages, env)).resolves.toBe('z output_text.');
+  });
+
+  it('uses overridden modelId when provided', async () => {
+    const run = vi.fn().mockResolvedValue({ response: 'OK' });
+    const env = {
+      AI: {
+        run,
+      },
+    };
+
+    await expect(
+      getGroqResponse(messages, env, { modelId: '@cf/zai-org/glm-4.7-flash' }),
+    ).resolves.toBe('OK');
+
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run.mock.calls[0]?.[0]).toBe('@cf/zai-org/glm-4.7-flash');
+  });
+
+  it('passes max_tokens when provided (e.g. extractor budget)', async () => {
+    const run = vi.fn().mockResolvedValue({ response: 'x' });
+    const env = { AI: { run } };
+
+    await getGroqResponse(messages, env, {
+      modelId: '@cf/zai-org/glm-4.7-flash',
+      max_tokens: EXTRACTOR_LLM_MAX_TOKENS,
+    });
+
+    expect((run.mock.calls[0]?.[1] as { max_tokens?: number })?.max_tokens).toBe(
+      EXTRACTOR_LLM_MAX_TOKENS,
     );
   });
 });

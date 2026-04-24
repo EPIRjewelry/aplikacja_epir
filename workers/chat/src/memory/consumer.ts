@@ -18,6 +18,7 @@ import {
   upsertPersonMemoryVersioned,
 } from '../person-memory';
 import { classifyFragment, turnUsedPolicyTool } from './classifier';
+import { EXTRACTOR_LLM_TIMEOUT_MS } from '../config/model-params';
 import { extractFactsDeterministic, extractFactsLLM, toMemoryFact } from './extractor';
 import type { ExtractedFact } from './extractor';
 import {
@@ -156,7 +157,10 @@ export async function processMemoryExtractMessage(
   const deterministicFacts = extractFactsDeterministic(userTexts);
   let softFacts: ExtractedFact[] = [];
   try {
-    softFacts = await extractFactsLLM(env, userTexts, { timeoutMs: 2500 });
+    softFacts = await extractFactsLLM(env, userTexts, {
+      timeoutMs: EXTRACTOR_LLM_TIMEOUT_MS,
+      sessionId,
+    });
   } catch (err) {
     emitMemoryMetric({
       tag: 'chat.memory',

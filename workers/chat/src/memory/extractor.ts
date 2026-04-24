@@ -13,6 +13,13 @@
 
 import type { Env } from '../config/bindings';
 import { getGroqResponse, type GroqMessage } from '../ai-client';
+import {
+  EXTRACTOR_LLM_MAX_TOKENS,
+  EXTRACTOR_LLM_MAX_TOKENS_RETRY,
+  EXTRACTOR_LLM_MODEL_ID,
+  EXTRACTOR_LLM_TIMEOUT_MS,
+  EXTRACTOR_LLM_TIMEOUT_RETRY_MS,
+} from '../config/model-params';
 import type { FactSlot, MemoryFact } from './types';
 import { FACT_SLOT_TTL_MS } from './types';
 
@@ -192,19 +199,35 @@ export function extractFactsDeterministic(userTexts: string[]): ExtractedFact[] 
   return out;
 }
 
+function isLikelyTruncatedJsonArray(raw: string): boolean {
+  const jsonStart = raw.indexOf('[');
+  if (jsonStart < 0) return false;
+  const jsonEnd = raw.lastIndexOf(']');
+  if (jsonEnd > jsonStart) {
+    try {
+      JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
+      return false;
+    } catch {
+      return true;
+    }
+  }
+  return true;
+}
+
 /**
  * LLM-ekstraktor dla miękkich slotów (style/intent/event) — best-effort.
- * Timeout 3s; przy pustej odpowiedzi / timeout zwraca [] (nie rzuca).
+ * Timeouts: {@link EXTRACTOR_LLM_TIMEOUT_MS} (pierwsza próba), {@link EXTRACTOR_LLM_TIMEOUT_RETRY_MS} (retry);
+ * pusta odpowiedź / błąd / timeout zwraca [] (nie rzuca).
  */
 export async function extractFactsLLM(
   env: Env,
   userTexts: string[],
-  options?: { timeoutMs?: number },
+  options?: { timeoutMs?: number; sessionId?: string },
 ): Promise<ExtractedFact[]> {
   if (!env.AI?.run) return [];
   if (!userTexts.some((t) => t && t.trim().length > 20)) return [];
 
-  const timeoutMs = Math.max(500, options?.timeoutMs ?? 3000);
+  const timeoutFirst = Math.max(500, options?.timeoutMs ?? EXTRACTOR_LLM_TIMEOUT_MS);
   const system: GroqMessage = {
     role: 'system',
     content: `Jesteś ekstraktorem strukturalnych faktów z wypowiedzi klienta sklepu jubilerskiego.
@@ -226,17 +249,48 @@ NIE wymyślaj. NIE cytuj polityk sklepu. NIE zapisuj PII.`,
       .join('\n'),
   };
 
-  let raw: string | null = null;
-  try {
-    raw = await Promise.race([
-      getGroqResponse([system, user], env, { max_tokens: 300 }),
+  const runOnce = (maxTokens: number, perAttemptTimeoutMs: number) =>
+    Promise.race([
+      getGroqResponse([system, user], env, {
+        max_tokens: maxTokens,
+        sessionId: options?.sessionId,
+        modelId: EXTRACTOR_LLM_MODEL_ID,
+        forMemory: true,
+      }),
       new Promise<string>((_, reject) =>
-        setTimeout(() => reject(new Error('extractor_timeout')), timeoutMs),
+        setTimeout(() => reject(new Error('extractor_timeout')), perAttemptTimeoutMs),
       ),
     ]);
+
+  let raw: string | null = null;
+  try {
+    raw = await runOnce(EXTRACTOR_LLM_MAX_TOKENS, timeoutFirst);
   } catch (e) {
-    console.warn('[memory.extractor] LLM extractor skipped:', (e as Error).message);
-    return [];
+    const msg = (e as Error).message;
+    if (msg === 'extractor_timeout') {
+      console.warn('[memory.extractor] LLM extractor skipped:', msg);
+      return [];
+    }
+    try {
+      raw = await runOnce(EXTRACTOR_LLM_MAX_TOKENS_RETRY, EXTRACTOR_LLM_TIMEOUT_RETRY_MS);
+    } catch (e2) {
+      console.warn('[memory.extractor] LLM extractor skipped:', (e2 as Error).message);
+      return [];
+    }
+  }
+
+  if (raw && isLikelyTruncatedJsonArray(raw)) {
+    try {
+      const second = await runOnce(
+        EXTRACTOR_LLM_MAX_TOKENS_RETRY,
+        EXTRACTOR_LLM_TIMEOUT_RETRY_MS,
+      );
+      if (second && !isLikelyTruncatedJsonArray(second)) {
+        raw = second;
+      }
+    } catch {
+      /* zostaw pierwsze raw (best-effort) */
+    }
   }
 
   if (!raw) return [];

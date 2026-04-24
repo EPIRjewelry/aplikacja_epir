@@ -8,11 +8,9 @@ describe('buildCurrentSessionVisibilityContext', () => {
     expect(buildCurrentSessionVisibilityContext(1)).toBeNull();
   });
 
-  it('returns an explicit continuity marker when earlier session entries exist', () => {
-    const marker = buildCurrentSessionVisibilityContext(4);
-
-    expect(marker).toContain('historia bieżącej sesji');
-    expect(marker).toContain('wcześniejszych wpisów z tej rozmowy');
-    expect(marker).toContain('Nie twierdź, że nie widzisz bieżącej rozmowy');
+  it('returns null also for later turns to keep prefix caching stable', () => {
+    expect(buildCurrentSessionVisibilityContext(2)).toBeNull();
+    expect(buildCurrentSessionVisibilityContext(4)).toBeNull();
+    expect(buildCurrentSessionVisibilityContext(10)).toBeNull();
   });
 });

@@ -110,6 +110,31 @@ describe('resolveAdminModelVariantFromHeaders', () => {
     expect(result).not.toBeNull();
     expect(result!.id).toBe(MODEL_VARIANTS.glm_flash.id);
   });
+
+  it('returns qwen3_30b_a3b when non-multimodal and no image', () => {
+    const result = resolveAdminModelVariantFromHeaders(
+      fakeHeaders({
+        'X-Epir-Model-Variant': 'qwen3_30b_a3b',
+        Authorization: `Bearer ${adminKey}`,
+      }),
+      { ADMIN_KEY: adminKey },
+      { hasImage: false },
+    );
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe(MODEL_VARIANTS.qwen3_30b_a3b.id);
+  });
+
+  it('returns null for qwen3_30b_a3b when request has image (text-only model)', () => {
+    const result = resolveAdminModelVariantFromHeaders(
+      fakeHeaders({
+        'X-Epir-Model-Variant': 'qwen3_30b_a3b',
+        Authorization: `Bearer ${adminKey}`,
+      }),
+      { ADMIN_KEY: adminKey },
+      { hasImage: true },
+    );
+    expect(result).toBeNull();
+  });
 });
 
 describe('MODEL_VARIANTS integrity', () => {

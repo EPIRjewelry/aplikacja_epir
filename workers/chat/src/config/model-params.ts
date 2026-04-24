@@ -46,6 +46,16 @@ export const MODEL_VARIANTS = {
     toolLeak: false,
     label: 'GLM-4.7-flash (candidate — lightweight router / classifier)',
   },
+  /**
+   * Szybki MoE (aktywacja ~3B na forward) — mocniejszy niż GLM-Flash, nadal odpowiedni do bench/admin A-B.
+   * @see https://developers.cloudflare.com/workers-ai/models/qwen3-30b-a3b-fp8/
+   */
+  qwen3_30b_a3b: {
+    id: '@cf/qwen/qwen3-30b-a3b-fp8',
+    multimodal: false,
+    toolLeak: false,
+    label: 'Qwen3-30B-A3B MoE (fast + stronger — candidate)',
+  },
 } as const satisfies Record<string, ModelCapabilities>;
 
 export type ModelVariantKey = keyof typeof MODEL_VARIANTS;
@@ -55,6 +65,28 @@ export type ModelVariantKey = keyof typeof MODEL_VARIANTS;
  * Warianty ALT dostępne tylko za adminskim nagłówkiem; patrz `resolveModelVariant`.
  */
 export const CHAT_MODEL_ID = MODEL_VARIANTS.default.id;
+
+/**
+ * Dedykowany model dla ekstrakcji soft-facts (style/intent/event).
+ * Qwen3 MoE — stabilniejszy niż GLM-4.7 w Workers AI (puste `message.content` przy `finish_reason: length`).
+ */
+export const EXTRACTOR_LLM_MODEL_ID = MODEL_VARIANTS.qwen3_30b_a3b.id;
+
+/** `max_tokens` w `extractFactsLLM` — 300 bywało za ciasne (`finish_reason: length`). */
+export const EXTRACTOR_LLM_MAX_TOKENS = 700;
+/** Jednorazowy retry przy błędzie API lub JSON uciętym w połowie. */
+export const EXTRACTOR_LLM_MAX_TOKENS_RETRY = 1000;
+
+/**
+ * Limit czasu pierwszej próby `Promise.race` w `extractFactsLLM` (kolejka pamięci).
+ */
+export const EXTRACTOR_LLM_TIMEOUT_MS = 10_000;
+
+/**
+ * Dłuższy limit na drugą próbę / retry (po pierwszym błędzie lub uciętym JSON), żeby uniknąć fałszywego
+ * `extractor_timeout` gdy drugi `ai.run` potrzebuje > pierwszego limitu.
+ */
+export const EXTRACTOR_LLM_TIMEOUT_RETRY_MS = 16_000;
 
 /**
  * Zwraca capabilities dla danego klucza wariantu (z fallbackiem na `default`).
