@@ -191,6 +191,30 @@ function subMetaForHandle(
   return subcollections.find((e) => e.handle === collectionHandle) ?? null;
 }
 
+/**
+ * Działa też gdy w Cloudflare Pages brakuje COLLECTION_GOLD/SILVER — rozpoznaje podkolekcję
+ * po typowych sufiksach w handle, niezależnie od tego, co jest w `wrangler.toml`.
+ */
+function inferSubcollectionFromHandle(
+  collectionHandle: string,
+  hubHandle: string,
+  subcollections: SubcollectionEntry[],
+): SubcollectionEntry | null {
+  const fromEnv = subMetaForHandle(subcollections, collectionHandle);
+  if (fromEnv) {
+    return fromEnv;
+  }
+  const h = collectionHandle.toLowerCase();
+  const hub = hubHandle.toLowerCase();
+  if (h === `${hub}-zlote` || h.endsWith('-zlote')) {
+    return {handle: collectionHandle, label: 'Złote', metal: 'gold'};
+  }
+  if (h === `${hub}-srebrne` || h.endsWith('-srebrne')) {
+    return {handle: collectionHandle, label: 'Srebrne', metal: 'silver'};
+  }
+  return null;
+}
+
 function searchableText(product: ProductForMetalFilter): string {
   const parts = [
     product.title,
@@ -208,16 +232,82 @@ function searchableText(product: ProductForMetalFilter): string {
     .toLowerCase();
 }
 
+function hasAnyKeyword(text: string, keywords: string[]): boolean {
+  return keywords.some((keyword) => text.includes(keyword));
+}
+
+/**
+ * W katalogu niektóre produkty mają jednocześnie `metal_gold` i `metal_silver` w tagach
+ * mimo tytułu w jednym kruszcu. Wtedy:
+ * 1) jeśli w tytule jest mocny sygnał złota albo srebra — wybierz go,
+ * 2) w przeciwnym razie spróbuj opisu,
+ * 3) jeśli nadal sprzecznie — pomiń produkt w obu widokach (lepiej pusto niż błąd kategorii).
+ */
+function productMetalForFilter(product: ProductForMetalFilter): MetalKind | null {
+  const tags = (product.tags ?? []).map((t) => t.toLowerCase());
+  const hasTagGold = tags.includes('metal_gold');
+  const hasTagSilver = tags.includes('metal_silver');
+  if (hasTagGold && !hasTagSilver) return 'gold';
+  if (hasTagSilver && !hasTagGold) return 'silver';
+
+  const text = searchableText(product);
+  const goldKeywords = [
+    'zloto',
+    'zloty',
+    'zlota',
+    'zlote',
+    'zlot',
+    'gold',
+  ];
+  const silverKeywords = [
+    'srebro',
+    'srebrny',
+    'srebrna',
+    'srebrne',
+    'srebrn',
+    'silver',
+  ];
+
+  if (hasTagGold && hasTagSilver) {
+    const g = hasAnyKeyword(text, goldKeywords);
+    const s = hasAnyKeyword(text, silverKeywords);
+    if (g && !s) return 'gold';
+    if (s && !g) return 'silver';
+    if (g && s) {
+      // rozstrzygnij tylko po tytule (najpewniejsze), nie po całym opisie
+      const title = (product.title ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+      const titleGold = hasAnyKeyword(
+        title,
+        goldKeywords.filter((k) => k.length >= 4),
+      );
+      const titleSilver = hasAnyKeyword(
+        title,
+        silverKeywords.filter((k) => k.length >= 5),
+      );
+      if (titleGold && !titleSilver) return 'gold';
+      if (titleSilver && !titleGold) return 'silver';
+      return null;
+    }
+  }
+
+  // brak twardych tagów — heurystyka słownikowa
+  if (hasAnyKeyword(text, goldKeywords) && !hasAnyKeyword(text, silverKeywords)) {
+    return 'gold';
+  }
+  if (hasAnyKeyword(text, silverKeywords) && !hasAnyKeyword(text, goldKeywords)) {
+    return 'silver';
+  }
+  return null;
+}
+
 function productMatchesMetal(
   product: ProductForMetalFilter,
   metal: MetalKind,
 ): boolean {
-  const text = searchableText(product);
-  const keywords =
-    metal === 'gold'
-      ? ['zloto', 'zloty', 'zlota', 'zlote', 'gold']
-      : ['srebro', 'srebrny', 'srebrna', 'srebrne', 'silver'];
-  return keywords.some((keyword) => text.includes(keyword));
+  return productMetalForFilter(product) === metal;
 }
 
 function filterProductsByMetal<T extends ProductForMetalFilter>(
@@ -242,12 +332,18 @@ export async function loader({
   const hubHandle = resolveHubHandle(context.env);
   const subcollections = resolveSubcollectionEntries(context.env, hubHandle);
   const isHub = handle === hubHandle;
-  const subMeta = !isHub ? subMetaForHandle(subcollections, handle) : null;
+  const subMeta = !isHub
+    ? inferSubcollectionFromHandle(handle, hubHandle, subcollections)
+    : null;
   const missingSubcollectionHandle = isHub
     ? searchParams.get('missing')
     : null;
   const missingSubcollection = missingSubcollectionHandle
-    ? subMetaForHandle(subcollections, missingSubcollectionHandle)
+    ? inferSubcollectionFromHandle(
+        missingSubcollectionHandle,
+        hubHandle,
+        subcollections,
+      )
     : null;
   const cursor = isHub ? null : searchParams.get('cursor');
   const productFirst = isHub ? 0 : subMeta ? 48 : 12;
