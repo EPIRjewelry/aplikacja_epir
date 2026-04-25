@@ -19,6 +19,10 @@ declare global {
     COLLECTION_FILTER?: string;
     /** Kolekcja „hub” (np. łącząca złote/srebrne) — ukrywana w nawigacji; linki widoczne to podkolekcje. */
     COLLECTION_HUB_HANDLE?: string;
+    /** Jawny handle kolekcji złotych (gdy nie jest pochodną `${COLLECTION_HUB_HANDLE}-zlote`). */
+    COLLECTION_GOLD_HANDLE?: string;
+    /** Jawny handle kolekcji srebrnych (gdy nie jest pochodną `${COLLECTION_HUB_HANDLE}-srebrne`). */
+    COLLECTION_SILVER_HANDLE?: string;
     PUBLIC_STOREFRONT_API_TOKEN: string;
     PRIVATE_STOREFRONT_API_TOKEN: string;
     PUBLIC_STORE_DOMAIN: string;

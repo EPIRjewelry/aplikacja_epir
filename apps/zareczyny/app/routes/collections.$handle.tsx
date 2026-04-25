@@ -33,6 +33,23 @@ type CollectionEnhancedMetaobject = {
   fields?: CollectionEnhancedField[] | null;
 };
 
+type MetalKind = 'gold' | 'silver';
+
+type SubcollectionEntry = {
+  handle: string;
+  label: string;
+  metal: MetalKind;
+};
+
+type ProductForMetalFilter = {
+  title?: string | null;
+  handle?: string | null;
+  tags?: string[] | null;
+  productType?: string | null;
+  vendor?: string | null;
+  description?: string | null;
+};
+
 function trimOrNull(v: unknown): string | null {
   if (typeof v !== 'string') return null;
   const t = v.trim();
@@ -130,27 +147,84 @@ function resolveHubHandle(env: {COLLECTION_HUB_HANDLE?: string}): string {
   return env.COLLECTION_HUB_HANDLE?.trim() || 'pierscionki-zareczynowe';
 }
 
-const METAL_SUBCOLLECTIONS = [
-  {suffix: 'zlote', label: 'Złote'},
-  {suffix: 'srebrne', label: 'Srebrne'},
+const DEFAULT_METAL_SUBCOLLECTIONS = [
+  {suffix: 'zlote', label: 'Złote', metal: 'gold'},
+  {suffix: 'srebrne', label: 'Srebrne', metal: 'silver'},
 ] as const;
 
-function subcollectionEntries(hubHandle: string) {
-  return METAL_SUBCOLLECTIONS.map(({suffix, label}) => ({
+type HubRoutingEnv = {
+  COLLECTION_GOLD_HANDLE?: string;
+  COLLECTION_SILVER_HANDLE?: string;
+};
+
+function resolveSubcollectionEntries(
+  env: HubRoutingEnv,
+  hubHandle: string,
+): SubcollectionEntry[] {
+  const goldHandle = env.COLLECTION_GOLD_HANDLE?.trim();
+  const silverHandle = env.COLLECTION_SILVER_HANDLE?.trim();
+  if (goldHandle || silverHandle) {
+    return [
+      {
+        handle: goldHandle || `${hubHandle}-zlote`,
+        label: 'Złote',
+        metal: 'gold',
+      },
+      {
+        handle: silverHandle || `${hubHandle}-srebrne`,
+        label: 'Srebrne',
+        metal: 'silver',
+      },
+    ];
+  }
+  return DEFAULT_METAL_SUBCOLLECTIONS.map(({suffix, label, metal}) => ({
     handle: `${hubHandle}-${suffix}`,
     label,
+    metal,
   }));
 }
 
 function subMetaForHandle(
-  hubHandle: string,
+  subcollections: SubcollectionEntry[],
   collectionHandle: string,
-): {label: string} | null {
-  return (
-    subcollectionEntries(hubHandle).find(
-      (e) => e.handle === collectionHandle,
-    ) ?? null
-  );
+): SubcollectionEntry | null {
+  return subcollections.find((e) => e.handle === collectionHandle) ?? null;
+}
+
+function searchableText(product: ProductForMetalFilter): string {
+  const parts = [
+    product.title,
+    product.handle,
+    product.productType,
+    product.vendor,
+    product.description,
+    ...(product.tags ?? []),
+  ];
+  return parts
+    .filter((part): part is string => typeof part === 'string')
+    .join(' ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function productMatchesMetal(
+  product: ProductForMetalFilter,
+  metal: MetalKind,
+): boolean {
+  const text = searchableText(product);
+  const keywords =
+    metal === 'gold'
+      ? ['zloto', 'zloty', 'zlota', 'zlote', 'gold']
+      : ['srebro', 'srebrny', 'srebrna', 'srebrne', 'silver'];
+  return keywords.some((keyword) => text.includes(keyword));
+}
+
+function filterProductsByMetal<T extends ProductForMetalFilter>(
+  products: T[],
+  metal: MetalKind,
+): T[] {
+  return products.filter((product) => productMatchesMetal(product, metal));
 }
 
 export async function loader({
@@ -166,10 +240,17 @@ export async function loader({
 
   const searchParams = new URL(request.url).searchParams;
   const hubHandle = resolveHubHandle(context.env);
+  const subcollections = resolveSubcollectionEntries(context.env, hubHandle);
   const isHub = handle === hubHandle;
-  const subMeta = !isHub ? subMetaForHandle(hubHandle, handle) : null;
+  const subMeta = !isHub ? subMetaForHandle(subcollections, handle) : null;
+  const missingSubcollectionHandle = isHub
+    ? searchParams.get('missing')
+    : null;
+  const missingSubcollection = missingSubcollectionHandle
+    ? subMetaForHandle(subcollections, missingSubcollectionHandle)
+    : null;
   const cursor = isHub ? null : searchParams.get('cursor');
-  const productFirst = isHub ? 0 : 12;
+  const productFirst = isHub ? 0 : subMeta ? 48 : 12;
   const {collection} = await context.storefront.query(COLLECTION_QUERY, {
     variables: {
       handle,
@@ -179,8 +260,12 @@ export async function loader({
   });
 
   if (!collection) {
+    if (subMeta) {
+      const missing = encodeURIComponent(handle);
+      return redirect(`/collections/${hubHandle}?missing=${missing}`, 302);
+    }
     const allowedHandles = parseCollectionFilter(context.env.COLLECTION_FILTER);
-      const {collections} = await context.storefront.query<CollectionsQueryData>(`#graphql
+    const {collections} = await context.storefront.query<CollectionsQueryData>(`#graphql
       query FirstCollections {
         collections(first: 20) {
           nodes { handle }
@@ -205,12 +290,36 @@ export async function loader({
       | null
       | undefined,
   );
+  let displayCollection = collection;
+
+  if (subMeta && collection.products?.nodes) {
+    const filteredNodes = filterProductsByMetal(
+      collection.products.nodes,
+      subMeta.metal,
+    );
+
+    const products = {
+      ...collection.products,
+      nodes: filteredNodes,
+      pageInfo: {
+        ...collection.products.pageInfo,
+        hasNextPage:
+          filteredNodes.length > 0 && collection.products.pageInfo.hasNextPage,
+      },
+    };
+
+    displayCollection = {
+      ...collection,
+      products,
+    };
+  }
 
   return json({
-    collection,
+    collection: displayCollection,
     enhancedData,
     hubMode: isHub,
-    subcollectionLinks: isHub ? subcollectionEntries(hubHandle) : null,
+    subcollectionLinks: isHub ? subcollections : null,
+    missingSubcollection: isHub ? missingSubcollection : null,
     breadcrumb: subMeta
       ? {
           parentHandle: hubHandle,
@@ -222,8 +331,14 @@ export async function loader({
 }
 
 export default function Collection() {
-  const {collection, enhancedData, hubMode, subcollectionLinks, breadcrumb} =
-    useLoaderData<typeof loader>();
+  const {
+    collection,
+    enhancedData,
+    hubMode,
+    subcollectionLinks,
+    breadcrumb,
+    missingSubcollection,
+  } = useLoaderData<typeof loader>();
 
   return (
     <section className="w-full gap-8">
@@ -254,10 +369,16 @@ export default function Collection() {
 
       {hubMode && subcollectionLinks?.length ? (
         <div
-          className="fadeIn w-full max-w-3xl mx-auto px-1"
+          className="fadeIn relative z-10 w-full max-w-3xl mx-auto px-1"
           style={{animationDelay: '100ms'}}
         >
           <h2 className="sr-only">Wybierz kruszec</h2>
+          {missingSubcollection ? (
+            <p className="mb-4 rounded-md border border-amber-500/30 bg-amber-100/50 px-4 py-3 text-sm text-amber-900">
+              Kolekcja „{missingSubcollection.label}” nie jest obecnie
+              dostępna. Sprawdź, czy jest opublikowana w kanale Headless.
+            </p>
+          ) : null}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
             {subcollectionLinks.map((sub) => (
               <Link
@@ -351,8 +472,12 @@ const COLLECTION_QUERY = `#graphql
         nodes {
           id
           title
+          description
           publishedAt
           handle
+          tags
+          productType
+          vendor
           variants(first: 1) {
             nodes {
               id
