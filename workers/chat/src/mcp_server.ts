@@ -27,6 +27,7 @@ import type { Env } from './index';
 import { TOOL_SCHEMAS } from './mcp_tools';
 import { normalizeCartId, isValidCartGid } from './utils/cart';
 import { getSizeTable } from './size-table';
+import { compactCatalogResult } from './mcp/catalog-result-compact';
 import { getAccessTokenFromServiceAccount, clearAccessTokenCache } from './utils/google-auth';
 type JsonRpcId = string | number | null;
 
@@ -554,8 +555,9 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
     if ((json as any).error) {
       return { error: (json as any).error };
     }
-    const resultPayload = (json as any).result ?? json;
+    let resultPayload = (json as any).result ?? json;
     if (toolName === 'search_catalog') {
+      resultPayload = compactCatalogResult(resultPayload);
       const { productCount, parseError } = summarizeSearchCatalogResult(resultPayload);
       console.log('[mcp] search_catalog outcome', {
         productCount,

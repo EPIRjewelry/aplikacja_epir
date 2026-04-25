@@ -66,16 +66,26 @@ export type ModelVariantKey = keyof typeof MODEL_VARIANTS;
  */
 export const CHAT_MODEL_ID = MODEL_VARIANTS.default.id;
 
+/** `getGroqResponse` po nieudanej pętli narzędzi — krótki tekst, mniej ryzyka wycieków. */
+export const CHAT_RECOVERY_MAX_TOKENS = 384;
+
+/**
+ * Większy limit gdy model może zwrócić `tool_calls` (JSON argumentów).
+ * Niższy po wiadomościach `tool` — typowa odpowiedź tekstowa dla klienta.
+ */
+export const CHAT_MAX_TOKENS_TOOL_ROUND = 1200;
+export const CHAT_MAX_TOKENS_AFTER_TOOL = 450;
+
 /**
  * Dedykowany model dla ekstrakcji soft-facts (style/intent/event).
- * Qwen3 MoE — stabilniejszy niż GLM-4.7 w Workers AI (puste `message.content` przy `finish_reason: length`).
+ * GLM-4.7-flash — krótszy czas niż Qwen MoE; krótki JSON nie wymaga dużego budżetu tokenów.
  */
-export const EXTRACTOR_LLM_MODEL_ID = MODEL_VARIANTS.qwen3_30b_a3b.id;
+export const EXTRACTOR_LLM_MODEL_ID = MODEL_VARIANTS.glm_flash.id;
 
-/** `max_tokens` w `extractFactsLLM` — 300 bywało za ciasne (`finish_reason: length`). */
-export const EXTRACTOR_LLM_MAX_TOKENS = 700;
+/** `max_tokens` w `extractFactsLLM` — wystarczające na tablicę JSON; mniejsze ryzyko długiego „reasoning”. */
+export const EXTRACTOR_LLM_MAX_TOKENS = 320;
 /** Jednorazowy retry przy błędzie API lub JSON uciętym w połowie. */
-export const EXTRACTOR_LLM_MAX_TOKENS_RETRY = 1000;
+export const EXTRACTOR_LLM_MAX_TOKENS_RETRY = 512;
 
 /**
  * Limit czasu pierwszej próby `Promise.race` w `extractFactsLLM` (kolejka pamięci).

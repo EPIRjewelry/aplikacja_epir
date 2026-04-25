@@ -1,10 +1,79 @@
 /**
+ * Wykrywa treść, której nie powinniśmy pokazywać klientowi (wycieki kanału narzędzi / JSON).
+ */
+export function containsLikelyToolMarkupLeak(text: string): boolean {
+  if (!text || typeof text !== 'string') return false;
+  if (/\bTool\s+calls\b/i.test(text)) return true;
+  if (/<\|/i.test(text)) return true;
+  if (/\bfunctions\.[a-z_][a-z0-9_]*/i.test(text)) return true;
+  if (/redacted_tool/i.test(text)) return true;
+  if (/\btool_calls\s*:/i.test(text)) return true;
+  if (/\[\s*\{\s*"id"\s*:\s*"/.test(text) && /"type"\s*:\s*"function"/.test(text)) return true;
+  return false;
+}
+
+/** Koniec zbalansowanej tablicy `[` … `]` z pominięciem `[`/`]` wewnątrz stringów JSON. */
+function endOfBracketArray(s: string, openBracketIdx: number): number {
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let j = openBracketIdx; j < s.length; j++) {
+    const c = s[j];
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (c === '\\') {
+        escape = true;
+        continue;
+      }
+      if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      continue;
+    }
+    if (c === '[') depth++;
+    else if (c === ']') {
+      depth--;
+      if (depth === 0) return j;
+    }
+  }
+  return -1;
+}
+
+function stripBracketToolCallsSection(text: string): string {
+  let out = text;
+  for (let guard = 0; guard < 8; guard++) {
+    const m = /\[\s*Tool\s+calls\s*\]/i.exec(out);
+    if (!m) break;
+    const start = m.index;
+    let i = start + m[0].length;
+    while (i < out.length && /\s/.test(out[i])) i++;
+    if (out[i] !== '[') {
+      out = out.slice(0, start) + out.slice(i);
+      continue;
+    }
+    const end = endOfBracketArray(out, i);
+    if (end < 0) {
+      out = out.slice(0, start).trimEnd();
+      break;
+    }
+    out = out.slice(0, start) + out.slice(end + 1);
+  }
+  return out;
+}
+
+/**
  * Kimi czasem powiela przykłady z promptu i wypisuje literalny tekst `tool_calls: [...]`
  * zamiast użyć natywnych tool_calls z Workers AI. To usuwa taki śmieć z treści dla klienta.
  */
 export function stripLeakedToolCallsLiterals(text: string): string {
   if (!text || typeof text !== 'string') return '';
   let out = text;
+  out = stripBracketToolCallsSection(out);
   // Kimi / Workers AI: wycieki sekcji narzędzi jako zwykły tekst (np. <|tool_call_begin|> …)
   out = out.replace(/<\|[^>]+\|>/gi, '');
   // Literały typu "functions.update_cart:0" z kanału narzędziowego

@@ -10,7 +10,7 @@ vi.mock('../src/ai-client', () => ({
 import { extractFactsLLM } from '../src/memory/extractor';
 
 describe('extractFactsLLM', () => {
-  it('calls getGroqResponse with extractor max_tokens and GLM model id', async () => {
+  it('calls getGroqResponse with extractor max_tokens and extractor model id', async () => {
     getGroqResponse.mockResolvedValueOnce(
       '[{"slot":"intent","value":"browsing","confidence":0.8}]',
     );

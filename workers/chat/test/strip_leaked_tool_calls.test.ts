@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { stripLeakedToolCallsLiterals } from '../src/utils/stripLeakedToolCallsLiterals';
+import {
+  stripLeakedToolCallsLiterals,
+  containsLikelyToolMarkupLeak,
+} from '../src/utils/stripLeakedToolCallsLiterals';
 
 describe('stripLeakedToolCallsLiterals', () => {
   it('removes literal tool_calls JSON blob from model echo', () => {
@@ -11,6 +14,21 @@ describe('stripLeakedToolCallsLiterals', () => {
   it('leaves plain assistant text unchanged', () => {
     const t = 'Polecam Pani kolczyki z kolekcji Aura.';
     expect(stripLeakedToolCallsLiterals(t)).toBe(t);
+  });
+
+  it('strips [Tool calls] bracket section and following JSON array', () => {
+    const raw =
+      'Niestety problem. [Tool calls]\n[{"id":"x","type":"function","function":{"name":"search_catalog","arguments":"{}"}}]\nDziękuję.';
+    const out = stripLeakedToolCallsLiterals(raw).replace(/\s+/g, ' ').trim();
+    expect(out).not.toMatch(/Tool calls/i);
+    expect(out).not.toMatch(/search_catalog/);
+    expect(out).toContain('Niestety');
+    expect(out).toContain('Dziękuję');
+  });
+
+  it('containsLikelyToolMarkupLeak detects Tool calls heading', () => {
+    expect(containsLikelyToolMarkupLeak('Hello [Tool calls] there')).toBe(true);
+    expect(containsLikelyToolMarkupLeak('Plain polish answer.')).toBe(false);
   });
 
   it('strips Kimi redacted tool markers and functions.* leaks', () => {

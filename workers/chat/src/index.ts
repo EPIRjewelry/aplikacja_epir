@@ -36,7 +36,13 @@ import {
   injectKimiMultimodalUserContent,
   resolveAdminModelVariantFromHeaders,
 } from './ai-client';
-import { CHAT_MODEL_ID, type ModelCapabilities } from './config/model-params';
+import {
+  CHAT_MODEL_ID,
+  CHAT_MAX_TOKENS_AFTER_TOOL,
+  CHAT_MAX_TOKENS_TOOL_ROUND,
+  CHAT_RECOVERY_MAX_TOKENS,
+  type ModelCapabilities,
+} from './config/model-params';
 import { INTERNAL_DASHBOARD_SYSTEM_PROMPT } from './prompts/internal-dashboard-system-prompt';
 import { LUXURY_SYSTEM_PROMPT } from './prompts/luxury-system-prompt'; // 🟢 Używa nowego promptu v2
 import { TOOL_SCHEMAS, resolveToolSchemas, shouldUseSlimToolSchemas } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2 (+ slim wariant za flagą)
@@ -44,7 +50,7 @@ import { detectPolicyInformationIntent } from './intent/policy-information';
 import { truncateWithSummary, type Message as HistoryMessage } from './utils/history'; // 🔵 History truncation
 import { hashPromptPrefix } from './utils/prompt-stability';
 import { mergeEphemeralBlockIntoLastUser } from './utils/merge-ephemeral-last-user';
-import { stripLeakedToolCallsLiterals } from './utils/stripLeakedToolCallsLiterals';
+import { stripLeakedToolCallsLiterals, containsLikelyToolMarkupLeak } from './utils/stripLeakedToolCallsLiterals';
 import { buildMessagesForToolFailureRecovery } from './utils/buildRecoveryMessages';
 import { executeToolWithParsedArguments } from './utils/tool-call-args';
 import { callMcpToolDirect, handleMcpRequest } from './mcp_server';
@@ -348,11 +354,6 @@ function resolveEffectiveShopifyCustomerId(
     customerId: null,
     source: 'none',
   };
-}
-
-function containsLikelyToolMarkupLeak(text: string): boolean {
-  if (!text || typeof text !== 'string') return false;
-  return /<\|/i.test(text) || /\bfunctions\.[a-z_][a-z0-9_]*/i.test(text) || /redacted_tool/i.test(text);
 }
 
 function buildCurrentSessionVisibilityContext(historyEntries: number): string | null {
@@ -3301,9 +3302,13 @@ async function streamAssistantResponse(
           const streamOptions: {
             toolChoice?: typeof toolChoiceResolved;
             modelId?: string;
+            maxTokens?: number;
           } = {};
           if (toolChoiceResolved !== undefined) streamOptions.toolChoice = toolChoiceResolved;
           if (activeModelVariant) streamOptions.modelId = activeModelVariant.id;
+          const lastRole = currentMessages[currentMessages.length - 1]?.role;
+          streamOptions.maxTokens =
+            lastRole === 'tool' ? CHAT_MAX_TOKENS_AFTER_TOOL : CHAT_MAX_TOKENS_TOOL_ROUND;
 
           const groqStream = await streamGroqEvents(
             currentMessages,
@@ -3311,7 +3316,7 @@ async function streamAssistantResponse(
             toolDefinitions,
             sessionId,
             timingLabel,
-            Object.keys(streamOptions).length > 0 ? streamOptions : undefined,
+            streamOptions,
           );
           const reader = groqStream.getReader();
 
@@ -3657,7 +3662,11 @@ async function streamAssistantResponse(
         console.warn('[streamAssistant] ⚠️ Brak finalnego tekstu po pętli tool_calls. Uruchamiam fallback getGroqResponse().');
         try {
           const recoveryMessages = buildMessagesForToolFailureRecovery(currentMessages);
-          const recoveryText = await getGroqResponse(recoveryMessages, env, { sessionId });
+          const recoveryText = await getGroqResponse(recoveryMessages, env, {
+            sessionId,
+            max_tokens: CHAT_RECOVERY_MAX_TOKENS,
+            modelId: activeChatModelId,
+          });
           if (typeof recoveryText === 'string' && recoveryText.trim()) {
             let cleaned = stripLeakedToolCallsLiterals(recoveryText);
             if (containsLikelyToolMarkupLeak(cleaned)) {

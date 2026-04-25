@@ -7,6 +7,7 @@
  */
 
 import { type McpRequest, type McpResponse } from './utils/jsonrpc';
+import { compactCatalogResult } from './mcp/catalog-result-compact';
 
 export interface Env {
   SHOP_DOMAIN?: string;
@@ -46,66 +47,6 @@ async function policiesCacheKey(query: string): Promise<string> {
 }
 
 type PoliciesCacheEntry = { payload: unknown; cached_at: number };
-
-/** Maks. długość pól opisowych przekazywanych modelowi (zapobiega cytowaniu pełnych opisów). */
-const CATALOG_DESCRIPTION_MAX_CHARS = 220;
-/** Pola, które typowo zawierają długie opisy marketingowe — obcinamy, zamiast usuwać, żeby model mógł streszczać. */
-const CATALOG_DESCRIPTION_FIELDS = new Set([
-  'description',
-  'body_html',
-  'descriptionHtml',
-  'tagline',
-  'subtitle',
-]);
-
-function truncateDescriptionFieldsDeep(value: unknown, depth: number): unknown {
-  if (depth <= 0 || value === null || value === undefined) return value;
-  if (Array.isArray(value)) {
-    return value.map((item) => truncateDescriptionFieldsDeep(item, depth - 1));
-  }
-  if (typeof value !== 'object') return value;
-  const input = value as Record<string, unknown>;
-  const output: Record<string, unknown> = {};
-  for (const [key, child] of Object.entries(input)) {
-    if (typeof child === 'string' && CATALOG_DESCRIPTION_FIELDS.has(key) && child.length > CATALOG_DESCRIPTION_MAX_CHARS) {
-      output[key] = child.slice(0, CATALOG_DESCRIPTION_MAX_CHARS).trimEnd() + '…';
-    } else {
-      output[key] = truncateDescriptionFieldsDeep(child, depth - 1);
-    }
-  }
-  return output;
-}
-
-/**
- * Obcina długie pola opisowe w wyniku `search_catalog`, żeby model nie kusił się na
- * dosłowne cytowanie pełnych opisów produktu. System prompt i tak nakazuje skrót
- * do 2 zdań (metal, kamień, cena) — to jest dodatkowa warstwa obrony „na poziomie danych".
- * MCP zwraca często JSON jako tekst w `content[].text`; obsługujemy oba kształty.
- */
-function compactCatalogResult(result: unknown): unknown {
-  if (!result || typeof result !== 'object') return result;
-  const root = result as Record<string, unknown>;
-  const content = root.content;
-  if (Array.isArray(content)) {
-    const compactedContent = content.map((entry) => {
-      if (!entry || typeof entry !== 'object') return entry;
-      const part = entry as Record<string, unknown>;
-      if (typeof part.text === 'string') {
-        const text = part.text;
-        try {
-          const parsed = JSON.parse(text);
-          const compacted = truncateDescriptionFieldsDeep(parsed, 6);
-          return { ...part, text: JSON.stringify(compacted) };
-        } catch {
-          return part;
-        }
-      }
-      return truncateDescriptionFieldsDeep(part, 6);
-    });
-    return { ...root, content: compactedContent };
-  }
-  return truncateDescriptionFieldsDeep(root, 6);
-}
 
 const CATALOG_FALLBACK = {
   products: [],

@@ -217,7 +217,31 @@ function extractTextFromAiContent(content: unknown): string | null {
   return joined.length > 0 ? joined : null;
 }
 
-function extractTextFromAiResult(result: unknown): string | null {
+/** Pierwsza zbalansowana tablica JSON `[`…`]` (np. ekstraktor faktów w reasoning). */
+function sliceBalancedJsonArray(text: string): string | null {
+  const start = text.indexOf('[');
+  if (start < 0) return null;
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (c === '[') depth++;
+    else if (c === ']') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+type ExtractTextFromAiResultOptions = {
+  /** Tylko ścieżka pamięci: Qwen bywa `content: null` + `reasoning_content`. */
+  memoryReasoningFallback?: boolean;
+};
+
+function extractTextFromAiResult(
+  result: unknown,
+  opts?: ExtractTextFromAiResultOptions,
+): string | null {
   if (!isRecord(result)) return null;
 
   const outText = result.output_text;
@@ -245,6 +269,15 @@ function extractTextFromAiResult(result: unknown): string | null {
         if (typeof mText === 'string' && mText.trim().length > 0) {
           return mText.trim();
         }
+        if (opts?.memoryReasoningFallback) {
+          const rc = mRef.reasoning_content;
+          if (typeof rc === 'string' && rc.trim().length > 0) {
+            const trimmed = rc.trim();
+            const arr = sliceBalancedJsonArray(trimmed);
+            if (arr) return arr;
+            return trimmed;
+          }
+        }
       }
 
       const delta = isRecord(firstChoice.delta) ? firstChoice.delta : null;
@@ -269,7 +302,7 @@ function extractTextFromAiResult(result: unknown): string | null {
   }
 
   if (result.result !== undefined && result.result !== result) {
-    return extractTextFromAiResult(result.result);
+    return extractTextFromAiResult(result.result, opts);
   }
 
   return null;
@@ -348,6 +381,8 @@ async function runModelStream(
      * za guardy (multimodal / toolLeak) przed przekazaniem tu override'u.
      */
     modelId?: string;
+    /** Override `max_tokens` (np. niższy po wynikach narzędzi). */
+    maxTokens?: number;
   },
 ): Promise<ReadableStream<Uint8Array>> {
   const ai = requireAi(env);
@@ -360,7 +395,7 @@ async function runModelStream(
       messages: messages.map(mapMessageForWorkersAI),
       stream: true,
       temperature: MODEL_PARAMS.temperature,
-      max_tokens: MODEL_PARAMS.max_tokens,
+      max_tokens: options?.maxTokens ?? MODEL_PARAMS.max_tokens,
       tools: options?.tools,
       tool_choice: options?.tool_choice,
     },
@@ -608,6 +643,8 @@ export type StreamGroqEventsOptions = {
    * i samemu zastosować guardy (np. fallback dla multimodal).
    */
   modelId?: string;
+  /** Override `max_tokens` dla tej tury streamu. */
+  maxTokens?: number;
 };
 
 export async function streamGroqEvents(
@@ -629,6 +666,7 @@ export async function streamGroqEvents(
     sessionId,
     timingLabel: timingLabel ?? 'streamGroqEvents',
     modelId: options?.modelId,
+    maxTokens: options?.maxTokens,
   });
 
   return stream
@@ -719,7 +757,7 @@ export async function getGroqResponse(
       workersAiRunOptions(options?.sessionId),
     )) as Record<string, unknown> & { response?: string };
 
-    const content = extractTextFromAiResult(result);
+    const content = extractTextFromAiResult(result, { memoryReasoningFallback: forMemory });
     if (!content) {
       if (result && typeof result === 'object') {
         const elapsed = Date.now() - startTime;

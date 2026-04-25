@@ -81,6 +81,28 @@ describe('getGroqResponse polymorphic parsing', () => {
     );
   });
 
+  it('forMemory: uses reasoning_content when message.content is null', async () => {
+    const env = {
+      AI: {
+        run: vi.fn().mockResolvedValue({
+          choices: [
+            {
+              message: {
+                content: null,
+                reasoning_content: 'Myślę… [{"slot":"intent","value":"browsing","confidence":0.8}]',
+              },
+              finish_reason: 'length',
+            },
+          ],
+        }),
+      },
+    };
+
+    await expect(getGroqResponse(messages, env, { forMemory: true, modelId: '@cf/x/y' })).resolves.toBe(
+      '[{"slot":"intent","value":"browsing","confidence":0.8}]',
+    );
+  });
+
   it('forMemory: empty body returns without throwing; warns, no error', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
