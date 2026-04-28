@@ -44,10 +44,11 @@ export async function loader({
     storeDomain,
     shopPayEnabled,
     countryCode: context.storefront.i18n.country,
+    canonicalUrl: request.url,
   });
 }
 
-export const meta: MetaFunction<typeof loader> = ({data, location}) => {
+export const meta: MetaFunction<typeof loader> = ({data}) => {
   if (!data?.product) {
     return [];
   }
@@ -60,7 +61,7 @@ export const meta: MetaFunction<typeof loader> = ({data, location}) => {
   return getSeoMeta({
     title,
     description,
-    url: location.href,
+    url: data.canonicalUrl,
     media: p.featuredImage?.url
       ? {
           type: 'image' as const,

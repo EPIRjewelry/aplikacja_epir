@@ -42,6 +42,10 @@ export {
   getConsentSessionId,
 } from './consent';
 export {ConsentToggle, type ConsentToggleProps} from './ConsentToggle';
+export {
+  CustomerPrivacyConsentBridge,
+  type CustomerPrivacyConsentBridgeProps,
+} from './CustomerPrivacyConsentBridge';
 export type {PersonaUi} from './persona-ui';
 export {DEFAULT_PERSONA_UI} from './persona-ui';
 export {ClientOnly} from './ClientOnly';

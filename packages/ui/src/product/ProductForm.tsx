@@ -3,6 +3,7 @@ import {Form, useFetcher, useMatches, type UIMatch} from '@remix-run/react';
 type RootMatchData = {
   selectedLocale?: {
     country?: string;
+    language?: string;
   };
 };
 
@@ -26,8 +27,9 @@ export function ProductForm(props: {
   if (!props.variantId) return null;
 
   const lines = [{merchandiseId: props.variantId, quantity: 1}];
+  /** Domyślnie PL (sklepy EPIR); nadpisz przez root `selectedLocale` lub props `countryCode`. */
   const country =
-    selectedLocale?.country ?? props.countryCode?.trim() ?? 'US';
+    selectedLocale?.country ?? props.countryCode?.trim() ?? 'PL';
   const errMsg =
     fetcher.data && 'error' in fetcher.data && fetcher.data.error
       ? String(fetcher.data.error)

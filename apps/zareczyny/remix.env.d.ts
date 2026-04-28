@@ -26,7 +26,13 @@ declare global {
     PUBLIC_STOREFRONT_API_TOKEN: string;
     PRIVATE_STOREFRONT_API_TOKEN: string;
     PUBLIC_STORE_DOMAIN: string;
+    /** Bez prefiksu https:// — domena checkoutu Shopify (Customer Privacy + Analytics). */
+    PUBLIC_CHECKOUT_DOMAIN?: string;
     PUBLIC_STOREFRONT_ID: string;
+    /** Domyślny kraj dla Hydrogen `i18n` (koszyk, ceny). Puste → PL w `@epir/utils`. */
+    PUBLIC_STOREFRONT_COUNTRY?: string;
+    /** Domyślny język dla Hydrogen `i18n`. Puste → PL. */
+    PUBLIC_STOREFRONT_LANGUAGE?: string;
     /**
      * `"true"` tylko gdy Shopify Payments + Shop Pay są aktywne w panelu.
      * Wtedy renderuje się Shop Pay na karcie produktu; w przeciwnym razie tylko „Do koszyka” (checkoutUrl).
