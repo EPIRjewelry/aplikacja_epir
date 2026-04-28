@@ -1,8 +1,8 @@
 import {json, type LoaderFunctionArgs} from '@remix-run/cloudflare';
-import {useLoaderData} from '@remix-run/react';
+import {type MetaFunction, useLoaderData} from '@remix-run/react';
 import {ProductGallery, ProductOptions, ProductForm} from '@epir/ui';
-import {Money, ShopPayButton} from '@shopify/hydrogen';
-import React from 'react';
+import {getSeoMeta, Money, ShopPayButton} from '@shopify/hydrogen';
+import React, {useEffect, useState} from 'react';
 
 export async function loader({
   params,
@@ -34,15 +34,48 @@ export async function loader({
   // optionally set a default variant so you always have an "orderable" product selected
   const selectedVariant =
     product.selectedVariant ?? product?.variants?.nodes[0];
+  const shopPayEnabled =
+    String(context.env.SHOP_PAY_ENABLED ?? '')
+      .trim()
+      .toLowerCase() === 'true';
   return json({
     product,
     selectedVariant,
     storeDomain,
+    shopPayEnabled,
+    countryCode: context.storefront.i18n.country,
   });
 }
 
+export const meta: MetaFunction<typeof loader> = ({data, location}) => {
+  if (!data?.product) {
+    return [];
+  }
+  const p = data.product;
+  const title = p.seo?.title?.trim() || p.title;
+  const rawDescription =
+    p.seo?.description?.trim() ||
+    (typeof p.description === 'string' ? p.description.slice(0, 154) : undefined);
+  const description = rawDescription?.slice(0, 154);
+  return getSeoMeta({
+    title,
+    description,
+    url: location.href,
+    media: p.featuredImage?.url
+      ? {
+          type: 'image' as const,
+          url: p.featuredImage.url,
+          altText: p.featuredImage.altText ?? p.title,
+          width: p.featuredImage.width ?? undefined,
+          height: p.featuredImage.height ?? undefined,
+        }
+      : undefined,
+  });
+};
+
 export default function ProductHandle() {
-  const {product, selectedVariant, storeDomain} = useLoaderData<typeof loader>();
+  const {product, selectedVariant, storeDomain, shopPayEnabled, countryCode} =
+    useLoaderData<typeof loader>();
   const variantId = selectedVariant?.id;
   const orderable = Boolean(selectedVariant?.availableForSale && variantId);
 
@@ -50,7 +83,7 @@ export default function ProductHandle() {
     <section className="w-full gap-4 md:gap-8 grid px-6 md:px-8 lg:px-12">
       <div className="grid items-start gap-6 lg:gap-20 md:grid-cols-2 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <ProductGallery medias={product.media.nodes} />
+          <ProductGallery medias={product.media?.nodes ?? []} />
         </div>
         <div className="md:sticky md:mx-auto max-w-xl md:max-w-[24rem] grid gap-8 p-0 md:p-6 md:px-0 top-[6rem] lg:top-[8rem] xl:top-[10rem]">
           <div className="grid gap-2">
@@ -65,28 +98,74 @@ export default function ProductHandle() {
             options={product.options}
             selectedVariant={selectedVariant}
           />
-          <Money
-            withoutTrailingZeros
-            data={selectedVariant.price}
-            className="text-xl font-semibold mb-2"
-          />
+          {selectedVariant?.price ? (
+            <Money
+              withoutTrailingZeros
+              data={selectedVariant.price}
+              className="text-xl font-semibold mb-2"
+            />
+          ) : (
+            <p className="text-xl font-semibold mb-2 text-black/50">
+              Wybierz wariant, aby zobaczyć cenę.
+            </p>
+          )}
           {orderable && (
             <div className="space-y-2">
-              <ShopPayButton
-                storeDomain={storeDomain}
-                variantIds={variantId ? [variantId] : []}
-                width={'400px'}
+              {shopPayEnabled ? (
+                <ShopPayAfterMount
+                  storeDomain={storeDomain}
+                  variantIds={variantId ? [variantId] : []}
+                  width="400px"
+                />
+              ) : null}
+              <ProductForm
+                countryCode={countryCode}
+                variantId={variantId}
+                showBuyNow
               />
-              <ProductForm variantId={variantId} />
             </div>
           )}
-          <div
-            className="prose border-t border-gray-200 pt-6 text-black text-md"
-            dangerouslySetInnerHTML={{__html: product.descriptionHtml}}
-          ></div>
+          {product.descriptionHtml ? (
+            <div
+              className="prose border-t border-gray-200 pt-6 text-black text-md"
+              dangerouslySetInnerHTML={{__html: product.descriptionHtml}}
+            />
+          ) : null}
         </div>
       </div>
     </section>
+  );
+}
+
+type ShopPayAfterMountProps = {
+  storeDomain: string;
+  variantIds: string[];
+  width: string;
+};
+
+/**
+ * Shop Pay wstrzykuje mark-up inny niż w SSR – często wywołuje React #418.
+ * Pierwszy render (serwer + hydratacja) = pusty slot o stałym rozmiarze, sam przycisk po `useEffect`.
+ */
+function ShopPayAfterMount({storeDomain, variantIds, width}: ShopPayAfterMountProps) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    setReady(true);
+  }, []);
+  if (!ready) {
+    return (
+      <div
+        className="w-full min-h-[48px] max-w-[400px] rounded-md bg-gray-100"
+        aria-hidden
+      />
+    );
+  }
+  return (
+    <ShopPayButton
+      storeDomain={storeDomain}
+      variantIds={variantIds}
+      width={width}
+    />
   );
 }
 
@@ -97,7 +176,19 @@ const PRODUCT_QUERY = `#graphql
       title
       handle
       vendor
+      description
       descriptionHtml
+      seo {
+        title
+        description
+      }
+      featuredImage {
+        id
+        url
+        altText
+        width
+        height
+      }
       media(first: 10) {
         nodes {
         __typename

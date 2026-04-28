@@ -7,7 +7,7 @@ $root = $PSScriptRoot
 Write-Host "=== EPIR Deploy ===" -ForegroundColor Cyan
 
 # 1. npm ci (workspaces)
-Write-Host "`n[1/7] npm ci..." -ForegroundColor Yellow
+Write-Host "`n[1/6] npm ci..." -ForegroundColor Yellow
 Set-Location $root
 npm ci
 if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }

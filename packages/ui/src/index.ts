@@ -44,3 +44,4 @@ export {
 export {ConsentToggle, type ConsentToggleProps} from './ConsentToggle';
 export type {PersonaUi} from './persona-ui';
 export {DEFAULT_PERSONA_UI} from './persona-ui';
+export {ClientOnly} from './ClientOnly';

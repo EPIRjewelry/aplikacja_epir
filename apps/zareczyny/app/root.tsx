@@ -2,6 +2,7 @@ import {useCallback, useEffect, useState} from 'react';
 import {
   Links,
   Meta,
+  MetaFunction,
   Outlet,
   Scripts,
   ScrollRestoration,
@@ -24,7 +25,7 @@ import {
   getConsentSessionId,
 } from '@epir/ui';
 import type {PersonaUi} from '@epir/ui';
-import {Seo, Storefront} from '@shopify/hydrogen';
+import {getSeoMeta, Storefront} from '@shopify/hydrogen';
 import type {LinksFunction, LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {CART_QUERY} from '~/queries/cart';
 import {defer} from '@remix-run/cloudflare';
@@ -74,11 +75,36 @@ export async function loader({context, request}: LoaderFunctionArgs) {
     loadZareczynyPersonaUi(context.env),
   ]);
 
-  const nodes = filterCollectionsForNav({
+  const filteredNodes = filterCollectionsForNav({
     nodes: collectionsResult.collections.nodes,
     allowedHandles,
-    hideHubHandle: hubHandle ?? null,
+    hideHubHandle: null,
   });
+  const byHandle = new Map(filteredNodes.map((c) => [c.handle, c]));
+  const navHandles = [
+    hubHandle,
+    context.env.COLLECTION_GOLD_HANDLE,
+    context.env.COLLECTION_SILVER_HANDLE,
+  ]
+    .map((h) => h?.trim())
+    .filter((h): h is string => Boolean(h));
+  const fallbackTitles: Record<string, string> = {
+    [hubHandle ?? '']: 'Pierścionki zaręczynowe',
+    [context.env.COLLECTION_GOLD_HANDLE ?? '']: 'Złote',
+    [context.env.COLLECTION_SILVER_HANDLE ?? '']: 'Srebrne',
+  };
+  const nodes = navHandles.length
+    ? navHandles.map((handle) => {
+        const existing = byHandle.get(handle);
+        return (
+          existing ?? {
+            id: `nav-${handle}`,
+            title: fallbackTitles[handle] ?? handle,
+            handle,
+          }
+        );
+      })
+    : filteredNodes;
 
   return defer({
     layout,
@@ -94,6 +120,16 @@ export async function loader({context, request}: LoaderFunctionArgs) {
     shopDomain: new URL(request.url).host,
   });
 }
+
+export const meta: MetaFunction<typeof loader> = ({data}) => {
+  if (!data?.layout?.shop) {
+    return getSeoMeta({title: 'EPIR Art Jewellery'});
+  }
+  return getSeoMeta({
+    title: data.layout.shop.name,
+    description: data.layout.shop.description?.slice(0, 154) ?? undefined,
+  });
+};
 
 async function getCart(storefront: Storefront, cartId: string) {
   if (!storefront) {
@@ -236,7 +272,6 @@ export default function App() {
           src="https://cdn.shopify.com/shopifycloud/polaris.js"
           async
         />
-        <Seo />
         <Meta />
         <Links />
       </head>

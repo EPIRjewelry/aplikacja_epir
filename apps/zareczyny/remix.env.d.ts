@@ -27,6 +27,11 @@ declare global {
     PRIVATE_STOREFRONT_API_TOKEN: string;
     PUBLIC_STORE_DOMAIN: string;
     PUBLIC_STOREFRONT_ID: string;
+    /**
+     * `"true"` tylko gdy Shopify Payments + Shop Pay są aktywne w panelu.
+     * Wtedy renderuje się Shop Pay na karcie produktu; w przeciwnym razie tylko „Do koszyka” (checkoutUrl).
+     */
+    SHOP_PAY_ENABLED?: string;
     /** @deprecated — Hydrogen używa `/api/chat` (BFF). Zostawione dla starych env. */
     CHAT_API_URL?: string;
     /** Ten sam sekret co `EPIR_CHAT_SHARED_SECRET` na workerze czatu — proxy S2S `/chat`. */

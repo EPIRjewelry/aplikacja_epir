@@ -21,6 +21,8 @@ PUBLIC_STORE_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
 PUBLIC_CHECKOUT_DOMAIN = "checkout.shopify.com"
 PUBLIC_STOREFRONT_ID = "1000013955"
 SHOP_ID = "55145660472"
+# Shop Pay w Hydrogen — tylko przy aktywnym Shopify Payments. false = brak skryptu / problemów z hydratacją.
+SHOP_PAY_ENABLED = "false"
 
 # PUBLIC_STOREFRONT_API_VERSION – Storefront API (np. 2025-10). Fallback w server.ts: 2025-10
 PUBLIC_STOREFRONT_API_VERSION = "2025-10"
