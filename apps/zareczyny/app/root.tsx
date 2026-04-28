@@ -8,7 +8,7 @@ import {
   ScrollRestoration,
   useLoaderData,
 } from '@remix-run/react';
-import type {Shop} from '@shopify/hydrogen/storefront-api-types';
+import type {Shop, CountryCode, LanguageCode} from '@shopify/hydrogen/storefront-api-types';
 import styles from './styles/app.css';
 import tailwind from './styles/tailwind-build.css';
 import favicon from '../public/favicon.svg';
@@ -18,6 +18,7 @@ import {
   CartDrawer,
   ChatWidget,
   ConsentToggle,
+  CustomerPrivacyConsentBridge,
   buildConsentPayload,
   getStoredConsent,
   storeConsent,
@@ -25,7 +26,7 @@ import {
   getConsentSessionId,
 } from '@epir/ui';
 import type {PersonaUi} from '@epir/ui';
-import {getSeoMeta, Storefront} from '@shopify/hydrogen';
+import {Analytics, getSeoMeta, getShopAnalytics, Storefront} from '@shopify/hydrogen';
 import type {LinksFunction, LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {CART_QUERY} from '~/queries/cart';
 import {defer} from '@remix-run/cloudflare';
@@ -106,9 +107,29 @@ export async function loader({context, request}: LoaderFunctionArgs) {
       })
     : filteredNodes;
 
+  const checkoutDomain = (context.env.PUBLIC_CHECKOUT_DOMAIN ?? '').trim();
+  if (!checkoutDomain) {
+    // eslint-disable-next-line no-console -- konfiguracja Hydrogen Analytics / Customer Privacy
+    console.warn(
+      '[zareczyny] PUBLIC_CHECKOUT_DOMAIN nie jest ustawione — Hydrogen Analytics i Customer Privacy mogą nie działać.',
+    );
+  }
+
+  const shopAnalytics = await getShopAnalytics({
+    storefront: context.storefront,
+    publicStorefrontId: context.env.PUBLIC_STOREFRONT_ID,
+  });
+
+  const analyticsConsent = {
+    checkoutDomain,
+    storefrontAccessToken: context.env.PUBLIC_STOREFRONT_API_TOKEN,
+    country: context.storefront.i18n.country,
+    language: context.storefront.i18n.language,
+  };
+
   return defer({
     layout,
-    cart: cartId ? getCart(context.storefront, cartId) : undefined,
+    cart: cartId ? getCart(context.storefront, cartId) : Promise.resolve(null),
     collections: {nodes},
     chatApiUrl,
     cartId,
@@ -118,6 +139,8 @@ export async function loader({context, request}: LoaderFunctionArgs) {
     channel: ZARECZYNY_CHANNEL,
     route,
     shopDomain: new URL(request.url).host,
+    shopAnalytics,
+    analyticsConsent,
   });
 }
 
@@ -157,6 +180,7 @@ function ZareczynyConsentAndChat({
   channel,
   route,
   shopDomain,
+  analyticsConsent,
 }: {
   chatApiUrl: string;
   cartId?: string | null;
@@ -166,6 +190,12 @@ function ZareczynyConsentAndChat({
   channel: string;
   route?: string;
   shopDomain: string;
+  analyticsConsent: {
+    checkoutDomain: string;
+    storefrontAccessToken: string;
+    country: CountryCode;
+    language: LanguageCode;
+  };
 }) {
   const [consentGranted, setConsentGranted] = useState(false);
   const [pendingConsent, setPendingConsent] = useState(false);
@@ -245,6 +275,15 @@ function ZareczynyConsentAndChat({
           <p className="mt-2 text-xs text-red-600">{consentError}</p>
         ) : null}
       </div>
+      {analyticsConsent.checkoutDomain ? (
+        <CustomerPrivacyConsentBridge
+          checkoutDomain={analyticsConsent.checkoutDomain}
+          storefrontAccessToken={analyticsConsent.storefrontAccessToken}
+          country={analyticsConsent.country}
+          locale={analyticsConsent.language}
+          consentGranted={consentGranted}
+        />
+      ) : null}
       <ChatWidget
         chatApiUrl={chatApiUrl}
         cartId={cartId}
@@ -261,6 +300,38 @@ function ZareczynyConsentAndChat({
 
 export default function App() {
   const data = useLoaderData<typeof loader>();
+  const shopAnalytics = data.shopAnalytics;
+  const canHydrogenAnalytics =
+    Boolean(data.analyticsConsent.checkoutDomain) && shopAnalytics != null;
+
+  const shell = (
+    <>
+      <Layout
+        title={data.layout.shop.name}
+        collections={data.collections?.nodes ?? []}
+        cart={data.cart}
+        renderCartHeader={({cart, openDrawer}) =>
+          cart ? <CartHeader cart={cart} openDrawer={openDrawer} /> : null
+        }
+        renderCartDrawer={({cart, close}) =>
+          cart ? <CartDrawer cart={cart} close={close} /> : null
+        }
+      >
+        <Outlet />
+      </Layout>
+      <ZareczynyConsentAndChat
+        chatApiUrl={data.chatApiUrl}
+        cartId={data.cartId}
+        brand={data.brand}
+        personaUi={data.personaUi}
+        storefrontId={data.storefrontId}
+        channel={data.channel}
+        route={data.route}
+        shopDomain={data.shopDomain}
+        analyticsConsent={data.analyticsConsent}
+      />
+    </>
+  );
 
   return (
     <html lang="pl">
@@ -276,29 +347,27 @@ export default function App() {
         <Links />
       </head>
       <body>
-        <Layout
-          title={data.layout.shop.name}
-          collections={data.collections?.nodes ?? []}
-          cart={data.cart}
-          renderCartHeader={({cart, openDrawer}) =>
-            cart ? <CartHeader cart={cart} openDrawer={openDrawer} /> : null
-          }
-          renderCartDrawer={({cart, close}) =>
-            cart ? <CartDrawer cart={cart} close={close} /> : null
-          }
-        >
-          <Outlet />
-        </Layout>
-        <ZareczynyConsentAndChat
-          chatApiUrl={data.chatApiUrl}
-          cartId={data.cartId}
-          brand={data.brand}
-          personaUi={data.personaUi}
-          storefrontId={data.storefrontId}
-          channel={data.channel}
-          route={data.route}
-          shopDomain={data.shopDomain}
-        />
+        {canHydrogenAnalytics ? (
+          <Analytics.Provider
+            cart={data.cart ?? Promise.resolve(null)}
+            shop={shopAnalytics}
+            consent={{
+              checkoutDomain: data.analyticsConsent.checkoutDomain,
+              storefrontAccessToken: data.analyticsConsent.storefrontAccessToken,
+              withPrivacyBanner: false,
+              country: data.analyticsConsent.country,
+              language: data.analyticsConsent.language,
+            }}
+            customData={{
+              channel: data.channel,
+              storefrontId: data.storefrontId,
+            }}
+          >
+            {shell}
+          </Analytics.Provider>
+        ) : (
+          shell
+        )}
         <ScrollRestoration />
         <Scripts />
       </body>
