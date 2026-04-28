@@ -1,7 +1,7 @@
 import {Link} from '@remix-run/react';
 import {Drawer, useDrawer} from './Drawer';
 import {useFetchers} from '@remix-run/react';
-import {useEffect} from 'react';
+import {useEffect, useRef} from 'react';
 
 export type NavCollection = {id: string; title: string; handle: string};
 
@@ -20,6 +20,17 @@ export type LayoutProps<TCart = unknown> = {
   }) => React.ReactNode;
 };
 
+function hasRenderableCartData(cart: unknown): boolean {
+  if (!cart || typeof cart !== 'object') return false;
+  return 'lines' in cart && 'cost' in cart;
+}
+
+function getCartQuantity(cart: unknown): number {
+  if (!cart || typeof cart !== 'object') return 0;
+  const totalQuantity = (cart as {totalQuantity?: unknown}).totalQuantity;
+  return typeof totalQuantity === 'number' ? totalQuantity : 0;
+}
+
 export function Layout<TCart = unknown>({
   children,
   title,
@@ -37,10 +48,22 @@ export function Layout<TCart = unknown>({
       addToCartFetchers.push(fetcher);
     }
   }
+
+  const latestCart = addToCartFetchers
+    .map((fetcher) => (fetcher.data as {cart?: TCart} | undefined)?.cart)
+    .filter((cart): cart is TCart => hasRenderableCartData(cart))
+    .at(-1);
+  const cartForRender = latestCart ?? cart;
+  const cartQuantity = getCartQuantity(cartForRender);
+  const previousCartQuantity = useRef(cartQuantity);
+
   useEffect(() => {
-    if (isOpen || addToCartFetchers.length === 0) return;
+    const previous = previousCartQuantity.current;
+    previousCartQuantity.current = cartQuantity;
+    if (isOpen || cartQuantity <= previous) return;
+    if (!hasRenderableCartData(cartForRender)) return;
     openDrawer();
-  }, [addToCartFetchers, isOpen, openDrawer]);
+  }, [cartForRender, cartQuantity, isOpen, openDrawer]);
 
   const brandName = title || 'EPIR Art Jewellery & Gemstone';
 
@@ -78,7 +101,7 @@ export function Layout<TCart = unknown>({
             )}
           </div>
           <div className="ml-auto">
-            {renderCartHeader({cart, openDrawer})}
+            {renderCartHeader({cart: cartForRender, openDrawer})}
           </div>
         </nav>
       </header>
@@ -90,7 +113,7 @@ export function Layout<TCart = unknown>({
       >
         {children}
         <Drawer open={isOpen} onClose={closeDrawer}>
-          {renderCartDrawer({cart, close: closeDrawer})}
+          {renderCartDrawer({cart: cartForRender, close: closeDrawer})}
         </Drawer>
       </main>
 

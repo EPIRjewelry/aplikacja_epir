@@ -20,6 +20,8 @@ PRIVATE_STOREFRONT_API_TOKEN=your-token
 # PUBLIC_STOREFRONT_API_VERSION=2025-10
 PUBLIC_STOREFRONT_ID=1000013955
 SHOP_ID=55145660472
+# Shop Pay (Hydrogen) — "true" tylko gdy włączysz Shopify Payments + Shop Pay; inaczej zostaw false lub pomiń
+# SHOP_PAY_ENABLED=false
 PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID=your-client-id
 
 # Chat worker – dev: localhost, prod: asystent.epirbizuteria.pl

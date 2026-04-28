@@ -25,7 +25,8 @@ export type SectionFeaturedCollectionsProps = {
 
 export function SectionFeaturedCollections(props: SectionFeaturedCollectionsProps) {
   const {heading, collections} = props;
-  const nodes = collections?.references?.nodes ?? collections?.nodes ?? [];
+  const nodes = (collections?.references?.nodes ?? collections?.nodes ?? [])
+    .filter((collection) => Boolean(collection?.handle));
 
   return (
     <section className="w-full gap-8 py-12">

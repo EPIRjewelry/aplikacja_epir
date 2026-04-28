@@ -1,6 +1,9 @@
 import {redirect} from '@remix-run/cloudflare';
 import type {LoaderFunctionArgs} from '@remix-run/cloudflare';
-import {parseCollectionFilter} from '~/lib/collection-filters';
+import {
+  parseCollectionFilter,
+  pickFirstAllowedCollectionHandle,
+} from '~/lib/collection-filters';
 
 type CollectionsQueryData = {
   collections: {nodes: {handle: string}[]};
@@ -20,6 +23,11 @@ const COLLECTIONS_QUERY = `#graphql
  */
 export async function loader({context}: LoaderFunctionArgs) {
   const allowedHandles = parseCollectionFilter(context.env.COLLECTION_FILTER);
+  const hubHandle = context.env.COLLECTION_HUB_HANDLE as string | undefined;
+
+  if (hubHandle && allowedHandles?.includes(hubHandle)) {
+    return redirect(`/collections/${hubHandle}`, 302);
+  }
 
   const {collections} = await context.storefront.query<CollectionsQueryData>(
     COLLECTIONS_QUERY,
@@ -31,7 +39,13 @@ export async function loader({context}: LoaderFunctionArgs) {
       )
     : collections.nodes;
 
-  const firstHandle = nodes[0]?.handle ?? allowedHandles?.[0];
+  const available = new Set(nodes.map((c) => c.handle));
+  const firstHandle =
+    pickFirstAllowedCollectionHandle({
+      availableHandles: available,
+      allowedHandles,
+    }) ?? nodes[0]?.handle;
+
   if (firstHandle) {
     return redirect(`/collections/${firstHandle}`, 302);
   }

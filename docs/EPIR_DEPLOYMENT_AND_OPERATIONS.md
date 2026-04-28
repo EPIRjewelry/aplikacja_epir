@@ -216,6 +216,39 @@ Po wdrożeniu: migracja D1 + worker `chat` + Pages (`kazka`, `zareczyny`) + depl
 2. **Czat:** niezależnie od zgody sprawdź tylko **po** odblokowaniu, że transport wiadomości to nadal **fetch + SSE** (brak zmiany kontraktu streamu w workerze wyłącznie przez Consent Gate).
 3. **D1:** opcjonalnie `wrangler d1 execute ... SELECT` na `consent_events` (lub pipeline analityczny), aby potwierdzić append-only zapis.
 
+## Storefront Hydrogen — baseline funkcjonalny (rozdzielenie „działa” vs „design”)
+
+Ten akapit jest punktem odniesienia, żeby **rozdzielić zamknięty zakres działania sklepu od backlogu wizualnego** bez dublowania dokumentów ani „notatek przy komputerze”.
+
+### Oznaczenie w Git (źródło prawdy)
+
+| Element | Wartość |
+|--------|---------|
+| **Tag (annotated)** | `storefront-stable-2026-04-28` |
+| **Gałąź referencyjna** | `stable/storefront-2026-04` (ten sam commit co tag) |
+
+Po `git fetch --tags` można wrócić do tego stanu: `git checkout storefront-stable-2026-04-28`. Nowe prace estetyczne lub większy refaktor UI najlepiej prowadzić z osobnego brancha i scalać po regresji.
+
+### Zakres zamknięty w tym baseline (regresja przy każdej istotnej zmianie)
+
+- **Koszyk (Kazka i Zareczyny):** `/cart` — `ADD_TO_CART` zwraca pełny koszyk (pola wymagane przez szufladę), `BUY_NOW` z przekierowaniem na checkout, gdy jest `checkoutUrl`.
+- **Layout (`@epir/ui`):** szuflada otwiera się po **wzroście `totalQuantity`** przy kompletnych danych koszyka; unika pustego lub „pół” stanu po fetcherze.
+- **Zareczyny:** nawigacja kolekcji (hub / złoto / srebro), filtry zgodne z env; uproszczona ścieżka koszyka bez wcześniejszych eksperymentów z synchronizacją atrybutów sesji w koszyku.
+- **SEO:** opisy meta nie przekraczają limitów zgłaszanych przez Hydrogen (m.in. przycięcie opisu sklepu/produktu w `getSeoMeta`).
+- **Pakiet UI:** `ProductForm` (m.in. `countryCode`, osobne formularze `ADD_TO_CART` / `BUY_NOW`, `showBuyNow`); eksport `ClientOnly`.
+
+### Backlog (świadomie nie jest częścią powyższego „zamrożenia”)
+
+- Pełny **redesign wizualny** i porządki typografii / siatki bez zmiany kontraktu koszyka.
+- Dalsze **dopieszczanie nawigacji** wyłącznie pod wygląd (o ile nie psuje tras i linków).
+
+### Minimalna checklista regresji przed wdrożeniem UI
+
+1. Strona produktu: **„Do koszyka”** → szuflada, poprawna pozycja lub wzrost licznika.
+2. Opcjonalnie **„Kup teraz”** → przekierowanie na checkout (gdy sklep zwraca URL).
+3. **Nagłówek:** linki kolekcji prowadzą tam, gdzie env (`COLLECTION_*`).
+4. **Konsola przeglądarki:** brak masowych błędów hydratacji na świeżej sesji (pojedyncze ostrzeżenia SEO można adresować osobno).
+
 ## Zasady utrzymania
 
 1. Nie opisujemy deployu w kilku równoległych dokumentach.

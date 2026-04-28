@@ -1,5 +1,5 @@
 import {Link, useLoaderData} from '@remix-run/react';
-import {json, type LoaderFunctionArgs} from '@remix-run/cloudflare';
+import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {Storefront} from '@shopify/hydrogen';
 import type {
   BaseCartLineConnection,
@@ -66,6 +66,7 @@ export async function action({request, context}: LoaderFunctionArgs) {
 
   switch (cartAction) {
     case 'ADD_TO_CART':
+    case 'BUY_NOW':
       const lines = formData.get('lines')
         ? JSON.parse(String(formData.get('lines')))
         : [];
@@ -82,7 +83,39 @@ export async function action({request, context}: LoaderFunctionArgs) {
       }
 
       cartId = result.cart.id;
-      break;
+      session.set('cartId', cartId);
+      headers.set('Set-Cookie', await session.commit());
+      if (cartAction === 'BUY_NOW') {
+        const checkoutUrl = result.cart.checkoutUrl;
+        if (typeof checkoutUrl === 'string' && checkoutUrl.length > 0) {
+          return redirect(checkoutUrl, {headers});
+        }
+        return json(
+          {
+            error: 'Brak adresu kasy (checkoutUrl). Spróbuj ponownie lub użyj „Do koszyka”.',
+            cart: result.cart,
+            errors: result.errors,
+          },
+          {status: 502, headers},
+        );
+      }
+
+      // Dla fetchera „Do koszyka” zwracamy pełny koszyk (lines + cost),
+      // bo szuflada koszyka renderuje te pola natychmiast po odpowiedzi.
+      const fullCart = (
+        await storefront.query<CartQueryData>(CART_QUERY, {
+          variables: {
+            cartId,
+            country: storefront.i18n.country,
+            language: storefront.i18n.language,
+          },
+          cache: storefront.CacheNone(),
+        })
+      ).cart;
+      return json(
+        {cart: fullCart ?? result.cart, errors: result.errors},
+        {status, headers},
+      );
     case 'REMOVE_FROM_CART':
       const lineIds = formData.get('linesIds')
         ? JSON.parse(String(formData.get('linesIds')))
@@ -225,6 +258,7 @@ const LINES_CART_FRAGMENT = `#graphql
   fragment CartLinesFragment on Cart {
     id
     totalQuantity
+    checkoutUrl
   }
 `;
 

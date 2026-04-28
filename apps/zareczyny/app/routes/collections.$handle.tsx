@@ -1,12 +1,15 @@
-import {Link, useLoaderData} from '@remix-run/react';
-import {SeoHandleFunction} from '@shopify/hydrogen';
+import {Link, MetaFunction, useLoaderData} from '@remix-run/react';
+import {getSeoMeta} from '@shopify/hydrogen';
 import {
   CollectionEnhancedHero,
   type CollectionEnhancedFlat,
   ProductGrid,
 } from '@epir/ui';
 import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
-import {parseCollectionFilter} from '~/lib/collection-filters';
+import {
+  parseCollectionFilter,
+  pickFirstAllowedCollectionHandle,
+} from '~/lib/collection-filters';
 
 type CollectionsQueryData = {
   collections: {nodes: {handle: string}[]};
@@ -39,15 +42,6 @@ type SubcollectionEntry = {
   handle: string;
   label: string;
   metal: MetalKind;
-};
-
-type ProductForMetalFilter = {
-  title?: string | null;
-  handle?: string | null;
-  tags?: string[] | null;
-  productType?: string | null;
-  vendor?: string | null;
-  description?: string | null;
 };
 
 function trimOrNull(v: unknown): string | null {
@@ -155,6 +149,7 @@ const DEFAULT_METAL_SUBCOLLECTIONS = [
 type HubRoutingEnv = {
   COLLECTION_GOLD_HANDLE?: string;
   COLLECTION_SILVER_HANDLE?: string;
+  COLLECTION_HUB_HANDLE?: string;
 };
 
 function resolveSubcollectionEntries(
@@ -215,106 +210,62 @@ function inferSubcollectionFromHandle(
   return null;
 }
 
-function searchableText(product: ProductForMetalFilter): string {
-  const parts = [
-    product.title,
-    product.handle,
-    product.productType,
-    product.vendor,
-    product.description,
-    ...(product.tags ?? []),
-  ];
-  return parts
-    .filter((part): part is string => typeof part === 'string')
-    .join(' ')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-}
-
-function hasAnyKeyword(text: string, keywords: string[]): boolean {
-  return keywords.some((keyword) => text.includes(keyword));
-}
+/**
+ * Jawne handly → wartość `product.metafield(namespace: "custom", key: "metal").value`
+ * (np. "gold" / "silver"). Reszta: env + ten sam wzorzec co kafle hub (sufix / handle).
+ */
+const COLLECTION_METAL: Record<string, string> = {
+  'zareczyny-zlote': 'gold',
+  'zareczyny-srebrne': 'silver',
+};
 
 /**
- * W katalogu niektóre produkty mają jednocześnie `metal_gold` i `metal_silver` w tagach
- * mimo tytułu w jednym kruszcu. Wtedy:
- * 1) jeśli w tytule jest mocny sygnał złota albo srebra — wybierz go,
- * 2) w przeciwnym razie spróbuj opisu,
- * 3) jeśli nadal sprzecznie — pomiń produkt w obu widokach (lepiej pusto niż błąd kategorii).
+ * W Shopify custom.metal może być "gold" / "Gold" / "złoto" — dopasowanie do złoto vs srebro.
  */
-function productMetalForFilter(product: ProductForMetalFilter): MetalKind | null {
-  const tags = (product.tags ?? []).map((t) => t.toLowerCase());
-  const hasTagGold = tags.includes('metal_gold');
-  const hasTagSilver = tags.includes('metal_silver');
-  if (hasTagGold && !hasTagSilver) return 'gold';
-  if (hasTagSilver && !hasTagGold) return 'silver';
-
-  const text = searchableText(product);
-  const goldKeywords = [
-    'zloto',
-    'zloty',
-    'zlota',
-    'zlote',
-    'zlot',
-    'gold',
-  ];
-  const silverKeywords = [
-    'srebro',
-    'srebrny',
-    'srebrna',
-    'srebrne',
-    'srebrn',
-    'silver',
-  ];
-
-  if (hasTagGold && hasTagSilver) {
-    const g = hasAnyKeyword(text, goldKeywords);
-    const s = hasAnyKeyword(text, silverKeywords);
-    if (g && !s) return 'gold';
-    if (s && !g) return 'silver';
-    if (g && s) {
-      // rozstrzygnij tylko po tytule (najpewniejsze), nie po całym opisie
-      const title = (product.title ?? '')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase();
-      const titleGold = hasAnyKeyword(
-        title,
-        goldKeywords.filter((k) => k.length >= 4),
-      );
-      const titleSilver = hasAnyKeyword(
-        title,
-        silverKeywords.filter((k) => k.length >= 5),
-      );
-      if (titleGold && !titleSilver) return 'gold';
-      if (titleSilver && !titleGold) return 'silver';
-      return null;
-    }
-  }
-
-  // brak twardych tagów — heurystyka słownikowa
-  if (hasAnyKeyword(text, goldKeywords) && !hasAnyKeyword(text, silverKeywords)) {
-    return 'gold';
-  }
-  if (hasAnyKeyword(text, silverKeywords) && !hasAnyKeyword(text, goldKeywords)) {
-    return 'silver';
-  }
-  return null;
-}
-
-function productMatchesMetal(
-  product: ProductForMetalFilter,
-  metal: MetalKind,
+function productMetalMatchesFilter(
+  raw: string | null | undefined,
+  expected: 'gold' | 'silver',
 ): boolean {
-  return productMetalForFilter(product) === metal;
+  const v = (raw ?? '').trim().toLowerCase();
+  if (!v) return false;
+  if (expected === 'gold') {
+    return (
+      v === 'gold' ||
+      v === 'złoto' ||
+      v === 'zloto' ||
+      v === 'złote' ||
+      v === 'zlote' ||
+      v === 'yellow_gold' ||
+      v === 'yellow gold'
+    );
+  }
+  return (
+    v === 'silver' ||
+    v === 'srebro' ||
+    v === 'srebrne' ||
+    v === 'srebrna' ||
+    v === 'srebrny' ||
+    v === 'sterling' ||
+    v === 'sterling_silver'
+  );
 }
 
-function filterProductsByMetal<T extends ProductForMetalFilter>(
-  products: T[],
-  metal: MetalKind,
-): T[] {
-  return products.filter((product) => productMatchesMetal(product, metal));
+function expectedMetalForHandle(
+  collectionHandle: string,
+  hubHandle: string,
+  subcollections: SubcollectionEntry[],
+): string | null {
+  const fromMap = COLLECTION_METAL[collectionHandle];
+  if (fromMap) {
+    return fromMap;
+  }
+  return (
+    inferSubcollectionFromHandle(
+      collectionHandle,
+      hubHandle,
+      subcollections,
+    )?.metal ?? null
+  );
 }
 
 export async function loader({
@@ -334,6 +285,9 @@ export async function loader({
   const isHub = handle === hubHandle;
   const subMeta = !isHub
     ? inferSubcollectionFromHandle(handle, hubHandle, subcollections)
+    : null;
+  const expectedMetal = !isHub
+    ? expectedMetalForHandle(handle, hubHandle, subcollections)
     : null;
   const missingSubcollectionHandle = isHub
     ? searchParams.get('missing')
@@ -355,6 +309,29 @@ export async function loader({
     },
   });
 
+  if (!collection && isHub) {
+    return json({
+      collection: {
+        id: `synthetic-${hubHandle}`,
+        title: 'Pierścionki zaręczynowe',
+        description: 'Wybierz pierścionki zaręczynowe według kruszcu.',
+        handle: hubHandle,
+        products: {
+          nodes: [],
+          pageInfo: {
+            hasNextPage: false,
+            endCursor: null,
+          },
+        },
+      },
+      enhancedData: null,
+      hubMode: true,
+      subcollectionLinks: subcollections,
+      missingSubcollection: missingSubcollection ?? null,
+      breadcrumb: null,
+    });
+  }
+
   if (!collection) {
     if (subMeta) {
       const missing = encodeURIComponent(handle);
@@ -372,8 +349,13 @@ export async function loader({
         ? collections.nodes.filter((c: {handle: string}) =>
             allowedHandles.includes(c.handle),
           )
-      : collections.nodes;
-    const firstHandle = nodes[0]?.handle ?? allowedHandles?.[0];
+        : collections.nodes;
+    const available = new Set(nodes.map((c) => c.handle));
+    const firstHandle =
+      pickFirstAllowedCollectionHandle({
+        availableHandles: available,
+        allowedHandles,
+      }) ?? nodes[0]?.handle;
     if (firstHandle && firstHandle !== handle) {
       return redirect(`/collections/${firstHandle}`, 302);
     }
@@ -388,10 +370,10 @@ export async function loader({
   );
   let displayCollection = collection;
 
-  if (subMeta && collection.products?.nodes) {
-    const filteredNodes = filterProductsByMetal(
-      collection.products.nodes,
-      subMeta.metal,
+  if (expectedMetal && collection.products?.nodes) {
+    const metalKey = expectedMetal as 'gold' | 'silver';
+    const filteredNodes = collection.products.nodes.filter((p) =>
+      productMetalMatchesFilter(p.metal?.value, metalKey),
     );
 
     const products = {
@@ -574,6 +556,9 @@ const COLLECTION_QUERY = `#graphql
           tags
           productType
           vendor
+          metal: metafield(namespace: "custom", key: "metal") {
+            value
+          }
           variants(first: 1) {
             nodes {
               id
@@ -599,10 +584,12 @@ const COLLECTION_QUERY = `#graphql
   }
 `;
 
-const seo: SeoHandleFunction<typeof loader> = ({data}) => ({
-  title: data?.collection?.title,
-  description: data?.collection?.description?.slice(0, 154) ?? undefined,
-});
-export const handle = {
-  seo,
+export const meta: MetaFunction<typeof loader> = ({data}) => {
+  if (!data?.collection) {
+    return [];
+  }
+  return getSeoMeta({
+    title: data.collection.title ?? undefined,
+    description: data.collection.description?.slice(0, 154) ?? undefined,
+  });
 };

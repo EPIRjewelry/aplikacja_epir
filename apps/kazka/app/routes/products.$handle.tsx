@@ -1,15 +1,13 @@
 import {json, type LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {useLoaderData} from '@remix-run/react';
 import {ProductGallery, ProductOptions, ProductForm} from '@epir/ui';
-import {Money, ShopPayButton} from '@shopify/hydrogen';
+import {Money} from '@shopify/hydrogen';
 import React from 'react';
 
 export async function loader({params, context, request}: LoaderFunctionArgs) {
   const {handle} = params;
   const searchParams = new URL(request.url).searchParams;
   const selectedOptions: {name: string; value: string}[] = [];
-
-  const storeDomain = context.storefront.getShopifyDomain();
 
   // set selected options from the query string
   searchParams.forEach((value, name) => {
@@ -33,12 +31,12 @@ export async function loader({params, context, request}: LoaderFunctionArgs) {
   return json({
     product,
     selectedVariant,
-    storeDomain,
+    countryCode: context.storefront.i18n.country,
   });
 }
 
 export default function ProductHandle() {
-  const {product, selectedVariant, storeDomain} = useLoaderData<typeof loader>();
+  const {product, selectedVariant, countryCode} = useLoaderData<typeof loader>();
   const variantId = selectedVariant?.id;
   const orderable = Boolean(selectedVariant?.availableForSale && variantId);
 
@@ -68,17 +66,17 @@ export default function ProductHandle() {
           />
           {orderable && (
             <div className="space-y-2">
-              <ShopPayButton
-                storeDomain={storeDomain}
-                variantIds={variantId ? [variantId] : []}
-                width={'400px'}
+              <ProductForm
+                countryCode={countryCode}
+                variantId={variantId}
+                showBuyNow
               />
-              <ProductForm variantId={variantId} />
             </div>
           )}
           <div
             className="prose border-t border-gray-200 pt-6 text-black text-md"
             dangerouslySetInnerHTML={{__html: product.descriptionHtml}}
+            suppressHydrationWarning
           ></div>
         </div>
       </div>

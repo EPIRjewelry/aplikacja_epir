@@ -1,20 +1,25 @@
-import {Link, useLoaderData} from '@remix-run/react';
-import {json, type LoaderFunctionArgs} from '@remix-run/cloudflare';
-import {Storefront} from '@shopify/hydrogen';
+import {Link, type MetaFunction, useLoaderData} from '@remix-run/react';
+import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
+import {getSeoMeta, Storefront} from '@shopify/hydrogen';
+import {CART_QUERY} from '~/queries/cart';
 import type {
   BaseCartLineConnection,
   CartCost,
 } from '@shopify/hydrogen-react/storefront-api-types';
 import {
-  AttributeInput,
   CartInput,
   CartLineInput,
   CountryCode,
 } from '@shopify/hydrogen/dist/storefront-api-types';
-import {CART_QUERY} from '~/queries/cart';
 import {CartLineItems, CartSummary, CartActions} from '@epir/ui';
 
-const EPIR_SESSION_ATTR_KEY = '_epir_session_id';
+export const meta: MetaFunction = ({location}) =>
+  getSeoMeta({
+    title: 'Koszyk',
+    description:
+      'Sprawdź produkty dodane do koszyka przed przejściem do kasy.',
+    url: location.href,
+  });
 
 type CartData = {
   id: string;
@@ -22,63 +27,16 @@ type CartData = {
   totalQuantity?: number | null;
   lines: BaseCartLineConnection;
   cost: CartCost;
-  attributes?: CartAttribute[] | null;
+};
+
+type CartMutationResult = {
+  cart: {id: string; checkoutUrl?: string | null};
+  errors?: unknown[];
 };
 
 type CartQueryData = {
   cart: CartData | null;
 };
-
-type CartAttributesQueryData = {
-  cart: Pick<CartData, 'attributes'> | null;
-};
-
-type CartMutationResult = {
-  cart: {id: string};
-  errors?: unknown[];
-};
-
-/** 128-bitowy identyfikator (32 znaki hex) — bez znaków specjalnych dla atrybutu koszyka. */
-function generateEpirSessionId(): string {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-async function ensureEpSessionId(session: {
-  get: (key: string) => unknown;
-  set: (key: string, value: string) => void;
-}): Promise<string> {
-  const existing = await session.get(EPIR_SESSION_ATTR_KEY);
-  if (typeof existing === 'string' && existing.trim().length > 0) {
-    return existing.trim();
-  }
-  const id = generateEpirSessionId();
-  session.set(EPIR_SESSION_ATTR_KEY, id);
-  return id;
-}
-
-type CartAttribute = {key: string; value: string | null};
-
-function mergeEpirSessionIntoAttributes(
-  attributes: readonly CartAttribute[] | null | undefined,
-  epirSessionId: string,
-): AttributeInput[] {
-  const rest = (attributes ?? [])
-    .filter((a): a is CartAttribute => Boolean(a?.key))
-    .filter((a) => a.key !== EPIR_SESSION_ATTR_KEY)
-    .map((a) => ({key: a.key, value: a.value ?? ''}));
-  return [...rest, {key: EPIR_SESSION_ATTR_KEY, value: epirSessionId}];
-}
-
-function getEpirSessionFromCartAttributes(
-  attributes: readonly CartAttribute[] | null | undefined,
-): string | undefined {
-  const raw = (attributes ?? []).find(
-    (a) => a?.key === EPIR_SESSION_ATTR_KEY,
-  )?.value;
-  return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
-}
 
 export async function loader({context}: LoaderFunctionArgs) {
   const cartId = await context.session.get('cartId');
@@ -103,8 +61,6 @@ export async function action({request, context}: LoaderFunctionArgs) {
   const {session, storefront} = context;
   const headers = new Headers();
 
-  const epirSessionId = await ensureEpSessionId(session);
-
   const [formData, storedCartId] = await Promise.all([
     request.formData(),
     session.get('cartId'),
@@ -121,73 +77,72 @@ export async function action({request, context}: LoaderFunctionArgs) {
     : null;
 
   switch (cartAction) {
-    case 'ADD_TO_CART': {
+    case 'ADD_TO_CART':
+    case 'BUY_NOW': {
       const lines = formData.get('lines')
         ? JSON.parse(String(formData.get('lines')))
         : [];
 
-      let resolvedCartId = cartId;
-      let existingCartForAttrs: {attributes?: CartAttribute[] | null} | null =
-        null;
-
-      if (resolvedCartId) {
-        const {cart: cartForAttrs} = await storefront.query<CartAttributesQueryData>(
-          CART_ATTRIBUTES_QUERY,
-          {
-          variables: {
-            cartId: resolvedCartId,
-            country: storefront.i18n.country,
-            language: storefront.i18n.language,
-          },
-          cache: storefront.CacheNone(),
-          },
-        );
-        if (!cartForAttrs) {
-          resolvedCartId = undefined;
-        } else {
-          existingCartForAttrs = cartForAttrs;
-        }
-      }
-
-      if (!resolvedCartId) {
+      if (!cartId) {
         const input: CartInput = {
           lines,
-          attributes: [{key: EPIR_SESSION_ATTR_KEY, value: epirSessionId}],
         };
         if (countryCode) {
           input.buyerIdentity = {countryCode: countryCode as CountryCode};
         }
         result = await cartCreate(input, storefront);
       } else {
-        const currentAttrs = existingCartForAttrs?.attributes;
-        const existingEpir = getEpirSessionFromCartAttributes(currentAttrs);
-        const targetAttrs = mergeEpirSessionIntoAttributes(
-          currentAttrs ?? [],
-          epirSessionId,
-        );
-
-        const needsAttributeUpdate = existingEpir !== epirSessionId;
-
-        if (needsAttributeUpdate) {
-          const updateResult = await cartUpdateAttributes(
-            resolvedCartId,
-            targetAttrs,
-            storefront,
-          );
-          result = updateResult;
-          resolvedCartId = updateResult.cart.id;
-        }
-
-        if (!resolvedCartId) {
-          throw new Error('Missing cart ID before cartLinesAdd');
-        }
-
-        const addResult = await cartAdd(resolvedCartId, lines, storefront);
+        const addResult = await cartAdd(cartId, lines, storefront);
         result = addResult;
       }
 
+      if (!result?.cart?.id) {
+        return json(
+          {
+            error: 'Nie udało się zapisać koszyka.',
+            cart: result?.cart ?? null,
+            errors: result?.errors,
+          },
+          {status: 400, headers: {'Set-Cookie': await session.commit()}},
+        );
+      }
       cartId = result.cart.id;
-      break;
+
+      // Zapisz cartId w sesji OD RAZU dla obu akcji (kazka tak robi)
+      session.set('cartId', cartId);
+      headers.set('Set-Cookie', await session.commit());
+
+      if (cartAction === 'BUY_NOW') {
+        const checkoutUrl = result.cart.checkoutUrl;
+        if (typeof checkoutUrl === 'string' && checkoutUrl.length > 0) {
+          return redirect(checkoutUrl, {headers});
+        }
+        return json(
+          {
+            error: 'Brak adresu kasy (checkoutUrl). Spróbuj ponownie lub użyj „Do koszyka".',
+            cart: result.cart,
+            errors: result.errors,
+          },
+          {status: 502, headers},
+        );
+      }
+
+      // Dla fetchera „Do koszyka” zwracamy pełny koszyk (lines + cost),
+      // bo szuflada koszyka renderuje te pola natychmiast po odpowiedzi.
+      const fullCart = (
+        await storefront.query<CartQueryData>(CART_QUERY, {
+          variables: {
+            cartId,
+            country: storefront.i18n.country,
+            language: storefront.i18n.language,
+          },
+          cache: storefront.CacheNone(),
+        })
+      ).cart;
+      return json(
+        {cart: fullCart ?? result.cart, errors: result.errors},
+        {status, headers},
+      );
     }
     case 'REMOVE_FROM_CART': {
       if (!cartId) {
@@ -221,6 +176,12 @@ export async function action({request, context}: LoaderFunctionArgs) {
       throw new Error('Invalid cart action');
   }
 
+  if (typeof cartId !== 'string' || cartId.length === 0) {
+    return json(
+      {error: 'Brak id koszyka', cart: null, errors: []},
+      {status: 500, headers: {'Set-Cookie': await session.commit()}},
+    );
+  }
   /**
    * The Cart ID may change after each mutation. We need to update it each time in the session.
    */
@@ -301,32 +262,6 @@ export async function cartAdd(
 }
 
 /**
- * Aktualizuje atrybuty koszyka (np. scalenie `_epir_session_id` z istniejącymi tagami).
- */
-export async function cartUpdateAttributes(
-  cartId: string,
-  attributes: AttributeInput[],
-  storefront: Storefront,
-) {
-  const {cartAttributesUpdate} = await storefront.mutate(
-    CART_ATTRIBUTES_UPDATE_MUTATION,
-    {
-      variables: {
-        cartId,
-        attributes,
-        country: storefront.i18n.country,
-        language: storefront.i18n.language,
-      },
-    },
-  );
-
-  if (!cartAttributesUpdate) {
-    throw new Error('No data returned from cartAttributesUpdate');
-  }
-  return cartAttributesUpdate;
-}
-
-/**
  * Create a cart with line(s) mutation
  * @param cartId the current cart id
  * @param lineIds
@@ -372,41 +307,8 @@ const LINES_CART_FRAGMENT = `#graphql
   fragment CartLinesFragment on Cart {
     id
     totalQuantity
+    checkoutUrl
   }
-`;
-
-/** Tylko atrybuty — lekki odczyt przed scaleniem (bez zmiany ~/queries/cart.ts). */
-const CART_ATTRIBUTES_QUERY = `#graphql
-  query CartAttributes($cartId: ID!, $country: CountryCode, $language: LanguageCode)
-  @inContext(country: $country, language: $language) {
-    cart(id: $cartId) {
-      id
-      attributes {
-        key
-        value
-      }
-    }
-  }
-`;
-
-const CART_ATTRIBUTES_UPDATE_MUTATION = `#graphql
-  mutation CartAttributesUpdate(
-    $cartId: ID!
-    $attributes: [AttributeInput!]!
-    $country: CountryCode
-    $language: LanguageCode
-  ) @inContext(country: $country, language: $language) {
-    cartAttributesUpdate(cartId: $cartId, attributes: $attributes) {
-      cart {
-        ...CartLinesFragment
-      }
-      errors: userErrors {
-        ...ErrorFragment
-      }
-    }
-  }
-  ${LINES_CART_FRAGMENT}
-  ${USER_ERROR_FRAGMENT}
 `;
 
 //! @see: https://shopify.dev/api/storefront/{api_version}/mutations/cartcreate
