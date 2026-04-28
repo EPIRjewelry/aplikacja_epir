@@ -37,3 +37,7 @@ html {
 a.active {
   border-bottom-width: 1px;
 }
+
+body.home-page header[role="banner"] {
+  display: none !important;
+}
