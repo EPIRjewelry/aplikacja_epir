@@ -20,6 +20,7 @@ declare global {
     PUBLIC_STOREFRONT_API_TOKEN: string;
     PRIVATE_STOREFRONT_API_TOKEN: string;
     PUBLIC_STORE_DOMAIN: string;
+    PUBLIC_CHECKOUT_DOMAIN?: string;
     PUBLIC_STOREFRONT_ID: string;
     /** Optional chat config; runtime resolver uses same-origin `/api/chat`. */
     CHAT_API_URL?: string;

@@ -13,12 +13,12 @@ import {
 } from '@shopify/hydrogen/dist/storefront-api-types';
 import {CartLineItems, CartSummary, CartActions} from '@epir/ui';
 
-export const meta: MetaFunction = ({location}) =>
+export const meta: MetaFunction<typeof loader> = ({data}) =>
   getSeoMeta({
     title: 'Koszyk',
     description:
       'Sprawdź produkty dodane do koszyka przed przejściem do kasy.',
-    url: location.href,
+    url: data?.canonicalUrl,
   });
 
 type CartData = {
@@ -38,7 +38,7 @@ type CartQueryData = {
   cart: CartData | null;
 };
 
-export async function loader({context}: LoaderFunctionArgs) {
+export async function loader({context, request}: LoaderFunctionArgs) {
   const cartId = await context.session.get('cartId');
 
   const cart = cartId
@@ -54,7 +54,7 @@ export async function loader({context}: LoaderFunctionArgs) {
       ).cart
     : null;
 
-  return {cart};
+  return {cart, canonicalUrl: request.url};
 }
 
 export async function action({request, context}: LoaderFunctionArgs) {

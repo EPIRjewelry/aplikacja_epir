@@ -372,8 +372,9 @@ export async function loader({
 
   if (expectedMetal && collection.products?.nodes) {
     const metalKey = expectedMetal as 'gold' | 'silver';
-    const filteredNodes = collection.products.nodes.filter((p) =>
-      productMetalMatchesFilter(p.metal?.value, metalKey),
+    const filteredNodes = collection.products.nodes.filter(
+      (p: {metal?: {value?: string | null} | null}) =>
+        productMetalMatchesFilter(p.metal?.value, metalKey),
     );
 
     const products = {
