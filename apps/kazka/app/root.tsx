@@ -38,6 +38,12 @@ import {
 } from '~/lib/chat-widget-context';
 import {loadKazkaPersonaUi} from '~/lib/persona-ui.server';
 
+function privacyPolicyUrlFromShop(domain: string | undefined): string | undefined {
+  if (!domain?.trim()) return undefined;
+  const host = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  return `https://${host}/policies/privacy-policy`;
+}
+
 export const links: LinksFunction = () => {
   return [
     {rel: 'stylesheet', href: tailwind},
@@ -103,6 +109,11 @@ export async function loader({context, request}: LoaderFunctionArgs) {
     layout,
     cart: cartId ? getCart(context.storefront, cartId) : Promise.resolve(null),
     collections: {nodes},
+    selectedLocale: {
+      country: context.storefront.i18n.country,
+      language: context.storefront.i18n.language,
+    },
+    privacyPolicyUrl: privacyPolicyUrlFromShop(context.env.PUBLIC_STORE_DOMAIN),
     chatApiUrl,
     cartId,
     brand,
@@ -143,6 +154,7 @@ function KazkaConsentAndChat({
   route,
   shopDomain,
   analyticsConsent,
+  privacyPolicyUrl,
 }: {
   chatApiUrl: string;
   cartId?: string | null;
@@ -152,6 +164,7 @@ function KazkaConsentAndChat({
   channel: string;
   route?: string;
   shopDomain: string;
+  privacyPolicyUrl?: string;
   analyticsConsent: {
     checkoutDomain: string;
     storefrontAccessToken: string;
@@ -224,19 +237,49 @@ function KazkaConsentAndChat({
     [channel, route, shopDomain, storefrontId],
   );
 
+  const showConsentCard =
+    !consentGranted || pendingConsent || consentError !== null;
+  const showRevokeOnly =
+    consentGranted && !pendingConsent && consentError === null;
+
   return (
     <>
-      <div className="fixed bottom-4 left-4 z-50 max-w-sm rounded-lg border border-gray-200 bg-white p-3 shadow-md">
-        <ConsentToggle
-          checked={consentGranted}
-          onChange={(c) => void onConsentChange(c)}
-          disabled={pendingConsent}
-          label="Wyrażam zgodę na rozmowę z asystentem AI (Kazka). Zgoda jest wymagana do wysłania wiadomości w czacie."
-        />
-        {consentError ? (
-          <p className="mt-2 text-xs text-red-600">{consentError}</p>
-        ) : null}
-      </div>
+      {showConsentCard ? (
+        <div className="fixed bottom-4 left-4 z-50 max-w-sm rounded-lg border border-gray-200 bg-white p-3 shadow-md">
+          <ConsentToggle
+            checked={consentGranted}
+            onChange={(c) => void onConsentChange(c)}
+            disabled={pendingConsent}
+            label="Zgoda na czat i pliki cookie: klikając „Zgadzam się”, akceptujesz pliki cookie i podobne technologie do działania czatu AI oraz podstawowej analityki i dopasowania treści (Kazka)."
+          />
+          {privacyPolicyUrl ? (
+            <p className="mt-2 text-xs">
+              <a
+                href={privacyPolicyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-800 underline hover:text-blue-900"
+              >
+                Polityka prywatności
+              </a>
+            </p>
+          ) : null}
+          {consentError ? (
+            <p className="mt-2 text-xs text-red-600">{consentError}</p>
+          ) : null}
+        </div>
+      ) : null}
+      {showRevokeOnly ? (
+        <div className="fixed bottom-4 left-4 z-50 rounded-md border border-gray-200 bg-white/95 px-3 py-2 shadow-sm">
+          <button
+            type="button"
+            className="text-xs text-gray-700 underline hover:text-gray-900"
+            onClick={() => void onConsentChange(false)}
+          >
+            Cofnij zgodę
+          </button>
+        </div>
+      ) : null}
       {analyticsConsent.checkoutDomain ? (
         <CustomerPrivacyConsentBridge
           checkoutDomain={analyticsConsent.checkoutDomain}
@@ -290,6 +333,7 @@ export default function App() {
         channel={data.channel}
         route={data.route}
         shopDomain={data.shopDomain}
+        privacyPolicyUrl={data.privacyPolicyUrl}
         analyticsConsent={data.analyticsConsent}
       />
     </>
@@ -311,6 +355,11 @@ export default function App() {
         <Links />
       </head>
       <body>
+        {/*
+          Banner cookie Shopify (Admin → Customer Privacy): celowo wyłączony (`withPrivacyBanner: false`).
+          Iteracja 1: ConsentToggle przy czacie + CustomerPrivacyConsentBridge.
+          Iteracja 2: `withPrivacyBanner: true` dopiero po uporządkowaniu jednego UI zgód.
+        */}
         {canHydrogenAnalytics ? (
           <Analytics.Provider
             cart={data.cart ?? Promise.resolve(null)}

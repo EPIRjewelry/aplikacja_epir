@@ -22,6 +22,10 @@ declare global {
     PUBLIC_STORE_DOMAIN: string;
     PUBLIC_CHECKOUT_DOMAIN?: string;
     PUBLIC_STOREFRONT_ID: string;
+    /** Domyślny kraj dla Hydrogen `i18n`. Puste → PL w `@epir/utils`. */
+    PUBLIC_STOREFRONT_COUNTRY?: string;
+    /** Domyślny język dla Hydrogen `i18n`. Puste → PL. */
+    PUBLIC_STOREFRONT_LANGUAGE?: string;
     /** Optional chat config; runtime resolver uses same-origin `/api/chat`. */
     CHAT_API_URL?: string;
     EPIR_CHAT_SHARED_SECRET?: string;

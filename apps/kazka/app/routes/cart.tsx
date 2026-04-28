@@ -64,6 +64,13 @@ export async function action({request, context}: LoaderFunctionArgs) {
     ? formData.get('countryCode')
     : null;
 
+  /** Domyślnie PL przez `storefront.i18n` (`@epir/utils`). */
+  const rawCountry =
+    countryCode !== null && countryCode !== undefined
+      ? String(countryCode).trim()
+      : '';
+  const buyerCountryCode = (rawCountry || storefront.i18n.country) as CountryCode;
+
   switch (cartAction) {
     case 'ADD_TO_CART':
     case 'BUY_NOW':
@@ -73,9 +80,10 @@ export async function action({request, context}: LoaderFunctionArgs) {
 
       if (!cartId) {
         result = await cartCreate(
-          countryCode
-            ? {lines, buyerIdentity: {countryCode: countryCode as CountryCode}}
-            : {lines},
+          {
+            lines,
+            buyerIdentity: {countryCode: buyerCountryCode},
+          },
           storefront,
         );
       } else {

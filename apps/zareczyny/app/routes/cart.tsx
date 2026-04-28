@@ -76,6 +76,13 @@ export async function action({request, context}: LoaderFunctionArgs) {
     ? formData.get('countryCode')
     : null;
 
+  /** Kraj kupującego — domyślnie `storefront.i18n.country` (Hydrogen: PL z `@epir/utils`). */
+  const rawCountry =
+    countryCode !== null && countryCode !== undefined
+      ? String(countryCode).trim()
+      : '';
+  const buyerCountryCode = (rawCountry || storefront.i18n.country) as CountryCode;
+
   switch (cartAction) {
     case 'ADD_TO_CART':
     case 'BUY_NOW': {
@@ -86,10 +93,8 @@ export async function action({request, context}: LoaderFunctionArgs) {
       if (!cartId) {
         const input: CartInput = {
           lines,
+          buyerIdentity: {countryCode: buyerCountryCode},
         };
-        if (countryCode) {
-          input.buyerIdentity = {countryCode: countryCode as CountryCode};
-        }
         result = await cartCreate(input, storefront);
       } else {
         const addResult = await cartAdd(cartId, lines, storefront);
