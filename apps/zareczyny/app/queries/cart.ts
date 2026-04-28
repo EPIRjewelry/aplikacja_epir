@@ -7,6 +7,7 @@ export const CART_QUERY = `#graphql
 
   fragment CartFragment on Cart {
     id
+    updatedAt
     checkoutUrl
     totalQuantity
     buyerIdentity {
