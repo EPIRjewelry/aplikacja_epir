@@ -157,3 +157,71 @@ W [`apps/zareczyny/app/root.tsx`](apps/zareczyny/app/root.tsx) jest **osobny** f
 | `Analytics.Provider` | Brak — do dodania w root |
 
 Po akceptacji planu implementacja obejmuje oba storefronty (`apps/zareczyny`, `apps/kazka`) dla spójności, chyba że scope jest jednym env.
+
+---
+
+## Diagnoza konsoli (produkcja zareczyny.epirbizuteria.pl — produkt)
+
+### 1. `[H2:error:CartAnalytics]` — brakuje `cart.updatedAt`
+
+**Komunikat Shopify:** nie można skonfigurować eventów analityki koszyka, bo w zapytaniu GraphQL do koszyka **nie ma pola `updatedAt`** (fragment musi je eksponować tak jak w szablonie Hydrogen Skeleton).
+
+**Przyczyna w repo:** [`apps/zareczyny/app/queries/cart.ts`](apps/zareczyny/app/queries/cart.ts) — `fragment CartFragment on Cart` zawiera m.in. `id`, `checkoutUrl`, `totalQuantity`, linie itd., ale **nie ma `updatedAt`**. To samo w [`apps/kazka/app/queries/cart.ts`](apps/kazka/app/queries/cart.ts).
+
+**Powiązanie:** `Analytics.Provider` w [`apps/zareczyny/app/root.tsx`](apps/zareczyny/app/root.tsx) przekazuje `cart` z loadera (`getCart` → `CART_QUERY`). Hydrogen **CartAnalytics** subskrybuje zmiany koszyka m.in. przez `updatedAt`; bez tego pola rzuca `[H2:error:CartAnalytics]`.
+
+**Naprawa (mechaniczna):** dodać `updatedAt` do `CartFragment` (oraz ewentualnie zsynchronizować duplikat fragmentu w `cart.tsx` trasie, jeśli tam jest osobny inline fragment dla typów).
+
+### 2. `[EPIR Customer Privacy] Error while setting storefront API consent: Failed to fetch`
+
+**Źródło:** [`packages/ui/src/CustomerPrivacyConsentBridge.tsx`](packages/ui/src/CustomerPrivacyConsentBridge.tsx) — `customerPrivacy.setTrackingConsent(...)` wywołuje callback z `data.error`, który logujemy jako ostrzeżenie.
+
+**Znaczenie:** żądanie do endpointu zgody Shopify (przez SDK Customer Privacy w przeglądarce) **nie doszło do skutku** — typowo sieć, CORS, blokada rozszerzenia, błędna konfiguracja `PUBLIC_CHECKOUT_DOMAIN` / tokenu, lub chwilowa niedostępność. To **osobny tor** od błędu CartAnalytics (GraphQL cart).
+
+**Kierunek weryfikacji:** Network → który request failuje; Admin → Customer Privacy; wartości Secrets na Pages (`PUBLIC_CHECKOUT_DOMAIN` bez `https://`, poprawny token Storefront).
+
+### 3. React hydration (#418 / #423)
+
+**Nie są bezpośrednio komunikatem Hydrogen „analytics”.** Oznaczają rozjazd HTML SSR vs pierwszy render klienta (czas, locale, warunkowe UI, rozszerzenia przeglądarki). Po naprawie `updatedAt` warto **ponownie sprawdzić**, czy hydration nadal występuje — czasem zestaw błędów narasta z jednego źródła (np. różny stan koszyka po hydracji).
+
+### Priorytety
+
+| Problem | Wpływ na analytics koszyka | Działanie |
+|---------|------------------------------|-----------|
+| Brak `updatedAt` w `CART_QUERY` | Bezpośredni — CartAnalytics nie startuje | Dodać pole do fragmentu |
+| Failed to fetch (consent) | Zgoda / filtrowanie eventów przez Customer Privacy | Debug sieci + env |
+| Hydration | Pośredni (stabilność UI) | Osobna diagnostyka po stabilizacji cart/consent |
+
+---
+
+## Diagnoza konsoli (produkcja zareczyny.epirbizuteria.pl — produkt)
+
+### 1. `[H2:error:CartAnalytics]` — brakuje `cart.updatedAt`
+
+**Komunikat Shopify:** nie można skonfigurować eventów analityki koszyka, bo w zapytaniu GraphQL do koszyka **nie ma pola `updatedAt`** (fragment musi je eksponować tak jak w szablonie Hydrogen Skeleton).
+
+**Przyczyna w repo:** [`apps/zareczyny/app/queries/cart.ts`](apps/zareczyny/app/queries/cart.ts) — `fragment CartFragment on Cart` zawiera m.in. `id`, `checkoutUrl`, `totalQuantity`, linie itd., ale **nie ma `updatedAt`**. To samo w [`apps/kazka/app/queries/cart.ts`](apps/kazka/app/queries/cart.ts).
+
+**Powiązanie:** `Analytics.Provider` w [`apps/zareczyny/app/root.tsx`](apps/zareczyny/app/root.tsx) przekazuje `cart` z loadera (`getCart` → `CART_QUERY`). Hydrogen **CartAnalytics** subskrybuje zmiany koszyka m.in. przez `updatedAt`; bez tego pola rzuca `[H2:error:CartAnalytics]`.
+
+**Naprawa (mechaniczna):** dodać `updatedAt` do `CartFragment` (oraz ewentualnie zsynchronizować duplikat fragmentu w `cart.tsx` trasie, jeśli tam jest osobny inline fragment dla typów).
+
+### 2. `[EPIR Customer Privacy] Error while setting storefront API consent: Failed to fetch`
+
+**Źródło:** [`packages/ui/src/CustomerPrivacyConsentBridge.tsx`](packages/ui/src/CustomerPrivacyConsentBridge.tsx) — `customerPrivacy.setTrackingConsent(...)` wywołuje callback z `data.error`, który logujemy jako ostrzeżenie.
+
+**Znaczenie:** żądanie do endpointu zgody Shopify (przez SDK Customer Privacy w przeglądarce) **nie doszło do skutku** — typowo sieć, CORS, blokada rozszerzenia, błędna konfiguracja `PUBLIC_CHECKOUT_DOMAIN` / tokenu, lub chwilowa niedostępność. To **osobny tor** od błędu CartAnalytics (GraphQL cart).
+
+**Kierunek weryfikacji:** Network → który request failuje; Admin → Customer Privacy; wartości Secrets na Pages (`PUBLIC_CHECKOUT_DOMAIN` bez `https://`, poprawny token Storefront).
+
+### 3. React hydration (#418 / #423)
+
+**Nie są bezpośrednio komunikatem Hydrogen „analytics”.** Oznaczają rozjazd HTML SSR vs pierwszy render klienta (czas, locale, warunkowe UI, rozszerzenia przeglądarki). Po naprawie `updatedAt` warto **ponownie sprawdzić**, czy hydration nadal występuje — czasem zestaw błędów narasta z jednego źródła (np. różny stan koszyka po hydracji).
+
+### Priorytety
+
+| Problem | Wpływ na analytics koszyka | Działanie |
+|---------|------------------------------|-----------|
+| Brak `updatedAt` w `CART_QUERY` | Bezpośredni — CartAnalytics nie startuje | Dodać pole do fragmentu |
+| Failed to fetch (consent) | Zgoda / filtrowanie eventów przez Customer Privacy | Debug sieci + env |
+| Hydration | Pośredni (stabilność UI) | Osobna diagnostyka po stabilizacji cart/consent |

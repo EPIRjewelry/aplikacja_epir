@@ -31,7 +31,12 @@
 }
 
 html {
+  margin: 0;
   scroll-padding-top: 10rem;
+}
+
+body {
+  margin: 0;
 }
 
 a.active {
@@ -40,4 +45,13 @@ a.active {
 
 body.home-page header[role="banner"] {
   display: none !important;
+}
+
+/* Pełnowysokościowy hero na stronie głównej: bez jasnego pasa z paddingów Layout (main rozciągnięty nad footer) */
+body.home-page main[role='main'] {
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }

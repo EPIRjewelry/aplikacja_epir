@@ -9,6 +9,7 @@ import {
   useLoaderData,
 } from '@remix-run/react';
 import type {Shop, CountryCode, LanguageCode} from '@shopify/hydrogen/storefront-api-types';
+import './styles/root.css';
 import styles from './styles/app.css';
 import tailwind from './styles/tailwind-build.css';
 import favicon from '../public/favicon.svg';
@@ -26,10 +27,10 @@ import {
   getConsentSessionId,
 } from '@epir/ui';
 import type {PersonaUi} from '@epir/ui';
-import {Analytics, getSeoMeta, getShopAnalytics, Storefront} from '@shopify/hydrogen';
+import {Analytics, getSeoMeta, getShopAnalytics, Storefront, useNonce} from '@shopify/hydrogen';
 import type {LinksFunction, LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {CART_QUERY} from '~/queries/cart';
-import {defer} from '@remix-run/cloudflare';
+import {json} from '@remix-run/cloudflare';
 import {resolveChatApiUrl} from '~/lib/resolve-chat-api-url';
 import {
   ZARECZYNY_CHANNEL,
@@ -42,6 +43,8 @@ import {
   filterCollectionsForNav,
   parseCollectionFilter,
 } from '~/lib/collection-filters';
+import {Footer} from '~/components/Footer';
+import {Header} from '~/components/Header';
 
 /** Domyślny URL polityki prywatności Shopify — sprawdź handle w Admin (Legal → Policies). */
 function privacyPolicyUrlFromShop(domain: string | undefined): string | undefined {
@@ -127,17 +130,24 @@ export async function loader({context, request}: LoaderFunctionArgs) {
     publicStorefrontId: context.env.PUBLIC_STOREFRONT_ID,
   });
 
+  /** Headless storefront na innym hoście niż myshopify — bez proxy SFAPI w tej samej origin ustawiamy explicit false (Hydrogen). */
+  const sameDomainForStorefrontApi = false;
+
   const analyticsConsent = {
     checkoutDomain,
     storefrontAccessToken: context.env.PUBLIC_STOREFRONT_API_TOKEN,
     country: context.storefront.i18n.country,
     language: context.storefront.i18n.language,
+    sameDomainForStorefrontApi,
   };
 
-  return defer({
+  const cart = cartId ? await getCart(context.storefront, cartId) : null;
+
+  return json({
     layout,
-    cart: cartId ? getCart(context.storefront, cartId) : Promise.resolve(null),
+    cart,
     collections: {nodes},
+    hubHandle,
     selectedLocale: {
       country: context.storefront.i18n.country,
       language: context.storefront.i18n.language,
@@ -209,6 +219,7 @@ function ZareczynyConsentAndChat({
     storefrontAccessToken: string;
     country: CountryCode;
     language: LanguageCode;
+    sameDomainForStorefrontApi: boolean;
   };
 }) {
   const [consentGranted, setConsentGranted] = useState(false);
@@ -325,6 +336,7 @@ function ZareczynyConsentAndChat({
           storefrontAccessToken={analyticsConsent.storefrontAccessToken}
           country={analyticsConsent.country}
           locale={analyticsConsent.language}
+          sameDomainForStorefrontApi={analyticsConsent.sameDomainForStorefrontApi}
           consentGranted={consentGranted}
         />
       ) : null}
@@ -343,17 +355,33 @@ function ZareczynyConsentAndChat({
 }
 
 export default function App() {
+  const nonce = useNonce();
   const data = useLoaderData<typeof loader>();
   const shopAnalytics = data.shopAnalytics;
   const canHydrogenAnalytics =
     Boolean(data.analyticsConsent.checkoutDomain) && shopAnalytics != null;
 
+  // Filter collections to exclude the hub "Pierścionki zaręczynowe"
+  const filteredCollections = (data.collections?.nodes ?? []).filter(
+    (c) => c.handle !== (data.hubHandle ?? '')
+  );
+
   const shell = (
     <>
       <Layout
         title={data.layout.shop.name}
-        collections={data.collections?.nodes ?? []}
+        collections={filteredCollections}
         cart={data.cart}
+        footer={<Footer />}
+        renderHeader={({brandName, collections, cartQuantity, openDrawer, renderCartHeader, cart}) => (
+          <Header
+            brandName={brandName}
+            collections={collections}
+            cartQuantity={cartQuantity}
+            onOpenCart={openDrawer}
+            renderCartHeader={({openDrawer: onOpen}) => renderCartHeader({cart, openDrawer: onOpen})}
+          />
+        )}
         renderCartHeader={({cart, openDrawer}) =>
           cart ? <CartHeader cart={cart} openDrawer={openDrawer} /> : null
         }
@@ -383,11 +411,6 @@ export default function App() {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width,initial-scale=1" />
-        <script
-          type="module"
-          src="https://cdn.shopify.com/shopifycloud/polaris.js"
-          async
-        />
         <Meta />
         <Links />
       </head>
@@ -399,7 +422,7 @@ export default function App() {
         */}
         {canHydrogenAnalytics ? (
           <Analytics.Provider
-            cart={data.cart ?? Promise.resolve(null)}
+            cart={data.cart ?? null}
             shop={shopAnalytics}
             consent={{
               checkoutDomain: data.analyticsConsent.checkoutDomain,
@@ -407,6 +430,7 @@ export default function App() {
               withPrivacyBanner: false,
               country: data.analyticsConsent.country,
               language: data.analyticsConsent.language,
+              sameDomainForStorefrontApi: data.analyticsConsent.sameDomainForStorefrontApi,
             }}
             customData={{
               channel: data.channel,
@@ -418,8 +442,8 @@ export default function App() {
         ) : (
           shell
         )}
-        <ScrollRestoration />
-        <Scripts />
+        <ScrollRestoration nonce={nonce} />
+        <Scripts nonce={nonce} />
       </body>
     </html>
   );

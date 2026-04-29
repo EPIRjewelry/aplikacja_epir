@@ -1,0 +1,11 @@
+@font-face {
+  font-family: 'Della Respira';
+  src: url('/fonts/DellaRespira-Regular.ttf') format('truetype');
+  font-weight: 500;
+}
+
+@font-face {
+  font-family: 'Donegal One';
+  src: url('/fonts/DonegalOne-Regular.ttf') format('truetype');
+  font-weight: 500;
+}
