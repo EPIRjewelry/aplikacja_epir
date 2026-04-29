@@ -225,7 +225,7 @@ Ten akapit jest punktem odniesienia, żeby **rozdzielić zamknięty zakres dzia�
 | Element | Wartość |
 |--------|---------|
 | **Tag (annotated)** | `storefront-stable-2026-04-28` |
-| **Gałąź referencyjna** | `stable/storefront-2026-04` (ten sam commit co tag) |
+| **Gałąź referencyjna (bieżąca)** | `main`; snapshot zamrożonego baseline: tag `storefront-stable-2026-04-28`. |
 
 Po `git fetch --tags` można wrócić do tego stanu: `git checkout storefront-stable-2026-04-28`. Nowe prace estetyczne lub większy refaktor UI najlepiej prowadzić z osobnego brancha i scalać po regresji.
 
