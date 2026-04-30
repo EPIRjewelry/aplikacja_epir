@@ -1,2 +1,7 @@
 export {parseSection} from './parseSection';
-export {getStoreFrontClient, type StorefrontEnv, type StorefrontContext} from './hydrogen';
+export {
+  getStoreFrontClient,
+  storefrontHeadersFromRequest,
+  type StorefrontEnv,
+  type StorefrontContext,
+} from './hydrogen';

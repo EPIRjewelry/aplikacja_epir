@@ -98,8 +98,14 @@ export async function loader({context, request}: LoaderFunctionArgs) {
     publicStorefrontId: context.env.PUBLIC_STOREFRONT_ID,
   });
 
-  /** Headless storefront na innym hoście niż myshopify — bez proxy SFAPI w tej samej origin ustawiamy explicit false (Hydrogen). */
-  const sameDomainForStorefrontApi = false;
+  /**
+   * Customer Privacy + Analytics: SFAPI wyłącznie przez proxy same-origin (`api.$version.[graphql.json]`),
+   * z `sameDomainForStorefrontApi: true` — bez bezpośredniego POST na `https://<shop>.myshopify.com/api/.../graphql.json`.
+   *
+   * Ścieżka wersji w kliencie = stała `@shopify/hydrogen-react` (Hydrogen 2024.10 → zwykle `2024-10`); proxy obsługuje każdy segment.
+   * Serwer/loadery: `@epir/utils` + `PUBLIC_STOREFRONT_API_VERSION` (domyślnie 2025-10).
+   */
+  const sameDomainForStorefrontApi = true;
 
   const analyticsConsent = {
     checkoutDomain,

@@ -10,6 +10,8 @@ temp_sa.json
 .shopify
 **/public/build
 # Root package-lock.json jest wymagany przez CI (npm ci w .github/workflows/deploy-pages.yml).
+# Monorepo jest instalowane npm; `packageManager` w package.json bywa czytane przez narzędzia i tworzy pnpm-lock lokalnie — nie commitujemy.
+pnpm-lock.yaml
 
 # Sekrety – nigdy nie commitować
 *-secrets.txt

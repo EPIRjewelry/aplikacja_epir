@@ -10,8 +10,9 @@ export type CustomerPrivacyConsentBridgeProps = {
   /** Stan zgody powiązany z istniejącym UI (np. ConsentToggle czatu) — mapowany na zgody Shopify Customer Privacy. */
   consentGranted: boolean;
   /**
-   * Gdy storefront SFAPI nie jest na tej samej origin co headless site (bez proxy jak w Oxygen),
-   * musi być false — Hydrogen inaczej używa `window.location.host` jako domenę checkout (Failed to fetch).
+   * Gdy macie BFF `POST /api/{version}/graphql.json` (plik `api.$version.[graphql.json]` w `app/routes`),
+   * ustawcie `true`, żeby Hydrogen trafiał na tę samą origin. Gdy proxy nie istnieje — `false`,
+   * żeby nie używać `window.location.host` jako „sklepu”.
    */
   sameDomainForStorefrontApi?: boolean;
 };

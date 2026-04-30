@@ -16,7 +16,11 @@ type PersonaUiMetaobjectResponse = {
 };
 
 const KAZKA_AI_PROFILE_GID = 'gid://shopify/Metaobject/2057969205580';
-const STOREFRONT_API_VERSION = '2026-04';
+
+function storefrontApiVersionFromEnv(env: {PUBLIC_STOREFRONT_API_VERSION?: string}): string {
+  const v = normalizeText(env.PUBLIC_STOREFRONT_API_VERSION);
+  return v ?? '2025-10';
+}
 
 const MISCONFIGURED_PERSONA_UI: PersonaUi = {
   displayName: 'Profil AI',
@@ -106,9 +110,11 @@ export async function loadKazkaPersonaUi(env: Env): Promise<PersonaUi> {
     headers['X-Shopify-Storefront-Access-Token'] = token;
   }
 
+  const apiVersion = storefrontApiVersionFromEnv(env);
+
   try {
     const response = await fetch(
-      `https://${shopDomain}/api/${STOREFRONT_API_VERSION}/graphql.json`,
+      `https://${shopDomain}/api/${apiVersion}/graphql.json`,
       {
         method: 'POST',
         headers,

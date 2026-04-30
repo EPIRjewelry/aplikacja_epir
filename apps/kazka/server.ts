@@ -24,7 +24,7 @@ const getLoadContext: GetLoadContextFunction<Env> = async ({
     throw new Error(msg);
   }
 
-  const storefront = (await getStoreFrontClient(cloudflare)).storefront;
+  const storefront = (await getStoreFrontClient({...cloudflare, request})).storefront;
   const session = await HydrogenCloudflareSession.init(request, [
     cloudflare.env.SESSION_SECRET,
   ]);

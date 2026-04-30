@@ -5,8 +5,8 @@ import {EntryContext} from '@remix-run/cloudflare';
 import {createContentSecurityPolicy} from '@shopify/hydrogen';
 
 /**
- * Domenery dla CSP (`connect-src` m.in. Customer Privacy). Muszą być zgodne z
- * PUBLIC_CHECKOUT_DOMAIN / PUBLIC_STORE_DOMAIN w Cloudflare Pages / wrangler.
+ * Domenery dla CSP (`connect-src`). `connect-src` dla myshopify pozwala CDN / innym zasobom Shopify;
+ * Storefront GraphQL z przeglądarki idzie na same-origin `/api/.../graphql.json` (sameDomainForStorefrontApi).
  */
 const SHOP_FOR_CSP = {
   checkoutDomain: 'checkout.shopify.com',
@@ -21,11 +21,18 @@ export default async function handleRequest(
 ) {
   const {nonce, header, NonceProvider} = createContentSecurityPolicy({
     shop: SHOP_FOR_CSP,
-    /** Wideo z originu storefrontu (self) + CDN Shopify + host sklepu (Storefront API / pliki). */
     mediaSrc: [
       "'self'",
+      'https://epirbizuteria.pl',
       'https://cdn.shopify.com',
-      `https://${SHOP_FOR_CSP.storeDomain}`,
+    ],
+    connectSrc: [
+      "'self'",
+      'https://monorail-edge.shopifysvc.com',
+      'https://checkout.shopify.com',
+      'https://epir-art-silver-jewellery.myshopify.com',
+      'https://cdn.shopify.com',
+      'https://shopifycloud.com',
     ],
   });
 

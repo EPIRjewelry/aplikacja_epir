@@ -19,6 +19,11 @@ NODE_ENV = "production"
 CHAT_API_URL = "/api/chat"
 PUBLIC_STORE_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
 
+# Jedna wersja SFAPI dla serwera Hydrogen i persona-ui.server (Hydrogen-react ma własną dla bundle klienckiego).
+PUBLIC_STOREFRONT_API_VERSION = "2025-10"
+
+# Zapytania przeglądarki do SFAPI idą przez POST /api/{version}/graphql.json (`sameDomainForStorefrontApi`).
+
 # Ustaw w Dashboard: PUBLIC_STORE_DOMAIN, PUBLIC_CHECKOUT_DOMAIN, PUBLIC_STOREFRONT_ID,
 # SHOP_ID, PUBLIC_STOREFRONT_API_VERSION
 # Secrets (Cloudflare Pages -> Settings -> Variables and Secrets -> Secrets):

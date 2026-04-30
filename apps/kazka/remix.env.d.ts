@@ -20,6 +20,7 @@ declare global {
     PUBLIC_STOREFRONT_API_TOKEN: string;
     PRIVATE_STOREFRONT_API_TOKEN: string;
     PUBLIC_STORE_DOMAIN: string;
+    PUBLIC_STOREFRONT_API_VERSION?: string;
     PUBLIC_CHECKOUT_DOMAIN?: string;
     PUBLIC_STOREFRONT_ID: string;
     /** Domyślny kraj dla Hydrogen `i18n`. Puste → PL w `@epir/utils`. */

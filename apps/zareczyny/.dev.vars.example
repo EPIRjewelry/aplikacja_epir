@@ -12,12 +12,18 @@ COLLECTION_FILTER=pierscionki-zareczynowe,zareczyny-zlote,zareczyny-srebrne
 COLLECTION_HUB_HANDLE=pierscionki-zareczynowe
 COLLECTION_GOLD_HANDLE=zareczyny-zlote
 COLLECTION_SILVER_HANDLE=zareczyny-srebrne
+# Sklep (musi się zgadzać z tokenem Storefront API z tego samego Shopify Admin → Headless channel)
 PUBLIC_STORE_DOMAIN=epir-art-silver-jewellery.myshopify.com
 PUBLIC_CHECKOUT_DOMAIN=checkout.shopify.com
+
+# PUBLIC_STOREFRONT_API_TOKEN — skopiuj z Shopify Admin dla tego TENANTA (`PUBLIC_STORE_DOMAIN`).
+# Nie używaj tokenu pod innego sklepu ani placeholdera „your-token”: SFAPI wtedy zwykle → 403.
+# PRIVATE_STOREFRONT_API_TOKEN — delegate access token dla Storefront API (Hydrogen/BFF `/api/*/graphql.json`).
 PUBLIC_STOREFRONT_API_TOKEN=your-token
 PRIVATE_STOREFRONT_API_TOKEN=your-token
-# Opcjonalnie: wersja Storefront API (domyślnie 2025-10)
+# Opcjonalnie: wersja Storefront API (domyślnie 2025-10 — zgodna z `PUBLIC_STOREFRONT_API_VERSION` w wrangler.toml)
 # PUBLIC_STOREFRONT_API_VERSION=2025-10
+# Jak w gid://shopify/Storefront/<ID> lub w ustawieniach Headless storefrontu dla tego kanału
 PUBLIC_STOREFRONT_ID=1000013955
 # Hydrogen i18n (koszyk, ceny, kraj kupującego). Domyślnie PL — ustaw inny jeśli sklep obsługuje inny rynek.
 # PUBLIC_STOREFRONT_COUNTRY=PL

@@ -30,7 +30,7 @@ const getLoadContext: GetLoadContextFunction<Env> = async ({
     cloudflare.env.SESSION_SECRET ||
     'zareczyny-hydrogen-session-fallback-rotate-in-cloudflare-pages';
 
-  const storefront = (await getStoreFrontClient(cloudflare)).storefront;
+  const storefront = (await getStoreFrontClient({...cloudflare, request})).storefront;
   const session = await HydrogenCloudflareSession.init(request, [sessionSecret]);
 
   return {

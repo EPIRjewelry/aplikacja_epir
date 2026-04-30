@@ -5,8 +5,7 @@ import {EntryContext} from '@remix-run/cloudflare';
 import {createContentSecurityPolicy} from '@shopify/hydrogen';
 
 /**
- * Domenery dla CSP (`connect-src` m.in. Customer Privacy). Muszą być zgodne z
- * PUBLIC_CHECKOUT_DOMAIN / PUBLIC_STORE_DOMAIN w Cloudflare Pages / wrangler.
+ * CSP `connect-src`; wpis myshopify pod CDN / zasoby Shopify — SFAPI z frontu: same-origin `/api/.../graphql.json`.
  */
 const SHOP_FOR_CSP = {
   checkoutDomain: 'checkout.shopify.com',
