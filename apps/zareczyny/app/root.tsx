@@ -381,13 +381,13 @@ export default function App() {
         collections={filteredCollections}
         cart={data.cart}
         footer={<Footer />}
-        renderHeader={({brandName, collections, cartQuantity, openDrawer, renderCartHeader, cart}) => (
+        renderHeader={({brandName, collections, cartQuantity, openDrawer, cart}) => (
           <Header
             brandName={brandName}
             collections={collections}
             cartQuantity={cartQuantity}
             onOpenCart={openDrawer}
-            renderCartHeader={({openDrawer: onOpen}) => renderCartHeader({cart, openDrawer: onOpen})}
+            renderCartHeader={() => null}
           />
         )}
         renderCartHeader={({cart, openDrawer}) =>
