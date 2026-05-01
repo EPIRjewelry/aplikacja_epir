@@ -28,9 +28,9 @@ export default function ProductGrid({
   hasNextPage,
   endCursor: initEndCursor,
 }: ProductGridProps) {
-  const [nextPage, setNextPage] = useState(hasNextPage);
-  const [endCursor, setEndCursor] = useState(initEndCursor);
-  const [products, setProducts] = useState(initProducts || []);
+  const [products, setProducts] = useState(() => initProducts || []);
+  const [nextPage, setNextPage] = useState(() => hasNextPage);
+  const [endCursor, setEndCursor] = useState(() => initEndCursor);
 
   const fetcher = useFetcher<ProductGridFetcherData>();
 
@@ -45,12 +45,6 @@ export default function ProductGrid({
     setNextPage(collection.products.pageInfo.hasNextPage);
     setEndCursor(collection.products.pageInfo.endCursor);
   }, [fetcher.data]);
-
-  useEffect(() => {
-    setProducts(initProducts || []);
-    setNextPage(hasNextPage);
-    setEndCursor(initEndCursor);
-  }, [url, initProducts, hasNextPage, initEndCursor]);
 
   return (
     <section className="w-full gap-6 md:gap-8">
