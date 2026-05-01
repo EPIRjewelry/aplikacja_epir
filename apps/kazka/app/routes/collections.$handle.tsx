@@ -74,6 +74,7 @@ export default function Collection() {
       <div className="fadeIn" style={{animationDelay: '100ms'}}>
         {collection.products?.nodes?.length ? (
           <ProductGrid
+            key={collection.handle}
             products={collection.products.nodes}
             url={`/collections/${collection.handle}`}
             hasNextPage={collection.products.pageInfo.hasNextPage}
