@@ -46,6 +46,12 @@ export default function ProductGrid({
     setEndCursor(collection.products.pageInfo.endCursor);
   }, [fetcher.data]);
 
+  useEffect(() => {
+    setProducts(initProducts || []);
+    setNextPage(hasNextPage);
+    setEndCursor(initEndCursor);
+  }, [url, initProducts, hasNextPage, initEndCursor]);
+
   return (
     <section className="w-full gap-6 md:gap-8">
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">

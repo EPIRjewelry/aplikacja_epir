@@ -329,6 +329,7 @@ export async function loader({
       subcollectionLinks: subcollections,
       missingSubcollection: missingSubcollection ?? null,
       breadcrumb: null,
+      routeHandle: handle,
     });
   }
 
@@ -406,6 +407,7 @@ export async function loader({
           currentLabel: subMeta.label,
         }
       : null,
+    routeHandle: handle,
   });
 }
 
@@ -417,6 +419,7 @@ export default function Collection() {
     subcollectionLinks,
     breadcrumb,
     missingSubcollection,
+    routeHandle,
   } = useLoaderData<typeof loader>();
 
   return (
@@ -480,9 +483,9 @@ export default function Collection() {
       {!hubMode ? (
         <div className="fadeIn" style={{animationDelay: '100ms'}}>
           {collection.products?.nodes?.length ? (
-            <ProductGrid
+            <ProductGrid key={routeHandle}
               products={collection.products.nodes}
-              url={`/collections/${collection.handle}`}
+              url={`/collections/${routeHandle}`}
               hasNextPage={collection.products.pageInfo.hasNextPage}
               endCursor={collection.products.pageInfo.endCursor}
             />

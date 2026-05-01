@@ -11,6 +11,41 @@ type PixelBrowser = {
   };
 };
 
+/** Fragment Customer Privacy na obiekcie zdarzenia Web Pixel (event / event.context). */
+type PixelEventPrivacy = {
+  analyticsProcessingAllowed: boolean;
+};
+
+/** Wyłuskaj blok privacy z natywnego obiektu zdarzenia Shopify Web Pixels. */
+function readPrivacyFromPixelEvent(event: unknown): PixelEventPrivacy | null {
+  try {
+    if (!event || typeof event !== "object") return null;
+    const e = event as Record<string, unknown>;
+    const direct = e.customerPrivacy;
+    if (direct && typeof direct === "object") {
+      const ap = (direct as Record<string, unknown>).analyticsProcessingAllowed;
+      if (typeof ap === "boolean") return {analyticsProcessingAllowed: ap};
+    }
+    const ctx = e.context;
+    if (ctx && typeof ctx === "object") {
+      const nested = (ctx as Record<string, unknown>).customerPrivacy;
+      if (nested && typeof nested === "object") {
+        const ap = (nested as Record<string, unknown>).analyticsProcessingAllowed;
+        if (typeof ap === "boolean") return {analyticsProcessingAllowed: ap};
+      }
+    }
+  } catch (_) {
+    /* silent — stabilność w piaskownicy */
+  }
+  return null;
+}
+
+/** Śledzenie analityczne dozwolone tylko przy jawnym analyticsProcessingAllowed === true na evencie. */
+function isAnalyticsProcessingExplicitlyAllowedOnEvent(event: unknown): boolean {
+  const p = readPrivacyFromPixelEvent(event);
+  return p !== null && p.analyticsProcessingAllowed === true;
+}
+
 /** Shopify Web Pixels: `clientId` na evencie (fallback gdy brak ciasteczka Hydrogen). */
 function extractClientIdFromEvent(event: unknown): string | null {
   if (!event || typeof event !== 'object') return null;
@@ -43,7 +78,9 @@ async function resolveEpirSessionId(
   return extractClientIdFromEvent(event) ?? '';
 }
 
-register(async ({ analytics, browser, init, settings }) => {
+register(async (api) => {
+    const { analytics, browser, init, settings } = api;
+
     const browserApi = browser as PixelBrowser;
 
     // ============================================================================
@@ -51,6 +88,7 @@ register(async ({ analytics, browser, init, settings }) => {
     // ============================================================================
     // Extract customer_id from Shopify (null if not logged in)
     const customerId = init?.data?.customer?.id ?? null;
+
     
     // ============================================================================
     // STOREFRONT & CHANNEL (EPIR: kazka vs zareczyny vs online-store)
@@ -88,23 +126,39 @@ register(async ({ analytics, browser, init, settings }) => {
       } catch (_) {}
       return fromEvent;
     }
-    
-    console.log('[EPIR Pixel] Customer ID:', customerId || 'anonymous');
-    
-    // ============================================================================
-    // Event Sending Function
-    // ============================================================================
-    // NOTE: No additional batching/rate limiting implemented here because:
-    // 1. Shopify Web Pixels API has built-in batching and rate limiting
-    // 2. tracking.js already implements debouncing (scroll: 200ms) and throttling (mouse: 5s)
-    // 3. Batching would delay proactive chat activation signals
-    // 4. High-value events (checkout, purchase) should be sent immediately
-    // ============================================================================
-    async function sendPixelEvent(eventType: string, eventData: unknown, event?: unknown): Promise<void> {
+    /**
+     * Przed sendPixelEvent: odczyt zgód wyłącznie z obiektu zdarzenia Web Pixel (context.customerPrivacy / customerPrivacy).
+     */
+    async function emitStandardPixelEvent(eventType: string, pixelEvent: unknown): Promise<void> {
       try {
-        const sourceForIdentity = event !== undefined ? event : eventData;
+        if (!isAnalyticsProcessingExplicitlyAllowedOnEvent(pixelEvent)) return;
+        await sendPixelEvent(eventType, pixelEvent, pixelEvent);
+      } catch (_) {}
+    }
+
+    async function emitCustomPixelEvent(
+      eventType: string,
+      pixelEvent: unknown,
+      payload: unknown,
+    ): Promise<void> {
+      try {
+        if (!isAnalyticsProcessingExplicitlyAllowedOnEvent(pixelEvent)) return;
+        await sendPixelEvent(eventType, payload, pixelEvent);
+      } catch (_) {}
+    }
+
+    // ============================================================================
+    // Event Sending Function — fetch tylko gdy na evencie jawna zgoda na analytics (silent drop)
+    // ============================================================================
+    async function sendPixelEvent(eventType: string, eventData: unknown, pixelEvent: unknown): Promise<void> {
+      try {
+        if (!isAnalyticsProcessingExplicitlyAllowedOnEvent(pixelEvent)) {
+          return;
+        }
+
+        const sourceForIdentity = pixelEvent;
         const resolvedSessionId = await resolveEpirSessionId(browserApi, sourceForIdentity);
-        const storefront = await getStorefrontForEvent(event ?? eventData);
+        const storefront = await getStorefrontForEvent(pixelEvent);
         // Enrich event data with customer_id, session_id (cookie lub clientId), storefront_id, channel
         const enrichedData = {
           ...(typeof eventData === 'object' && eventData !== null ? eventData : {}),
@@ -128,60 +182,50 @@ register(async ({ analytics, browser, init, settings }) => {
         // ============================================================================
         // PROACTIVE CHAT ACTIVATION: Check response from analytics-worker
         // ============================================================================
-        // Analytics worker returns { ok: true, activate_chat: true/false, reason: string }
-        // If activate_chat=true, emit custom event to frontend
         if (response.ok) {
-          const result = await response.json();
-          
-          // Type guard for result
-          if (
-            typeof result === 'object' && 
-            result !== null && 
-            'activate_chat' in result && 
-            result.activate_chat === true
-          ) {
-            console.log('[EPIR Pixel] 🚀 Proactive chat activation detected:', (result as any).reason);
-            
-            // Emit custom event to frontend (assistant.js listens for this)
-            window.dispatchEvent(new CustomEvent('epir:activate-chat', {
-              detail: {
-                reason: (result as any).reason,
-                session_id: resolvedSessionId,
-                customer_id: customerId,
-                timestamp: Date.now()
-              }
-            }));
-          }
+          try {
+            const result = await response.json();
+            if (
+              typeof result === 'object' && 
+              result !== null && 
+              'activate_chat' in result && 
+              result.activate_chat === true
+            ) {
+              window.dispatchEvent(new CustomEvent('epir:activate-chat', {
+                detail: {
+                  reason: (result as {reason?: string}).reason,
+                  session_id: resolvedSessionId,
+                  customer_id: customerId,
+                  timestamp: Date.now()
+                }
+              }));
+            }
+          } catch (_) {}
         }
-      } catch (err) {
-        console.warn('Pixel event send failed:', err);
+      } catch (_) {
+        /* silent drop — nie logujemy do konsoli piaskownicy */
       }
     }
 
-    // Subskrybuj wybrane zdarzenia klienta
+    // Subskrybuj wybrane zdarzenia klienta (walidacja zgód z obiektu zdarzenia przed sendPixelEvent)
     analytics.subscribe('page_viewed', async (event: unknown) => {
-      console.log('Page viewed', event);
-      await sendPixelEvent('page_viewed', event);
+      await emitStandardPixelEvent('page_viewed', event);
     });
 
     analytics.subscribe('product_viewed', async (event: unknown) => {
-      console.log('Product viewed', event);
-      await sendPixelEvent('product_viewed', event);
+      await emitStandardPixelEvent('product_viewed', event);
     });
 
     analytics.subscribe('cart_updated', async (event: unknown) => {
-      console.log('Cart updated', event);
-      await sendPixelEvent('cart_updated', event);
+      await emitStandardPixelEvent('cart_updated', event);
     });
 
     analytics.subscribe('checkout_started', async (event: unknown) => {
-      console.log('Checkout started', event);
-      await sendPixelEvent('checkout_started', event);
+      await emitStandardPixelEvent('checkout_started', event);
     });
 
     analytics.subscribe('purchase_completed', async (event: unknown) => {
-      console.log('Purchase completed', event);
-      await sendPixelEvent('purchase_completed', event);
+      await emitStandardPixelEvent('purchase_completed', event);
     });
 
     // ============================================================================
@@ -189,66 +233,54 @@ register(async ({ analytics, browser, init, settings }) => {
     // ============================================================================
     // Cart events
     analytics.subscribe('cart_viewed', async (event: unknown) => {
-      console.log('Cart viewed', event);
-      await sendPixelEvent('cart_viewed', event);
+      await emitStandardPixelEvent('cart_viewed', event);
     });
 
     analytics.subscribe('product_added_to_cart', async (event: unknown) => {
-      console.log('Product added to cart', event);
-      await sendPixelEvent('product_added_to_cart', event);
+      await emitStandardPixelEvent('product_added_to_cart', event);
     });
 
     analytics.subscribe('product_removed_from_cart', async (event: unknown) => {
-      console.log('Product removed from cart', event);
-      await sendPixelEvent('product_removed_from_cart', event);
+      await emitStandardPixelEvent('product_removed_from_cart', event);
     });
 
     // Collection and search
     analytics.subscribe('collection_viewed', async (event: unknown) => {
-      console.log('Collection viewed', event);
-      await sendPixelEvent('collection_viewed', event);
+      await emitStandardPixelEvent('collection_viewed', event);
     });
 
     analytics.subscribe('search_submitted', async (event: unknown) => {
-      console.log('Search submitted', event);
-      await sendPixelEvent('search_submitted', event);
+      await emitStandardPixelEvent('search_submitted', event);
     });
 
     // Checkout flow events
     analytics.subscribe('checkout_completed', async (event: unknown) => {
-      console.log('Checkout completed', event);
-      await sendPixelEvent('checkout_completed', event);
+      await emitStandardPixelEvent('checkout_completed', event);
     });
 
     analytics.subscribe('checkout_contact_info_submitted', async (event: unknown) => {
-      console.log('Checkout contact info submitted', event);
-      await sendPixelEvent('checkout_contact_info_submitted', event);
+      await emitStandardPixelEvent('checkout_contact_info_submitted', event);
     });
 
     analytics.subscribe('checkout_address_info_submitted', async (event: unknown) => {
-      console.log('Checkout address info submitted', event);
-      await sendPixelEvent('checkout_address_info_submitted', event);
+      await emitStandardPixelEvent('checkout_address_info_submitted', event);
     });
 
     analytics.subscribe('checkout_shipping_info_submitted', async (event: unknown) => {
-      console.log('Checkout shipping info submitted', event);
-      await sendPixelEvent('checkout_shipping_info_submitted', event);
+      await emitStandardPixelEvent('checkout_shipping_info_submitted', event);
     });
 
     analytics.subscribe('payment_info_submitted', async (event: unknown) => {
-      console.log('Payment info submitted', event);
-      await sendPixelEvent('payment_info_submitted', event);
+      await emitStandardPixelEvent('payment_info_submitted', event);
     });
 
     // UI and alerts
     analytics.subscribe('alert_displayed', async (event: unknown) => {
-      console.log('Alert displayed', event);
-      await sendPixelEvent('alert_displayed', event);
+      await emitStandardPixelEvent('alert_displayed', event);
     });
 
     analytics.subscribe('ui_extension_errored', async (event: unknown) => {
-      console.log('UI extension errored', event);
-      await sendPixelEvent('ui_extension_errored', event);
+      await emitStandardPixelEvent('ui_extension_errored', event);
     });
 
     // ------------------------------------------------------------------------
@@ -263,48 +295,43 @@ register(async ({ analytics, browser, init, settings }) => {
       //   await sendPixelEvent('clicked', event);
       // });
 
-      analytics.subscribe('form_submitted', async (event: any) => {
-        console.log('DOM form submitted', event);
-        await sendPixelEvent('form_submitted', event);
+      analytics.subscribe('form_submitted', async (event: unknown) => {
+        await emitStandardPixelEvent('form_submitted', event);
       });
 
-      analytics.subscribe('input_focused', async (event: any) => {
-        console.log('DOM input focused', event);
-        await sendPixelEvent('input_focused', event);
+      analytics.subscribe('input_focused', async (event: unknown) => {
+        await emitStandardPixelEvent('input_focused', event);
       });
 
-      analytics.subscribe('input_blurred', async (event: any) => {
-        console.log('DOM input blurred', event);
-        await sendPixelEvent('input_blurred', event);
+      analytics.subscribe('input_blurred', async (event: unknown) => {
+        await emitStandardPixelEvent('input_blurred', event);
       });
 
-      analytics.subscribe('input_changed', async (event: any) => {
-        console.log('DOM input changed', event);
-        await sendPixelEvent('input_changed', event);
+      analytics.subscribe('input_changed', async (event: unknown) => {
+        await emitStandardPixelEvent('input_changed', event);
       });
-    } catch (e) {
-      // ignore if not available in this context
-      console.warn('[EPIR Pixel] Some DOM events not available:', e);
+    } catch (_) {
+      /* DOM events opcjonalne w zależności od kontekstu */
     }
 
     // Custom events published by Theme App Extension (epir-tracking-extension)
-    analytics.subscribe('epir:click_with_position', async (event: any) => {
-      console.log('Custom click with position', event);
-      await sendPixelEvent('click_with_position', event.customData || event, event);
+    analytics.subscribe('epir:click_with_position', async (event: unknown) => {
+      const ev = event as {customData?: unknown};
+      await emitCustomPixelEvent('click_with_position', event, ev.customData ?? event);
     });
 
-    analytics.subscribe('epir:scroll_depth', async (event: any) => {
-      console.log('Custom scroll depth', event);
-      await sendPixelEvent('scroll_depth', event.customData || event, event);
+    analytics.subscribe('epir:scroll_depth', async (event: unknown) => {
+      const ev = event as {customData?: unknown};
+      await emitCustomPixelEvent('scroll_depth', event, ev.customData ?? event);
     });
 
-    analytics.subscribe('epir:page_exit', async (event: any) => {
-      console.log('Custom page exit / time on page', event);
-      await sendPixelEvent('page_exit', event.customData || event, event);
+    analytics.subscribe('epir:page_exit', async (event: unknown) => {
+      const ev = event as {customData?: unknown};
+      await emitCustomPixelEvent('page_exit', event, ev.customData ?? event);
     });
 
-    analytics.subscribe('epir:mouse_sample', async (event: any) => {
-      console.log('Mouse sample event', event);
-      await sendPixelEvent('mouse_sample', event.customData || event, event);
+    analytics.subscribe('epir:mouse_sample', async (event: unknown) => {
+      const ev = event as {customData?: unknown};
+      await emitCustomPixelEvent('mouse_sample', event, ev.customData ?? event);
     });
 });

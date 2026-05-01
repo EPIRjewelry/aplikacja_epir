@@ -35,6 +35,7 @@ interface MockWebPixelAPI {
                 id: string;
             } | null;
         };
+        context?: Record<string, unknown>;
     };
     settings: {
         pixelEndpoint?: string;
@@ -47,6 +48,21 @@ interface MockWebPixelAPI {
 // ============================================================================
 import './index';
 
+/** Mock Web Pixel event: jawna zgoda analytics na evencie (zgodnie z modelem Shopify). */
+function withAnalyticsConsent(eventLike: Record<string, unknown> = {}): Record<string, unknown> {
+    const prevCtx =
+        eventLike.context && typeof eventLike.context === 'object' && eventLike.context !== null
+            ? {...(eventLike.context as Record<string, unknown>)}
+            : {};
+    return {
+        ...eventLike,
+        context: {
+            ...prevCtx,
+            customerPrivacy: {analyticsProcessingAllowed: true},
+        },
+    };
+}
+
 // ============================================================================
 // Helper: invoke registered callback with given mock API
 // ============================================================================
@@ -56,15 +72,22 @@ async function invokePixelCallback(overrides: Partial<MockWebPixelAPI> = {}): Pr
 }> {
     const subscriptions = new Map<string, (event: unknown) => void>();
 
+    const mergedInit: MockWebPixelAPI['init'] = {
+        data: {customer: null},
+        ...(overrides.init ?? {}),
+    };
+
     const api: MockWebPixelAPI = {
         analytics: {
             subscribe: vi.fn((eventName: string, handler: (event: unknown) => void) => {
                 subscriptions.set(eventName, handler);
             }),
         },
-        init: { data: { customer: null } },
-        settings: { pixelEndpoint: 'https://test-pixel.example.com' },
-        ...overrides,
+        init: mergedInit,
+        settings:
+            overrides.settings !== undefined
+                ? {...overrides.settings}
+                : {pixelEndpoint: 'https://test-pixel.example.com'},
         browser: {
             cookie: {
                 get: vi.fn().mockResolvedValue(null),
@@ -81,7 +104,7 @@ async function invokePixelCallback(overrides: Partial<MockWebPixelAPI> = {}): Pr
         await mockState.registeredCallback(api);
     }
 
-    return { subscriptions, api };
+    return {subscriptions, api};
 }
 
 // ============================================================================
@@ -113,7 +136,7 @@ describe('web-pixel extension – identity resolution (cookie + clientId)', () =
         });
 
         const handler = subscriptions.get('page_viewed');
-        await handler!({ clientId: 'shopify-client-fallback' });
+        await handler!(withAnalyticsConsent({ clientId: 'shopify-client-fallback' }));
 
         expect(api.browser.cookie?.get).toHaveBeenCalledWith('_epir_session_id');
 
@@ -133,7 +156,7 @@ describe('web-pixel extension – identity resolution (cookie + clientId)', () =
         });
 
         const handler = subscriptions.get('page_viewed');
-        await handler!({ clientId: 'pixel-native-client-id-xyz' });
+        await handler!(withAnalyticsConsent({ clientId: 'pixel-native-client-id-xyz' }));
 
         const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
         const body = JSON.parse(fetchCall[1].body);
@@ -161,7 +184,7 @@ describe('web-pixel extension – customer identification', () => {
 
         const handler = subscriptions.get('page_viewed');
         expect(handler).toBeDefined();
-        await handler!({});
+        await handler!(withAnalyticsConsent({}));
 
         const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
         const body = JSON.parse(fetchCall[1].body);
@@ -175,7 +198,7 @@ describe('web-pixel extension – customer identification', () => {
 
         const handler = subscriptions.get('page_viewed');
         expect(handler).toBeDefined();
-        await handler!({});
+        await handler!(withAnalyticsConsent({}));
 
         const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
         const body = JSON.parse(fetchCall[1].body);
@@ -188,7 +211,7 @@ describe('web-pixel extension – customer identification', () => {
         });
 
         const handler = subscriptions.get('page_viewed');
-        await handler!({});
+        await handler!(withAnalyticsConsent({}));
 
         const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
         const body = JSON.parse(fetchCall[1].body);
@@ -214,7 +237,7 @@ describe('web-pixel extension – pixel endpoint construction', () => {
         });
 
         const handler = subscriptions.get('page_viewed');
-        await handler!({});
+        await handler!(withAnalyticsConsent({}));
 
         const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
         expect(fetchCall[0]).toBe('https://custom-endpoint.example.com/pixel');
@@ -226,7 +249,7 @@ describe('web-pixel extension – pixel endpoint construction', () => {
         });
 
         const handler = subscriptions.get('page_viewed');
-        await handler!({});
+        await handler!(withAnalyticsConsent({}));
 
         const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
         expect(fetchCall[0]).toBe('https://custom-endpoint.example.com/pixel');
@@ -238,7 +261,7 @@ describe('web-pixel extension – pixel endpoint construction', () => {
         });
 
         const handler = subscriptions.get('page_viewed');
-        await handler!({});
+        await handler!(withAnalyticsConsent({}));
 
         const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
         expect(fetchCall[0]).toBe('https://asystent.epirbizuteria.pl/pixel');
@@ -258,7 +281,9 @@ describe('web-pixel extension – event payload structure', () => {
     });
 
     it('sends correct POST payload for page_viewed event', async () => {
-        const mockEvent = { context: { document: { url: 'https://shop.example.com/home' } } };
+        const mockEvent = withAnalyticsConsent({
+            context: {document: {url: 'https://shop.example.com/home'}},
+        });
         const { subscriptions } = await invokePixelCallback({
             init: { data: { customer: { id: 'cust-123' } } },
             browser: {
@@ -281,7 +306,10 @@ describe('web-pixel extension – event payload structure', () => {
             customerId: 'cust-123',
             sessionId: 'session-abc',
             session_id: 'session-abc',
-            context: { document: { url: 'https://shop.example.com/home' } },
+            context: expect.objectContaining({
+                document: {url: 'https://shop.example.com/home'},
+                customerPrivacy: {analyticsProcessingAllowed: true},
+            }),
         });
     });
 
@@ -298,7 +326,11 @@ describe('web-pixel extension – event payload structure', () => {
         });
 
         const handler = subscriptions.get('product_viewed');
-        await handler!({ productVariant: { id: 'var-1', product: { id: 'prod-1', title: 'Ring' } } });
+        await handler!(
+            withAnalyticsConsent({
+                productVariant: {id: 'var-1', product: {id: 'prod-1', title: 'Ring'}},
+            }),
+        );
 
         const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
         const body = JSON.parse(fetchCall[1].body);
@@ -313,7 +345,7 @@ describe('web-pixel extension – event payload structure', () => {
         const { subscriptions } = await invokePixelCallback();
 
         const handler = subscriptions.get('epir:click_with_position');
-        await handler!({ customData: originalEvent });
+        await handler!(withAnalyticsConsent({customData: originalEvent}));
 
         const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
         const body = JSON.parse(fetchCall[1].body);
@@ -361,7 +393,7 @@ describe('web-pixel extension – proactive chat activation', () => {
         });
 
         const handler = subscriptions.get('page_viewed');
-        await handler!({});
+        await handler!(withAnalyticsConsent({}));
 
         expect(window.dispatchEvent).toHaveBeenCalledOnce();
         const event = dispatchedEvents[0];
@@ -380,7 +412,7 @@ describe('web-pixel extension – proactive chat activation', () => {
 
         const { subscriptions } = await invokePixelCallback();
         const handler = subscriptions.get('page_viewed');
-        await handler!({});
+        await handler!(withAnalyticsConsent({}));
 
         expect(window.dispatchEvent).not.toHaveBeenCalled();
     });
@@ -393,7 +425,7 @@ describe('web-pixel extension – proactive chat activation', () => {
 
         const { subscriptions } = await invokePixelCallback();
         const handler = subscriptions.get('page_viewed');
-        await handler!({});
+        await handler!(withAnalyticsConsent({}));
 
         expect(window.dispatchEvent).not.toHaveBeenCalled();
     });
@@ -404,7 +436,7 @@ describe('web-pixel extension – proactive chat activation', () => {
         const { subscriptions } = await invokePixelCallback();
         const handler = subscriptions.get('page_viewed');
 
-        await expect(handler!({})).resolves.toBeUndefined();
+        await expect(handler!(withAnalyticsConsent({}))).resolves.toBeUndefined();
     });
 });
 
@@ -466,7 +498,7 @@ describe('web-pixel extension – event subscriptions coverage', () => {
         const handler = subscriptions.get(eventName);
         expect(handler).toBeDefined();
 
-        await handler!({ testData: 'value' });
+        await handler!(withAnalyticsConsent({testData: 'value'}));
 
         const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
         const body = JSON.parse(fetchCall[1].body);
@@ -491,7 +523,7 @@ describe('web-pixel extension – custom event data extraction', () => {
         const handler = subscriptions.get('epir:click_with_position');
 
         const customData = { x: 300, y: 150, element: 'a', viewport: { w: 1280, h: 800 } };
-        await handler!({ customData });
+        await handler!(withAnalyticsConsent({customData}));
 
         const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
         const body = JSON.parse(fetchCall[1].body);
@@ -505,7 +537,7 @@ describe('web-pixel extension – custom event data extraction', () => {
         const handler = subscriptions.get('epir:scroll_depth');
 
         const customData = { depth: 75, pageUrl: 'https://shop.example.com/products' };
-        await handler!({ customData });
+        await handler!(withAnalyticsConsent({customData}));
 
         const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
         const body = JSON.parse(fetchCall[1].body);
@@ -518,7 +550,7 @@ describe('web-pixel extension – custom event data extraction', () => {
         const handler = subscriptions.get('epir:page_exit');
 
         const customData = { time_on_page_seconds: 120, max_scroll_percent: 60 };
-        await handler!({ customData });
+        await handler!(withAnalyticsConsent({customData}));
 
         const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
         const body = JSON.parse(fetchCall[1].body);
@@ -531,7 +563,7 @@ describe('web-pixel extension – custom event data extraction', () => {
         const handler = subscriptions.get('epir:mouse_sample');
 
         const customData = { x: 500, y: 300 };
-        await handler!({ customData });
+        await handler!(withAnalyticsConsent({customData}));
 
         const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
         const body = JSON.parse(fetchCall[1].body);
@@ -545,10 +577,72 @@ describe('web-pixel extension – custom event data extraction', () => {
         const handler = subscriptions.get('epir:click_with_position');
 
         const rawEvent = { x: 100, y: 200, noCustomData: true };
-        await handler!(rawEvent);
+        await handler!(withAnalyticsConsent(rawEvent));
 
         const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
         const body = JSON.parse(fetchCall[1].body);
         expect(body.data.noCustomData).toBe(true);
+    });
+});
+
+describe('web-pixel extension – customer privacy gate', () => {
+    beforeEach(() => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({
+                ok: true,
+                json: vi.fn().mockResolvedValue({ ok: true, activate_chat: false }),
+            }),
+        );
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('does not fetch when pixel event omits customerPrivacy fields', async () => {
+        const {subscriptions} = await invokePixelCallback({});
+        const handler = subscriptions.get('page_viewed');
+        await handler!({});
+        expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('does not fetch when event omits privacy fields (standard event payload only)', async () => {
+        const {subscriptions} = await invokePixelCallback({});
+        const handler = subscriptions.get('product_viewed');
+        await handler!({productVariant: {id: 'v1'}});
+        expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('fetches when event.context.customerPrivacy allows analytics', async () => {
+        const {subscriptions} = await invokePixelCallback({});
+        const handler = subscriptions.get('page_viewed');
+        await handler!({
+            context: {
+                customerPrivacy: {analyticsProcessingAllowed: true},
+            },
+        });
+        expect(fetch).toHaveBeenCalledOnce();
+    });
+
+    it('does not fetch when event.context.customerPrivacy explicitly disallows', async () => {
+        const {subscriptions} = await invokePixelCallback({});
+        const handler = subscriptions.get('page_viewed');
+        await handler!({
+            context: {
+                customerPrivacy: {analyticsProcessingAllowed: false},
+            },
+        });
+        expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('does not infer consent from prior sends — bare event still drops silently', async () => {
+        const {subscriptions} = await invokePixelCallback({});
+        const handler = subscriptions.get('page_viewed');
+        await handler!(withAnalyticsConsent({}));
+        expect(fetch).toHaveBeenCalledOnce();
+        vi.mocked(fetch).mockClear();
+        await handler!({});
+        expect(fetch).not.toHaveBeenCalled();
     });
 });

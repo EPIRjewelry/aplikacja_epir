@@ -64,6 +64,7 @@ export const CART_QUERY = `#graphql
                 handle
                 title
                 id
+                vendor
               }
               selectedOptions {
                 name
