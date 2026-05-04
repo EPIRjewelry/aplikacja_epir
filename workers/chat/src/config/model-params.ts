@@ -56,18 +56,30 @@ export const MODEL_VARIANTS = {
     toolLeak: false,
     label: 'Qwen3-30B-A3B MoE (fast + stronger — candidate)',
   },
+  /**
+   * Google Gemma 4 26B A4B IT — MoE, 256K kontekstu, reasoning + tools + vision.
+   * Tańszy odpowiednik Kimi K2.5 przy zbliżonym zestawie możliwości.
+   * @see https://developers.cloudflare.com/workers-ai/models/gemma-4-26b-a4b-it/
+   */
+  gemma4_26b: {
+    id: '@cf/google/gemma-4-26b-a4b-it',
+    multimodal: true,
+    toolLeak: false,
+    label: 'Gemma 4 26B A4B IT (candidate — cheaper Kimi-class)',
+  },
 } as const satisfies Record<string, ModelCapabilities>;
 
 export type ModelVariantKey = keyof typeof MODEL_VARIANTS;
 
 /**
- * Kanoniczny model inference dla Workera (tekst + obraz + tool calls). W produkcji zawsze ten.
+ * Kanoniczny model inference dla czatu (tekst + obraz + tool calls).
+ * Domyślnie używany dla ruchu storefront i internal dashboard.
  * Warianty ALT dostępne tylko za adminskim nagłówkiem; patrz `resolveModelVariant`.
  */
-export const CHAT_MODEL_ID = MODEL_VARIANTS.default.id;
+export const CHAT_MODEL_ID = MODEL_VARIANTS.gemma4_26b.id;
 
-/** `getGroqResponse` po nieudanej pętli narzędzi — krótki tekst, mniej ryzyka wycieków. */
-export const CHAT_RECOVERY_MAX_TOKENS = 384;
+/** getGroqResponse po nieudanej pętli narzędzi — bardzo krótki tekst (np. 1–2 zdania), minimalne opóźnienie. */
+export const CHAT_RECOVERY_MAX_TOKENS = 160;
 
 /**
  * Większy limit gdy model może zwrócić `tool_calls` (JSON argumentów).

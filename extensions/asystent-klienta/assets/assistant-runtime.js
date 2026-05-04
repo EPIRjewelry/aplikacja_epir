@@ -832,6 +832,34 @@ function normalizeAssistantEndpoint() {
   return EPIR_CHAT_WORKER_ENDPOINT;
 }
 
+var EPIR_ASSISTANT_ENDPOINT_DIAG_LOGGED = false;
+
+function diagnoseAssistantEndpoint(endpoint, sectionEl) {
+  try {
+    var isAbsolute =
+      typeof endpoint === 'string' &&
+      (endpoint.indexOf('http://') === 0 || endpoint.indexOf('https://') === 0);
+
+    if (isAbsolute) {
+      console.warn('[EPIR Assistant] Chat endpoint is absolute URL, App Proxy may be bypassed', {
+        endpoint: endpoint,
+        location: (typeof window !== 'undefined' && window.location && window.location.href) || null,
+      });
+      return;
+    }
+
+    if (!EPIR_ASSISTANT_ENDPOINT_DIAG_LOGGED) {
+      EPIR_ASSISTANT_ENDPOINT_DIAG_LOGGED = true;
+      console.info('[EPIR Assistant] Using App Proxy endpoint for chat', {
+        endpoint: endpoint,
+        location: (typeof window !== 'undefined' && window.location && window.location.href) || null,
+      });
+    }
+  } catch (e) {
+    /* diagnostyka nie może psuć runtime'u */
+  }
+}
+
 // Teleport: przenosi widżet do body, aby position:fixed działał (sekcje mają transform/overflow)
 function teleportAssistantToBody(section) {
   if (!section || !document.body) return;
@@ -1776,6 +1804,7 @@ function doSendFromForm(form, input) {
   (async function() {
     try {
       const endpoint = normalizeAssistantEndpoint();
+      diagnoseAssistantEndpoint(endpoint, sectionEl);
       const customerIdentity = await resolveLoggedInCustomerIdentityWithPreflight(sectionEl, 'chat');
       // Celowo NIE wstrzykujemy `?shop=...&logged_in_customer_id=...` do endpointu czatu.
       // Shopify App Proxy sam dopisuje zaufane parametry (shop, logged_in_customer_id, path_prefix,
