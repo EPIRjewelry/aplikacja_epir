@@ -4,7 +4,13 @@
  * Nazwy typów/historycznych funkcji pozostają dla kompatybilności z istniejącym kodem.
  */
 
-import { CHAT_MODEL_ID, MODEL_PARAMS, resolveModelVariant, type ModelCapabilities } from './config/model-params';
+import {
+  CHAT_MODEL_ID,
+  MODEL_PARAMS,
+  MODEL_VARIANTS,
+  type ModelCapabilities,
+  type ModelVariantKey,
+} from './config/model-params';
 
 export type GroqToolCall = {
   id: string;
@@ -247,6 +253,12 @@ function extractTextFromAiResult(
   const outText = result.output_text;
   if (typeof outText === 'string' && outText.trim().length > 0) {
     return outText.trim();
+  }
+
+  // Workers AI: `{ response: { role: 'assistant', content: [{ type: 'text', text }] } }`
+  if (isRecord(result.response)) {
+    const nested = extractTextFromAiContent((result.response as Record<string, unknown>).content);
+    if (nested) return nested;
   }
 
   const directResponse = extractTextFromAiContent(result.response);
@@ -705,10 +717,8 @@ export function resolveAdminModelVariantFromHeaders(
   const expected = `Bearer ${adminKey}`;
   if (authHeader.trim() !== expected) return null;
 
-  const variant = resolveModelVariant(variantKey);
-  // Jeżeli resolveModelVariant dał fallback na default (bo klucz nieznany) → zwracamy null
-  // zamiast default, żeby caller mógł rozróżnić "brak overridu" od "zły klucz".
-  if (variant.id === CHAT_MODEL_ID && variantKey !== 'default') return null;
+  if (!Object.hasOwn(MODEL_VARIANTS, variantKey)) return null;
+  const variant = MODEL_VARIANTS[variantKey as ModelVariantKey];
 
   if (context.hasImage && !variant.multimodal) {
     console.warn(
@@ -746,6 +756,10 @@ export async function getGroqResponse(
   const resolvedModel = options?.modelId ?? CHAT_MODEL_ID;
   const forMemory = options?.forMemory === true;
 
+  // Nie doklejaj szablonów typu `User input: "..."` / `Context:` ani drugiego „debugowego”
+  // system/user — tylko `messages` przekazane z callera. `mapMessageForWorkersAI` to wyłącznie
+  // mapowanie pól API Workers AI (null/string/części multimodal), nie sklejanie treści w jeden string.
+
   try {
     const result = (await ai.run(
       resolvedModel,
@@ -753,6 +767,7 @@ export async function getGroqResponse(
         messages: messages.map(mapMessageForWorkersAI),
         max_tokens: options?.max_tokens ?? MODEL_PARAMS.max_tokens,
         temperature: MODEL_PARAMS.temperature,
+        top_p: MODEL_PARAMS.top_p,
       },
       workersAiRunOptions(options?.sessionId),
     )) as Record<string, unknown> & { response?: string };

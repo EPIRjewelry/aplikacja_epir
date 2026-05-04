@@ -17,59 +17,83 @@ function messageTextContent(m: GroqMessage): string {
   return '';
 }
 
+function sanitizeRecoveryContent(text: string): string {
+  if (!text) return '';
+
+  let out = text;
+
+  // Usuń najczęstsze debugowe prefiksy w pojedynczych liniach
+  out = out.replace(/^\s*[-*]\s*User input\s*:\s*/im, '');
+  out = out.replace(/^\s*[-*]\s*Context\s*:\s*/im, '');
+  out = out.replace(/^\s*User input\s*:\s*/im, '');
+  out = out.replace(/^\s*Context\s*:\s*/im, '');
+
+  // Usuń ewentualne nagłówki typu "User input: ..." / "Context: ..." w dalszej części tekstu (ostrożnie, tylko na początku linii)
+  out = out.replace(/^\s*User input\s*:\s*".*?"\s*$/gim, '');
+  out = out.replace(/^\s*Context\s*:\s*$/gim, '');
+
+  // Wyrzuć puste linie powstałe po czyszczeniu (minimalnie)
+  out = out
+    .split('\n')
+    .filter((line, idx, arr) => !(line.trim() === '' && (idx === 0 || idx === arr.length - 1)))
+    .join('\n');
+
+  return out.trim();
+}
+
 /**
  * Przy fallbacku po pętli narzędzi: zbuduj kontekst bez natywnych `tool` w tablicy,
  * ale z jednym skrótem wyników narzędzi — inaczej model halucynuje `[Tool calls]`.
  * `getGroqResponse` wołamy bez tools; ta wiadomość `user` dostarcza fakty z MCP.
  */
 export function buildMessagesForToolFailureRecovery(messages: GroqMessage[]): GroqMessage[] {
+  // 1. Zbierz wyniki tool w jedno podsumowanie (max 2400 znaków) – BEZ debugowych prefiksów
   const toolSnippets: string[] = [];
   for (const m of messages) {
     if (m.role !== 'tool') continue;
-    const name = typeof m.name === 'string' && m.name.trim() ? m.name.trim() : 'tool';
-    const body = messageTextContent(m);
+    const name = typeof m.name === 'string' && m.name.trim() ? m.name.trim() : 'narzędzie';
+    const body = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
     const slice = body.length > MAX_SNIPPET_PER_TOOL ? `${body.slice(0, MAX_SNIPPET_PER_TOOL)}…` : body;
-    toolSnippets.push(`${name}: ${slice}`);
+    toolSnippets.push(`Wynik ${name}: ${slice}`);
+  }
+  let toolSummary =
+    toolSnippets.length > 0
+      ? toolSnippets.join('\n\n')
+      : '';
+  if (toolSummary.length > MAX_TOOL_SUMMARY_TOTAL) {
+    toolSummary = `${toolSummary.slice(0, MAX_TOOL_SUMMARY_TOTAL)}…`;
   }
 
-  let toolSummary = '';
-  if (toolSnippets.length > 0) {
-    toolSummary = toolSnippets.join('\n---\n');
-    if (toolSummary.length > MAX_TOOL_SUMMARY_TOTAL) {
-      toolSummary = `${toolSummary.slice(0, MAX_TOOL_SUMMARY_TOTAL)}…`;
-    }
-  }
-
+  // 2. Odfiltruj role='tool' i assistant z tool_calls → buduj czystą konwersację
   const out: GroqMessage[] = [];
   for (const m of messages) {
-    if (m.role === 'tool') continue;
-    if (m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) continue;
-    if (m.content === null || m.content === undefined) continue;
-
-    if (Array.isArray(m.content)) {
-      const text = messageTextContent(m);
-      if (!text && m.role === 'assistant') continue;
-      out.push({ role: m.role, content: text });
-      continue;
-    }
-
-    if (typeof m.content === 'string') {
-      if (m.role === 'assistant' && !m.content.trim()) continue;
-      out.push({ role: m.role, content: m.content });
-    }
+    if (m.role === 'tool' || (m.role === 'assistant' && m.tool_calls?.length)) continue;
+    const rawText = messageTextContent(m);
+    if (!rawText?.trim()) continue;
+    const contentText = sanitizeRecoveryContent(rawText);
+    if (!contentText) continue;
+    out.push({ role: m.role, content: contentText });
   }
 
+  // 3. Najpierw SYSTEM: krótka, rygorystyczna instrukcja dla fallbacku
+  out.unshift({
+    role: 'system',
+    content:
+      'Odpowiadasz jako asystent biżuterii EPIR po polsku. ' +
+      'Masz napisać bardzo krótką, naturalną odpowiedź dla klienta (1–2 zdania), ' +
+      'bez żadnych metakomentarzy ani nagłówków typu "User input:", "Context:" czy list punktowanych. ' +
+      'Zwracaj się bezpośrednio do klienta po imieniu, jeśli je znasz.',
+  });
+
+  // 4. Jeśli są wyniki narzędzi, dodaj je jako DODATKOWY user message – bez debugowego prefiksu
   if (toolSummary) {
     out.push({
       role: 'user',
-      content: `[Podsumowanie wyników narzędzi sklepu — użyj wyłącznie do sformułowania krótkiej odpowiedzi dla klienta; nie cytuj dosłownie tego bloku ani JSON]\n${toolSummary}`,
+      content:
+        'Dodatkowe informacje z wewnętrznych narzędzi (potraktuj je tylko jako tło, nie opisuj ich wprost):\n' +
+        toolSummary,
     });
   }
 
-  out.push({
-    role: 'system',
-    content:
-      'Instrukcja odzyskiwania: ostatnia tura modelu nie zwróciła czytelnej odpowiedzi dla klienta. Na podstawie historii i ewentualnego podsumowania narzędzi napisz krótką, uprzejmą wiadomość po polsku. Tylko zwykły tekst — bez znaczników <|...|>, bez "functions.", bez JSON, bez tablic tool_calls, bez nagłówka [Tool calls] i bez symulacji wywołań narzędzi.',
-  });
   return out;
 }

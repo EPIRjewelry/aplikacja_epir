@@ -106,5 +106,19 @@ export function stripLeakedToolCallsLiterals(text: string): string {
       break;
     }
   }
+
+  // Meta-prefiksy czasem powielane z kontekstu promptu (nie pokazywać klientowi).
+  out = out.replace(/^\s*[-*]\s*User input\s*:\s*/gim, '');
+  out = out.replace(/^\s*[-*]\s*Context\s*:\s*/gim, '');
+  out = out.replace(/^\s*User input\s*:\s*/gim, '');
+  out = out.replace(/^\s*Context\s*:\s*/gim, '');
+  out = out.replace(/^\s*User input\s*:\s*".*?"\s*$/gim, '');
+  out = out.replace(/^\s*Context\s*:\s*$/gim, '');
+
+  out = out
+    .split('\n')
+    .filter((line, idx, arr) => !(line.trim() === '' && (idx === 0 || idx === arr.length - 1)))
+    .join('\n');
+
   return out.replace(/\n{3,}/g, '\n\n').trim();
 }

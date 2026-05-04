@@ -1,6 +1,10 @@
+import type { DurableObjectStub } from '@cloudflare/workers-types';
 import { describe, expect, it, vi, afterEach } from 'vitest';
+import * as aiClient from '../src/ai-client';
 import { getGroqResponse, type GroqMessage } from '../src/ai-client';
+import type { Env } from '../src/config/bindings';
 import { EXTRACTOR_LLM_MAX_TOKENS } from '../src/config/model-params';
+import { streamAssistantResponse } from '../src/index';
 
 const messages: GroqMessage[] = [{ role: 'user', content: 'Cześć' }];
 
@@ -17,6 +21,21 @@ describe('getGroqResponse polymorphic parsing', () => {
     };
 
     await expect(getGroqResponse(messages, env)).resolves.toBe('Płaska odpowiedź.');
+  });
+
+  it('returns text from Workers AI nested response.message-style content array', async () => {
+    const env = {
+      AI: {
+        run: vi.fn().mockResolvedValue({
+          response: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Zagnieżdżona ' }, { type: 'text', text: 'odpowiedź.' }],
+          },
+        }),
+      },
+    };
+
+    await expect(getGroqResponse(messages, env)).resolves.toBe('Zagnieżdżona odpowiedź.');
   });
 
   it('returns content from Kimi-style choices.message.content', async () => {
@@ -173,5 +192,74 @@ describe('getGroqResponse polymorphic parsing', () => {
     expect((run.mock.calls[0]?.[1] as { max_tokens?: number })?.max_tokens).toBe(
       EXTRACTOR_LLM_MAX_TOKENS,
     );
+    expect((run.mock.calls[0]?.[1] as { top_p?: number })?.top_p).toBe(0.9);
+  });
+});
+
+/** Strumień SSE jak z Workers AI (`stream: true`) — jedna delta + `finish_reason: stop`. */
+function mockWorkersAiSseStream(assistantText: string): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  const payload = JSON.stringify({
+    choices: [{ delta: { content: assistantText }, finish_reason: 'stop' }],
+  });
+  const chunk = `data: ${payload}\n\n`;
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(chunk));
+      controller.close();
+    },
+  });
+}
+
+describe('streamAssistantResponse – brak tool_calls nie uruchamia fallbacku', () => {
+  it('nie wywołuje getGroqResponse, gdy model zwróci tekst bez tool_calls', async () => {
+    const assistantLine = 'Dzień dobry, Krzysztofie!';
+    const aiRunMock = vi.fn().mockResolvedValue(mockWorkersAiSseStream(assistantLine));
+
+    const env = {
+      SHOPIFY_APP_SECRET: 'mock-app-secret-12345',
+      MCP_ENDPOINT: 'https://mcp.test.invalid/v1',
+      AI: { run: aiRunMock },
+    } as Env;
+
+    const stub = {
+      fetch: vi.fn(async (input: RequestInfo) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes('/history')) return new Response(JSON.stringify([]));
+        if (url.includes('/cart-id')) return new Response(JSON.stringify({ cart_id: null }));
+        if (url.includes('/customer')) return new Response(JSON.stringify({ customer: null }));
+        return new Response('ok', { status: 200 });
+      }),
+    };
+
+    const getGroqResponseSpy = vi.spyOn(aiClient, 'getGroqResponse').mockResolvedValue(
+      'FALLBACK TEKST (nie powinien zostać użyty)',
+    );
+
+    const request = new Request('https://chat-worker.test/chat?shop=test-shop.myshopify.com');
+
+    const response = await streamAssistantResponse(
+      request,
+      'test-session-no-tools',
+      'czesc',
+      Date.now(),
+      stub as unknown as DurableObjectStub,
+      env,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      null,
+      undefined,
+      null,
+      undefined,
+      null,
+    );
+
+    expect(response.ok).toBe(true);
+    const bodyText = await new Response(response.body).text();
+    expect(bodyText).toContain(assistantLine);
+    expect(aiRunMock).toHaveBeenCalled();
+    expect(getGroqResponseSpy).not.toHaveBeenCalled();
   });
 });

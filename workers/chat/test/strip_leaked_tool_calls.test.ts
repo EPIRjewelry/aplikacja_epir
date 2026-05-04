@@ -40,4 +40,13 @@ describe('stripLeakedToolCallsLiterals', () => {
     expect(out).toContain('Cześć');
     expect(out).toContain('propozycja');
   });
+
+  it('strips User input / Context debug line prefixes (etykiety, nie treść po dwukropku)', () => {
+    const raw = '- User input: czesc\n\nContext:\n\nWitamy w EPIR.';
+    const out = stripLeakedToolCallsLiterals(raw);
+    expect(out).not.toMatch(/User input/i);
+    expect(out).not.toMatch(/Context/i);
+    expect(out).toContain('czesc');
+    expect(out).toContain('Witamy w EPIR.');
+  });
 });

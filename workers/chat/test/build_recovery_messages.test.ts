@@ -3,7 +3,7 @@ import { buildMessagesForToolFailureRecovery } from '../src/utils/buildRecoveryM
 import type { GroqMessage } from '../src/ai-client';
 
 describe('buildMessagesForToolFailureRecovery', () => {
-  it('drops raw tool messages but injects summarized tool block before recovery system', () => {
+  it('drops raw tool messages but injects summarized tool block and recovery system first', () => {
     const messages: GroqMessage[] = [
       { role: 'system', content: 'base' },
       { role: 'user', content: 'Dodaj do koszyka' },
@@ -14,10 +14,16 @@ describe('buildMessagesForToolFailureRecovery', () => {
     const out = buildMessagesForToolFailureRecovery(messages);
     expect(out.some((m) => m.role === 'tool')).toBe(false);
     expect(out.filter((m) => m.role === 'assistant').length).toBe(1);
-    const summary = out.find((m) => m.role === 'user' && String(m.content).includes('Podsumowanie wyników narzędzi'));
+    expect(out[0].role).toBe('system');
+    expect(String(out[0].content)).toContain('EPIR');
+
+    const summary = out.find(
+      (m) => m.role === 'user' && String(m.content).includes('Dodatkowe informacje z wewnętrznych narzędzi'),
+    );
     expect(summary).toBeDefined();
-    expect(String(summary?.content)).toContain('update_cart');
-    expect(out[out.length - 1].role).toBe('system');
-    expect(String(out[out.length - 1].content)).toContain('odzyskiwania');
+    expect(String(summary?.content)).toContain('Wynik update_cart');
+    expect(String(summary?.content)).toContain('"ok":true');
+
+    expect(out[out.length - 1]).toBe(summary);
   });
 });
