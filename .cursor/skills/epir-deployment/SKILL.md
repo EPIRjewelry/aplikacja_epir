@@ -36,7 +36,7 @@ wrangler d1 migrations apply jewelry-analytics-db --remote
 
 # 2. Sekrety (wymagane przed deploy workers)
 cd d:\aplikacja_epir\workers\chat
-wrangler secret put GROQ_API_KEY
+wrangler secret put AI_GATEWAY_TOKEN
 wrangler secret put SHOPIFY_APP_SECRET
 
 cd d:\aplikacja_epir\workers\bigquery-batch

@@ -3770,20 +3770,25 @@ async function streamAssistantResponse(
           continue; 
 
         } else {
-          // NIE - To była finalna odpowiedź tekstowa (bez wywołań narzędzi)
-          // Model czasem powiela z promptu literalny tekst `tool_calls: [...]` — nie pokazuj tego klientowi.
-          // Warianty z `toolLeak: false` (np. GLM) nie mają tego buga → skip stripping.
-          finalTextResponse = activeModelVariant && activeModelVariant.toolLeak === false
-            ? iterationText
-            : stripLeakedToolCallsLiterals(iterationText);
-          if (containsLikelyToolMarkupLeak(finalTextResponse)) {
-            console.warn(
-              '[streamAssistant] final iteration text still contained tool-like markup after strip; clearing for UX fallback',
-            );
-            finalTextResponse = '';
-          }
-          if (finalTextResponse) {
-            await sendDelta(finalTextResponse);
+          if (iterationText.trim()) {
+            // NIE - To była finalna odpowiedź tekstowa (bez wywołań narzędzi)
+            // Model czasem powiela z promptu literalny tekst `tool_calls: [...]` — nie pokazuj tego klientowi.
+            // Warianty z `toolLeak: false` (np. GLM) nie mają tego buga → skip stripping.
+            finalTextResponse = activeModelVariant && activeModelVariant.toolLeak === false
+              ? iterationText
+              : stripLeakedToolCallsLiterals(iterationText);
+
+            // Agresywne kasowanie tylko, gdy w tej rundzie rzeczywiście były tool-calls.
+            if (hadToolCallsInThisRound && containsLikelyToolMarkupLeak(finalTextResponse)) {
+              console.warn(
+                '[streamAssistant] final iteration text still contained tool-like markup after strip in a tool round; clearing for UX fallback',
+              );
+              finalTextResponse = '';
+            }
+
+            if (finalTextResponse.trim()) {
+              await sendDelta(finalTextResponse);
+            }
           }
           break; // Wyjdź z pętli for
         }
@@ -4155,3 +4160,4 @@ export {
   normalizeShopifyCustomerIdFromHint,
   streamAssistantResponse,
 };
+

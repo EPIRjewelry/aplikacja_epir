@@ -67,6 +67,16 @@ export const MODEL_VARIANTS = {
     toolLeak: false,
     label: 'Gemma 4 26B A4B IT (candidate — cheaper Kimi-class)',
   },
+  /**
+   * Groq Llama 4 Scout 17B — MoE, 131K context, strong reasoning + tools.
+   * Dostępny przez AI Gateway (/compat) jako `groq/llama-4-scout-17b-16e-instruct`.
+   */
+  scout_17b: {
+    id: 'groq/llama-4-scout-17b-16e-instruct',
+    multimodal: true,
+    toolLeak: false,
+    label: 'Llama 4 Scout 17B (Groq via AI Gateway — candidate)',
+  },
 } as const satisfies Record<string, ModelCapabilities>;
 
 export type ModelVariantKey = keyof typeof MODEL_VARIANTS;
@@ -76,7 +86,7 @@ export type ModelVariantKey = keyof typeof MODEL_VARIANTS;
  * Domyślnie używany dla ruchu storefront i internal dashboard.
  * Warianty ALT dostępne tylko za adminskim nagłówkiem; patrz `resolveModelVariant`.
  */
-export const CHAT_MODEL_ID = MODEL_VARIANTS.gemma4_26b.id;
+export const CHAT_MODEL_ID = MODEL_VARIANTS.scout_17b.id;
 
 /** getGroqResponse po nieudanej pętli narzędzi — bardzo krótki tekst (np. 1–2 zdania), minimalne opóźnienie. */
 export const CHAT_RECOVERY_MAX_TOKENS = 160;

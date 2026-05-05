@@ -43,6 +43,17 @@ export type GroqMessage = {
   name?: string;
 };
 
+type GatewayCompatBody = {
+  model: string;
+  messages: GroqMessage[];
+  stream?: boolean;
+  tools?: GroqToolCallDefinition[];
+  tool_choice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
+  max_tokens?: number;
+  temperature?: number;
+  top_p?: number;
+};
+
 export type GroqStreamEvent =
   | { type: 'text'; delta: string }
   | { type: 'tool_call'; call: GroqToolCall }
@@ -69,6 +80,10 @@ type AIBinding = {
 
 interface Env {
   AI?: AIBinding;
+  CF_ACCOUNT_ID?: string;
+  AI_GATEWAY_ID?: string;
+  /** Bearer dla nagłówka `cf-aig-authorization` (AI Gateway); `wrangler secret put AI_GATEWAY_TOKEN`. */
+  AI_GATEWAY_TOKEN?: string;
 }
 
 export function shouldUseWorkersAi(env: Env): boolean {
@@ -135,6 +150,49 @@ function requireAi(env: Env): AIBinding {
   return env.AI;
 }
 
+async function callGatewayCompat(
+  env: Env,
+  body: GatewayCompatBody,
+  {
+    timingLabel = 'callGatewayCompat',
+    abortSignal,
+  }: { timingLabel?: string; abortSignal?: AbortSignal } = {},
+): Promise<Response> {
+  const accountId = env.CF_ACCOUNT_ID;
+  const gatewayId = env.AI_GATEWAY_ID ?? 'epir-ai-gateway';
+  const gatewayToken = env.AI_GATEWAY_TOKEN?.trim();
+  if (!gatewayToken) {
+    throw new Error(
+      'AI_GATEWAY_TOKEN is required for AI Gateway requests. Set: wrangler secret put AI_GATEWAY_TOKEN',
+    );
+  }
+
+  const url = `https://gateway.ai.cloudflare.com/v1/${accountId}/${gatewayId}/compat/chat/completions`;
+
+  const payload: GatewayCompatBody = {
+    ...body,
+    model: MODEL_VARIANTS.scout_17b.id,
+  };
+
+  const t0 = Date.now();
+  const res = await fetch(url, {
+    method: 'POST',
+    signal: abortSignal,
+    headers: {
+      'Content-Type': 'application/json',
+      'cf-aig-authorization': `Bearer ${gatewayToken}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const dt = Date.now() - t0;
+  console.log(
+    `[AI Gateway] ${timingLabel} status=${res.status} model=${payload.model} stream=${payload.stream ? 'true' : 'false'} duration_ms=${dt}`,
+  );
+
+  return res;
+}
+
 /**
  * Mierzy czas w `wrangler tail`: (1) `stream_ready_ms` — do zwrócenia strumienia przez `ai.run`,
  * (2) `first_byte_ms` — do pierwszego bajtu odpowiedzi (proxy za TTFT), (3) `stream_total_ms` — do końca strumienia.
@@ -197,6 +255,14 @@ function stringifyForLog(value: unknown): string {
     return JSON.stringify(value) ?? String(value);
   } catch {
     return String(value);
+  }
+}
+
+async function safeReadText(res: Response): Promise<string> {
+  try {
+    return (await res.text()).slice(0, 4000);
+  } catch {
+    return '<failed_to_read_response_body>';
   }
 }
 
@@ -657,14 +723,15 @@ export type StreamGroqEventsOptions = {
   modelId?: string;
   /** Override `max_tokens` dla tej tury streamu. */
   maxTokens?: number;
+  /** Anulowanie żądania (np. ścieżka AI Gateway); Workers AI `runModelStream` na razie tego nie używa. */
+  abortSignal?: AbortSignal;
 };
 
-export async function streamGroqEvents(
+async function streamGroqEventsWorkersAi(
   messages: GroqMessage[],
   env: Env,
   tools?: GroqToolCallDefinition[],
   sessionId?: string,
-  /** Np. `tool_loop_0` — w logach `wrangler tail` odróżnia kolejne wywołania modelu w pętli narzędzi. */
   timingLabel?: string,
   options?: StreamGroqEventsOptions,
 ): Promise<ReadableStream<GroqStreamEvent>> {
@@ -684,6 +751,100 @@ export async function streamGroqEvents(
   return stream
     .pipeThrough(new TextDecoderStream() as unknown as TransformStream<Uint8Array, string>)
     .pipeThrough(createGroqStreamTransform());
+}
+
+export async function streamGroqEvents(
+  messages: GroqMessage[],
+  env: Env,
+  tools?: GroqToolCallDefinition[],
+  sessionId?: string,
+  /** Np. `tool_loop_0` — w logach `wrangler tail` odróżnia kolejne wywołania modelu w pętli narzędzi. */
+  timingLabel?: string,
+  options?: StreamGroqEventsOptions,
+): Promise<ReadableStream<GroqStreamEvent>> {
+  return routedStreamGroqEvents(messages, env, tools, sessionId, timingLabel, options);
+}
+
+export async function streamGroqEventsViaGateway(
+  messages: GroqMessage[],
+  env: Env,
+  tools?: GroqToolCallDefinition[],
+  sessionId?: string,
+  timingLabel?: string,
+  options?: StreamGroqEventsOptions,
+): Promise<ReadableStream<GroqStreamEvent>> {
+  void sessionId;
+
+  const defaultToolChoice = tools && tools.length > 0 ? 'auto' : undefined;
+  const resolvedToolChoice =
+    options?.toolChoice !== undefined ? options.toolChoice : defaultToolChoice;
+
+  const resolvedModel = options?.modelId ?? MODEL_VARIANTS.scout_17b.id;
+
+  const body: GatewayCompatBody = {
+    model: resolvedModel,
+    messages,
+    stream: true,
+    tools,
+    tool_choice: resolvedToolChoice,
+    max_tokens: options?.maxTokens ?? MODEL_PARAMS.max_tokens,
+    temperature: MODEL_PARAMS.temperature,
+    top_p: MODEL_PARAMS.top_p,
+  };
+
+  const res = await callGatewayCompat(env, body, {
+    timingLabel: timingLabel ?? 'streamGroqEventsViaGateway',
+    abortSignal: options?.abortSignal,
+  });
+
+  if (!res.ok || !res.body) {
+    const text = await safeReadText(res);
+    console.error(
+      `[AI Gateway] streamGroqEventsViaGateway http_error status=${res.status} body=${text}`,
+    );
+    throw new Error(`AI Gateway streaming error: ${res.status}`);
+  }
+
+  const byteStream = res.body as ReadableStream<Uint8Array>;
+
+  return byteStream
+    .pipeThrough(new TextDecoderStream() as unknown as TransformStream<Uint8Array, string>)
+    .pipeThrough(createGroqStreamTransform());
+}
+
+function isGatewayModelId(modelId: string): boolean {
+  // Na razie rozróżniamy po prefixie providera, możesz później rozszerzyć
+  return modelId.startsWith('groq/');
+}
+
+async function routedGetGroqResponse(
+  messages: GroqMessage[],
+  env: Env,
+  options?: GetGroqResponseOptions,
+): Promise<string> {
+  const modelId = options?.modelId ?? CHAT_MODEL_ID;
+  if (isGatewayModelId(modelId)) {
+    return getGroqResponseViaGateway(messages, env, { ...options, modelId });
+  }
+  return getGroqResponseWorkersAi(messages, env, { ...options, modelId });
+}
+
+async function routedStreamGroqEvents(
+  messages: GroqMessage[],
+  env: Env,
+  tools?: GroqToolCallDefinition[],
+  sessionId?: string,
+  timingLabel?: string,
+  options?: StreamGroqEventsOptions,
+): Promise<ReadableStream<GroqStreamEvent>> {
+  const modelId = options?.modelId ?? CHAT_MODEL_ID;
+  if (isGatewayModelId(modelId)) {
+    return streamGroqEventsViaGateway(messages, env, tools, sessionId, timingLabel, {
+      ...options,
+      modelId,
+    });
+  }
+  return streamGroqEventsWorkersAi(messages, env, tools, sessionId, timingLabel, { ...options, modelId });
 }
 
 /**
@@ -740,13 +901,14 @@ export type GetGroqResponseOptions = {
   max_tokens?: number;
   sessionId?: string;
   modelId?: string;
+  timingLabel?: string;
   /**
    * Ścieżka pamięci (kolejka / person-memory): pusta odpowiedź → `""`, `console.warn` zamiast throw + `console.error`.
    */
   forMemory?: boolean;
 };
 
-export async function getGroqResponse(
+async function getGroqResponseWorkersAi(
   messages: GroqMessage[],
   env: Env,
   options?: GetGroqResponseOptions,
@@ -826,4 +988,88 @@ export async function getGroqResponse(
     console.error('[getGroqResponse] failed', Date.now() - startTime, 'ms', stringifyForLog(e));
     throw e;
   }
+}
+
+export async function getGroqResponse(
+  messages: GroqMessage[],
+  env: Env,
+  options?: GetGroqResponseOptions,
+): Promise<string> {
+  return routedGetGroqResponse(messages, env, options);
+}
+
+export async function getGroqResponseViaGateway(
+  messages: GroqMessage[],
+  env: Env,
+  options?: GetGroqResponseOptions,
+): Promise<string> {
+  const startTime = Date.now();
+  const resolvedModel = options?.modelId ?? MODEL_VARIANTS.scout_17b.id;
+  const forMemory = options?.forMemory === true;
+
+  const body: GatewayCompatBody = {
+    model: resolvedModel,
+    messages,
+    stream: false,
+    max_tokens: options?.max_tokens ?? MODEL_PARAMS.max_tokens,
+    temperature: MODEL_PARAMS.temperature,
+    top_p: MODEL_PARAMS.top_p,
+  };
+
+  let res: Response;
+  try {
+    res = await callGatewayCompat(env, body, {
+      timingLabel: options?.timingLabel ?? 'getGroqResponseViaGateway',
+    });
+  } catch (err) {
+    console.error('[AI Gateway] getGroqResponseViaGateway network_error', err);
+    throw err;
+  }
+
+  if (!res.ok) {
+    const text = await safeReadText(res);
+    console.error(
+      `[AI Gateway] getGroqResponseViaGateway http_error status=${res.status} body=${text}`,
+    );
+    throw new Error(`AI Gateway error: ${res.status}`);
+  }
+
+  type CompatChoice = {
+    message?: { content?: string | null };
+  };
+  type CompatResponse = {
+    choices?: CompatChoice[];
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      cached_tokens?: number;
+    };
+  };
+
+  let json: CompatResponse;
+  try {
+    json = (await res.json()) as CompatResponse;
+  } catch (err) {
+    console.error('[AI Gateway] getGroqResponseViaGateway invalid_json', err);
+    throw err;
+  }
+
+  const content =
+    json.choices?.[0]?.message?.content && typeof json.choices[0].message.content === 'string'
+      ? json.choices[0].message.content
+      : '';
+
+  if (!content) {
+    console.warn('[AI Gateway] getGroqResponseViaGateway empty_content', json);
+    throw new Error('AI Gateway returned empty content');
+  }
+
+  if (!forMemory) {
+    const usage = json.usage;
+    console.log(
+      `[AI Gateway] getGroqResponseViaGateway total_ms=${Date.now() - startTime} model=${resolvedModel} prompt_tokens=${usage?.prompt_tokens ?? 0} completion_tokens=${usage?.completion_tokens ?? 0}`,
+    );
+  }
+
+  return content;
 }

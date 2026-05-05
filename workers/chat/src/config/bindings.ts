@@ -80,6 +80,12 @@ export interface Env {
 
   AI?: AIBinding;
 
+  /** URL AI Gateway: `/v1/{CF_ACCOUNT_ID}/{AI_GATEWAY_ID}/compat/...`. */
+  CF_ACCOUNT_ID?: string;
+  AI_GATEWAY_ID?: string;
+  /** Bearer w nagłówku `cf-aig-authorization` dla wywołań AI Gateway (zamiast Groq w `Authorization`). */
+  AI_GATEWAY_TOKEN?: string;
+
   DEV_BYPASS?: string;
   WORKER_ORIGIN?: string;
   EPIR_INTERNAL_KEY?: string;
@@ -104,6 +110,7 @@ export const OPTIONAL_SECRETS = [
   'EPIR_CHAT_SHARED_SECRET',
   'X-EPIR-SHARED-SECRET',
   'GCP_SERVICE_ACCOUNT_KEY',
+  'AI_GATEWAY_TOKEN',
 ] as const;
 
 export const REQUIRED_VARS = ['SHOP_DOMAIN', 'ALLOWED_ORIGIN'] as const;

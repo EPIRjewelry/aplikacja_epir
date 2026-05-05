@@ -29,7 +29,7 @@ Komponenty objęte tym dokumentem:
 
 Wymagane sekrety backendowe:
 
-- `GROQ_API_KEY`
+- `AI_GATEWAY_TOKEN` (nagłówek `cf-aig-authorization` do AI Gateway; model Groq idzie przez gateway, nie przez `Authorization: Bearer` z kluczem Groq)
 - `SHOPIFY_APP_SECRET`
 - `EPIR_CHAT_SHARED_SECRET`
 - `ADMIN_KEY` (jeśli używany przez dashboard / admin flow)

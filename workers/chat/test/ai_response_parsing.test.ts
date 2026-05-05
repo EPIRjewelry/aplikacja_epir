@@ -3,7 +3,10 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import * as aiClient from '../src/ai-client';
 import { getGroqResponse, type GroqMessage } from '../src/ai-client';
 import type { Env } from '../src/config/bindings';
-import { EXTRACTOR_LLM_MAX_TOKENS } from '../src/config/model-params';
+import { EXTRACTOR_LLM_MAX_TOKENS, MODEL_VARIANTS } from '../src/config/model-params';
+
+/** Domyślny `CHAT_MODEL_ID` to Scout (Gateway); testy parsowania Workers AI wymuszają model @cf/... */
+const workersAiTestModelId = MODEL_VARIANTS.gemma4_26b.id;
 import { streamAssistantResponse } from '../src/index';
 
 const messages: GroqMessage[] = [{ role: 'user', content: 'Cześć' }];
@@ -20,7 +23,7 @@ describe('getGroqResponse polymorphic parsing', () => {
       },
     };
 
-    await expect(getGroqResponse(messages, env)).resolves.toBe('Płaska odpowiedź.');
+    await expect(getGroqResponse(messages, env, { modelId: workersAiTestModelId })).resolves.toBe('Płaska odpowiedź.');
   });
 
   it('returns text from Workers AI nested response.message-style content array', async () => {
@@ -35,7 +38,9 @@ describe('getGroqResponse polymorphic parsing', () => {
       },
     };
 
-    await expect(getGroqResponse(messages, env)).resolves.toBe('Zagnieżdżona odpowiedź.');
+    await expect(getGroqResponse(messages, env, { modelId: workersAiTestModelId })).resolves.toBe(
+      'Zagnieżdżona odpowiedź.',
+    );
   });
 
   it('returns content from Kimi-style choices.message.content', async () => {
@@ -48,7 +53,9 @@ describe('getGroqResponse polymorphic parsing', () => {
       },
     };
 
-    await expect(getGroqResponse(messages, env)).resolves.toBe('Odpowiedź z choices.message.content');
+    await expect(getGroqResponse(messages, env, { modelId: workersAiTestModelId })).resolves.toBe(
+      'Odpowiedź z choices.message.content',
+    );
   });
 
   it('returns joined text from array content parts', async () => {
@@ -69,7 +76,9 @@ describe('getGroqResponse polymorphic parsing', () => {
       },
     };
 
-    await expect(getGroqResponse(messages, env)).resolves.toBe('Pierwsza część. Druga część.');
+    await expect(getGroqResponse(messages, env, { modelId: workersAiTestModelId })).resolves.toBe(
+      'Pierwsza część. Druga część.',
+    );
   });
 
   it('returns content from legacy choices.text shape', async () => {
@@ -82,7 +91,9 @@ describe('getGroqResponse polymorphic parsing', () => {
       },
     };
 
-    await expect(getGroqResponse(messages, env)).resolves.toBe('Odpowiedź z legacy choices.text');
+    await expect(getGroqResponse(messages, env, { modelId: workersAiTestModelId })).resolves.toBe(
+      'Odpowiedź z legacy choices.text',
+    );
   });
 
   it('throws on invalid response shape', async () => {
@@ -95,7 +106,7 @@ describe('getGroqResponse polymorphic parsing', () => {
       },
     };
 
-    await expect(getGroqResponse(messages, env)).rejects.toThrow(
+    await expect(getGroqResponse(messages, env, { modelId: workersAiTestModelId })).rejects.toThrow(
       'Workers AI returned an empty or invalid response',
     );
   });
@@ -161,7 +172,7 @@ describe('getGroqResponse polymorphic parsing', () => {
       },
     };
 
-    await expect(getGroqResponse(messages, env)).resolves.toBe('z output_text.');
+    await expect(getGroqResponse(messages, env, { modelId: workersAiTestModelId })).resolves.toBe('z output_text.');
   });
 
   it('uses overridden modelId when provided', async () => {
@@ -215,11 +226,24 @@ describe('streamAssistantResponse – brak tool_calls nie uruchamia fallbacku', 
   it('nie wywołuje getGroqResponse, gdy model zwróci tekst bez tool_calls', async () => {
     const assistantLine = 'Dzień dobry, Krzysztofie!';
     const aiRunMock = vi.fn().mockResolvedValue(mockWorkersAiSseStream(assistantLine));
+    const origFetch = globalThis.fetch;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : (input as Request).url;
+      if (url.includes('gateway.ai.cloudflare.com')) {
+        return new Response(mockWorkersAiSseStream(assistantLine), {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        });
+      }
+      return origFetch(input as RequestInfo, init);
+    });
 
     const env = {
       SHOPIFY_APP_SECRET: 'mock-app-secret-12345',
       MCP_ENDPOINT: 'https://mcp.test.invalid/v1',
       AI: { run: aiRunMock },
+      CF_ACCOUNT_ID: 'test_cf_account',
+      AI_GATEWAY_TOKEN: 'test_ai_gateway_token',
     } as Env;
 
     const stub = {
@@ -259,7 +283,18 @@ describe('streamAssistantResponse – brak tool_calls nie uruchamia fallbacku', 
     expect(response.ok).toBe(true);
     const bodyText = await new Response(response.body).text();
     expect(bodyText).toContain(assistantLine);
-    expect(aiRunMock).toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalled();
+    const gwCall = fetchSpy.mock.calls.find((c) =>
+      String(typeof c[0] === 'string' ? c[0] : (c[0] as Request).url).includes('gateway.ai.cloudflare.com'),
+    );
+    expect(gwCall).toBeDefined();
+    const init = gwCall![1] as RequestInit | undefined;
+    const headers = new Headers(init?.headers);
+    expect(headers.get('cf-aig-authorization')).toBe('Bearer test_ai_gateway_token');
+    expect(headers.get('Authorization')).toBeNull();
+    expect(JSON.parse(init!.body as string).model).toBe(MODEL_VARIANTS.scout_17b.id);
+    expect(aiRunMock).not.toHaveBeenCalled();
     expect(getGroqResponseSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 });
