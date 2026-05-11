@@ -76,7 +76,7 @@ jobs:
         env:
           SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
           SMOKE_RAG_HEALTH_URL: ${{ secrets.SMOKE_RAG_HEALTH_URL }}
-          SMOKE_ANALYTICS_ADMIN_KEY: ${{ secrets.SMOKE_ANALYTICS_ADMIN_KEY }}
+          SMOKE_EPIR_CHAT_SHARED_SECRET: ${{ secrets.SMOKE_EPIR_CHAT_SHARED_SECRET }}
         run: |
           node --check scripts/smoke/post-deploy-smoke.mjs
           node scripts/smoke/post-deploy-smoke.mjs

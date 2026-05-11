@@ -33,7 +33,8 @@ WORKERS: dict[str, dict[str, frozenset[str]]] = {
                 "POLICIES_CACHE",
                 "RAG_WORKER",
                 "ANALYTICS_WORKER",
-                "BIGQUERY_BATCH",
+                "ANALYTICS_S2S_RPC",
+                "BIGQUERY_BATCH_RPC",
                 "AI",
             }
         ),
@@ -44,7 +45,7 @@ WORKERS: dict[str, dict[str, frozenset[str]]] = {
     },
     "workers/analytics/wrangler.toml": {
         "label": "analytics (epir-analityc-worker)",
-        "required_bindings": frozenset({"DB", "SESSION_DO"}),
+        "required_bindings": frozenset({"DB", "SESSION_DO", "CHART_EDGE_CACHE", "WAREHOUSE_CQRS_WF"}),
     },
     "workers/bigquery-batch/wrangler.toml": {
         "label": "bigquery-batch (epir-bigquery-batch)",
@@ -126,6 +127,10 @@ def collect_bindings(data: dict) -> set[str]:
         for item in data.get(arr_key) or []:
             if isinstance(item, dict) and "binding" in item:
                 names.add(str(item["binding"]))
+
+    for item in data.get("workflows") or []:
+        if isinstance(item, dict) and "binding" in item:
+            names.add(str(item["binding"]))
 
     queues = data.get("queues")
     if isinstance(queues, dict):

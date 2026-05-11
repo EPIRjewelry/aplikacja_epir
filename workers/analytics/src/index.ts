@@ -1,22 +1,35 @@
 /// <reference types="@cloudflare/workers-types" />
 
 import { timingSafeEqual } from 'node:crypto';
+import { WorkerEntrypoint } from 'cloudflare:workers';
+import type { WarehouseCqrsEnv } from './cqrs/types';
+import { handleWarehouseChartsGet } from './cqrs/serving-charts';
 
 // ============================================================================
 // ANALYTICS WORKER - Shopify Web Pixel Event Tracking
 // ============================================================================
 // Purpose: Receive and store customer behavior events from Shopify storefront
 // Integration: Web Pixel → POST /pixel → D1 Database → Session DO notification
+// CQRS: Workflow → R2 SQL (approx aggregates) → D1 warehouse_serving_daily → KV edge (see ./cqrs/)
 // Logs prefix: [ANALYTICS_WORKER]
 // ============================================================================
 
 interface Env {
   DB: D1Database;
   SESSION_DO: DurableObjectNamespace;
+  /** Workers KV — hot JSON chart payloads (prod wrangler.toml); optional in stripped test harness */
+  CHART_EDGE_CACHE?: KVNamespace;
+  /** Cloudflare Workflows binding — optional in unit tests */
+  WAREHOUSE_CQRS_WF?: import('./cqrs/types').CqrsWorkflowBinding;
   AI_WORKER?: Fetcher; // Removed - analytics skips AI analysis when undefined (graceful degradation)
   ALLOWED_ORIGINS?: string; // Comma-separated whitelist for CORS
   SHOPIFY_WEBHOOK_SECRET?: string;
-  ADMIN_KEY?: string;
+  R2_SQL_ACCOUNT_ID?: string;
+  R2_SQL_WAREHOUSE_BUCKET?: string;
+  R2_SQL_API_TOKEN?: string;
+  WAREHOUSE_SQL_NAMESPACE?: string;
+  WAREHOUSE_SQL_TABLE?: string;
+  WAREHOUSE_DISTINCT_COLUMN?: string;
 }
 
 // ============================================================================
@@ -93,45 +106,6 @@ function withD1BookmarkResponseHeaders(base: Record<string, string>, bookmark: s
   exposeParts.add('x-d1-bookmark');
   merged['Access-Control-Expose-Headers'] = Array.from(exposeParts).join(', ');
   return merged;
-}
-
-function looksLikePlaceholderSecret(value: string): boolean {
-  const normalized = value.trim().toLowerCase();
-  return (
-    normalized.length < 32
-    || normalized.includes('replace_me')
-    || normalized.includes('placeholder')
-    || normalized.includes('changeme')
-    || normalized.includes('dev-')
-  );
-}
-
-function timingSafeEqualsText(a: string, b: string): boolean {
-  const enc = new TextEncoder();
-  const aBytes = enc.encode(a);
-  const bBytes = enc.encode(b);
-  const maxLen = Math.max(aBytes.length, bBytes.length);
-  let diff = aBytes.length ^ bBytes.length;
-  for (let i = 0; i < maxLen; i += 1) diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
-  return diff === 0;
-}
-
-function readAdminTokenFromRequest(request: Request): string | null {
-  const authHeader = request.headers.get('authorization')?.trim() ?? '';
-  if (authHeader.toLowerCase().startsWith('bearer ')) {
-    const bearerToken = authHeader.slice(7).trim();
-    return bearerToken.length > 0 ? bearerToken : null;
-  }
-  const adminHeader = request.headers.get('x-admin-key')?.trim() ?? '';
-  return adminHeader.length > 0 ? adminHeader : null;
-}
-
-function hasAuthorizedReadAccess(request: Request, env: Env): boolean {
-  const configuredAdminKey = env.ADMIN_KEY?.trim() ?? '';
-  if (!configuredAdminKey || looksLikePlaceholderSecret(configuredAdminKey)) return false;
-  const requestToken = readAdminTokenFromRequest(request);
-  if (!requestToken) return false;
-  return timingSafeEqualsText(requestToken, configuredAdminKey);
 }
 
 async function ensurePixelTable(db: D1Database): Promise<void> {
@@ -1627,18 +1601,117 @@ async function handleCustomerSessions(request: Request, env: Env, url: URL): Pro
   }
 }
 
+export type RpcSerializedHttpResponse = {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+};
+
+async function serializeWorkerResponseForRpc(res: Response): Promise<RpcSerializedHttpResponse> {
+  const headers: Record<string, string> = {};
+  res.headers.forEach((v, k) => {
+    headers[k] = v;
+  });
+  const body = await res.text();
+  return { status: res.status, statusText: res.statusText, headers, body };
+}
+
+type AnalyticsS2SProps = { scopes?: string[] };
+
+function requireAnalyticsS2SScopes(props: AnalyticsS2SProps | undefined, ...required: string[]): void {
+  const got = Array.isArray(props?.scopes) ? props.scopes : [];
+  for (const r of required) {
+    if (!got.includes(r)) {
+      throw new Error(`rpc:forbidden missing scope ${r}`);
+    }
+  }
+}
+
+/** S2S RPC entrypoint (Workers service binding + `ctx.props` z wrangler); brak publicznego HTTP dla tych operacji. */
+export class AnalyticsS2SRpc extends WorkerEntrypoint<Env, AnalyticsS2SProps> {
+  async getWarehouseCharts(snapshotDate?: string | null, d1Bookmark?: string | null): Promise<RpcSerializedHttpResponse> {
+    requireAnalyticsS2SScopes(this.ctx.props, 'analytics.charts.read');
+    const sp = new URLSearchParams();
+    const snap = typeof snapshotDate === 'string' ? snapshotDate.trim() : '';
+    if (snap) sp.set('snapshot_date', snap);
+    const req = new Request(`https://internal/warehouse/charts${sp.toString() ? `?${sp.toString()}` : ''}`, {
+      headers: d1Bookmark?.trim() ? { 'x-d1-bookmark': d1Bookmark.trim() } : {},
+    });
+    const res = await handleWarehouseChartsGet(req, this.env as unknown as WarehouseCqrsEnv, corsHeaders(req, this.env));
+    return serializeWorkerResponseForRpc(res);
+  }
+
+  async getPixelEvents(limit?: number | null, d1Bookmark?: string | null): Promise<RpcSerializedHttpResponse> {
+    requireAnalyticsS2SScopes(this.ctx.props, 'analytics.pixel_events.read');
+    const lim = typeof limit === 'number' && Number.isFinite(limit) ? Math.floor(limit) : null;
+    const sp = new URLSearchParams();
+    if (lim != null && lim > 0) sp.set('limit', String(lim));
+    const qs = sp.toString();
+    const req = new Request(`https://internal/pixel/events${qs ? `?${qs}` : ''}`, {
+      headers: d1Bookmark?.trim() ? { 'x-d1-bookmark': d1Bookmark.trim() } : {},
+    });
+    const res = await handlePixelEvents(req, this.env, sp.get('limit'));
+    return serializeWorkerResponseForRpc(res);
+  }
+
+  async getCustomerJourney(args: {
+    d1Bookmark?: string | null;
+    customerId?: string | null;
+    sessionId?: string | null;
+    limit?: number | null;
+  }): Promise<RpcSerializedHttpResponse> {
+    requireAnalyticsS2SScopes(this.ctx.props, 'analytics.journey.read');
+    const u = new URL('https://internal/journey');
+    if (args.customerId?.trim()) u.searchParams.set('customer_id', args.customerId.trim());
+    if (args.sessionId?.trim()) u.searchParams.set('session_id', args.sessionId.trim());
+    if (typeof args.limit === 'number' && Number.isFinite(args.limit)) {
+      u.searchParams.set('limit', String(Math.floor(args.limit)));
+    }
+    const req = new Request(u.toString(), {
+      headers: args.d1Bookmark?.trim() ? { 'x-d1-bookmark': args.d1Bookmark.trim() } : {},
+    });
+    const res = await handleCustomerJourney(req, this.env, new URL(req.url));
+    return serializeWorkerResponseForRpc(res);
+  }
+
+  async getCustomerSessions(args: {
+    d1Bookmark?: string | null;
+    customerId?: string | null;
+    limit?: number | null;
+  }): Promise<RpcSerializedHttpResponse> {
+    requireAnalyticsS2SScopes(this.ctx.props, 'analytics.sessions.read');
+    const u = new URL('https://internal/sessions');
+    if (args.customerId?.trim()) u.searchParams.set('customer_id', args.customerId.trim());
+    if (typeof args.limit === 'number' && Number.isFinite(args.limit)) {
+      u.searchParams.set('limit', String(Math.floor(args.limit)));
+    }
+    const req = new Request(u.toString(), {
+      headers: args.d1Bookmark?.trim() ? { 'x-d1-bookmark': args.d1Bookmark.trim() } : {},
+    });
+    const res = await handleCustomerSessions(req, this.env, new URL(req.url));
+    return serializeWorkerResponseForRpc(res);
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
-    const isProtectedReadEndpoint =
-      request.method === 'GET' && (
+    const privilegedReadHttp =
+      request.method === 'GET'
+      && (
         url.pathname === '/pixel/events'
         || url.pathname === '/journey'
         || url.pathname === '/sessions'
+        || url.pathname === '/internal/warehouse/charts'
       );
 
-    if (isProtectedReadEndpoint && !hasAuthorizedReadAccess(request, env)) {
-      return json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders(request, env));
+    if (privilegedReadHttp) {
+      return json(
+        { ok: false, error: 'privileged_read_requires_service_binding_rpc' },
+        404,
+        corsHeaders(request, env),
+      );
     }
 
     if (request.method === 'POST' && url.pathname === '/webhooks/orders/create') {
@@ -1650,15 +1723,6 @@ export default {
     if (request.method === 'GET' && url.pathname === '/pixel/count') {
       return handlePixelCount(request, env);
     }
-    if (request.method === 'GET' && url.pathname === '/pixel/events') {
-      return handlePixelEvents(request, env, url.searchParams.get('limit'));
-    }
-    if (request.method === 'GET' && url.pathname === '/journey') {
-      return handleCustomerJourney(request, env, url);
-    }
-    if (request.method === 'GET' && url.pathname === '/sessions') {
-      return handleCustomerSessions(request, env, url);
-    }
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/healthz')) {
       return new Response('ok', { status: 200, headers: corsHeaders(request, env) });
     }
@@ -1668,6 +1732,25 @@ export default {
     }
     return new Response('Not Found', { status: 404, headers: corsHeaders(request, env) });
   },
+
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    if (!env.WAREHOUSE_CQRS_WF || typeof env.WAREHOUSE_CQRS_WF.create !== 'function') {
+      console.warn('[ANALYTICS_WORKER] CQRS: WAREHOUSE_CQRS_WF binding missing, skip scheduled materialize');
+      return;
+    }
+    ctx.waitUntil(
+      (async () => {
+        try {
+          const id = `cqrs-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+          await env.WAREHOUSE_CQRS_WF.create({ id });
+          console.log('[ANALYTICS_WORKER] CQRS workflow started', id);
+        } catch (e) {
+          console.error('[ANALYTICS_WORKER] CQRS workflow trigger failed:', e);
+        }
+      })(),
+    );
+  },
 };
 
+export { WarehouseCqrsWorkflow } from './cqrs/warehouse-workflow';
 

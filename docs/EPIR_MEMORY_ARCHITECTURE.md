@@ -126,7 +126,7 @@ W `streamAssistant` po `crossSessionSummary`:
 
 - TTL per slot z `FACT_SLOT_TTL_MS` w `memory/types.ts`.
 - `memory_raw_turns.expires_at` = `now + 180 dni`; cleanup przez cron/scheduled handler (`deleteExpiredMemoryRawTurns`).
-- Endpoint `DELETE /memory/customer/{customerId}` (autoryzacja `X-Admin-Key: ADMIN_KEY`) kasuje fakty, eventy, raw turns i wektory.
+- Endpoint `DELETE /memory/customer/{customerId}` (autoryzacja `X-Admin-Key` dopasowany do `EPIR_OPERATOR_PANEL_SECRET`) kasuje fakty, eventy, raw turns i wektory.
 - Webhook Shopify `POST /webhooks/customers/redact` (HMAC SHA-256 z `SHOPIFY_APP_SECRET`) woła ten sam `eraseCustomerMemory`.
 - `maskPII` (e-mail / telefon / karta / PESEL) uruchamia się przed embedingiem; tekst zapisywany do `memory_raw_turns` również przechodzi maskowanie (`text_masked=1`).
 

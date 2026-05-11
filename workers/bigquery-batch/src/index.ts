@@ -1,5 +1,7 @@
 /// <reference types="@cloudflare/workers-types" />
 
+import { WorkerEntrypoint } from 'cloudflare:workers';
+
 // ============================================================================
 // BIGQUERY BATCH WORKER – nocny eksport D1 → BigQuery
 // ============================================================================
@@ -17,7 +19,6 @@ interface Env {
   GOOGLE_CLIENT_EMAIL?: string;
   GOOGLE_PRIVATE_KEY?: string;
   GOOGLE_PROJECT_ID?: string;
-  ADMIN_KEY?: string;
 }
 
 const BQ_DATASET = 'analytics_435783047';
@@ -268,45 +269,49 @@ async function handleScheduled(env: Env): Promise<void> {
 }
 
 // ============================================================================
-// Analytics Query API (run_analytics_query – internal only, ADMIN_KEY)
+// Analytics Query (run_analytics_query – chat → service binding RPC, `ctx.props`)
 // ============================================================================
 
-function verifyAdminKey(env: Env, request: Request): boolean {
-  const key = env.ADMIN_KEY?.trim() ?? '';
-  if (!key || looksLikePlaceholderSecret(key)) return false;
+type BigQueryS2SProps = { scopes?: string[] };
 
-  const provided =
-    request.headers.get('Authorization')?.replace(/^Bearer\s+/i, '').trim()
-    ?? request.headers.get('X-Admin-Key')?.trim()
-    ?? '';
-  if (!provided) return false;
-
-  return timingSafeEqualsText(provided, key);
-}
-
-function looksLikePlaceholderSecret(value: string): boolean {
-  const normalized = value.trim().toLowerCase();
-  return (
-    normalized.length < 32
-    || normalized.includes('replace_me')
-    || normalized.includes('placeholder')
-    || normalized.includes('changeme')
-    || normalized.includes('dev-')
-  );
-}
-
-function timingSafeEqualsText(a: string, b: string): boolean {
-  const enc = new TextEncoder();
-  const aBytes = enc.encode(a);
-  const bBytes = enc.encode(b);
-  const maxLen = Math.max(aBytes.length, bBytes.length);
-  let diff = aBytes.length ^ bBytes.length;
-
-  for (let i = 0; i < maxLen; i += 1) {
-    diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
+function requireBigQueryS2SScopes(props: BigQueryS2SProps | undefined, scope: string): void {
+  const got = Array.isArray(props?.scopes) ? props.scopes : [];
+  if (!got.includes(scope)) {
+    throw new Error(`rpc:forbidden missing scope ${scope}`);
   }
+}
 
-  return diff === 0;
+async function executeRunAnalyticsQuery(
+  env: Env,
+  body: { queryId?: string; dateFrom?: number; dateTo?: number },
+): Promise<
+  | { ok: true; queryId: string; rows: Record<string, unknown>[] }
+  | { ok: false; error: string; status: number }
+> {
+  const queryId = body?.queryId;
+  if (!queryId || typeof queryId !== 'string') {
+    return { ok: false, error: `queryId required; validIds: ${VALID_QUERY_IDS.join(',')}`, status: 400 };
+  }
+  const sql = ANALYTICS_QUERY_WHITELIST[queryId];
+  if (!sql) {
+    return { ok: false, error: `Invalid queryId: ${queryId}`, status: 400 };
+  }
+  const { rows, error } = await runBigQueryJob(env, sql);
+  if (error) {
+    return { ok: false, error, status: 500 };
+  }
+  return { ok: true, queryId, rows: rows ?? [] };
+}
+
+/** S2S BigQuery whitelisted queries – wywoływane wyłącznie z `epir-art-jewellery-worker` przez service binding. */
+export class BigQueryBatchS2SRpc extends WorkerEntrypoint<Env, BigQueryS2SProps> {
+  async runAnalyticsQuery(args: { queryId?: string; dateFrom?: number; dateTo?: number }): Promise<
+    | { ok: true; queryId: string; rows: Record<string, unknown>[] }
+    | { ok: false; error: string; status: number }
+  > {
+    requireBigQueryS2SScopes(this.ctx.props, 'bigquery.analytics_query');
+    return executeRunAnalyticsQuery(this.env, args ?? {});
+  }
 }
 
 async function runBigQueryJob(env: Env, query: string): Promise<{ rows?: Record<string, unknown>[]; error?: string }> {
@@ -361,35 +366,6 @@ async function runBigQueryJob(env: Env, query: string): Promise<{ rows?: Record<
   return { rows };
 }
 
-async function handleAnalyticsQuery(request: Request, env: Env): Promise<Response> {
-  if (!verifyAdminKey(env, request)) {
-    return new Response(JSON.stringify({ error: 'Unauthorized: ADMIN_KEY required' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-  }
-  let body: { queryId?: string; dateFrom?: number; dateTo?: number };
-  try {
-    body = (await request.json()) as typeof body;
-  } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
-  }
-  const queryId = body?.queryId;
-  if (!queryId || typeof queryId !== 'string') {
-    return new Response(JSON.stringify({ error: 'queryId required', validIds: VALID_QUERY_IDS }), { status: 400, headers: { 'Content-Type': 'application/json' } });
-  }
-  const sql = ANALYTICS_QUERY_WHITELIST[queryId];
-  if (!sql) {
-    return new Response(JSON.stringify({ error: `Invalid queryId: ${queryId}`, validIds: VALID_QUERY_IDS }), { status: 400, headers: { 'Content-Type': 'application/json' } });
-  }
-  const { rows, error } = await runBigQueryJob(env, sql);
-  if (error) {
-    return new Response(JSON.stringify({ error }), { status: 500, headers: { 'Content-Type': 'application/json' } });
-  }
-  return new Response(JSON.stringify({ queryId, rows: rows ?? [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-}
-
-// ============================================================================
-// Worker export
-// ============================================================================
-
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -397,7 +373,10 @@ export default {
       return new Response('ok', { status: 200 });
     }
     if (request.method === 'POST' && url.pathname === '/internal/analytics/query') {
-      return handleAnalyticsQuery(request, env);
+      return new Response(JSON.stringify({ error: 'analytics_query_deprecated_use_rpc' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
     return new Response('Not Found', { status: 404 });
   },

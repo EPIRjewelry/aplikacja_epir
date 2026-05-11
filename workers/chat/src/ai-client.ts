@@ -972,20 +972,28 @@ async function routedStreamGroqEvents(
  * Rozstrzyga wariant modelu na podstawie nagłówka `X-Epir-Model-Variant`.
  * ZWRACA `null` (użyj default), gdy:
  * - brak nagłówka,
- * - brak / zły `ADMIN_KEY` bearer token,
+ * - brak / zły `Authorization: Bearer` dopasowany do `EPIR_OPERATOR_PANEL_SECRET`,
  * - variant wymaga multimodal, ale request ma obraz (`hasImage: true`), a variant `multimodal: false`,
  * - klucz nie pasuje do żadnego wariantu (defensywnie silent-fallback).
  *
- * Caller (index.ts) dostaje albo `ModelCapabilities` albo `null` i decyduje co zrobić.
- *
- * UWAGA bezpieczeństwo: nagłówek DZIAŁA WYŁĄCZNIE z poprawnym `Authorization: Bearer ${ADMIN_KEY}`.
- * Dla ruchu buyer-facing (bez admin tokenu) zawsze zwracamy `null` → default model.
+ * UWAGA bezpieczeństwo: nagłówek DZIAŁA wyłącznie z Bearer zgodnym z sekretem panelu operatorskiego (`wrangler secret put EPIR_OPERATOR_PANEL_SECRET`).
+ * Dla ruchu buyer-facing (bez sekretu) zawsze zwracamy `null` → default model.
  */
+function timingSafeEqualStrings(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  if (ab.length !== bb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ab.length; i += 1) diff |= ab[i]! ^ bb[i]!;
+  return diff === 0;
+}
+
 export function resolveAdminModelVariantFromHeaders(
   headers: {
     get(name: string): string | null;
   },
-  env: { ADMIN_KEY?: string },
+  env: { EPIR_OPERATOR_PANEL_SECRET?: string },
   context: { hasImage?: boolean } = {},
 ): ModelCapabilities | null {
   const raw = headers.get('x-epir-model-variant') || headers.get('X-Epir-Model-Variant');
@@ -993,11 +1001,13 @@ export function resolveAdminModelVariantFromHeaders(
   const variantKey = raw.trim();
   if (!variantKey) return null;
 
-  const authHeader = headers.get('authorization') || headers.get('Authorization');
-  const adminKey = env.ADMIN_KEY;
-  if (!adminKey || !authHeader) return null;
-  const expected = `Bearer ${adminKey}`;
-  if (authHeader.trim() !== expected) return null;
+  const configured = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
+  if (!configured) return null;
+
+  const rawAuth = headers.get('Authorization') ?? headers.get('authorization');
+  const m = /^Bearer\s+(.+)$/i.exec((rawAuth ?? '').trim());
+  const bearer = m?.[1]?.trim();
+  if (!bearer || !timingSafeEqualStrings(bearer, configured)) return null;
 
   if (!Object.hasOwn(MODEL_VARIANTS, variantKey)) return null;
   const variant = MODEL_VARIANTS[variantKey as ModelVariantKey];

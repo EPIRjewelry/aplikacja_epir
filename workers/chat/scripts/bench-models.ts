@@ -9,7 +9,7 @@
  * Użycie:
  *   tsx workers/chat/scripts/bench-models.ts \
  *     --endpoint https://chat.epir-art-silver-jewellery.workers.dev \
- *     --admin-key $ADMIN_KEY \
+ *     --operator-secret $EPIR_OPERATOR_PANEL_SECRET \
  *     --variants default,k26,glm_flash \
  *     --out docs/benchmarks/$(date +%F)-models.md
  *
@@ -22,7 +22,7 @@ import { dirname, resolve } from 'node:path';
 
 type CliOptions = {
   endpoint: string;
-  adminKey: string;
+  operatorSecret: string;
   variants: string[];
   out: string;
   csv?: string;
@@ -80,15 +80,17 @@ function parseArgs(argv: string[]): CliOptions {
     args.set(key, value);
   }
   const endpoint = args.get('endpoint') ?? process.env.BENCH_ENDPOINT ?? '';
-  const adminKey = args.get('admin-key') ?? process.env.ADMIN_KEY ?? '';
+  const operatorSecret = args.get('operator-secret') ?? process.env.EPIR_OPERATOR_PANEL_SECRET ?? '';
   if (!endpoint) throw new Error('--endpoint is required (e.g. https://chat.epir-art-silver-jewellery.workers.dev)');
-  if (!adminKey) throw new Error('--admin-key or ADMIN_KEY env is required');
+  if (!operatorSecret) {
+    throw new Error('--operator-secret or EPIR_OPERATOR_PANEL_SECRET env is required');
+  }
   const variants = (args.get('variants') ?? 'default,k26,glm_flash').split(',').map((s) => s.trim()).filter(Boolean);
   const out = args.get('out') ?? `docs/benchmarks/${new Date().toISOString().slice(0, 10)}-models.md`;
   const csv = args.get('csv');
   const repeats = Number(args.get('repeats') ?? '1');
   const scenarioFilter = args.get('scenario');
-  return { endpoint, adminKey, variants, out, csv, repeats, scenarioFilter };
+  return { endpoint, operatorSecret, variants, out, csv, repeats, scenarioFilter };
 }
 
 async function runScenario(
@@ -129,7 +131,7 @@ async function runScenario(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${opts.adminKey}`,
+        Authorization: `Bearer ${opts.operatorSecret}`,
         'X-Epir-Model-Variant': variant === 'default' ? 'default' : variant,
       },
       body: JSON.stringify(body),

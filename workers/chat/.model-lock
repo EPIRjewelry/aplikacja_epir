@@ -3,7 +3,7 @@
 # Konfiguracja runtime: `workers/chat/src/config/model-params.ts` (`CHAT_MODEL_ID`).
 #
 # Warianty alternatywne (benchmark / A-B): `MODEL_VARIANTS` w model-params.ts.
-# Routing: nagłówek `X-Epir-Model-Variant` (WYMAGA `ADMIN_KEY` bearer token).
+# Routing: nagłówek `X-Epir-Model-Variant` (WYMAGA `Authorization: Bearer` dopasowanego do `EPIR_OPERATOR_PANEL_SECRET`).
 # W produkcji bez nagłówka default pozostaje `@cf/moonshotai/kimi-k2.5`.
 
 LOCKED_MODEL_ID=@cf/moonshotai/kimi-k2.5

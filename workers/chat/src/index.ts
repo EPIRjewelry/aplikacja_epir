@@ -1,8 +1,8 @@
 /// <reference types="@cloudflare/workers-types" />
 
-import type { Env } from './config/bindings';
+import type { Env, RpcSerializedHttpResponse } from './config/bindings';
 
-export type { Env } from './config/bindings';
+export type { Env, RpcSerializedHttpResponse } from './config/bindings';
 
 /**
  * GŁÓWNY PLIK WORKERA (epir-art-jewellery-worker)
@@ -24,7 +24,7 @@ export type { Env } from './config/bindings';
 import { verifyAppProxyHmac, replayCheck } from './security';
 import { verifyHmac } from './hmac';
 import { parseAuthorizationBearer, verifyShopifySessionTokenJwt } from './shopify-session-token';
-import { RateLimiterDO } from './rate-limiter';
+import { RateLimiterDO, checkRateLimit } from './rate-limiter';
 import { TokenVaultDO, TokenVault, getTokenVaultStub } from './token-vault';
 import { guardAssistantPricingAgainstCatalog } from './pricing-guard';
 
@@ -57,19 +57,18 @@ import { callMcpToolDirect, handleMcpRequest } from './mcp_server';
 import { STOREFRONTS, resolveStorefrontConfig } from './config/storefronts';
 import { chatPipelineLog } from './utils/chat-pipeline-log';
 
-/** Wywołanie run_analytics_query – tylko gdy channel=internal-dashboard (BIGQUERY_BATCH + ADMIN_KEY) */
+/** Wywołanie run_analytics_query – tylko gdy channel=internal-dashboard (`BIGQUERY_BATCH_RPC` przez Workers RPC). */
 async function runAnalyticsQuery(env: Env, args: { queryId?: string; dateFrom?: number; dateTo?: number }): Promise<{ result?: unknown; error?: unknown }> {
   const t0 = Date.now();
-  const binding = (env as any).BIGQUERY_BATCH as Fetcher | undefined;
-  const adminKey = env.ADMIN_KEY;
-  if (!binding || !adminKey) {
+  const rpc = env.BIGQUERY_BATCH_RPC;
+  if (!rpc) {
     chatPipelineLog({
       phase: 'analytics_bigquery_tool',
       duration_ms: Date.now() - t0,
       ok: false,
-      reason: 'binding_or_admin_key_missing',
+      reason: 'binding_missing',
     });
-    return { error: { code: -32603, message: 'run_analytics_query not configured (BIGQUERY_BATCH or ADMIN_KEY missing)' } };
+    return { error: { code: -32603, message: 'run_analytics_query not configured (BIGQUERY_BATCH_RPC binding missing)' } };
   }
   const queryId = args?.queryId;
   if (!queryId || typeof queryId !== 'string') {
@@ -82,35 +81,16 @@ async function runAnalyticsQuery(env: Env, args: { queryId?: string; dateFrom?: 
     return { error: { code: -32602, message: 'queryId required' } };
   }
   try {
-    const res = await binding.fetch('https://bq/internal/analytics/query', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${adminKey}`,
-        'X-Admin-Key': adminKey,
-      },
-      body: JSON.stringify({ queryId, dateFrom: args.dateFrom, dateTo: args.dateTo }),
-    });
-    const data = await res.json().catch(() => ({})) as { rows?: unknown[]; error?: string };
-    if (!res.ok) {
+    const data = await rpc.runAnalyticsQuery({ queryId, dateFrom: args.dateFrom, dateTo: args.dateTo });
+    if (!data.ok) {
       chatPipelineLog({
         phase: 'analytics_bigquery_tool',
         duration_ms: Date.now() - t0,
         ok: false,
         queryId,
-        http_status: res.status,
+        http_status: data.status,
       });
-      return { error: { code: res.status, message: data.error ?? `HTTP ${res.status}` } };
-    }
-    if (data.error) {
-      chatPipelineLog({
-        phase: 'analytics_bigquery_tool',
-        duration_ms: Date.now() - t0,
-        ok: false,
-        queryId,
-        reason: 'worker_error_field',
-      });
-      return { error: { code: -32000, message: data.error } };
+      return { error: { code: data.status, message: data.error } };
     }
     const rows = data.rows ?? [];
     chatPipelineLog({
@@ -120,7 +100,7 @@ async function runAnalyticsQuery(env: Env, args: { queryId?: string; dateFrom?: 
       queryId,
       row_count: Array.isArray(rows) ? rows.length : 0,
     });
-    return { result: { queryId, rows } };
+    return { result: { queryId: data.queryId, rows } };
   } catch (e: any) {
     chatPipelineLog({
       phase: 'analytics_bigquery_tool',
@@ -321,6 +301,8 @@ async function authorizeAppProxyRequest(request: Request, env: Env): Promise<Res
 // Stałe konfiguracyjne
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 20;
+/** Koszt tokenowy RateLimiterDO na jeden GET wykresów (proxy → analytics D1/KV) — ogranicza DoW na billing analytics. */
+const CHART_PROXY_RL_TOKENS_PER_REQUEST = 10;
 const MAX_HISTORY_FOR_AI = 20; // Ogranicz liczbę wiadomości wysyłanych do AI
 /** Mniejsze okno historii dla Liquid / online-store — niższy koszt promptu i szybsze tury. */
 const MAX_HISTORY_FOR_AI_ONLINE_STORE = 12;
@@ -1009,7 +991,9 @@ function cors(env: Env, request?: Request): Record<string, string> {
       EPIR_SHARED_SECRET_HEADER,
       EPIR_STOREFRONT_HEADER,
       EPIR_CHANNEL_HEADER,
+      'x-d1-bookmark',
     ].join(','),
+    'Access-Control-Expose-Headers': 'x-d1-bookmark,X-EPIR-Chart-Source',
   };
 }
 
@@ -1026,6 +1010,113 @@ function withCorsHeaders(baseHeaders: HeadersInit | undefined, env: Env, request
 
 function isPixelPath(pathname: string): boolean {
   return pathname === '/pixel' || pathname.startsWith('/pixel/');
+}
+
+function isAnalyticsChartsProxyPath(pathname: string): boolean {
+  return pathname === '/apps/assistant/charts' || pathname === '/api/charts';
+}
+
+function jsonChartsError(
+  status: number,
+  body: Record<string, unknown>,
+  env: Env,
+  request: Request,
+  extraHeaders?: Record<string, string>,
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: withCorsHeaders({ 'Content-Type': 'application/json', ...extraHeaders }, env, request),
+  });
+}
+
+function privilegedAnalyticsPixelPath(pathname: string): boolean {
+  return pathname === '/pixel/events' || pathname === '/journey' || pathname === '/sessions';
+}
+
+/** Mapuje odpowiedź RPC (serializowany `Response`) po stronie analytics na odpowiedź HTTP dla klienta (CORS jak dotychczas). */
+function responseFromRpcSerializedHttp(env: Env, request: Request, payload: RpcSerializedHttpResponse): Response {
+  const out = new Headers();
+  for (const [key, val] of Object.entries(payload.headers)) {
+    out.set(key, val);
+  }
+  return new Response(payload.body, {
+    status: payload.status,
+    statusText: payload.statusText,
+    headers: withCorsHeaders(out, env, request),
+  });
+}
+
+/** Chronione odczyty analityki z edge czatu — operator (`EPIR_OPERATOR_PANEL_SECRET`) lub S2S (ten sam kontrakt co `/chat`). */
+function authorizeChatGatewayPrivilegedRead(request: Request, env: Env): { ok: true } | { response: Response } {
+  const secret = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
+  if (secret) {
+    const bearer = parseAuthorizationBearer(request);
+    const headerKey =
+      request.headers.get('X-Admin-Key')?.trim()
+      ?? request.headers.get('x-admin-key')?.trim()
+      ?? '';
+    if (bearer && timingSafeEqualText(bearer, secret)) return { ok: true };
+    if (headerKey && timingSafeEqualText(headerKey, secret)) return { ok: true };
+  }
+  const s2s = verifyS2SChatRequest(request, env);
+  return s2s.ok ? { ok: true } : { response: s2s.response };
+}
+
+/**
+ * Reverse proxy CQRS charts: storefront / BFF na brzegu czatu → `AnalyticsS2SRpc.getWarehouseCharts` (binding + props).
+ */
+async function handleAnalyticsChartsProxy(request: Request, env: Env, url: URL): Promise<Response> {
+  const pathname = url.pathname;
+
+  const applyRateLimit = async (bucketKey: string): Promise<Response | null> => {
+    const rl = await checkRateLimit(bucketKey, env, CHART_PROXY_RL_TOKENS_PER_REQUEST);
+    if (rl.allowed) return null;
+    const retrySec = rl.retryAfterMs && rl.retryAfterMs > 0 ? Math.max(1, Math.ceil(rl.retryAfterMs / 1000)) : 1;
+    return jsonChartsError(
+      429,
+      { error: 'rate_limited', retry_after_seconds: retrySec },
+      env,
+      request,
+      { 'Retry-After': String(retrySec) },
+    );
+  };
+
+  if (pathname === '/apps/assistant/charts') {
+    const authErr = await authorizeAppProxyRequest(request, env);
+    if (authErr) return authErr;
+    const shop = url.searchParams.get('shop')?.trim() || 'unknown-shop';
+    const rlRes = await applyRateLimit(`epir:charts:app-proxy:${shop}`);
+    if (rlRes) return rlRes;
+  } else if (pathname === '/api/charts') {
+    if (hasAppProxySignature(request, url)) {
+      const authErr = await authorizeAppProxyRequest(request, env);
+      if (authErr) return authErr;
+      const shop = url.searchParams.get('shop')?.trim() || 'unknown-shop';
+      const rlRes = await applyRateLimit(`epir:charts:api-proxy:${shop}`);
+      if (rlRes) return rlRes;
+    } else {
+      const s2s = verifyS2SChatRequest(request, env);
+      if (!s2s.ok) return s2s.response;
+      const storefrontId = s2s.contextOverride.storefrontId;
+      const rlRes = await applyRateLimit(`epir:charts:api-s2s:${storefrontId}`);
+      if (rlRes) return rlRes;
+    }
+  }
+
+  if (!env.ANALYTICS_S2S_RPC) {
+    return jsonChartsError(503, { error: 'analytics_s2s_binding_missing', detail: 'ANALYTICS_S2S_RPC' }, env, request);
+  }
+
+  try {
+    const envelope = await env.ANALYTICS_S2S_RPC.getWarehouseCharts(
+      url.searchParams.get('snapshot_date'),
+      request.headers.get('x-d1-bookmark'),
+    );
+    return responseFromRpcSerializedHttp(env, request, envelope);
+  } catch (error) {
+    console.error('[worker] charts RPC failed', error);
+    return jsonChartsError(502, { error: 'charts_rpc_unavailable' }, env, request);
+  }
 }
 
 const REPLAY_KEY_TTL_MS = 10 * 60_000;
@@ -4020,6 +4111,20 @@ export default {
     const pathname = url.pathname;
     const method = request.method.toUpperCase();
 
+    // 0b. Reverse proxy wykresów (CQRS) — App Proxy / headless; `ANALYTICS_S2S_RPC`; RateLimiterDO (DoW)
+    if (isAnalyticsChartsProxyPath(pathname)) {
+      if (method === 'OPTIONS') {
+        return new Response(null, {
+          status: 204,
+          headers: withCorsHeaders(undefined, env, request),
+        });
+      }
+      if (method !== 'GET') {
+        return jsonChartsError(405, { error: 'method_not_allowed' }, env, request);
+      }
+      return handleAnalyticsChartsProxy(request, env, url);
+    }
+
     // 1. Proxy /pixel – na początku, przed routingiem czatu (Gateway pattern)
     if (isPixelPath(pathname)) {
       // OPTIONS (preflight CORS) – zwróć CORS headers
@@ -4031,7 +4136,67 @@ export default {
       }
 
       try {
-        // Utrzymujemy ścieżkę `/pixel*`, ale podmieniamy host na upstream analytics.
+        if (method === 'GET' && privilegedAnalyticsPixelPath(pathname)) {
+          const auth = authorizeChatGatewayPrivilegedRead(request, env);
+          if ('response' in auth) return auth.response;
+          if (!env.ANALYTICS_S2S_RPC) {
+            console.error('[worker] /pixel privileged reads: ANALYTICS_S2S_RPC binding missing');
+            return new Response(JSON.stringify({ ok: false, error: 'analytics_s2s_not_configured' }), {
+              status: 503,
+              headers: withCorsHeaders({ 'Content-Type': 'application/json' }, env, request),
+            });
+          }
+          const d1Bk = request.headers.get('x-d1-bookmark') ?? request.headers.get('X-D1-Bookmark');
+          const qp = url.searchParams;
+          const limitRaw = qp.get('limit');
+
+          try {
+            if (pathname === '/pixel/events') {
+              let limParsed: number | null = null;
+              if (limitRaw != null && limitRaw.trim() !== '') {
+                const n = Number(limitRaw.trim());
+                if (Number.isFinite(n)) limParsed = n;
+              }
+              const envelope = await env.ANALYTICS_S2S_RPC.getPixelEvents(limParsed, d1Bk);
+              return responseFromRpcSerializedHttp(env, request, envelope);
+            }
+            if (pathname === '/journey') {
+              let limParsed: number | null = null;
+              if (limitRaw != null && limitRaw.trim() !== '') {
+                const n = Number(limitRaw.trim());
+                if (Number.isFinite(n)) limParsed = n;
+              }
+              const envelope = await env.ANALYTICS_S2S_RPC.getCustomerJourney({
+                d1Bookmark: d1Bk,
+                customerId: qp.get('customer_id'),
+                sessionId: qp.get('session_id'),
+                limit: limParsed,
+              });
+              return responseFromRpcSerializedHttp(env, request, envelope);
+            }
+            if (pathname === '/sessions') {
+              let limParsed: number | null = null;
+              if (limitRaw != null && limitRaw.trim() !== '') {
+                const n = Number(limitRaw.trim());
+                if (Number.isFinite(n)) limParsed = n;
+              }
+              const envelope = await env.ANALYTICS_S2S_RPC.getCustomerSessions({
+                d1Bookmark: d1Bk,
+                customerId: qp.get('customer_id'),
+                limit: limParsed,
+              });
+              return responseFromRpcSerializedHttp(env, request, envelope);
+            }
+          } catch (e) {
+            console.error('[worker] /pixel privileged RPC failed', e);
+            return new Response(JSON.stringify({ ok: false, error: 'pixel_privileged_rpc_unavailable' }), {
+              status: 502,
+              headers: withCorsHeaders({ 'Content-Type': 'application/json' }, env, request),
+            });
+          }
+        }
+
+        // Utrzymujemy ścieżkę `/pixel*`, ale podmieniamy host na upstream analytics (np. POST /pixel/events).
         const analyticsUrl = `https://analytics.internal${pathname}${url.search}`;
         const upstreamRequest = new Request(analyticsUrl, request);
 
@@ -4076,8 +4241,9 @@ export default {
       });
     }
     if (url.pathname === '/admin/api/leads' && request.method === 'GET') {
-      const adminKey = request.headers.get('X-Admin-Key') || url.searchParams.get('key');
-      if (!env.ADMIN_KEY || adminKey !== env.ADMIN_KEY) {
+      const provided = (request.headers.get('X-Admin-Key') || url.searchParams.get('key'))?.trim() ?? '';
+      const expected = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
+      if (!expected || !provided || !timingSafeEqualText(provided, expected)) {
         return new Response(JSON.stringify({ error: 'Unauthorized' }), {
           status: 401,
           headers: { 'Content-Type': 'application/json', ...cors(env, request) },
@@ -4194,10 +4360,11 @@ export default {
 
     // --- Memory v2: GDPR erasure endpoint ---
     // DELETE /memory/customer/{customerId}
-    // Autoryzacja: ADMIN_KEY w nagłówku X-Admin-Key (per-operator) lub webhook Shopify (patrz /webhooks/customers/redact).
+    // Autoryzacja: nagłówek X-Admin-Key lub query `key` dopasowany do `EPIR_OPERATOR_PANEL_SECRET` albo webhook Shopify (patrz /webhooks/customers/redact).
     if (request.method === 'DELETE' && url.pathname.startsWith('/memory/customer/')) {
-      const adminKey = request.headers.get('X-Admin-Key');
-      if (!env.ADMIN_KEY || adminKey !== env.ADMIN_KEY) {
+      const headerKey = request.headers.get('X-Admin-Key')?.trim() ?? '';
+      const expectedOp = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
+      if (!expectedOp || !headerKey || !timingSafeEqualText(headerKey, expectedOp)) {
         return new Response(JSON.stringify({ error: 'Unauthorized' }), {
           status: 401,
           headers: { 'Content-Type': 'application/json', ...cors(env, request) },
