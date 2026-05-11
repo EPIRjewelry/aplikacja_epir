@@ -2617,7 +2617,11 @@ async function handleChat(
   if (customerId && shopId) {
     try {
       console.log('[handleChat] 🔐 TokenVault: Generating token...');
-      const tokenVaultStub = getTokenVaultStub(env.TOKEN_VAULT_DO, env, { shopId, customerId });
+      const tokenVaultStub = getTokenVaultStub(env.TOKEN_VAULT_DO, env, {
+        kind: 'customer',
+        shopId,
+        customerId,
+      });
       const vault = new TokenVault(tokenVaultStub);
       customerToken = await vault.getOrCreateToken(customerId, shopId);
       console.log('[handleChat] ✅ TokenVault: Token generated:', customerToken.substring(0, 16) + '...');
@@ -2927,7 +2931,11 @@ async function streamAssistantResponse(
       let effectiveCustomerToken = anonymousAppProxySession ? undefined : customerToken;
       if (!effectiveCustomerToken && effectiveShopifyCustomerId && shopId) {
         try {
-          const tokenVaultStub = getTokenVaultStub(env.TOKEN_VAULT_DO, env, { shopId, customerId: effectiveShopifyCustomerId });
+          const tokenVaultStub = getTokenVaultStub(env.TOKEN_VAULT_DO, env, {
+            kind: 'customer',
+            shopId,
+            customerId: effectiveShopifyCustomerId,
+          });
           const vault = new TokenVault(tokenVaultStub);
           effectiveCustomerToken = await vault.getOrCreateToken(effectiveShopifyCustomerId, shopId);
           if (effectiveCustomerContext.source === 'session') {

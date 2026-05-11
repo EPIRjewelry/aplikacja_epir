@@ -75,7 +75,7 @@ describe('TokenVault sharding', () => {
           id: id.toString(),
         }) as DurableObjectStub,
     } as unknown as DurableObjectNamespace;
-    const stub = getTokenVaultStub(ns, {}, { token });
+    const stub = getTokenVaultStub(ns, {}, { kind: 'token', token });
     expect(seenName).toBe(expectedName);
     expect((stub as { id: string }).id).toBe(`id:${expectedName}`);
   });
@@ -91,7 +91,7 @@ describe('TokenVault sharding', () => {
       },
       get: (id: DurableObjectId) => ({ id: id.toString() }) as DurableObjectStub,
     } as unknown as DurableObjectNamespace;
-    getTokenVaultStub(ns, {}, { token: legacy, fallbackShopId: 'Foo.MyShopify.COM' });
+    getTokenVaultStub(ns, {}, { kind: 'token', token: legacy, fallbackShopId: 'Foo.MyShopify.COM' });
     expect(seenName).toBe('shop:foo.myshopify.com');
   });
 
