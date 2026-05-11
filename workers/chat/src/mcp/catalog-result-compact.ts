@@ -3,6 +3,8 @@
  * Mniejszy JSON do LLM → krótszy prefill i mniejsza „pokusa” cytowania marketingu.
  */
 
+import { enrichCatalogMoneyFieldsDeep } from './catalog-price-enrich';
+
 /** Maks. długość pól opisowych przekazywanych modelowi. */
 export const CATALOG_DESCRIPTION_MAX_CHARS = 150;
 
@@ -36,6 +38,11 @@ function truncateDescriptionFieldsDeep(value: unknown, depth: number): unknown {
   return output;
 }
 
+function pipeCatalogJsonForModel(parsed: unknown): unknown {
+  const truncated = truncateDescriptionFieldsDeep(parsed, 6);
+  return enrichCatalogMoneyFieldsDeep(truncated, 14);
+}
+
 /**
  * Obcina długie pola opisowe w wyniku `search_catalog`.
  * MCP zwraca często JSON jako tekst w `content[].text`; obsługujemy oba kształty.
@@ -52,15 +59,15 @@ export function compactCatalogResult(result: unknown): unknown {
         const text = part.text;
         try {
           const parsed = JSON.parse(text);
-          const compacted = truncateDescriptionFieldsDeep(parsed, 6);
+          const compacted = pipeCatalogJsonForModel(parsed);
           return { ...part, text: JSON.stringify(compacted) };
         } catch {
           return part;
         }
       }
-      return truncateDescriptionFieldsDeep(part, 6);
+      return pipeCatalogJsonForModel(part);
     });
     return { ...root, content: compactedContent };
   }
-  return truncateDescriptionFieldsDeep(root, 6);
+  return pipeCatalogJsonForModel(root);
 }

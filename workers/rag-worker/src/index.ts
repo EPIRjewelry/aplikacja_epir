@@ -64,7 +64,7 @@ export interface Env {
   CANONICAL_MCP_URL?: string;
   
   /**
-   * Admin token for protected endpoints (set via wrangler.toml vars)
+   * Admin token for protected endpoints (set via wrangler secret put ADMIN_TOKEN)
    */
   ADMIN_TOKEN?: string;
 }
@@ -105,6 +105,41 @@ function localeFromRequest(request: Request): string | undefined {
   if (!al) return undefined;
   const first = al.split(',')[0]?.trim();
   return first ? first.slice(0, 24) : undefined;
+}
+
+function looksLikePlaceholderSecret(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized.length < 32
+    || normalized.includes('replace_me')
+    || normalized.includes('placeholder')
+    || normalized.includes('changeme')
+    || normalized.includes('dev-')
+  );
+}
+
+function readAdminTokenFromRequest(request: Request): string | null {
+  const authHeader = request.headers.get('authorization')?.trim() ?? '';
+  if (authHeader.toLowerCase().startsWith('bearer ')) {
+    const bearerToken = authHeader.slice(7).trim();
+    return bearerToken.length > 0 ? bearerToken : null;
+  }
+
+  const legacyHeader = request.headers.get('x-admin-token')?.trim() ?? '';
+  return legacyHeader.length > 0 ? legacyHeader : null;
+}
+
+function timingSafeEquals(a: string, b: string): boolean {
+  const encoder = new TextEncoder();
+  const aBytes = encoder.encode(a);
+  const bBytes = encoder.encode(b);
+  const maxLen = Math.max(aBytes.length, bBytes.length);
+
+  let diff = aBytes.length ^ bBytes.length;
+  for (let i = 0; i < maxLen; i += 1) {
+    diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
+  }
+  return diff === 0;
 }
 
 /**
@@ -286,11 +321,20 @@ export default {
       // ========================================
       // POST /admin/upsert - Admin-only upsert to Vectorize
       // Body: { docs: [{ id: string, text: string, metadata?: any }, ...] }
-      // Protected via header: X-ADMIN-TOKEN must match env.ADMIN_TOKEN
+      // Protected via secret token (Authorization: Bearer <token>, legacy: X-ADMIN-TOKEN)
+      // Fail-closed: missing/weak/placeholder env token => always reject.
       // ========================================
       if (url.pathname === '/admin/upsert' && request.method === 'POST') {
-        const adminToken = (request.headers.get('x-admin-token') || request.headers.get('X-ADMIN-TOKEN') || '').trim();
-        if (!env.ADMIN_TOKEN || adminToken !== env.ADMIN_TOKEN) {
+        const configuredAdminToken = env.ADMIN_TOKEN?.trim() ?? '';
+        const requestAdminToken = readAdminTokenFromRequest(request);
+        const hasSafeConfiguredToken =
+          configuredAdminToken.length > 0 && !looksLikePlaceholderSecret(configuredAdminToken);
+
+        if (
+          !hasSafeConfiguredToken
+          || !requestAdminToken
+          || !timingSafeEquals(requestAdminToken, configuredAdminToken)
+        ) {
           return new Response(
             JSON.stringify({ error: 'Unauthorized' }),
             { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }

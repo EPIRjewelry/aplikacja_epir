@@ -1541,6 +1541,21 @@ async function processSSEStream(
 }
 
 /* Główna funkcja wysyłki z fallbackiem JSON */
+async function resolveShopifySessionTokenForAssistant() {
+  try {
+    if (typeof window === 'undefined') return undefined;
+    var shopify = window.shopify;
+    if (shopify && shopify.sessionToken && typeof shopify.sessionToken.get === 'function') {
+      var t = await shopify.sessionToken.get();
+      if (t && String(t).trim()) return String(t).trim();
+    }
+    if (shopify && shopify.id && typeof shopify.id.token === 'string' && shopify.id.token.trim()) {
+      return shopify.id.token.trim();
+    }
+  } catch (e) {}
+  return undefined;
+}
+
 async function sendMessageToWorker(
   text,
   endpoint,
@@ -1609,12 +1624,17 @@ async function sendMessageToWorker(
     if (parts.length > 0) {
       body.parts = parts;
     }
+    var sessionTok = await resolveShopifySessionTokenForAssistant();
+    var reqHeaders = {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream, application/json',
+    };
+    if (sessionTok) {
+      reqHeaders['Authorization'] = 'Bearer ' + sessionTok;
+    }
     const res = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream, application/json',
-      },
+      headers: reqHeaders,
       credentials: 'include',
       body: JSON.stringify(body),
       signal: controller.signal,

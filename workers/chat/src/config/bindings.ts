@@ -57,6 +57,8 @@ export interface Env {
   POLICIES_CACHE?: KVNamespace;
 
   SHOPIFY_APP_SECRET: string;
+  /** Client ID aplikacji (Partners) — walidacja claimu `aud` w Shopify Session Token (JWT). */
+  SHOPIFY_CLIENT_ID?: string;
   /** Admin: Settings → Customer accounts — `classic` | `new` (diagnostyka App Proxy / logged_in_customer_id). */
   SHOPIFY_CUSTOMER_ACCOUNTS_MODE?: string;
   ALLOWED_ORIGIN?: string;
@@ -64,6 +66,7 @@ export interface Env {
 
   SHOPIFY_STOREFRONT_TOKEN?: string;
   SHOPIFY_ADMIN_TOKEN?: string;
+  GROQ_API_KEY?: string;
   SHOP_DOMAIN?: string;
   /** Opcjonalnie: GID wpisu metaobject z tabelą rozmiarów (gdy handle wpisu ≠ `tabela_rozmiarow`). */
   SIZE_TABLE_METAOBJECT_GID?: string;
@@ -101,6 +104,7 @@ export interface Env {
 export const REQUIRED_SECRETS = [] as const;
 
 export const OPTIONAL_SECRETS = [
+  'SHOPIFY_CLIENT_ID',
   'SHOPIFY_STOREFRONT_TOKEN',
   'PUBLIC_STOREFRONT_API_TOKEN_KAZKA',
   'PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY',

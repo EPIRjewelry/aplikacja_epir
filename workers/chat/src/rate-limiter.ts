@@ -32,12 +32,19 @@ export class RateLimiterDO {
   private tokens: number = DEFAULT_CONFIG.maxTokens;
   private lastRefill: number = Date.now();
   private config: TokenBucketConfig = DEFAULT_CONFIG;
+  private initialized: Promise<void>;
+
+  private static readonly STORAGE_KEY = 'rate_limiter_bucket_v1';
 
   constructor(state: DurableObjectState) {
     this.state = state;
+    this.initialized = this.state.blockConcurrencyWhile(async () => {
+      await this.loadState();
+    });
   }
 
   async fetch(request: Request): Promise<Response> {
+    await this.initialized;
     const url = new URL(request.url);
     const method = url.pathname.split('/').pop();
 
@@ -64,6 +71,7 @@ export class RateLimiterDO {
 
     if (this.tokens >= tokensToConsume) {
       this.tokens -= tokensToConsume;
+      await this.persistState();
       return Response.json({
         allowed: true,
         tokens: this.tokens,
@@ -87,6 +95,7 @@ export class RateLimiterDO {
    */
   private async handleCheck(): Promise<Response> {
     this.refillTokens();
+    await this.persistState();
     
     return Response.json({
       tokens: this.tokens,
@@ -101,6 +110,7 @@ export class RateLimiterDO {
   private async handleReset(): Promise<Response> {
     this.tokens = this.config.maxTokens;
     this.lastRefill = Date.now();
+    await this.persistState();
     
     return Response.json({ reset: true, tokens: this.tokens });
   }
@@ -118,6 +128,28 @@ export class RateLimiterDO {
       this.tokens = Math.min(this.config.maxTokens, this.tokens + tokensToAdd);
       this.lastRefill = now;
     }
+  }
+
+  private async loadState(): Promise<void> {
+    const persisted = await this.state.storage.get<{
+      tokens?: number;
+      lastRefill?: number;
+    }>(RateLimiterDO.STORAGE_KEY);
+    if (!persisted) return;
+
+    if (typeof persisted.tokens === 'number' && Number.isFinite(persisted.tokens)) {
+      this.tokens = Math.max(0, Math.min(this.config.maxTokens, persisted.tokens));
+    }
+    if (typeof persisted.lastRefill === 'number' && Number.isFinite(persisted.lastRefill)) {
+      this.lastRefill = persisted.lastRefill;
+    }
+  }
+
+  private async persistState(): Promise<void> {
+    await this.state.storage.put(RateLimiterDO.STORAGE_KEY, {
+      tokens: this.tokens,
+      lastRefill: this.lastRefill,
+    });
   }
 }
 

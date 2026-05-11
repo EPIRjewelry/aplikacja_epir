@@ -2,7 +2,7 @@ name = "epir-bigquery-batch"
 main = "src/index.ts"
 compatibility_date = "2025-09-30"
 compatibility_flags = ["nodejs_compat"]
-workers_dev = true
+workers_dev = false
 
 [build]
 command = ""

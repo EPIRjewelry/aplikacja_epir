@@ -19,6 +19,18 @@ interface TokenRecord {
   expiresAt?: number;
 }
 
+const TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+const SHOP_SHARD_PREFIX = 'shop';
+
+function normalizeShopId(shopId: string): string {
+  return shopId.trim().toLowerCase();
+}
+
+export function buildTokenVaultShardName(shopId: string): string {
+  const normalized = normalizeShopId(shopId);
+  return `${SHOP_SHARD_PREFIX}:${normalized}`;
+}
+
 /**
  * TokenVaultDO - Durable Object dla persystentnego przechowywania tokenów
  */
@@ -49,6 +61,10 @@ export class TokenVaultDO extends DurableObject {
   private queryFirst<T>(sql: string, ...bindings: unknown[]): T | null {
     const rows = this.sql.exec(sql, ...bindings).toArray() as T[];
     return rows[0] ?? null;
+  }
+
+  private cleanupExpired(now: number): void {
+    this.sql.exec('DELETE FROM token_mappings WHERE expires_at IS NOT NULL AND expires_at <= ?', now);
   }
 
   /**
@@ -85,6 +101,9 @@ export class TokenVaultDO extends DurableObject {
       });
     }
 
+    const now = Date.now();
+    this.cleanupExpired(now);
+
     // Sprawdź czy token już istnieje
     const existing = this.queryFirst<{ token: string; expires_at: number | null }>(
       'SELECT token, expires_at FROM token_mappings WHERE customer_id = ? AND shop_id = ? LIMIT 1',
@@ -98,10 +117,11 @@ export class TokenVaultDO extends DurableObject {
         // Token wygasł, usuń i utwórz nowy
         this.sql.exec('DELETE FROM token_mappings WHERE token = ?', existing.token);
       } else {
-        // Zaktualizuj last_used_at
+        // Zaktualizuj last_used_at i przedłuż wygasanie (sliding TTL)
         this.sql.exec(
-          'UPDATE token_mappings SET last_used_at = ? WHERE token = ?',
-          Date.now(),
+          'UPDATE token_mappings SET last_used_at = ?, expires_at = ? WHERE token = ?',
+          now,
+          now + TOKEN_TTL_MS,
           existing.token
         );
         return new Response(JSON.stringify({ token: existing.token }), {
@@ -112,8 +132,6 @@ export class TokenVaultDO extends DurableObject {
 
     // Stwórz nowy token (SHA-256 hash customer_id + shop_id + random salt)
     const token = await this.generateToken(customerId, shopId);
-    const now = Date.now();
-
     this.sql.exec(
       'INSERT INTO token_mappings (token, customer_id, shop_id, created_at, last_used_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)',
       token,
@@ -121,7 +139,7 @@ export class TokenVaultDO extends DurableObject {
       shopId,
       now,
       now,
-      null
+      now + TOKEN_TTL_MS
     );
 
     return new Response(JSON.stringify({ token }), {
@@ -133,6 +151,8 @@ export class TokenVaultDO extends DurableObject {
    * DELETE token (RODO compliance)
    */
   private async handleDelete(request: Request): Promise<Response> {
+    this.cleanupExpired(Date.now());
+
     const body = await request.json() as { customerId?: string; shopId?: string; token?: string };
     const { customerId, shopId, token } = body;
 
@@ -162,6 +182,9 @@ export class TokenVaultDO extends DurableObject {
    * LOOKUP token -> customer_id (tylko do audytu/administracji)
    */
   private async handleLookup(request: Request): Promise<Response> {
+    const now = Date.now();
+    this.cleanupExpired(now);
+
     const body = await request.json() as { token?: string };
     const { token } = body;
 
@@ -190,6 +213,13 @@ export class TokenVaultDO extends DurableObject {
       });
     }
 
+    this.sql.exec(
+      'UPDATE token_mappings SET last_used_at = ?, expires_at = ? WHERE token = ?',
+      now,
+      now + TOKEN_TTL_MS,
+      token
+    );
+
     return new Response(JSON.stringify(result), {
       headers: { 'Content-Type': 'application/json' }
     });
@@ -199,6 +229,9 @@ export class TokenVaultDO extends DurableObject {
    * Sprawdź czy token jest ważny
    */
   private async handleIsValid(request: Request): Promise<Response> {
+    const now = Date.now();
+    this.cleanupExpired(now);
+
     const body = await request.json() as { token?: string };
     const { token } = body;
 
@@ -219,7 +252,7 @@ export class TokenVaultDO extends DurableObject {
       });
     }
 
-    const valid = !result.expires_at || Date.now() <= result.expires_at;
+    const valid = !result.expires_at || now <= result.expires_at;
     return new Response(JSON.stringify({ valid }), {
       headers: { 'Content-Type': 'application/json' }
     });

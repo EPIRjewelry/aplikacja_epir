@@ -161,26 +161,31 @@ async function callGatewayCompat(
   const accountId = env.CF_ACCOUNT_ID;
   const gatewayId = env.AI_GATEWAY_ID ?? 'epir-ai-gateway';
   const gatewayToken = env.AI_GATEWAY_TOKEN?.trim();
-  if (!gatewayToken) {
-    throw new Error(
-      'AI_GATEWAY_TOKEN is required for AI Gateway requests. Set: wrangler secret put AI_GATEWAY_TOKEN',
-    );
-  }
+  const groqApiKey = env.GROQ_API_KEY?.trim();
+  if (!gatewayToken) throw new Error('AI_GATEWAY_TOKEN is missing');
+  if (!groqApiKey) throw new Error('GROQ_API_KEY is missing');
 
-  const url = `https://gateway.ai.cloudflare.com/v1/${accountId}/${gatewayId}/compat/chat/completions`;
+  const url = `https://gateway.ai.cloudflare.com/v1/${accountId}/${gatewayId}/groq/chat/completions`;
 
+  const modelId = body.model;
+  const modelName = modelId.replace('groq/', '');
   const payload: GatewayCompatBody = {
     ...body,
-    model: MODEL_VARIANTS.scout_17b.id,
+    model: modelName,
   };
 
   const t0 = Date.now();
+  console.log('[DEBUG] URL:', url);
+  console.log('[DEBUG] groqApiKey (first 8):', groqApiKey?.slice(0, 8));
+  console.log('[DEBUG] gatewayToken (first 8):', gatewayToken?.slice(0, 8));
+  console.log('[DEBUG] model:', body.model);
   const res = await fetch(url, {
     method: 'POST',
     signal: abortSignal,
     headers: {
       'Content-Type': 'application/json',
       'cf-aig-authorization': `Bearer ${gatewayToken}`,
+      Authorization: `Bearer ${groqApiKey}`,
     },
     body: JSON.stringify(payload),
   });
@@ -583,6 +588,79 @@ function emitMergedToolCalls(
 function createGroqStreamTransform(): TransformStream<string, GroqStreamEvent> {
   let buffer = '';
   const toolBuffers = new Map<string, GroqToolCall>();
+  let sseEventName = '';
+  let sseDataLines: string[] = [];
+
+  const parseSseDataJson = (joinedData: string): any | null => {
+    const trimmed = joinedData.trim();
+    if (!trimmed || trimmed === '[DONE]') return null;
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+  };
+
+  const emitStreamErrorMetric = (payload: unknown) => {
+    const payloadObj = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : null;
+    const errorObj =
+      payloadObj && payloadObj.error && typeof payloadObj.error === 'object'
+        ? (payloadObj.error as Record<string, unknown>)
+        : null;
+    const message =
+      errorObj && typeof errorObj.message === 'string'
+        ? errorObj.message
+        : '';
+    const validationType =
+      errorObj && typeof errorObj.type === 'string'
+        ? errorObj.type
+        : errorObj && typeof errorObj.code === 'string'
+          ? errorObj.code
+          : 'unknown';
+    const isSearchCatalogValidation =
+      message.includes('search_catalog') &&
+      (message.includes('catalog') || message.includes('missing_required_parameter'));
+    console.error(
+      JSON.stringify({
+        tag: 'chat.stream.gateway_error',
+        error_type: isSearchCatalogValidation ? 'search_catalog_validation' : 'other',
+        validation_type: validationType,
+      }),
+    );
+  };
+
+  const finalizeSseEvent = (
+    controller: TransformStreamDefaultController<GroqStreamEvent>,
+    isFlush: boolean,
+  ) => {
+    if (!sseEventName && sseDataLines.length === 0) return;
+
+    const eventName = sseEventName.trim().toLowerCase();
+    const joinedData = sseDataLines.join('\n').trim();
+    sseEventName = '';
+    sseDataLines = [];
+
+    if (!joinedData) return;
+    if (joinedData === '[DONE]') {
+      if (toolBuffers.size > 0) {
+        emitMergedToolCalls(toolBuffers, controller);
+        toolBuffers.clear();
+      }
+      controller.enqueue({ type: 'done', finish_reason: 'stop' });
+      return;
+    }
+
+    if (eventName === 'error') {
+      console.error('[GROQ-STREAM-ERROR]', joinedData);
+      const parsedError = parseSseDataJson(joinedData);
+      emitStreamErrorMetric(parsedError ?? joinedData);
+      throw new Error('AI Gateway stream error event from Groq');
+    }
+
+    const parsed = parseSseDataJson(joinedData);
+    if (!parsed) return;
+    processParsedLine(parsed, controller, isFlush);
+  };
 
   const processParsedLine = (
     parsed: any,
@@ -654,48 +732,73 @@ function createGroqStreamTransform(): TransformStream<string, GroqStreamEvent> {
     start() {
       buffer = '';
       toolBuffers.clear();
+      sseEventName = '';
+      sseDataLines = [];
     },
     transform(chunk, controller) {
       buffer += chunk;
       const lines = buffer.split(/\r?\n/);
       buffer = lines.pop() || '';
       for (const raw of lines) {
-        const line = raw.trim();
-        if (!line) continue;
-        if (line === 'data: [DONE]' || line === '[DONE]') {
-          if (toolBuffers.size > 0) {
-            emitMergedToolCalls(toolBuffers, controller);
-            toolBuffers.clear();
+        const line = raw.trimEnd();
+        const trimmed = line.trim();
+        if (!trimmed) {
+          finalizeSseEvent(controller, false);
+          continue;
+        }
+
+        if (trimmed.startsWith('event:')) {
+          const value = trimmed.slice(6).trim();
+          sseEventName = value;
+          continue;
+        }
+
+        if (trimmed.startsWith('data:')) {
+          const payload = trimmed.slice(5).trimStart();
+          if (payload === '[DONE]') {
+            finalizeSseEvent(controller, false);
+            sseDataLines.push('[DONE]');
+            finalizeSseEvent(controller, false);
+            continue;
           }
-          controller.enqueue({ type: 'done', finish_reason: 'stop' });
+          sseDataLines.push(payload);
+          const joinedData = sseDataLines.join('\n').trim();
+          try {
+            const parsed: unknown = JSON.parse(joinedData);
+            if (
+              parsed &&
+              typeof parsed === 'object' &&
+              (Array.isArray((parsed as { choices?: unknown }).choices) ||
+                ((parsed as { usage?: unknown }).usage !== undefined &&
+                  typeof (parsed as { usage?: unknown }).usage === 'object'))
+            ) {
+              finalizeSseEvent(controller, false);
+            }
+          } catch {
+            /* niekompletny JSON — czekaj na kolejne linie `data:` */
+          }
           continue;
         }
 
-        const payload = line.startsWith('data:') ? line.slice(5).trim() : line;
-        let parsed: any = null;
-        try {
-          parsed = JSON.parse(payload);
-        } catch (_) {
-          continue;
-        }
-
-        processParsedLine(parsed, controller, false);
+        // Toleruj niestandardowe/legacy linie z samym JSON-em bez prefixu `data:`.
+        sseDataLines.push(trimmed);
       }
     },
     flush(controller) {
       const trimmed = buffer.trim();
-      if (!trimmed) {
-        if (toolBuffers.size > 0) {
-          emitMergedToolCalls(toolBuffers, controller);
-          toolBuffers.clear();
+      if (trimmed) {
+        if (trimmed.startsWith('event:')) {
+          sseEventName = trimmed.slice(6).trim();
+        } else if (trimmed.startsWith('data:')) {
+          sseDataLines.push(trimmed.slice(5).trimStart());
+        } else {
+          sseDataLines.push(trimmed);
         }
-        return;
       }
-      const payload = trimmed.startsWith('data:') ? trimmed.slice(5).trim() : trimmed;
+
       try {
-        const parsed = JSON.parse(payload);
-        processParsedLine(parsed, controller, true);
-      } catch (_) {
+        finalizeSseEvent(controller, true);
+      } finally {
         if (toolBuffers.size > 0) {
           emitMergedToolCalls(toolBuffers, controller);
           toolBuffers.clear();
@@ -806,8 +909,26 @@ export async function streamGroqEventsViaGateway(
   }
 
   const byteStream = res.body as ReadableStream<Uint8Array>;
+  const [debugStream, parseStream] = byteStream.tee();
 
-  return byteStream
+  void (async () => {
+    const reader = debugStream.getReader();
+    const decoder = new TextDecoder();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        console.log('[DEBUG-CHUNK]', chunk.slice(0, 200));
+      }
+    } catch (err) {
+      console.warn('[DEBUG-CHUNK] read_error', stringifyForLog(err));
+    } finally {
+      reader.releaseLock();
+    }
+  })();
+
+  return parseStream
     .pipeThrough(new TextDecoderStream() as unknown as TransformStream<Uint8Array, string>)
     .pipeThrough(createGroqStreamTransform());
 }

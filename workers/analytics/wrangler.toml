@@ -10,7 +10,10 @@ command = ""
 [vars]
 # `null` = literal Origin string from Shopify Web Pixel sandbox (opaque origin)
 ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://zareczyny.epirbizuteria.pl,https://epir-art-silver-jewellery.myshopify.com,https://asystent.epirbizuteria.pl,null"
-SHOPIFY_WEBHOOK_SECRET = "dev-placeholder-override-with-wrangler-secret-put"
+# Webhook secret:
+# wrangler secret put SHOPIFY_WEBHOOK_SECRET
+# Admin key for protected read endpoints (/pixel/events, /journey, /sessions):
+# wrangler secret put ADMIN_KEY
 
 [[d1_databases]]
 binding = "DB"

@@ -16,6 +16,7 @@ interface Env {
   AI_WORKER?: Fetcher; // Removed - analytics skips AI analysis when undefined (graceful degradation)
   ALLOWED_ORIGINS?: string; // Comma-separated whitelist for CORS
   SHOPIFY_WEBHOOK_SECRET?: string;
+  ADMIN_KEY?: string;
 }
 
 // ============================================================================
@@ -48,8 +49,47 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Shop-Signature',
+    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Shop-Signature,X-Admin-Key',
   };
+}
+
+function looksLikePlaceholderSecret(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized.length < 32
+    || normalized.includes('replace_me')
+    || normalized.includes('placeholder')
+    || normalized.includes('changeme')
+    || normalized.includes('dev-')
+  );
+}
+
+function timingSafeEqualsText(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const aBytes = enc.encode(a);
+  const bBytes = enc.encode(b);
+  const maxLen = Math.max(aBytes.length, bBytes.length);
+  let diff = aBytes.length ^ bBytes.length;
+  for (let i = 0; i < maxLen; i += 1) diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
+  return diff === 0;
+}
+
+function readAdminTokenFromRequest(request: Request): string | null {
+  const authHeader = request.headers.get('authorization')?.trim() ?? '';
+  if (authHeader.toLowerCase().startsWith('bearer ')) {
+    const bearerToken = authHeader.slice(7).trim();
+    return bearerToken.length > 0 ? bearerToken : null;
+  }
+  const adminHeader = request.headers.get('x-admin-key')?.trim() ?? '';
+  return adminHeader.length > 0 ? adminHeader : null;
+}
+
+function hasAuthorizedReadAccess(request: Request, env: Env): boolean {
+  const configuredAdminKey = env.ADMIN_KEY?.trim() ?? '';
+  if (!configuredAdminKey || looksLikePlaceholderSecret(configuredAdminKey)) return false;
+  const requestToken = readAdminTokenFromRequest(request);
+  if (!requestToken) return false;
+  return timingSafeEqualsText(requestToken, configuredAdminKey);
 }
 
 async function ensurePixelTable(db: D1Database): Promise<void> {
@@ -1507,6 +1547,17 @@ async function handleCustomerSessions(request: Request, env: Env, url: URL): Pro
 export default {
   async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const isProtectedReadEndpoint =
+      request.method === 'GET' && (
+        url.pathname === '/pixel/events'
+        || url.pathname === '/journey'
+        || url.pathname === '/sessions'
+      );
+
+    if (isProtectedReadEndpoint && !hasAuthorizedReadAccess(request, env)) {
+      return json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders(request, env));
+    }
+
     if (request.method === 'POST' && url.pathname === '/webhooks/orders/create') {
       return handleOrdersCreateWebhook(request, env);
     }

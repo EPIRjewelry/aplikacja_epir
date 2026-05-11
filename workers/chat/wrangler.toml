@@ -121,6 +121,7 @@ enabled = false
 
 [vars]
 ALLOWED_ORIGIN = "https://epir-art-silver-jewellery.myshopify.com"
+CF_ACCOUNT_ID = "73283c24dc79f92edef30dcdbc98f230"
 # Memory v2 feature flags (kontrolują rollout; domyślnie wyłączone, włączamy stopniowo):
 # MEMORY_EXTRACT_ENABLED = "true" — producer enqueue w streamAssistant + consumer aktywny.
 # MEMORY_V2_ENABLED = "true" — assembler promptu używa deterministic summary + retrieval.
@@ -135,6 +136,8 @@ SLIM_TOOL_SCHEMAS = "true"
 # `null` = literal Origin string from Shopify Web Pixel sandbox (opaque origin), not a TOML null
 ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://epir-art-silver-jewellery.myshopify.com,https://asystent.epirbizuteria.pl,https://kazka.epirbizuteria.pl,https://zareczyny.epirbizuteria.pl,null"
 SHOP_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
+# Opcjonalnie: Client ID aplikacji (Partners) — walidacja claimu `aud` w Shopify Session Token (JWT).
+# SHOPIFY_CLIENT_ID = ""
 # MCP endpoint - zmienna konfiguracyjna (CHAT_SPEC: shopify-admin-mcp = {shop_domain}/api/mcp)
 MCP_ENDPOINT = "https://epir-art-silver-jewellery.myshopify.com/api/mcp"
 # BigQuery / Google MCP (opcjonalnie): pełny JSON service account jako secret; opcjonalnie [vars] MCP_AUTH_METHOD = "SERVICE_ACCOUNT"

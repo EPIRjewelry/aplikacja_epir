@@ -62,11 +62,37 @@ Wymagane elementy operacyjne:
 - `SHOP_DOMAIN`
 - `ADMIN_TOKEN` ustawiony bezpiecznie poza placeholderem z repo
 
+Dodatkowe wymaganie bezpieczeństwa:
+
+- endpoint `POST /admin/upsert` działa w modelu fail-closed: brak secretu `ADMIN_TOKEN`, placeholder lub niepoprawny token żądania musi zwracać `401`.
+
 ### `workers/bigquery-batch`
 
 - `GOOGLE_CLIENT_EMAIL`
 - `GOOGLE_PRIVATE_KEY`
 - `GOOGLE_PROJECT_ID`
+- `ADMIN_KEY` (wymagany dla `POST /internal/analytics/query`)
+
+Postura ingress dla produkcji:
+
+- `workers_dev = false` (brak publicznej domeny developerskiej dla workera batch),
+- endpoint `POST /internal/analytics/query` jest traktowany jako internal-only i musi wymagać poprawnego `ADMIN_KEY`.
+
+### `workers/analytics`
+
+Wymagane sekrety backendowe:
+
+- `SHOPIFY_WEBHOOK_SECRET`
+- `ADMIN_KEY` (dla chronionych endpointów odczytu)
+
+Postura ingress dla produkcji:
+
+- endpointy `GET /pixel/events`, `GET /journey`, `GET /sessions` nie mogą być publicznie dostępne; wymagają poprawnego `ADMIN_KEY` (fail-closed).
+
+### Kontrakt service binding (chat -> analytics/bigquery)
+
+- `workers/chat` komunikuje się z `workers/analytics` i `workers/bigquery-batch` wyłącznie przez service bindings (`ANALYTICS_WORKER`, `BIGQUERY_BATCH`),
+- nie utrzymujemy fallbacków do publicznych adresów `*.workers.dev` dla ruchu internal.
 
 ### Cloudflare Pages (`kazka`, `zareczyny`)
 

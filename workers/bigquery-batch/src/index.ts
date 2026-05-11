@@ -272,10 +272,41 @@ async function handleScheduled(env: Env): Promise<void> {
 // ============================================================================
 
 function verifyAdminKey(env: Env, request: Request): boolean {
-  const key = env.ADMIN_KEY;
-  if (!key) return false;
-  const provided = request.headers.get('Authorization')?.replace(/^Bearer\s+/i, '') ?? request.headers.get('X-Admin-Key');
-  return provided === key;
+  const key = env.ADMIN_KEY?.trim() ?? '';
+  if (!key || looksLikePlaceholderSecret(key)) return false;
+
+  const provided =
+    request.headers.get('Authorization')?.replace(/^Bearer\s+/i, '').trim()
+    ?? request.headers.get('X-Admin-Key')?.trim()
+    ?? '';
+  if (!provided) return false;
+
+  return timingSafeEqualsText(provided, key);
+}
+
+function looksLikePlaceholderSecret(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized.length < 32
+    || normalized.includes('replace_me')
+    || normalized.includes('placeholder')
+    || normalized.includes('changeme')
+    || normalized.includes('dev-')
+  );
+}
+
+function timingSafeEqualsText(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const aBytes = enc.encode(a);
+  const bBytes = enc.encode(b);
+  const maxLen = Math.max(aBytes.length, bBytes.length);
+  let diff = aBytes.length ^ bBytes.length;
+
+  for (let i = 0; i < maxLen; i += 1) {
+    diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
+  }
+
+  return diff === 0;
 }
 
 async function runBigQueryJob(env: Env, query: string): Promise<{ rows?: Record<string, unknown>[]; error?: string }> {

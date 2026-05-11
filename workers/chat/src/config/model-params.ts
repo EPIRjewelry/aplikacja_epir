@@ -72,7 +72,7 @@ export const MODEL_VARIANTS = {
    * Dostępny przez AI Gateway (/compat) jako `groq/llama-4-scout-17b-16e-instruct`.
    */
   scout_17b: {
-    id: 'groq/llama-4-scout-17b-16e-instruct',
+    id: 'groq/openai/gpt-oss-120b',
     multimodal: true,
     toolLeak: false,
     label: 'Llama 4 Scout 17B (Groq via AI Gateway — candidate)',

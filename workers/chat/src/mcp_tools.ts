@@ -18,7 +18,8 @@
 export const TOOL_SCHEMAS = {
   search_catalog: {
     name: 'search_catalog',
-    description: 'Search for products from the online store using UCP catalog schema.',
+    description:
+      'Search for products from the online store using UCP catalog schema. Responses include explicit price_minor, currency, and for PLN price_display_pl — quote only price_display_pl for buyers; never invent or rescale PLN amounts.',
     parameters: {
       type: 'object',
       properties: {
@@ -39,7 +40,7 @@ export const TOOL_SCHEMAS = {
         },
         catalog: {
           type: 'object',
-          description: 'Catalog search parameters.',
+          description: "Catalog search parameters. Always set this object (e.g. {\"catalog\":{\"query\":\"pierścionek\"}}).",
           properties: {
             query: {
               type: 'string',
@@ -251,12 +252,14 @@ export const TOOL_SCHEMAS = {
 export const TOOL_SCHEMAS_SLIM = {
   search_catalog: {
     name: 'search_catalog',
-    description: 'Szuka produktów w katalogu sklepu.',
+    description:
+      'Szuka produktów w katalogu. Wynik ma price_minor, currency, dla PLN price_display_pl — cytuj tylko price_display_pl; nie przeliczaj z price_minor.',
     parameters: {
       type: 'object',
       properties: {
         catalog: {
           type: 'object',
+          description: "Always set this object (e.g. {\"catalog\":{\"query\":\"pierścionek\"}}).",
           properties: {
             query: { type: 'string' },
             context: {

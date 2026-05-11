@@ -244,6 +244,7 @@ describe('streamAssistantResponse – brak tool_calls nie uruchamia fallbacku', 
       AI: { run: aiRunMock },
       CF_ACCOUNT_ID: 'test_cf_account',
       AI_GATEWAY_TOKEN: 'test_ai_gateway_token',
+      GROQ_API_KEY: 'test_groq_api_key_for_vitest',
     } as Env;
 
     const stub = {
@@ -291,8 +292,10 @@ describe('streamAssistantResponse – brak tool_calls nie uruchamia fallbacku', 
     const init = gwCall![1] as RequestInit | undefined;
     const headers = new Headers(init?.headers);
     expect(headers.get('cf-aig-authorization')).toBe('Bearer test_ai_gateway_token');
-    expect(headers.get('Authorization')).toBeNull();
-    expect(JSON.parse(init!.body as string).model).toBe(MODEL_VARIANTS.scout_17b.id);
+    expect(headers.get('Authorization')).toBe('Bearer test_groq_api_key_for_vitest');
+    expect(JSON.parse(init!.body as string).model).toBe(
+      MODEL_VARIANTS.scout_17b.id.replace(/^groq\//, ''),
+    );
     expect(aiRunMock).not.toHaveBeenCalled();
     expect(getGroqResponseSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();

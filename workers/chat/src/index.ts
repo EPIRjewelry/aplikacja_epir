@@ -23,8 +23,10 @@ export type { Env } from './config/bindings';
 // Importy bezpieczeństwa i DO
 import { verifyAppProxyHmac, replayCheck } from './security';
 import { verifyHmac } from './hmac';
+import { parseAuthorizationBearer, verifyShopifySessionTokenJwt } from './shopify-session-token';
 import { RateLimiterDO } from './rate-limiter';
-import { TokenVaultDO, TokenVault } from './token-vault';
+import { TokenVaultDO, TokenVault, buildTokenVaultShardName } from './token-vault';
+import { guardAssistantPricingAgainstCatalog } from './pricing-guard';
 
 // Importy AI i Narzędzi (BEZPOŚREDNIO z ai-client.ts)
 import {
@@ -2439,24 +2441,73 @@ async function handleChat(
 
   const customerAccountsMode = resolveCustomerAccountsModeForLog(env);
 
-  const customerId = customerIdFromUrl;
+  let customerId = customerIdFromUrl;
+  let sessionTokenIdentity = false;
+  const authorizationHeaderRaw = request.headers.get('Authorization');
+  const authorizationHeaderPresent = typeof authorizationHeaderRaw === 'string' && authorizationHeaderRaw.trim().length > 0;
+  const authorizationBearerPrefixPresent =
+    typeof authorizationHeaderRaw === 'string' && /^Bearer\s+/i.test(authorizationHeaderRaw.trim());
+  const bearerJwt = parseAuthorizationBearer(request);
+  console.log(
+    JSON.stringify({
+      tag: 'chat.ingress.authorization_header',
+      session_id: payload.session_id ?? null,
+      authorization_present: authorizationHeaderPresent,
+      authorization_bearer_prefix_present: authorizationBearerPrefixPresent,
+      bearer_token_present_after_parse: Boolean(bearerJwt),
+    }),
+  );
+  if (!customerId && bearerJwt) {
+    const verified = await verifyShopifySessionTokenJwt(bearerJwt, env, {
+      shopFromQuery: url.searchParams.get('shop'),
+    });
+    if (verified.ok) {
+      if (verified.result.customerGid) {
+        const tokId = normalizeOptionalString(verified.result.customerGid);
+        if (tokId) {
+          customerId = tokId;
+          sessionTokenIdentity = true;
+        }
+      } else {
+        console.warn(
+          JSON.stringify({
+            tag: 'chat.ingress.session_token',
+            reason: 'sub_missing_or_invalid_gid',
+          }),
+        );
+      }
+    } else {
+      console.warn(
+        JSON.stringify({
+          tag: 'chat.ingress.session_token',
+          reason: verified.reason,
+        }),
+      );
+    }
+  }
 
   // Miękkie imię do uprzejmej personalizacji (nie do autoryzacji).
   let softCustomerFirstName: string | null = null;
 
-  const liquidIdentity: LiquidChatIdentity = ingressOptions?.appProxyVerified
+  const liquidIdentity: LiquidChatIdentity = customerId
     ? {
-        level: customerIdFromUrl ? 'customer' : 'anonymous',
+        level: 'customer',
         customer_accounts_mode: customerAccountsMode,
-        app_proxy_verified: true,
+        app_proxy_verified: Boolean(ingressOptions?.appProxyVerified),
       }
-    : {
-        level: 's2s',
-        customer_accounts_mode: customerAccountsMode,
-        app_proxy_verified: false,
-      };
+    : ingressOptions?.appProxyVerified
+      ? {
+          level: 'anonymous',
+          customer_accounts_mode: customerAccountsMode,
+          app_proxy_verified: true,
+        }
+      : {
+          level: 's2s',
+          customer_accounts_mode: customerAccountsMode,
+          app_proxy_verified: false,
+        };
 
-  if (ingressOptions?.appProxyVerified !== true) {
+  if (ingressOptions?.appProxyVerified !== true && !customerId) {
     console.warn(
       JSON.stringify({
         tag: 'chat.ingress.app_proxy_unverified',
@@ -2498,6 +2549,7 @@ async function handleChat(
       session_id_from_request: Boolean(payload.session_id),
       identity_level: liquidIdentity.level,
       customer_accounts_mode: liquidIdentity.customer_accounts_mode,
+      session_token_identity: sessionTokenIdentity,
     }),
   );
 
@@ -2537,7 +2589,7 @@ async function handleChat(
   if (customerId && shopId) {
     try {
       console.log('[handleChat] 🔐 TokenVault: Generating token...');
-      const tokenVaultId = env.TOKEN_VAULT_DO.idFromName('global');
+      const tokenVaultId = env.TOKEN_VAULT_DO.idFromName(buildTokenVaultShardName(shopId));
       const tokenVaultStub = env.TOKEN_VAULT_DO.get(tokenVaultId);
       const vault = new TokenVault(tokenVaultStub);
       customerToken = await vault.getOrCreateToken(customerId, shopId);
@@ -2807,18 +2859,19 @@ async function streamAssistantResponse(
         : resolveEffectiveShopifyCustomerId(shopifyCustomerId, sessionCustomer?.customer_id ?? null);
       const effectiveShopifyCustomerId = effectiveCustomerContext.customerId;
       const verifiedUrlCustomerId = normalizeOptionalString(loggedInCustomerIdFromUrl ?? null);
+      const handlerCanonicalCustomerId = normalizeOptionalString(shopifyCustomerId ?? null);
       const memoryShopifyCustomerId =
         identityLevel === 'anonymous'
           ? null
           : identityLevel === 'customer'
-            ? verifiedUrlCustomerId
+            ? verifiedUrlCustomerId ?? handlerCanonicalCustomerId
             : effectiveShopifyCustomerId;
       const shopId = normalizeOptionalString(new URL(request.url).searchParams.get('shop')) ?? normalizeOptionalString(env.SHOP_DOMAIN);
 
       let effectiveCustomerToken = anonymousAppProxySession ? undefined : customerToken;
       if (!effectiveCustomerToken && effectiveShopifyCustomerId && shopId) {
         try {
-          const tokenVaultId = env.TOKEN_VAULT_DO.idFromName('global');
+          const tokenVaultId = env.TOKEN_VAULT_DO.idFromName(buildTokenVaultShardName(shopId));
           const tokenVaultStub = env.TOKEN_VAULT_DO.get(tokenVaultId);
           const vault = new TokenVault(tokenVaultStub);
           effectiveCustomerToken = await vault.getOrCreateToken(effectiveShopifyCustomerId, shopId);
@@ -3352,6 +3405,18 @@ async function streamAssistantResponse(
       // Świadomie bez „Code Mode” (wykonywalny TS generowany przez model) na kanale storefront — wymagałby osobnej
       // piaskownicy i przeglądu ESOG; opóźnienia MCP ogranicza pętla i MAX_TOOL_CALLS.
       const MAX_TOOL_CALLS = 5;
+      /** Wyniki search_catalog w tej turze — walidacja cen po wygenerowaniu odpowiedzi. */
+      const catalogSnapshotsForPricing: unknown[] = [];
+      const applyPricingSanitizer = (txt: string): string => {
+        if (storefrontContext?.channel === 'internal-dashboard') return txt;
+        const outcome = guardAssistantPricingAgainstCatalog(txt, catalogSnapshotsForPricing, {
+          sessionId,
+        });
+        if (outcome.sanitized && outcome.log) {
+          console.log(JSON.stringify(outcome.log));
+        }
+        return outcome.text;
+      };
       /** Po wiadomości `role: tool` — krótsza odpowiedź; w pozostałych turach limit UX dla krótkich odpowiedzi. */
       const MAX_TOKENS_AFTER_TOOL_MESSAGE = 300;
       const MAX_TOKENS_NORMAL_ROUND = 400;
@@ -3615,6 +3680,10 @@ async function streamAssistantResponse(
                 error: (toolResult as any)?.error,
               });
             }
+            if (call.name === 'search_catalog' && !skippedExecution && !toolResult.error && toolResult.result != null) {
+              catalogSnapshotsForPricing.push(toolResult.result);
+            }
+
             const toolFinishedAt = now();
             chatPipelineLog({
               phase: 'tool_execute',
@@ -3787,7 +3856,10 @@ async function streamAssistantResponse(
             }
 
             if (finalTextResponse.trim()) {
-              await sendDelta(finalTextResponse);
+              finalTextResponse = applyPricingSanitizer(finalTextResponse);
+              if (finalTextResponse.trim()) {
+                await sendDelta(finalTextResponse);
+              }
             }
           }
           break; // Wyjdź z pętli for
@@ -3809,6 +3881,7 @@ async function streamAssistantResponse(
           });
           if (typeof recoveryText === 'string' && recoveryText.trim()) {
             finalTextResponse = stripLeakedToolCallsLiterals(recoveryText);
+            finalTextResponse = applyPricingSanitizer(finalTextResponse);
             if (finalTextResponse) {
               await sendDelta(finalTextResponse);
             }
@@ -3896,12 +3969,15 @@ export default {
         const analyticsUrl = `https://analytics.internal${pathname}${url.search}`;
         const upstreamRequest = new Request(analyticsUrl, request);
 
-        const proxied = env.ANALYTICS_WORKER
-          ? await env.ANALYTICS_WORKER.fetch(upstreamRequest)
-          : await fetch(
-              `https://epir-analityc-worker.krzysztofdzugaj.workers.dev${pathname}${url.search}`,
-              upstreamRequest,
-            );
+        if (!env.ANALYTICS_WORKER) {
+          console.error('[worker] /pixel proxy unavailable: ANALYTICS_WORKER binding missing');
+          return new Response(JSON.stringify({ ok: false, error: 'pixel_proxy_not_configured' }), {
+            status: 503,
+            headers: withCorsHeaders({ 'Content-Type': 'application/json' }, env, request),
+          });
+        }
+
+        const proxied = await env.ANALYTICS_WORKER.fetch(upstreamRequest);
 
         return new Response(proxied.body, {
           status: proxied.status,

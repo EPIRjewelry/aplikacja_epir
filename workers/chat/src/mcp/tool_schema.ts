@@ -21,7 +21,7 @@ const searchCatalogSchema = {
     },
     catalog: {
       type: "object",
-      description: "Catalog search parameters.",
+      description: "Catalog search parameters. Always set this object (e.g. {\"catalog\":{\"query\":\"pierścionek\"}}).",
       properties: {
         query: {
           type: "string",

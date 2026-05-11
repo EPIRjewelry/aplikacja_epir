@@ -3,6 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { LUXURY_SYSTEM_PROMPT } from '../src/prompts/luxury-system-prompt';
 
 describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
+  it('requires catalog-backed PLN amounts for buyer-facing pricing', () => {
+    expect(LUXURY_SYSTEM_PROMPT).toContain('Ceny i waluty (twarde');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('search_catalog');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('get_cart');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('price_display_pl');
+  });
+
   it('keeps current-session continuity and logged-in memory references without buyer-facing disclaimers', () => {
     expect(LUXURY_SYSTEM_PROMPT).toContain('tej samej rozmowie');
     expect(LUXURY_SYSTEM_PROMPT).toContain('bieżącej sesji');

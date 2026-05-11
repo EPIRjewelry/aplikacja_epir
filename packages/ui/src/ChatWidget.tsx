@@ -9,6 +9,43 @@ import ReactMarkdown, {type Components} from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {DEFAULT_PERSONA_UI, type PersonaUi} from './persona-ui';
 
+/** Global Shopify (Customer Account UI extensions / App Bridge) — opcjonalnie. */
+type ShopifyWindowGlobal = {
+  sessionToken?: {get?: () => Promise<string>};
+  id?: {token?: string};
+};
+
+/**
+ * Session Token dla Shopify (JWT w Authorization: Bearer).
+ * Używane przy New Customer Accounts, gdy `logged_in_customer_id` nie jest w URL.
+ * @see https://shopify.dev/docs/api/customer-account-ui-extensions/apis/session-token
+ */
+export async function resolveShopifySessionTokenForChat(
+  getSessionToken?: () => Promise<string | null | undefined>,
+): Promise<string | undefined> {
+  if (getSessionToken) {
+    try {
+      const t = await getSessionToken();
+      if (typeof t === 'string' && t.trim().length > 0) return t.trim();
+    } catch {
+      /* ignore */
+    }
+  }
+  if (typeof window === 'undefined') return undefined;
+  const shopify = (window as unknown as {shopify?: ShopifyWindowGlobal}).shopify;
+  if (shopify?.sessionToken?.get) {
+    try {
+      const t = await shopify.sessionToken.get();
+      if (typeof t === 'string' && t.trim().length > 0) return t.trim();
+    } catch {
+      /* ignore */
+    }
+  }
+  const idTok = shopify?.id?.token;
+  if (typeof idTok === 'string' && idTok.trim().length > 0) return idTok.trim();
+  return undefined;
+}
+
 /**
  * Linki do własnego sklepu (tego samego hosta lub popularnej domeny EPIR)
  * otwieramy w tej samej karcie, żeby `sessionStorage` czatu (session_id,
@@ -330,6 +367,11 @@ export type ChatWidgetProps = {
    * `undefined` — bez blokady (kompatybilność wsteczna).
    */
   consentGranted?: boolean;
+  /**
+   * Opcjonalny dostawca Shopify Session Token (JWT), gdy `window.shopify` nie istnieje
+   * (np. integracja z Hydrogen Customer Account API w przyszłości).
+   */
+  getSessionToken?: () => Promise<string | null | undefined>;
 };
 
 function ChatWidgetFallback({
@@ -341,6 +383,7 @@ function ChatWidgetFallback({
   channel,
   route,
   consentGranted,
+  getSessionToken,
   isOpen,
   onToggle,
 }: {
@@ -352,6 +395,7 @@ function ChatWidgetFallback({
   channel: string;
   route?: string;
   consentGranted?: boolean;
+  getSessionToken?: () => Promise<string | null | undefined>;
   isOpen: boolean;
   onToggle: () => void;
 }) {
@@ -505,12 +549,16 @@ function ChatWidgetFallback({
           body.parts = parts;
         }
 
+        const sessionTok = await resolveShopifySessionTokenForChat(getSessionToken);
+
         const res = await fetch(chatApiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Accept: 'text/event-stream, application/json',
+            ...(sessionTok ? {Authorization: `Bearer ${sessionTok}`} : {}),
           },
+          credentials: 'include',
           body: JSON.stringify(body),
         });
 
@@ -636,6 +684,7 @@ function ChatWidgetFallback({
       pendingImage,
       route,
       storefrontId,
+      getSessionToken,
     ],
   );
 
@@ -796,6 +845,7 @@ export function ChatWidget({
   channel,
   route,
   consentGranted,
+  getSessionToken,
 }: ChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const personaUi = {...DEFAULT_PERSONA_UI, ...personaUiProp};
@@ -833,6 +883,7 @@ export function ChatWidget({
       channel={channel}
       route={route}
       consentGranted={consentGranted}
+      getSessionToken={getSessionToken}
       isOpen={isOpen}
       onToggle={() => setIsOpen((o) => !o)}
     />
