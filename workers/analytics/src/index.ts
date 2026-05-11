@@ -49,8 +49,50 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Shop-Signature,X-Admin-Key',
+    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Shop-Signature,X-Admin-Key,x-d1-bookmark',
   };
+}
+
+/**
+ * D1 Sessions API (+ bookmark) for read replication: sequential consistency across POST → GET smoke checks.
+ * When `withSession` is unavailable (older local mocks), callers fall back to raw `env.DB`.
+ */
+function createPixelDbSession(database: D1Database, bookmarkHeaderValue: string | null): {
+  db: D1Database;
+  getBookmarkForResponse: () => string;
+} {
+  const bookmarkIn = bookmarkHeaderValue?.trim() ? bookmarkHeaderValue.trim() : 'first-unconstrained';
+  const binding = database as unknown as D1Database & {
+    withSession?(bookmark: string): D1Database & { getBookmark?: () => string | null };
+  };
+  if (typeof binding.withSession !== 'function') {
+    return {
+      db: database,
+      getBookmarkForResponse: () => '',
+    };
+  }
+  const session = binding.withSession(bookmarkIn);
+  return {
+    db: session as unknown as D1Database,
+    getBookmarkForResponse: () =>
+      (typeof session.getBookmark === 'function' ? session.getBookmark() ?? '' : ''),
+  };
+}
+
+function withD1BookmarkResponseHeaders(base: Record<string, string>, bookmark: string): Record<string, string> {
+  const merged: Record<string, string> = { ...base };
+  const trimmed = bookmark.trim();
+  if (!trimmed) return merged;
+  merged['x-d1-bookmark'] = trimmed;
+  const exposeParts = new Set<string>(
+    String(merged['Access-Control-Expose-Headers'] || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  exposeParts.add('x-d1-bookmark');
+  merged['Access-Control-Expose-Headers'] = Array.from(exposeParts).join(', ');
+  return merged;
 }
 
 function looksLikePlaceholderSecret(value: string): boolean {
@@ -754,7 +796,9 @@ function normalizePixelPayload(raw: unknown): NormalizedPixelPayload | null {
 }
 
 async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
-  console.log('[ANALYTICS_WORKER] 📥 Received POST /pixel request');
+  const url = new URL(request.url);
+  const pathTag = url.pathname === '/pixel/events' ? '/pixel/events' : '/pixel';
+  console.log(`[ANALYTICS_WORKER] 📥 Received POST ${pathTag}`);
 
   const rawPayload = await parseRawPixelPayload(request);
   const body = normalizePixelPayload(rawPayload);
@@ -770,10 +814,12 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
   
   console.log('[ANALYTICS_WORKER] 📊 Event type:', body.type);
   console.log('[ANALYTICS_WORKER] 📊 Event data keys:', body.data && typeof body.data === 'object' ? Object.keys(body.data) : 'none');
-  
-  await ensurePixelTable(env.DB);
-  await ensureCustomerEventsTable(env.DB);
-  await ensureCustomerSessionsTable(env.DB);
+
+  const { db: pixelDb, getBookmarkForResponse } = createPixelDbSession(env.DB, request.headers.get('x-d1-bookmark'));
+
+  await ensurePixelTable(pixelDb);
+  await ensureCustomerEventsTable(pixelDb);
+  await ensureCustomerSessionsTable(pixelDb);
   
   try {
     const eventType = body.type; // e.g., 'product_viewed', 'page_viewed', 'cart_updated'
@@ -1128,7 +1174,7 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
     });
     
     // Insert with structured columns (schema base + heatmap + storefront)
-    const insertResult = await env.DB.prepare(
+    const insertResult = await pixelDb.prepare(
       `INSERT INTO pixel_events (
         id, event_type, event_name, created_at,
         customer_id, session_id, storefront_id, channel,
@@ -1196,10 +1242,10 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
     let activateChat = false;
 
       // Upsert session counters (enables AI trigger cadence)
-      await upsertCustomerSession(env.DB, normalizedCustomerId, normalizedSessionId, timestamp);
+      await upsertCustomerSession(pixelDb, normalizedCustomerId, normalizedSessionId, timestamp);
 
       // Insert event to customer_events table for journey tracking
-      await insertCustomerEvent(env.DB, normalizedCustomerId, normalizedSessionId, eventType, timestamp, {
+      await insertCustomerEvent(pixelDb, normalizedCustomerId, normalizedSessionId, eventType, timestamp, {
         pageUrl,
         pageTitle,
         productId,
@@ -1212,7 +1258,7 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
       });
       
       // Get current event count for this session
-      const sessionData = await env.DB
+      const sessionData = await pixelDb
         .prepare('SELECT event_count FROM customer_sessions WHERE customer_id = ?1 AND session_id = ?2')
         .bind(normalizedCustomerId, normalizedSessionId)
         .first<{ event_count: number }>();
@@ -1227,7 +1273,7 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
           console.log(`[ANALYTICS_WORKER] 🚀 AI recommends activating proactive chat for ${normalizedCustomerId}`);
           
           // Double-check if chat should be activated (not already activated)
-          const finalCheck = await shouldActivateProactiveChat(env.DB, normalizedCustomerId, normalizedSessionId);
+          const finalCheck = await shouldActivateProactiveChat(pixelDb, normalizedCustomerId, normalizedSessionId);
           if (finalCheck) {
             activateChat = true; // Set flag for response
             
@@ -1252,7 +1298,7 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
                 });
                 
                 // Mark as activated in DB to prevent duplicate activations
-                await markChatActivated(env.DB, normalizedCustomerId, normalizedSessionId, timestamp);
+                await markChatActivated(pixelDb, normalizedCustomerId, normalizedSessionId, timestamp);
                 
                 console.log(`[ANALYTICS_WORKER] ✅ Proactive chat activated for ${normalizedCustomerId}/${normalizedSessionId}`);
               } else {
@@ -1301,12 +1347,20 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
       customerId,
       sessionId
     });
-    
-    return json({ 
-      ok: true, 
-      activate_chat: activateChat,
-      reason: activateChat ? 'high_engagement_score' : null
-    }, 200, corsHeaders(request, env));
+
+    const d1Bookmark = getBookmarkForResponse();
+    const responseHeaders = withD1BookmarkResponseHeaders(corsHeaders(request, env), d1Bookmark);
+
+    return json(
+      {
+        ok: true,
+        activate_chat: activateChat,
+        reason: activateChat ? 'high_engagement_score' : null,
+        d1_bookmark: d1Bookmark || undefined,
+      },
+      200,
+      responseHeaders,
+    );
   } catch (e) {
     console.error('[ANALYTICS_WORKER] ❌ Insert failed with error:', e);
     console.error('[ANALYTICS_WORKER] ❌ Error details:', {
@@ -1333,13 +1387,24 @@ async function handlePixelCount(request: Request, env: Env): Promise<Response> {
 async function handlePixelEvents(request: Request, env: Env, limitParam?: string | null): Promise<Response> {
   const parsedLimit = Number(limitParam) || 20;
   const limit = Math.max(1, Math.min(200, parsedLimit));
-  await ensurePixelTable(env.DB);
+  const { db: pixelDb, getBookmarkForResponse } = createPixelDbSession(env.DB, request.headers.get('x-d1-bookmark'));
+
+  await ensurePixelTable(pixelDb);
   try {
     const sql = `SELECT id, raw_data, created_at FROM pixel_events ORDER BY id DESC LIMIT ${limit}`;
-  const rows: { results: Array<{ id: number; raw_data: string; created_at: string }> } = await env.DB.prepare(sql).all();
+  const rows: { results: Array<{ id: number; raw_data: string; created_at: string }> } = await pixelDb.prepare(sql).all();
     if (!rows?.results || !Array.isArray(rows.results)) {
       console.warn('[pixel] Invalid or missing rows.results from D1 query');
-      return new Response(JSON.stringify({ events: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      const d1Bookmark = getBookmarkForResponse();
+      const responseHeaders = withD1BookmarkResponseHeaders(corsHeaders(request, env), d1Bookmark);
+      return json(
+        {
+          events: [],
+          ...(d1Bookmark ? { d1_bookmark: d1Bookmark } : {}),
+        },
+        200,
+        responseHeaders,
+      );
     }
   const events = rows.results.map((r) => {
       let parsed: unknown = r.raw_data;
@@ -1354,10 +1419,28 @@ async function handlePixelEvents(request: Request, env: Env, limitParam?: string
         created_at: r.created_at,
       } as Record<string, unknown>;
     });
-    return json({ events }, 200, corsHeaders(request, env));
+    const d1Bookmark = getBookmarkForResponse();
+    const responseHeaders = withD1BookmarkResponseHeaders(corsHeaders(request, env), d1Bookmark);
+    return json(
+      {
+        events,
+        ...(d1Bookmark ? { d1_bookmark: d1Bookmark } : {}),
+      },
+      200,
+      responseHeaders,
+    );
   } catch (e) {
     console.warn('[pixel] events read failed:', e);
-    return json({ events: [] }, 200, corsHeaders(request, env));
+    const d1Bookmark = getBookmarkForResponse();
+    const responseHeaders = withD1BookmarkResponseHeaders(corsHeaders(request, env), d1Bookmark);
+    return json(
+      {
+        events: [],
+        ...(d1Bookmark ? { d1_bookmark: d1Bookmark } : {}),
+      },
+      200,
+      responseHeaders,
+    );
   }
 }
 
@@ -1561,7 +1644,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/webhooks/orders/create') {
       return handleOrdersCreateWebhook(request, env);
     }
-    if (request.method === 'POST' && url.pathname === '/pixel') {
+    if (request.method === 'POST' && (url.pathname === '/pixel' || url.pathname === '/pixel/events')) {
       return handlePixelPost(request, env, ctx);
     }
     if (request.method === 'GET' && url.pathname === '/pixel/count') {

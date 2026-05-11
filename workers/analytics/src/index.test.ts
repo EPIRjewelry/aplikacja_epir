@@ -578,6 +578,8 @@ describe('Analytics Worker - /pixel/count endpoint', () => {
 });
 
 describe('Analytics Worker - /pixel/events endpoint', () => {
+    const ADMIN = 'epir_vitest_analytics_admin_secret_key_32char_min';
+
     it('should return recent events', async () => {
         // Insert test event
         await SELF.fetch('https://example.com/pixel', {
@@ -598,13 +600,40 @@ describe('Analytics Worker - /pixel/events endpoint', () => {
             })
         });
 
-        const response = await SELF.fetch('https://example.com/pixel/events?limit=10');
+        const response = await SELF.fetch('https://example.com/pixel/events?limit=10', {
+            headers: { Authorization: `Bearer ${ADMIN}` },
+        });
         expect(response.status).toBe(200);
-        
+
         const result = await response.json();
         expect(result).toHaveProperty('events');
         expect(Array.isArray(result.events)).toBe(true);
         expect(result.events.length).toBeGreaterThan(0);
+    });
+
+    it('POST /pixel/events aliases POST /pixel', async () => {
+        const response = await SELF.fetch('https://example.com/pixel/events', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'vitest_pixel_events_alias',
+                data: {
+                    customerId: 'alias-customer',
+                    sessionId: 'alias-session',
+                },
+            }),
+        });
+        expect(response.status).toBe(200);
+        const json = await response.json() as { ok?: boolean };
+        expect(json.ok).toBe(true);
+
+        const verify = await SELF.fetch('https://example.com/pixel/events?limit=5', {
+            headers: { Authorization: `Bearer ${ADMIN}` },
+        });
+        expect(verify.status).toBe(200);
+        const list = await verify.json() as { events: Array<{ event?: string }> };
+        const hit = list.events.some((e) => e.event === 'vitest_pixel_events_alias');
+        expect(hit).toBe(true);
     });
 });
 

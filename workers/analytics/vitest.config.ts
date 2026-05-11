@@ -11,6 +11,7 @@ export default defineWorkersConfig({
           d1Databases: ['DB'],
           bindings: {
             SHOPIFY_WEBHOOK_SECRET: 'dev-placeholder-override-with-wrangler-secret-put',
+            ADMIN_KEY: 'epir_vitest_analytics_admin_secret_key_32char_min',
           },
         },
       },
