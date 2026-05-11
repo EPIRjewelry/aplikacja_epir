@@ -7,6 +7,7 @@
 - **Wdrożone w repo (szkielet + częściowa egzekucja):**
   - `pr3-secret-scan` — skan repozytorium ([Gitleaks](https://github.com/gitleaks/gitleaks-action) w `.github/workflows/pr3-release-gates.yml`).
   - `wrangler-prod-policy` — walidacja `workers_dev`, `[vars]` i bindingów ([`scripts/ci/validate-wrangler-prod-policy.py`](../../scripts/ci/validate-wrangler-prod-policy.py), workflow `.github/workflows/deploy-policy.yml`).
+  - `post-deploy-smoke` — po `deploy-workers` w `.github/workflows/deploy.yml`; skrypt [`scripts/smoke/post-deploy-smoke.mjs`](../../scripts/smoke/post-deploy-smoke.mjs); wymagane sekrety: `SMOKE_BASE_URL`, `SMOKE_RAG_HEALTH_URL`, `SMOKE_ANALYTICS_ADMIN_KEY` (szczegóły: [`docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md`](../EPIR_DEPLOYMENT_AND_OPERATIONS.md), Faza 5).
 - **Branch protection:** po uruchomieniu *Apply Branch Protection* wymagany jest też kontekst `pr3-secret-scan` (obok `wrangler-prod-policy`). Dopóki reguły nie zostaną zastosowane na GitHubie, nowy check jest *szkieletem w workflow*, nie „twardym” gate na serwerze.
 
 ## Cel karty

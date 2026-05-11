@@ -25,6 +25,27 @@ Komponenty objęte tym dokumentem:
 
 ## Sekrety i konfiguracja
 
+### Profile środowisk `staging` / `production` w `wrangler.toml` (4 workery)
+
+Aktualny stan repo dla:
+
+- `workers/chat/wrangler.toml`
+- `workers/rag-worker/wrangler.toml`
+- `workers/analytics/wrangler.toml`
+- `workers/bigquery-batch/wrangler.toml`
+
+Każdy plik definiuje sekcje `[env.staging]` i `[env.production]` jako profile dziedziczące konfigurację top-level (bindingi, sekrety, triggery/routy), bez jawnych override'ów w samych sekcjach env.
+
+Kontrakt operacyjny:
+
+- środowisko jest rozróżniane nazwą profilu (`--env staging` / `--env production`) oraz sekretami i ustawieniami utrzymywanymi po stronie Cloudflare,
+- brak override w `[env.*]` jest intencjonalny; nie traktujemy tego jako brak konfiguracji,
+- wszelkie różnice między staging i production dodajemy tylko wtedy, gdy są wymagane i jawnie uzasadnione release'em.
+
+Wymóg polityki deploy:
+
+- `workers_dev` nie może być `true` w root ani w `[env.production]` (walidowane przez `scripts/ci/validate-wrangler-prod-policy.py` dla workerów objętych polityką).
+
 ### `workers/chat`
 
 Wymagane sekrety backendowe:
@@ -275,9 +296,98 @@ Po `git fetch --tags` można wrócić do tego stanu: `git checkout storefront-st
 3. **Nagłówek:** linki kolekcji prowadzą tam, gdzie env (`COLLECTION_*`).
 4. **Konsola przeglądarki:** brak masowych błędów hydratacji na świeżej sesji (pojedyncze ostrzeżenia SEO można adresować osobno).
 
+## Bramka go/no-go (formalna checklista release)
+
+Ta sekcja jest **jedyną** kanoniczną bramką operacyjną. Wszystkie pozycje są weryfikowalne (endpoint, sekret, status, kontrakt). Bramka jest podzielona na pięć faz, których kolejność jest wiążąca: **CI → Sekrety i migracje → Postura fail-closed → Deploy → Smoke**. Jakikolwiek FAIL z poniższych pozycji oznacza **NO-GO** — nie wydajemy release i nie przechodzimy do następnej fazy.
+
+### Faza 1. CI i polityki repo (`workflow_dispatch`)
+
+| # | Kontrola | Źródło | Warunek PASS |
+|---|----------|--------|--------------|
+| 1 | `CI` — `lint`, `typecheck`, `build` | `.github/workflows/ci.yml` (matrix: `kazka`, `zareczyny`) | wszystkie trzy joby zielone na commicie release; jeśli paths-filter pominął matrix, decyzja jest dokumentowana w PR |
+| 2 | `S2S validation` — vitest workera `chat` | `.github/workflows/s2s-validation.yml` | zielony przebieg na plikach: `test/ingress_s2s.test.ts`, `test/consent_s2s.test.ts`, `test/consent_app_proxy.test.ts`, `test/app_proxy_ingress_hmac.test.ts`, `test/mcp_policies_retry.test.ts` |
+| 3 | `Dependency Policy` | `.github/workflows/dependency-policy.yml` | root `packageManager` zaczyna się od `pnpm@`; brak `aplikacja_epir: "file:../.."` w `workers/**`, `apps/**`, `packages/**`, `extensions/**`; brak wpisu `dependabot` `npm` dla `/workers/analytics` |
+| 4 | Branch protection na `main` | `.github/workflows/apply-branch-protection.yml` | aktywne required checks: `build`, `lint`, `typecheck`; `allow_force_pushes=false`; co najmniej 1 approving review |
+
+#### Sygnał CI conformance (P1/P2, ingress contracts)
+
+Dodatkowy sygnał release readiness dla ingressu (uruchamiany jako manualny conformance run na środowisku docelowym):
+
+- `tests/ingress-conformance.mjs` — kontrakt S2S (`401/400/200`) dla `/chat`,
+- `tests/app-proxy-conformance.mjs` — kontrakt App Proxy HMAC i widoczność tooli (buyer-facing vs internal-only).
+
+Oczekiwany sygnał: oba skrypty kończą się kodem `0` i drukują końcowy status sukcesu (`Wszystkie scenariusze ingress P0...` / `App Proxy ingress conformance zaliczony.`). Brak tego sygnału oznacza blokadę go/no-go do czasu wyjaśnienia.
+
+### Faza 2. Sekrety i migracje (Cloudflare)
+
+| # | Kontrola | Warunek PASS |
+|---|----------|--------------|
+| 5 | Sekrety `workers/chat` | ustawione w środowisku produkcyjnym: `AI_GATEWAY_TOKEN`, `SHOPIFY_APP_SECRET`, `EPIR_CHAT_SHARED_SECRET`, `ADMIN_KEY`, oraz token storefrontu pasujący do `SHOP_DOMAIN` (`SHOPIFY_STOREFRONT_TOKEN` lub odpowiedni per-storefront token) |
+| 6 | Sekrety `workers/rag-worker` | `ADMIN_TOKEN` ustawiony i **nie jest placeholderem** z repo; `CANONICAL_MCP_URL`, `SHOP_DOMAIN` ustawione; bindingi `AI`, `VECTOR_INDEX` widoczne dla workera |
+| 7 | Sekrety `workers/analytics` | `SHOPIFY_WEBHOOK_SECRET`, `ADMIN_KEY` ustawione |
+| 8 | Sekrety `workers/bigquery-batch` | `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `GOOGLE_PROJECT_ID`, `ADMIN_KEY` ustawione |
+| 9 | Sekrety Cloudflare Pages (`kazka`, `zareczyny`) | `SESSION_SECRET`, `PUBLIC_STOREFRONT_API_TOKEN`, `PRIVATE_STOREFRONT_API_TOKEN` (gdzie wymagany), `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`, `EPIR_CHAT_SHARED_SECRET` ustawione w obu projektach Pages |
+| 10 | Migracja D1 `ai-assistant-sessions-db` | `005_consent_events.sql` zaaplikowana (`wrangler d1 execute ai-assistant-sessions-db --remote --file=./migrations/005_consent_events.sql` z katalogu `workers/chat`); tabela `consent_events` istnieje |
+| 11 | Migracje D1 `jewelry-analytics-db` | wszystkie aktualne pliki migracyjne z `workers/bigquery-batch` zaaplikowane na bazę docelową |
+
+### Faza 3. Postura ingress i fail-closed (przed-deploy guard)
+
+Każda pozycja w tej fazie ma być sprawdzona na zdeployowanej (lub planowanej) konfiguracji workera. Nie wolno polegać na publicznych URL `*.workers.dev` dla internal ruchu.
+
+| # | Endpoint / kontrakt | Warunek PASS |
+|----|---------------------|--------------|
+| 12 | `workers/rag-worker` `POST /admin/upsert` | fail-closed: brak / placeholder / niepoprawny `ADMIN_TOKEN` ⇒ `401` |
+| 13 | `workers/bigquery-batch` `POST /internal/analytics/query` | `workers_dev = false` w `wrangler.toml`; brak `ADMIN_KEY` ⇒ `401` |
+| 14 | `workers/analytics` `GET /pixel/events`, `GET /journey`, `GET /sessions` | brak `ADMIN_KEY` ⇒ `401` (żaden z tych endpointów nie jest publicznie dostępny) |
+| 15 | `workers/chat` S2S `POST /chat`, `POST /consent` | brak `X-EPIR-SHARED-SECRET` ⇒ `401`; brak `storefrontId` lub `channel` ⇒ `400` |
+| 16 | `workers/chat` App Proxy `POST /apps/assistant/chat`, `POST /apps/assistant/consent` | błędny / brakujący HMAC ⇒ `401` (weryfikowane przez `workers/chat/src/security.ts`) |
+| 17 | Service binding chat → analytics / bigquery | `workers/chat/wrangler.toml` definiuje bindingi `ANALYTICS_WORKER` i `BIGQUERY_BATCH`; **brak** fallbacku po publicznym `*.workers.dev` w kodzie ruchu internal |
+
+### Faza 4. Deploy w kanonicznej kolejności
+
+| # | Krok | Warunek PASS |
+|----|------|--------------|
+| 18 | `workers/rag-worker` deploy | `wrangler deploy` zakończony 200; `GET /health` zwraca 200 z produkcyjnej domeny workera |
+| 19 | `workers/analytics` deploy | `wrangler deploy` zakończony; bindingi i sekrety widoczne; brak publicznego dostępu do chronionych endpointów (zob. poz. 14) |
+| 20 | `workers/bigquery-batch` deploy | `wrangler deploy` zakończony; `workers_dev` pozostaje `false` po deployu (zob. poz. 13) |
+| 21 | `workers/chat` deploy | uruchamiany **po** poz. 10 i poz. 18–20; obejmuje trasy `POST /chat`, `POST /consent`, `POST /apps/assistant/chat`, `POST /apps/assistant/consent` |
+| 22 | `shopify app deploy` | TAE `asystent-klienta` (z Consent Gate w assetach) + App Proxy `prefix=apps`, `subpath=assistant` zsynchronizowane z workerem |
+| 23 | Cloudflare Pages deploy | `apps/kazka` → `kazka-hydrogen-pages` (`--branch=main`); `apps/zareczyny` → `zareczyny-hydrogen-pages` (`--branch=main`); obie aplikacje serwują trasy `api.chat.ts` i `api.consent.ts` |
+
+### Faza 5. Smoke testy po deployu
+
+#### Automatyczna bramka CI po deployu workerów (fail-closed)
+
+Po sukcesie joba `deploy-workers` w `.github/workflows/deploy.yml` uruchamiany jest job `post-deploy-smoke`, który wykonuje `node scripts/smoke/post-deploy-smoke.mjs` (syntetyczne żądania HTTP — ok. kilku minut, deterministyczny exit code ≠ 0 przy dowolnej porażce).
+
+| Sekret repozytorium GitHub | Znaczenie |
+|----------------------------|-----------|
+| `SMOKE_BASE_URL` | Origin workera czatu HTTPS (bez końcowego `/`), ten sam host co ingress produkcyjny / staging (np. `https://asystent.epirbizuteria.pl`). Używany do `POST /apps/assistant/chat`, `POST /chat`, `POST /pixel`, `GET /pixel/events` (ostatnie dwa przez proxy z workera czatu na `workers/analytics`). |
+| `SMOKE_RAG_HEALTH_URL` | Pełny URL `GET /health` workera `epir-rag-worker` (repo nie zawiera trasy DNS dla RAG — adres ustala się po stronie Cloudflare, np. domena workera lub inny jawny endpoint). |
+| `SMOKE_ANALYTICS_ADMIN_KEY` | Wartość zgodna z sekretem `ADMIN_KEY` w `workers/analytics` ( Bearer do `GET /pixel/events`). Wymagany w CI dla pełnego testu persystencji D1; lokalnie można ustawić `SKIP_D1_VERIFY=1` i pominąć ten sekret — wtedy sprawdzane jest wyłącznie `POST /pixel` ⇒ 200. |
+
+Weryfikacja D1 w tej bramce odbywa się **przez HTTP** (`GET /pixel/events`), nie przez `wrangler d1 execute` (token Cloudflare nadal jest potrzebny do deployu workerów).
+
+| # | Ścieżka / dane | Warunek PASS |
+|----|----------------|--------------|
+| 24 | Online Store (TAE) | `POST {shop}/apps/assistant/consent` po wyrażeniu zgody ⇒ **2xx** (typowo **204**); `POST {shop}/apps/assistant/chat` ⇒ odpowiedź `Content-Type: text/event-stream` |
+| 25 | Hydrogen `kazka` | `POST /api/consent` ⇒ **204**; `POST /api/chat` ⇒ `text/event-stream`; BFF dokleja `X-EPIR-SHARED-SECRET`, `X-EPIR-STOREFRONT-ID`, `X-EPIR-CHANNEL` |
+| 26 | Hydrogen `zareczyny` | jak poz. 25, z odpowiednim `storefrontId` / `channel` |
+| 27 | D1 `consent_events` | nowy wiersz append-only dla każdego pomyślnego zapisu zgody (potwierdzone `wrangler d1 execute ai-assistant-sessions-db --remote --command="SELECT * FROM consent_events ORDER BY created_at DESC LIMIT 5;"`) |
+| 28 | RAG retrieval | `GET /health` ⇒ 200; `POST /search/policies` i `POST /search/products` zwracają wyniki dla referencyjnego zapytania; `ADMIN_TOKEN` nie jest placeholderem |
+| 29 | Analytics pipeline | webhooki Shopify trafiają do D1 `jewelry-analytics-db`; batch eksport do BigQuery dostarcza partycję dnia; spójność `_epir_session_id` ↔ `session_id` zachowana w lejku |
+| 30 | Negatywny smoke (no-go canary) | powtórzenie poz. 12, 13, 14, 15 na produkcyjnym workerze — każda zwraca `401`/`400` zgodnie z kontraktem (potwierdzone z poziomu klienta bez sekretu) |
+
+### Reguła blokady
+
+- **PASS = wszystkie pozycje 1–30 spełnione.** Jakikolwiek FAIL ⇒ **NO-GO**, niezależnie od jego „wagi”. Nie przepuszczamy bramki pojedynczym wyjątkiem ani notatką „dopiszemy w hotfixie”.
+- Nowy sekret, endpoint, migracja albo check CI musi być dopisany do tej checklisty **przed** release, w którym staje się wymagany. Niezdokumentowana zależność jest traktowana jako FAIL.
+- Bramka jest jedna i jest tutaj. Nie utrzymujemy „roboczych” checklist w PR, issue ani notatkach prywatnych.
+
 ## Zasady utrzymania
 
 1. Nie opisujemy deployu w kilku równoległych dokumentach.
 2. Każda zmiana w kolejności wdrożenia, secretach lub bindingach aktualizuje ten plik.
 3. Jeśli operacyjny stan różni się od repo, repo wymaga korekty — nie odwrotnie.
 4. Runbook operacyjny ma pozostać krótki i wykonywalny, bez checkpointów historycznych i bez notatek „tymczasowych”.
+5. Bramka go/no-go z sekcji powyżej jest jedynym formalnym źródłem decyzji release; rozszerzenia kontraktu security/CI najpierw trafiają do tej checklisty, a dopiero potem do narzędzi automatyzacji.
