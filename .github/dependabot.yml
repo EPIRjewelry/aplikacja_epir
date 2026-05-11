@@ -62,16 +62,6 @@ updates:
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
-    directory: "/workers/analytics"
-    schedule:
-      interval: "monthly"
-    open-pull-requests-limit: 2
-    groups:
-      worker-analytics:
-        patterns:
-          - "*"
-
-  - package-ecosystem: "npm"
     directory: "/workers/bigquery-batch"
     schedule:
       interval: "monthly"

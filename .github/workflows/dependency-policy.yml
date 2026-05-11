@@ -1,0 +1,36 @@
+name: Dependency Policy
+
+on:
+  pull_request:
+    paths:
+      - ".github/dependabot.yml"
+      - "package.json"
+      - "workers/**/package.json"
+      - "apps/**/package.json"
+      - "packages/**/package.json"
+      - "extensions/**/package.json"
+  workflow_dispatch:
+
+jobs:
+  dependency-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate pnpm policy in workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8')); if(!String(p.packageManager||'').startsWith('pnpm@')){ console.error('Root packageManager must be pnpm@...'); process.exit(1); }"
+
+          if grep -R --include="package.json" "\"aplikacja_epir\"[[:space:]]*:[[:space:]]*\"file:\.\./\.\.\"" workers apps packages extensions; then
+            echo "Forbidden local root file dependency found (aplikacja_epir:file:../..)."
+            exit 1
+          fi
+
+          if grep -q 'directory: "/workers/analytics"' .github/dependabot.yml; then
+            echo "Dependabot entry for /workers/analytics is forbidden due npm/pnpm mismatch."
+            exit 1
+          fi
