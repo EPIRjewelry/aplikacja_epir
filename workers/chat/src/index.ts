@@ -25,7 +25,7 @@ import { verifyAppProxyHmac, replayCheck } from './security';
 import { verifyHmac } from './hmac';
 import { parseAuthorizationBearer, verifyShopifySessionTokenJwt } from './shopify-session-token';
 import { RateLimiterDO } from './rate-limiter';
-import { TokenVaultDO, TokenVault, buildTokenVaultShardName } from './token-vault';
+import { TokenVaultDO, TokenVault, getTokenVaultStub } from './token-vault';
 import { guardAssistantPricingAgainstCatalog } from './pricing-guard';
 
 // Importy AI i Narzędzi (BEZPOŚREDNIO z ai-client.ts)
@@ -228,11 +228,41 @@ type S2SChatAuthorizationResult =
 const EPIR_SHARED_SECRET_HEADER = 'X-EPIR-SHARED-SECRET';
 const EPIR_STOREFRONT_HEADER = 'X-EPIR-STOREFRONT-ID';
 const EPIR_CHANNEL_HEADER = 'X-EPIR-CHANNEL';
+const REPLAY_PROTECTION_SHARD_NAME = 'replay-protection:v1:global';
+const SESSION_DO_FALLBACK_SHARD_NAME = 'session:v1:fallback';
 const APP_PROXY_CHAT_CONTEXT_OVERRIDE: Required<ChatContextOverride> = {
   storefrontId: 'online-store',
   channel: 'online-store',
   brand: 'epir',
 };
+
+function normalizeSessionId(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function buildSessionDOShardName(sessionId: string): string {
+  return normalizeSessionId(sessionId) ?? SESSION_DO_FALLBACK_SHARD_NAME;
+}
+
+function getSessionDOStub(env: Env, sessionId: string): DurableObjectStub {
+  const doId = env.SESSION_DO.idFromName(buildSessionDOShardName(sessionId));
+  return env.SESSION_DO.get(doId);
+}
+
+async function fetchSessionDO(
+  stub: DurableObjectStub,
+  path: string,
+  init: RequestInit,
+  label: string,
+): Promise<Response> {
+  const response = await stub.fetch(`https://session/${path}`, init);
+  if (!response.ok) {
+    throw new Error(`[SessionDO:${label}] HTTP ${response.status}`);
+  }
+  return response;
+}
 
 function getSystemPromptForChannel(channel?: string): string {
   return channel === 'internal-dashboard'
@@ -273,7 +303,7 @@ async function authorizeAppProxyRequest(request: Request, env: Env): Promise<Res
   // Enforcing one-time replay for query signature causes false-positive 401 in normal storefront chat usage.
   // Keep replay protection for header-based signatures only.
   if (signature && timestamp && !isShopifyQuerySignature) {
-    const doId = env.SESSION_DO.idFromName('replay-protection-global');
+    const doId = env.SESSION_DO.idFromName(REPLAY_PROTECTION_SHARD_NAME);
     const stub = env.SESSION_DO.get(doId);
     const replayResult = await replayCheck(stub, signature, timestamp);
     if (!replayResult.ok) {
@@ -552,8 +582,7 @@ async function handleHistoryRequest(request: Request, env: Env): Promise<Respons
     });
   }
 
-  const doId = env.SESSION_DO.idFromName(payload.session_id);
-  const stub = env.SESSION_DO.get(doId);
+  const stub = getSessionDOStub(env, payload.session_id);
 
   let historyRaw: unknown;
   try {
@@ -620,7 +649,7 @@ function parseChatRequestBody(
   if (!messageText && !fromParts?.imageRaw && !hasLegacyImage) {
     return null;
   }
-  const sessionId = typeof maybe.session_id === 'string' && maybe.session_id.length > 0 ? maybe.session_id : undefined;
+  const sessionId = normalizeSessionId(maybe.session_id);
   const cartId = typeof maybe.cart_id === 'string' && maybe.cart_id.length > 0 ? maybe.cart_id : undefined;
   const stream = typeof maybe.stream === 'boolean' ? maybe.stream : true; // Domyślnie włączamy stream
   const brandFromBody = typeof maybe.brand === 'string' && maybe.brand.trim().length > 0 ? maybe.brand.trim().toLowerCase() : undefined;
@@ -2524,8 +2553,7 @@ async function handleChat(
 
   // 🔴 POPRAWKA SESJI: Używamy `payload.session_id` LUB generujemy nowy
   const sessionId = payload.session_id ?? crypto.randomUUID();
-  const doId = env.SESSION_DO.idFromName(sessionId);
-  const stub = env.SESSION_DO.get(doId);
+  const stub = getSessionDOStub(env, sessionId);
 
   const loggedInCustomerIdRaw = url.searchParams.get('logged_in_customer_id');
 
@@ -2589,8 +2617,7 @@ async function handleChat(
   if (customerId && shopId) {
     try {
       console.log('[handleChat] 🔐 TokenVault: Generating token...');
-      const tokenVaultId = env.TOKEN_VAULT_DO.idFromName(buildTokenVaultShardName(shopId));
-      const tokenVaultStub = env.TOKEN_VAULT_DO.get(tokenVaultId);
+      const tokenVaultStub = getTokenVaultStub(env.TOKEN_VAULT_DO, env, { shopId, customerId });
       const vault = new TokenVault(tokenVaultStub);
       customerToken = await vault.getOrCreateToken(customerId, shopId);
       console.log('[handleChat] ✅ TokenVault: Token generated:', customerToken.substring(0, 16) + '...');
@@ -2678,43 +2705,71 @@ async function handleChat(
     );
   }
 
-  // 🔴 POPRAWKA SESJI: Jeśli sesja jest NOWA, zapisujemy jej ID w DO
-  if (!payload.session_id) {
-      await stub.fetch('https://session/set-session-id', {
+  // Jawny lifecycle krytycznych zapisów SessionDO: fail-closed zamiast cichych async side effects.
+  const userMessageTs = now();
+  try {
+    if (!payload.session_id) {
+      await fetchSessionDO(
+        stub,
+        'set-session-id',
+        {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ session_id: sessionId }),
-      });
-  }
+        },
+        'set-session-id',
+      );
+    }
 
-  // Zapisz wiadomość użytkownika w DO
-  const userMessageTs = now();
-  await stub.fetch('https://session/append', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ role: 'user', content: payload.message, ts: userMessageTs } as HistoryEntry),
-  });
+    await fetchSessionDO(
+      stub,
+      'append',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'user', content: payload.message, ts: userMessageTs } as HistoryEntry),
+      },
+      'append-user',
+    );
 
-  // Zapisz cart_id w DO, jeśli dostarczono
-  if (payload.cart_id) {
-    console.log('[handleChat] Saving cart_id to session:', payload.cart_id);
-    await stub.fetch('https://session/set-cart-id', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cart_id: payload.cart_id }),
+    if (payload.cart_id) {
+      console.log('[handleChat] Saving cart_id to session:', payload.cart_id);
+      await fetchSessionDO(
+        stub,
+        'set-cart-id',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cart_id: payload.cart_id }),
+        },
+        'set-cart-id',
+      );
+    }
+
+    if (payload.storefrontId || payload.channel) {
+      const sfConfig = resolveStorefrontConfig(env, payload.storefrontId);
+      await fetchSessionDO(
+        stub,
+        'set-storefront-context',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            storefront_id: payload.storefrontId ?? null,
+            channel: payload.channel ?? sfConfig?.channel ?? null,
+          }),
+        },
+        'set-storefront-context',
+      );
+    }
+  } catch (sessionLifecycleError) {
+    console.error('[handleChat] Critical SessionDO lifecycle failed', {
+      session_id: sessionId,
+      error: sessionLifecycleError instanceof Error ? sessionLifecycleError.message : String(sessionLifecycleError),
     });
-  }
-
-  // Zapisz storefront_id i channel w DO (kanoniczny kontrakt danych: dla messages_raw)
-  if (payload.storefrontId || payload.channel) {
-    const sfConfig = resolveStorefrontConfig(env, payload.storefrontId);
-    await stub.fetch('https://session/set-storefront-context', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        storefront_id: payload.storefrontId ?? null,
-        channel: payload.channel ?? sfConfig?.channel ?? null,
-      }),
+    return new Response(JSON.stringify({ error: 'session_lifecycle_failed', session_id: sessionId }), {
+      status: 502,
+      headers: { ...cors(env, request), 'Content-Type': 'application/json' },
     });
   }
 
@@ -2802,8 +2857,9 @@ async function streamAssistantResponse(
   const { readable, writable } = new TransformStream();
   const encoder = new TextEncoder();
 
-  // Uruchamiamy całą logikę asynchronicznie, aby natychmiast zwrócić stream
-  (async () => {
+  // Uruchamiamy całą logikę asynchronicznie, aby natychmiast zwrócić stream.
+  // Jawne przypięcie błędu domyka lifecycle i eliminuje niejawne unhandled rejections.
+  const streamLifecycleTask = (async () => {
     const writer = writable.getWriter();
     let history: HistoryEntry[] = []; // Historia dla tej tury
     let accumulatedResponse = ''; // Pełna odpowiedź tekstowa asystenta
@@ -2871,8 +2927,7 @@ async function streamAssistantResponse(
       let effectiveCustomerToken = anonymousAppProxySession ? undefined : customerToken;
       if (!effectiveCustomerToken && effectiveShopifyCustomerId && shopId) {
         try {
-          const tokenVaultId = env.TOKEN_VAULT_DO.idFromName(buildTokenVaultShardName(shopId));
-          const tokenVaultStub = env.TOKEN_VAULT_DO.get(tokenVaultId);
+          const tokenVaultStub = getTokenVaultStub(env.TOKEN_VAULT_DO, env, { shopId, customerId: effectiveShopifyCustomerId });
           const vault = new TokenVault(tokenVaultStub);
           effectiveCustomerToken = await vault.getOrCreateToken(effectiveShopifyCustomerId, shopId);
           if (effectiveCustomerContext.source === 'session') {
@@ -3933,6 +3988,9 @@ async function streamAssistantResponse(
       writer.close();
     }
   })(); // koniec bloku async
+  streamLifecycleTask.catch((error) => {
+    console.error('[streamAssistant] Unhandled lifecycle rejection', error);
+  });
 
   // Natychmiast zwróć strumień do klienta
   return new Response(readable, {
@@ -4222,6 +4280,7 @@ export { TokenVaultDO } from './token-vault';
 // Eksporty dla testów (jeśli używane)
 export {
   parseChatRequestBody,
+  buildSessionDOShardName,
   ensureHistoryArray,
   cors,
   handleChat,

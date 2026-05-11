@@ -12,6 +12,18 @@ workers_dev = false
 [build]
 command = ""
 
+[env.staging]
+workers_dev = true
+# Staging profile inherits top-level bindings/secrets.
+# It must NOT inherit production custom routes.
+
+[env.production]
+# Production profile inherits top-level bindings/secrets.
+# Route is defined only here to avoid staging/prod collision.
+routes = [
+  { pattern = "asystent.epirbizuteria.pl/*", zone_name = "epirbizuteria.pl" }
+]
+
 [durable_objects]
 bindings = [
   { name = "SESSION_DO", class_name = "SessionDO" },
@@ -101,11 +113,6 @@ service = "epir-analityc-worker"
 binding = "BIGQUERY_BATCH"
 service = "epir-bigquery-batch"
 
-# Routes - subdomena dla Workera
-[[routes]]
-pattern = "asystent.epirbizuteria.pl/*"
-zone_name = "epirbizuteria.pl"
-
 [observability]
 enabled = true
 [observability.logs]
@@ -120,6 +127,9 @@ invocation_logs = true
 enabled = false
 
 [vars]
+# TokenVaultDO: shardów per sklep (16–64); TTL tokenu klienta (ms), sliding window + alarm.
+VAULT_SHARD_COUNT = "32"
+TOKEN_TTL_MS = "2592000000"
 ALLOWED_ORIGIN = "https://epir-art-silver-jewellery.myshopify.com"
 CF_ACCOUNT_ID = "73283c24dc79f92edef30dcdbc98f230"
 # Memory v2 feature flags (kontrolują rollout; domyślnie wyłączone, włączamy stopniowo):

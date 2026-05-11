@@ -41,6 +41,11 @@ export interface Env {
   MEMORY_V2_ENABLED?: string;
   MEMORY_RAW_RETRIEVAL_ENABLED?: string;
 
+  /** Liczba shardów TokenVaultDO per sklep (16–64); domyślnie 32. */
+  VAULT_SHARD_COUNT?: string;
+  /** TTL tokenu klienta w ms (sliding); domyślnie 30 dni. */
+  TOKEN_TTL_MS?: string;
+
   /**
    * Flaga: użyj odchudzonego wariantu `TOOL_SCHEMAS_SLIM` zamiast pełnych
    * schematów przy każdej turze modelu. Redukuje `prompt_tokens` o rząd wielkości
