@@ -486,4 +486,44 @@ describe('SessionDO', () => {
       vi.useRealTimers();
     }
   });
+
+  it('rehydrates persisted SQL state after SessionDO restart', async () => {
+    const { state } = makeDurableStateStub('rehydrate-session');
+    const firstInstance = new SessionDO(state, mockEnv);
+    const ts = Date.now();
+
+    await firstInstance.fetch(
+      new Request('https://session/set-session-id', {
+        method: 'POST',
+        body: JSON.stringify({ session_id: 'rehydrate-session' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await firstInstance.fetch(
+      new Request('https://session/set-cart-id', {
+        method: 'POST',
+        body: JSON.stringify({ cart_id: 'gid://shopify/Cart/restart-1' }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await firstInstance.fetch(
+      new Request('https://session/append', {
+        method: 'POST',
+        body: JSON.stringify({ role: 'user', content: 'before restart', ts }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const restartedInstance = new SessionDO(state, mockEnv);
+
+    const historyRes = await restartedInstance.fetch(new Request('https://session/history'));
+    const history = (await historyRes.json()) as Array<{ content: string; ts: number }>;
+    expect(history).toHaveLength(1);
+    expect(history[0].content).toBe('before restart');
+    expect(history[0].ts).toBe(ts);
+
+    const cartRes = await restartedInstance.fetch(new Request('https://session/cart-id'));
+    const cartBody = (await cartRes.json()) as { cart_id?: string };
+    expect(cartBody.cart_id).toBe('gid://shopify/Cart/restart-1');
+  });
 });

@@ -7,6 +7,14 @@ workers_dev = false
 [build]
 command = ""
 
+[env.staging]
+# Staging profile intentionally inherits top-level bindings/triggers/secrets.
+# Keep environment-specific overrides here only when needed.
+
+[env.production]
+# Production profile intentionally inherits top-level bindings/triggers/secrets.
+# Keep environment-specific overrides here only when needed.
+
 # Cron trigger: codziennie o 2:00 UTC
 [triggers]
 crons = ["0 2 * * *"]

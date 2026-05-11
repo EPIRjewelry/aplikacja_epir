@@ -2,10 +2,19 @@ name = "epir-analityc-worker"
 main = "src/index.ts"
 compatibility_date = "2025-09-30"
 compatibility_flags = ["nodejs_compat"]
-workers_dev = true
+workers_dev = false
 
 [build]
 command = ""
+
+[env.staging]
+# Staging profile intentionally inherits top-level bindings/secrets.
+# Keep environment-specific overrides here only when needed.
+
+[env.production]
+# Keep production aligned with deploy-policy gate (no workers.dev publish).
+workers_dev = false
+# Production profile intentionally inherits top-level bindings/secrets.
 
 [vars]
 # `null` = literal Origin string from Shopify Web Pixel sandbox (opaque origin)

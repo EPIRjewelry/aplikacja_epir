@@ -3,6 +3,14 @@ main = "src/index.ts"
 compatibility_date = "2025-09-30"
 compatibility_flags = ["nodejs_compat"]
 
+[env.staging]
+# Staging profile intentionally inherits top-level bindings/secrets.
+# Keep environment-specific overrides here only when needed.
+
+[env.production]
+# Production profile intentionally inherits top-level bindings/secrets.
+# Keep environment-specific overrides here only when needed.
+
 # RAG Worker potrzebuje:
 # - Vectorize (dla FAQ/policies similarity search)
 # - AI (dla embeddings)

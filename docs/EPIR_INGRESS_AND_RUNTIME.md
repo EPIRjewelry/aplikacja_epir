@@ -32,6 +32,22 @@ Nie wolno mylić App Proxy `.../apps/assistant/chat` z serwerowym endpointem S2S
 
 Trwały audyt zgód: append-only tabela `consent_events` w D1 `DB_CHATBOT` (`workers/chat/migrations/005_consent_events.sql`).
 
+## Kontrakt błędu `502 session_lifecycle_failed`
+
+Dotyczy ścieżki czatu obsługiwanej przez `workers/chat/src/index.ts` podczas krytycznego etapu lifecycle sesji (`SessionDO`).
+
+- warunek: błąd w trakcie zapisu/uzupełniania kontekstu sesji (np. append user message, `cart_id`, `storefrontId`/`channel`) przed wejściem w właściwe generowanie odpowiedzi,
+- status HTTP: `502`,
+- body JSON:
+  - `error: "session_lifecycle_failed"`,
+  - `session_id: "<id sesji, jeśli został nadany>"`,
+- `Content-Type: application/json`.
+
+To jest kontrakt runtime workera (błąd warstwy sesji po stronie backendu), a nie sygnał walidacji ingressu klienta. Dla błędów ingressu nadal obowiązuje:
+
+- `401` dla brakującego/błędnego podpisu App Proxy lub brakującego `X-EPIR-SHARED-SECRET`,
+- `400` dla brakującego `storefrontId` lub `channel` w S2S.
+
 ## Ingress dla Online Store
 
 ### Kontrakt
@@ -107,6 +123,19 @@ To oznacza, że stara teza o braku `storefrontId` / `channel` w body jest nieakt
 - historia rozmowy jest archiwizowana w D1,
 - historia sesji nie jest tym samym co historia zamówień,
 - buyer-facing asystent nie powinien obiecywać pełnej historii zamówień bez dedykowanego narzędzia i jawnego wsparcia backendowego.
+
+## TokenVault: lookup i shardowanie
+
+Kontrakt oparty o `workers/chat/src/token-vault.ts` i testy `workers/chat/test/token_vault.test.ts`, `workers/chat/test/token_vault_sharding.test.ts`:
+
+- lookup `POST https://token-vault/lookup`:
+  - `404` gdy token nie istnieje (zamiast rzucania wyjątku),
+  - `200` z payloadem źródłowym DO (`customer_id`, `shop_id`, pola czasu) dla istniejącego tokenu,
+  - helper `TokenVault.lookupToken()` mapuje snake_case i camelCase do kontraktu zwrotnego `{ customerId, shopId }`.
+- shardowanie DO:
+  - nazwa shardu jest deterministyczna: `shop:${normalize(shopId)}`,
+  - normalizacja `shopId` = `trim().toLowerCase()`,
+  - replay/cutover musi używać znormalizowanego `shopId`, żeby nie rozdzielić mapowań tokenów na różne shardy przez różnice case/whitespace.
 
 ## RAG i MCP w runtime
 

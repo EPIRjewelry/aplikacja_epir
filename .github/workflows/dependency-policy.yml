@@ -32,22 +32,53 @@ jobs:
             process.exit(1);
           }
 
+          // Detect any `file:` dependency that resolves to the monorepo root
+          // (the offending case is `aplikacja_epir: "file:../.."`).
+          // Tolerate edge cases: leading/trailing whitespace, mixed slashes,
+          // trailing slash, `file://` URL form, `./../..` style and casing.
+          function isForbiddenRootFileDep(value) {
+            if (typeof value !== 'string') return false;
+            const trimmed = value.trim();
+            if (trimmed === '') return false;
+            const lower = trimmed.toLowerCase();
+            const match = lower.match(/^file:(\/{0,2})(.+)$/);
+            if (!match) return false;
+            let target = match[2].replace(/\\/g, '/');
+            // Collapse repeated slashes and strip trailing slashes.
+            target = target.replace(/\/+/g, '/').replace(/\/+$/, '');
+            // Drop a single leading "./" so "./../.." matches "../..".
+            if (target.startsWith('./')) target = target.slice(2);
+            return target === '../..';
+          }
+
           const rootPkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           if (!String(rootPkg.packageManager || '').startsWith('pnpm@')) {
             fail('Root packageManager must be pnpm@...');
           }
 
           const roots = ['workers', 'apps', 'packages', 'extensions'];
+          const depKeys = [
+            'dependencies',
+            'devDependencies',
+            'optionalDependencies',
+            'peerDependencies',
+          ];
           for (const root of roots) {
             if (!fs.existsSync(root)) continue;
             for (const entry of fs.readdirSync(root)) {
               const pkgPath = path.join(root, entry, 'package.json');
               if (!fs.existsSync(pkgPath)) continue;
               const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-              const dep = pkg.dependencies?.aplikacja_epir;
-              const devDep = pkg.devDependencies?.aplikacja_epir;
-              if (dep === 'file:../..' || devDep === 'file:../..') {
-                fail(`Forbidden local root file dependency in ${pkgPath} (aplikacja_epir:file:../..).`);
+              for (const key of depKeys) {
+                const map = pkg[key];
+                if (!map || typeof map !== 'object') continue;
+                const value = map.aplikacja_epir;
+                if (isForbiddenRootFileDep(value)) {
+                  fail(
+                    `Forbidden local root file dependency in ${pkgPath} ` +
+                      `(${key}.aplikacja_epir=${value}).`
+                  );
+                }
               }
             }
           }
@@ -56,33 +87,77 @@ jobs:
       - name: Validate dependabot target constraints
         shell: python
         run: |
-          import re
           import sys
           from pathlib import Path
 
           text = Path(".github/dependabot.yml").read_text(encoding="utf-8")
           lines = text.splitlines()
 
+          def strip_quotes(value: str) -> str:
+              value = value.strip()
+              if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+                  return value[1:-1]
+              return value
+
+          def normalize_directory(value):
+              """Normalize a Dependabot `directory:` value for safe comparison.
+
+              Handles trailing slashes, missing leading slash, backslashes,
+              repeated slashes, leading `./`, surrounding whitespace and casing.
+              """
+              if not isinstance(value, str):
+                  return ""
+              s = strip_quotes(value)
+              if not s:
+                  return ""
+              s = s.replace("\\", "/")
+              while "//" in s:
+                  s = s.replace("//", "/")
+              if s.startswith("./"):
+                  s = s[2:]
+              if not s.startswith("/"):
+                  s = "/" + s
+              if len(s) > 1 and s.endswith("/"):
+                  s = s.rstrip("/")
+              return s.lower()
+
+          def normalize_ecosystem(value):
+              if not isinstance(value, str):
+                  return ""
+              return strip_quotes(value).strip().lower()
+
           entries = []
           current = None
           for line in lines:
-            stripped = line.strip()
-            if stripped.startswith("- package-ecosystem:"):
-              if current:
-                entries.append(current)
-              ecosystem = stripped.split(":", 1)[1].strip().strip('"').strip("'")
-              current = {"ecosystem": ecosystem, "directory": None}
-              continue
-            if current and stripped.startswith("directory:"):
-              directory = stripped.split(":", 1)[1].strip().strip('"').strip("'")
-              current["directory"] = directory
+              stripped = line.strip()
+              if stripped.startswith("- package-ecosystem:"):
+                  if current:
+                      entries.append(current)
+                  ecosystem = stripped.split(":", 1)[1]
+                  current = {"ecosystem": ecosystem, "directory": None}
+                  continue
+              if current and stripped.startswith("directory:"):
+                  directory = stripped.split(":", 1)[1]
+                  current["directory"] = directory
           if current:
-            entries.append(current)
+              entries.append(current)
 
-          bad = [
-            e for e in entries
-            if e.get("ecosystem") == "npm" and e.get("directory") == "/workers/analytics"
-          ]
+          # (ecosystem, normalized_directory) pairs forbidden by policy.
+          forbidden = {
+              ("npm", "/workers/analytics"),
+          }
+
+          bad = []
+          for entry in entries:
+              eco = normalize_ecosystem(entry.get("ecosystem"))
+              directory = normalize_directory(entry.get("directory"))
+              if (eco, directory) in forbidden:
+                  bad.append({"ecosystem": eco, "directory": directory})
+
           if bad:
-            sys.stderr.write("Dependabot npm entry for /workers/analytics is forbidden due npm/pnpm mismatch risk.\n")
-            sys.exit(1)
+              sys.stderr.write(
+                  "Dependabot npm entry for /workers/analytics is forbidden "
+                  "due to npm/pnpm mismatch risk. Offending entries: "
+                  f"{bad}\n"
+              )
+              sys.exit(1)

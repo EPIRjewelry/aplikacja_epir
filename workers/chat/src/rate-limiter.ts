@@ -18,6 +18,11 @@ interface TokenBucketConfig {
   refillInterval: number; // Milliseconds between refills
 }
 
+interface PersistedBucketState {
+  tokens?: unknown;
+  lastRefill?: unknown;
+}
+
 const DEFAULT_CONFIG: TokenBucketConfig = {
   maxTokens: 40,          // Shopify Admin API: 40 requests per second
   refillRate: 2,          // Refill 2 tokens per interval (40/sec = 2 per 50ms)
@@ -39,7 +44,12 @@ export class RateLimiterDO {
   constructor(state: DurableObjectState) {
     this.state = state;
     this.initialized = this.state.blockConcurrencyWhile(async () => {
-      await this.loadState();
+      try {
+        await this.loadState();
+      } catch (error) {
+        console.error('[RateLimiterDO] Failed to initialize state', error);
+        throw error;
+      }
     });
   }
 
@@ -64,8 +74,15 @@ export class RateLimiterDO {
    * Spróbuj skonsumować tokeny (domyślnie 1)
    */
   private async handleConsume(request: Request): Promise<Response> {
-    const body = await request.json().catch(() => ({ tokens: 1 })) as { tokens?: number };
-    const tokensToConsume = body.tokens || 1;
+    const body = await request.json().catch(() => ({ tokens: 1 })) as { tokens?: unknown };
+    const tokensToConsume = this.parseTokensToConsume(body.tokens);
+
+    if (tokensToConsume <= 0) {
+      return Response.json(
+        { error: 'Invalid tokens value. Expected a positive finite number.' },
+        { status: 400 },
+      );
+    }
 
     this.refillTokens();
 
@@ -81,6 +98,7 @@ export class RateLimiterDO {
 
     // Oblicz retry-after (ile ms do następnego refill)
     const retryAfterMs = this.config.refillInterval;
+    await this.persistState();
     
     return Response.json({
       allowed: false,
@@ -94,8 +112,10 @@ export class RateLimiterDO {
    * Sprawdź dostępne tokeny bez konsumpcji
    */
   private async handleCheck(): Promise<Response> {
-    this.refillTokens();
-    await this.persistState();
+    const stateChanged = this.refillTokens();
+    if (stateChanged) {
+      await this.persistState();
+    }
     
     return Response.json({
       tokens: this.tokens,
@@ -118,38 +138,83 @@ export class RateLimiterDO {
   /**
    * Refill tokens based on time elapsed
    */
-  private refillTokens(): void {
+  private refillTokens(): boolean {
     const now = Date.now();
     const elapsed = now - this.lastRefill;
     const intervals = Math.floor(elapsed / this.config.refillInterval);
 
     if (intervals > 0) {
       const tokensToAdd = intervals * this.config.refillRate;
+      const previousTokens = this.tokens;
       this.tokens = Math.min(this.config.maxTokens, this.tokens + tokensToAdd);
       this.lastRefill = now;
+      return this.tokens !== previousTokens;
     }
+    return false;
   }
 
   private async loadState(): Promise<void> {
-    const persisted = await this.state.storage.get<{
-      tokens?: number;
-      lastRefill?: number;
-    }>(RateLimiterDO.STORAGE_KEY);
-    if (!persisted) return;
-
-    if (typeof persisted.tokens === 'number' && Number.isFinite(persisted.tokens)) {
-      this.tokens = Math.max(0, Math.min(this.config.maxTokens, persisted.tokens));
+    const persisted = await this.state.storage.get<PersistedBucketState>(RateLimiterDO.STORAGE_KEY);
+    if (!persisted || typeof persisted !== 'object') {
+      return;
     }
-    if (typeof persisted.lastRefill === 'number' && Number.isFinite(persisted.lastRefill)) {
-      this.lastRefill = persisted.lastRefill;
+
+    const now = Date.now();
+    const normalizedTokens = this.normalizeTokens(persisted.tokens);
+    const normalizedLastRefill = this.normalizeLastRefill(persisted.lastRefill, now);
+
+    this.tokens = normalizedTokens;
+    this.lastRefill = normalizedLastRefill;
+
+    const persistedTokens = typeof persisted.tokens === 'number' ? persisted.tokens : undefined;
+    const persistedLastRefill = typeof persisted.lastRefill === 'number' ? persisted.lastRefill : undefined;
+    const hasInvalidValues =
+      persistedTokens !== normalizedTokens || persistedLastRefill !== normalizedLastRefill;
+
+    if (hasInvalidValues) {
+      await this.persistState();
     }
   }
 
   private async persistState(): Promise<void> {
+    const now = Date.now();
+    const safeTokens = this.normalizeTokens(this.tokens);
+    const safeLastRefill = this.normalizeLastRefill(this.lastRefill, now);
+    this.tokens = safeTokens;
+    this.lastRefill = safeLastRefill;
+
     await this.state.storage.put(RateLimiterDO.STORAGE_KEY, {
-      tokens: this.tokens,
-      lastRefill: this.lastRefill,
+      tokens: safeTokens,
+      lastRefill: safeLastRefill,
     });
+  }
+
+  private parseTokensToConsume(rawTokens: unknown): number {
+    if (rawTokens == null) {
+      return 1;
+    }
+    if (typeof rawTokens !== 'number' || !Number.isFinite(rawTokens)) {
+      return 0;
+    }
+    return Math.floor(rawTokens);
+  }
+
+  private normalizeTokens(rawTokens: unknown): number {
+    if (typeof rawTokens !== 'number' || !Number.isFinite(rawTokens)) {
+      return this.config.maxTokens;
+    }
+    return Math.max(0, Math.min(this.config.maxTokens, Math.floor(rawTokens)));
+  }
+
+  private normalizeLastRefill(rawLastRefill: unknown, now: number): number {
+    if (typeof rawLastRefill !== 'number' || !Number.isFinite(rawLastRefill)) {
+      return now;
+    }
+    const safeLastRefill = Math.floor(rawLastRefill);
+    if (safeLastRefill < 0) {
+      return now;
+    }
+    return Math.min(safeLastRefill, now);
   }
 }
 
@@ -164,11 +229,31 @@ export async function checkRateLimit(
   const id = env.RATE_LIMITER_DO.idFromName(shopDomain);
   const stub = env.RATE_LIMITER_DO.get(id);
   
-  const response = await stub.fetch('https://dummy/consume', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tokens: tokensToConsume })
-  });
+  const safeTokens = Number.isFinite(tokensToConsume) && tokensToConsume > 0
+    ? Math.floor(tokensToConsume)
+    : 1;
 
-  return await response.json();
+  try {
+    const response = await stub.fetch('https://dummy/consume', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tokens: safeTokens })
+    });
+
+    const payload = await response.json().catch(() => ({})) as {
+      allowed?: unknown;
+      retryAfterMs?: unknown;
+    };
+    const retryAfterMs = typeof payload.retryAfterMs === 'number' && Number.isFinite(payload.retryAfterMs)
+      ? payload.retryAfterMs
+      : undefined;
+
+    if (!response.ok) {
+      return { allowed: false, retryAfterMs };
+    }
+    return { allowed: payload.allowed === true, retryAfterMs };
+  } catch (error) {
+    console.error('[RateLimiterDO] checkRateLimit failed closed', error);
+    return { allowed: false };
+  }
 }

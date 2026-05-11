@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import worker, { SessionDO, parseChatRequestBody } from '../src/index';
+import worker, { SessionDO, buildSessionDOShardName, parseChatRequestBody } from '../src/index';
 import type { Env } from '../src/config/bindings';
 import { computeHmac, shopifyAppProxyCanonicalString } from '../src/hmac';
 import { makeDurableStateStub } from './helpers/session-do-sql-stub';
@@ -15,6 +15,21 @@ function makeNoopNamespace() {
       return {
         async fetch() {
           return new Response('ok');
+        },
+      } as DurableObjectStub;
+    },
+  } as unknown as DurableObjectNamespace;
+}
+
+function makeRateLimiterNamespace() {
+  return {
+    idFromName(name: string) {
+      return name;
+    },
+    get() {
+      return {
+        async fetch() {
+          return Response.json({ allowed: true, retryAfterMs: 0 });
         },
       } as DurableObjectStub;
     },
@@ -59,7 +74,7 @@ function makeEnv(overrides: Partial<Env> = {}) {
   const sessionNamespace = makeSessionNamespace();
   const env: Env = {
     SESSION_DO: sessionNamespace.namespace,
-    RATE_LIMITER_DO: makeNoopNamespace(),
+    RATE_LIMITER_DO: makeRateLimiterNamespace(),
     TOKEN_VAULT_DO: makeNoopNamespace(),
     DB: {} as D1Database,
     DB_CHATBOT: {} as D1Database,
@@ -376,6 +391,20 @@ describe('parseChatRequestBody', () => {
 
     expect(payload).not.toBeNull();
     expect(payload?.path).toBe('/collections/galazki');
+  });
+
+  it('normalizes whitespace-only session_id to undefined', () => {
+    const payload = parseChatRequestBody({
+      message: 'hej',
+      session_id: '   \t  ',
+    });
+
+    expect(payload).not.toBeNull();
+    expect(payload?.session_id).toBeUndefined();
+  });
+
+  it('uses fallback shard when session_id is blank after trim', () => {
+    expect(buildSessionDOShardName('   ')).toBe('session:v1:fallback');
   });
 });
 
