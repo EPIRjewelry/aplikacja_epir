@@ -1,0 +1,53 @@
+name: Analytics Deps Maintenance
+
+on:
+  schedule:
+    - cron: "30 2 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh-analytics-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            workers/analytics/package-lock.json
+
+      - name: Refresh workers/analytics dependencies
+        working-directory: workers/analytics
+        run: |
+          npm install --no-audit --no-fund
+          npm update --no-audit --no-fund
+          npm install --package-lock-only --no-audit --no-fund
+
+      - name: Run analytics tests
+        working-directory: workers/analytics
+        run: npm run test
+
+      - name: Open PR with dependency refresh
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "chore(deps): refresh workers/analytics dependencies"
+          title: "chore(deps): refresh workers/analytics dependencies"
+          body: |
+            Automated dependency refresh for `workers/analytics` to replace removed Dependabot target that conflicted with root pnpm policy.
+
+            ## Scope
+            - updates lockfile and manifest-resolved dependencies in `workers/analytics`
+            - runs analytics tests before PR creation
+          branch: "chore/analytics-deps-maintenance"
+          delete-branch: true
+          labels: |
+            dependencies
+            ci

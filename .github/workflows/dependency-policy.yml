@@ -23,14 +23,66 @@ jobs:
         run: |
           set -euo pipefail
 
-          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8')); if(!String(p.packageManager||'').startsWith('pnpm@')){ console.error('Root packageManager must be pnpm@...'); process.exit(1); }"
+          node <<'EOF'
+          const fs = require('fs');
+          const path = require('path');
 
-          if grep -R --include="package.json" "\"aplikacja_epir\"[[:space:]]*:[[:space:]]*\"file:\.\./\.\.\"" workers apps packages extensions; then
-            echo "Forbidden local root file dependency found (aplikacja_epir:file:../..)."
-            exit 1
-          fi
+          function fail(message) {
+            console.error(message);
+            process.exit(1);
+          }
 
-          if grep -q 'directory: "/workers/analytics"' .github/dependabot.yml; then
-            echo "Dependabot entry for /workers/analytics is forbidden due npm/pnpm mismatch."
-            exit 1
-          fi
+          const rootPkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          if (!String(rootPkg.packageManager || '').startsWith('pnpm@')) {
+            fail('Root packageManager must be pnpm@...');
+          }
+
+          const roots = ['workers', 'apps', 'packages', 'extensions'];
+          for (const root of roots) {
+            if (!fs.existsSync(root)) continue;
+            for (const entry of fs.readdirSync(root)) {
+              const pkgPath = path.join(root, entry, 'package.json');
+              if (!fs.existsSync(pkgPath)) continue;
+              const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+              const dep = pkg.dependencies?.aplikacja_epir;
+              const devDep = pkg.devDependencies?.aplikacja_epir;
+              if (dep === 'file:../..' || devDep === 'file:../..') {
+                fail(`Forbidden local root file dependency in ${pkgPath} (aplikacja_epir:file:../..).`);
+              }
+            }
+          }
+          EOF
+
+      - name: Validate dependabot target constraints
+        shell: python
+        run: |
+          import re
+          import sys
+          from pathlib import Path
+
+          text = Path(".github/dependabot.yml").read_text(encoding="utf-8")
+          lines = text.splitlines()
+
+          entries = []
+          current = None
+          for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("- package-ecosystem:"):
+              if current:
+                entries.append(current)
+              ecosystem = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+              current = {"ecosystem": ecosystem, "directory": None}
+              continue
+            if current and stripped.startswith("directory:"):
+              directory = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+              current["directory"] = directory
+          if current:
+            entries.append(current)
+
+          bad = [
+            e for e in entries
+            if e.get("ecosystem") == "npm" and e.get("directory") == "/workers/analytics"
+          ]
+          if bad:
+            sys.stderr.write("Dependabot npm entry for /workers/analytics is forbidden due npm/pnpm mismatch risk.\n")
+            sys.exit(1)
