@@ -1,0 +1,22 @@
+name: Deploy safety policy
+
+# Blokuje niebezpieczny deploy: workers_dev w prod, placeholdery/sekrety w [vars], brak bindingów.
+# Uruchamiane na każdym PR (wymagany check branch protection), nie tylko przy zmianie ścieżek wrangler.
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-policy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wrangler-prod-policy:
+    name: wrangler-prod-policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Wrangler production policy
+        run: python3 scripts/ci/validate-wrangler-prod-policy.py

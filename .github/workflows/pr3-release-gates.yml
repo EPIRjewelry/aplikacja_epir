@@ -1,0 +1,27 @@
+name: PR3 release gates
+
+# Bramki release (PR3): skan repozytorium pod kątem wyekspozowanych sekretów.
+# Polityka domeny / workers_dev / vars w wrangler.toml: job `wrangler-prod-policy` w deploy-policy.yml.
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: pr3-release-gates-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr3-secret-scan:
+    name: pr3-secret-scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Domyślna regułowa baza Gitleaks (konserwatywna); allowlist przez .gitleaks.toml przy FP.
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
