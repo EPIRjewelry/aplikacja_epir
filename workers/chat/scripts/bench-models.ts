@@ -2,7 +2,7 @@
  * workers/chat/scripts/bench-models.ts
  *
  * Benchmark harness porównujący warianty modeli dostępne za nagłówkiem
- * `X-Epir-Model-Variant` (admin-only). Uruchamia kanoniczny zestaw scenariuszy
+ * `X-Epir-Model-Variant` (wymaga `Authorization: Bearer` zgodnego z `EPIR_OPERATOR_PANEL_SECRET`, nie ze `EPIR_CHAT_SHARED_SECRET`).
  * przez endpoint `/chat/stream` i zbiera metryki z SSE: `stream_ready_ms`,
  * `first_byte_ms`, `stream_total_ms`, `prompt_tokens`, `cached_tokens`, `finish_reason`.
  *

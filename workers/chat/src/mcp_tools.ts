@@ -147,14 +147,6 @@ export const TOOL_SCHEMAS = {
           description: 'ID zapytania z whitelisty: Q1_CONVERSION_CHAT, Q2_CONVERSION_PATHS, Q3_TOP_CHAT_QUESTIONS, Q4_STOREFRONT_SEGMENTATION, Q5_TOP_PRODUCTS, Q6_CHAT_ENGAGEMENT, Q7_PRODUCT_TO_PURCHASE, Q8_DAILY_EVENTS, Q9_TOOL_USAGE, Q10_SESSION_DURATION',
           enum: ['Q1_CONVERSION_CHAT', 'Q2_CONVERSION_PATHS', 'Q3_TOP_CHAT_QUESTIONS', 'Q4_STOREFRONT_SEGMENTATION', 'Q5_TOP_PRODUCTS', 'Q6_CHAT_ENGAGEMENT', 'Q7_PRODUCT_TO_PURCHASE', 'Q8_DAILY_EVENTS', 'Q9_TOOL_USAGE', 'Q10_SESSION_DURATION'],
         },
-        dateFrom: {
-          type: 'number',
-          description: 'Opcjonalnie: początek zakresu dat (Unix ms)',
-        },
-        dateTo: {
-          type: 'number',
-          description: 'Opcjonalnie: koniec zakresu dat (Unix ms)',
-        },
       },
       required: ['queryId'],
     },
@@ -352,8 +344,6 @@ export const TOOL_SCHEMAS_SLIM = {
             'Q10_SESSION_DURATION',
           ],
         },
-        dateFrom: { type: 'number' },
-        dateTo: { type: 'number' },
       },
       required: ['queryId'],
     },

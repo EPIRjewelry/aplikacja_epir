@@ -283,7 +283,7 @@ function requireBigQueryS2SScopes(props: BigQueryS2SProps | undefined, scope: st
 
 async function executeRunAnalyticsQuery(
   env: Env,
-  body: { queryId?: string; dateFrom?: number; dateTo?: number },
+  body: { queryId?: string },
 ): Promise<
   | { ok: true; queryId: string; rows: Record<string, unknown>[] }
   | { ok: false; error: string; status: number }
@@ -305,7 +305,7 @@ async function executeRunAnalyticsQuery(
 
 /** S2S BigQuery whitelisted queries – wywoływane wyłącznie z `epir-art-jewellery-worker` przez service binding. */
 export class BigQueryBatchS2SRpc extends WorkerEntrypoint<Env, BigQueryS2SProps> {
-  async runAnalyticsQuery(args: { queryId?: string; dateFrom?: number; dateTo?: number }): Promise<
+  async runAnalyticsQuery(args: { queryId?: string }): Promise<
     | { ok: true; queryId: string; rows: Record<string, unknown>[] }
     | { ok: false; error: string; status: number }
   > {

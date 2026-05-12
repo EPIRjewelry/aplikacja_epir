@@ -58,7 +58,7 @@ import { STOREFRONTS, resolveStorefrontConfig } from './config/storefronts';
 import { chatPipelineLog } from './utils/chat-pipeline-log';
 
 /** Wywołanie run_analytics_query – tylko gdy channel=internal-dashboard (`BIGQUERY_BATCH_RPC` przez Workers RPC). */
-async function runAnalyticsQuery(env: Env, args: { queryId?: string; dateFrom?: number; dateTo?: number }): Promise<{ result?: unknown; error?: unknown }> {
+async function runAnalyticsQuery(env: Env, args: { queryId?: string }): Promise<{ result?: unknown; error?: unknown }> {
   const t0 = Date.now();
   const rpc = env.BIGQUERY_BATCH_RPC;
   if (!rpc) {
@@ -81,7 +81,7 @@ async function runAnalyticsQuery(env: Env, args: { queryId?: string; dateFrom?: 
     return { error: { code: -32602, message: 'queryId required' } };
   }
   try {
-    const data = await rpc.runAnalyticsQuery({ queryId, dateFrom: args.dateFrom, dateTo: args.dateTo });
+    const data = await rpc.runAnalyticsQuery({ queryId });
     if (!data.ok) {
       chatPipelineLog({
         phase: 'analytics_bigquery_tool',
@@ -3818,7 +3818,7 @@ async function streamAssistantResponse(
               call.arguments,
               async (safeArgs) => {
                 if (call.name === 'run_analytics_query') {
-                  return runAnalyticsQuery(env, safeArgs as { queryId?: string; dateFrom?: number; dateTo?: number });
+                  return runAnalyticsQuery(env, safeArgs as { queryId?: string });
                 }
                 const brandForMcp = (storefrontContext?.storefrontId === 'kazka' || storefrontContext?.storefrontId === 'zareczyny')
                   ? storefrontContext.storefrontId
@@ -4360,7 +4360,8 @@ export default {
 
     // --- Memory v2: GDPR erasure endpoint ---
     // DELETE /memory/customer/{customerId}
-    // Autoryzacja: nagłówek X-Admin-Key lub query `key` dopasowany do `EPIR_OPERATOR_PANEL_SECRET` albo webhook Shopify (patrz /webhooks/customers/redact).
+    // Autoryzacja: nagłówek `X-Admin-Key` dopasowany do `EPIR_OPERATOR_PANEL_SECRET`.
+    // Osobny przepływ Shopify: `POST /webhooks/customers/redact` (HMAC z `SHOPIFY_APP_SECRET`).
     if (request.method === 'DELETE' && url.pathname.startsWith('/memory/customer/')) {
       const headerKey = request.headers.get('X-Admin-Key')?.trim() ?? '';
       const expectedOp = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';

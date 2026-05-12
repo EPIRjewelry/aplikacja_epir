@@ -53,7 +53,7 @@ Wymagane sekrety backendowe:
 - `AI_GATEWAY_TOKEN` (nagłówek `cf-aig-authorization` do AI Gateway; model Groq idzie przez gateway, nie przez `Authorization: Bearer` z kluczem Groq)
 - `SHOPIFY_APP_SECRET`
 - `EPIR_CHAT_SHARED_SECRET`
-- `EPIR_OPERATOR_PANEL_SECRET` (panel operatorski: nagłówki `X-Admin-Key`, `Bearer` przy `X-Epir-Model-Variant`; nie jest sekretem S2S worker→worker — ten ruch jest na service bindings + `ctx.props`)
+- `EPIR_OPERATOR_PANEL_SECRET` (powierzchnie HTTP panelu: `X-Admin-Key`, `Bearer` przy `X-Epir-Model-Variant`; odrębnie od S2S czatu `EPIR_CHAT_SHARED_SECRET` oraz od RPC BigQuery, gdzie gateway przekazuje `ctx.props.scopes` na binding)
 - tokeny storefrontów używane przez worker, zależnie od konfiguracji:
   - `SHOPIFY_STOREFRONT_TOKEN`
   - `PUBLIC_STOREFRONT_API_TOKEN_KAZKA`

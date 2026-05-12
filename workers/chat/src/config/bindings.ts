@@ -46,11 +46,7 @@ export type AnalyticsS2SRpcStub = {
 
 /** Publiczny stub `BigQueryBatchS2SRpc` (`workers/bigquery-batch`). */
 export type BigQueryBatchRpcStub = {
-  runAnalyticsQuery(args: {
-    queryId?: string;
-    dateFrom?: number;
-    dateTo?: number;
-  }): Promise<
+  runAnalyticsQuery(args: { queryId?: string }): Promise<
     | { ok: true; queryId: string; rows: Record<string, unknown>[] }
     | { ok: false; error: string; status: number }
   >;
@@ -142,8 +138,9 @@ export interface Env {
   ANALYTICS_S2S_RPC?: AnalyticsS2SRpcStub;
   BIGQUERY_BATCH_RPC?: BigQueryBatchRpcStub;
   /**
-   * Sekret panelu operatorskiego (`X-Admin-Key`, `Authorization: Bearer` dla narzędzi wewnętrznych,
-   * np. nagłówek `X-Epir-Model-Variant`). Nie jest przekazywany do innych workerów — S2S używa service bindings + props.
+   * Sekret panelu operatorskiego dla powierzchni HTTP: `X-Admin-Key`, `Authorization: Bearer`
+   * (m.in. `X-Epir-Model-Variant`). Odczyty BigQuery z czatu idą przez Workers RPC (`BIGQUERY_BATCH_RPC`) z `ctx.props.scopes`,
+   * nie przez ten sekret.
    */
   EPIR_OPERATOR_PANEL_SECRET?: string;
 }
