@@ -5,7 +5,7 @@ import { MODEL_VARIANTS, resolveModelVariant } from '../src/config/model-params'
 const { resolveAdminModelVariantFromHeaders } = __test as unknown as {
   resolveAdminModelVariantFromHeaders: (
     headers: { get(name: string): string | null },
-    env: { ADMIN_KEY?: string },
+    env: { EPIR_OPERATOR_PANEL_SECRET?: string },
     context?: { hasImage?: boolean },
   ) => typeof MODEL_VARIANTS.default | null;
 };
@@ -23,12 +23,12 @@ function fakeHeaders(entries: Record<string, string>) {
 }
 
 describe('resolveAdminModelVariantFromHeaders', () => {
-  const adminKey = 'test-admin-key-42';
+  const panelSecret = 'test-operator-panel-secret-42chars_min_len___';
 
   it('returns null when X-Epir-Model-Variant header is absent', () => {
     const result = resolveAdminModelVariantFromHeaders(
-      fakeHeaders({ Authorization: `Bearer ${adminKey}` }),
-      { ADMIN_KEY: adminKey },
+      fakeHeaders({ Authorization: `Bearer ${panelSecret}` }),
+      { EPIR_OPERATOR_PANEL_SECRET: panelSecret },
     );
     expect(result).toBeNull();
   });
@@ -36,29 +36,29 @@ describe('resolveAdminModelVariantFromHeaders', () => {
   it('returns null when Authorization header is absent (buyer-facing guard)', () => {
     const result = resolveAdminModelVariantFromHeaders(
       fakeHeaders({ 'X-Epir-Model-Variant': 'k26' }),
-      { ADMIN_KEY: adminKey },
+      { EPIR_OPERATOR_PANEL_SECRET: panelSecret },
     );
     expect(result).toBeNull();
   });
 
-  it('returns null when ADMIN_KEY is misconfigured (missing env)', () => {
+  it('returns null when EPIR_OPERATOR_PANEL_SECRET is missing from env', () => {
     const result = resolveAdminModelVariantFromHeaders(
       fakeHeaders({
         'X-Epir-Model-Variant': 'k26',
-        Authorization: `Bearer ${adminKey}`,
+        Authorization: `Bearer ${panelSecret}`,
       }),
       {},
     );
     expect(result).toBeNull();
   });
 
-  it('returns null when bearer token does not match ADMIN_KEY', () => {
+  it('returns null when bearer token does not match operator panel secret', () => {
     const result = resolveAdminModelVariantFromHeaders(
       fakeHeaders({
         'X-Epir-Model-Variant': 'k26',
         Authorization: `Bearer wrong-key`,
       }),
-      { ADMIN_KEY: adminKey },
+      { EPIR_OPERATOR_PANEL_SECRET: panelSecret },
     );
     expect(result).toBeNull();
   });
@@ -67,9 +67,9 @@ describe('resolveAdminModelVariantFromHeaders', () => {
     const result = resolveAdminModelVariantFromHeaders(
       fakeHeaders({
         'X-Epir-Model-Variant': 'definitely-not-a-variant',
-        Authorization: `Bearer ${adminKey}`,
+        Authorization: `Bearer ${panelSecret}`,
       }),
-      { ADMIN_KEY: adminKey },
+      { EPIR_OPERATOR_PANEL_SECRET: panelSecret },
     );
     expect(result).toBeNull();
   });
@@ -78,9 +78,9 @@ describe('resolveAdminModelVariantFromHeaders', () => {
     const result = resolveAdminModelVariantFromHeaders(
       fakeHeaders({
         'X-Epir-Model-Variant': 'k26',
-        Authorization: `Bearer ${adminKey}`,
+        Authorization: `Bearer ${panelSecret}`,
       }),
-      { ADMIN_KEY: adminKey },
+      { EPIR_OPERATOR_PANEL_SECRET: panelSecret },
     );
     expect(result).not.toBeNull();
     expect(result!.id).toBe(MODEL_VARIANTS.k26.id);
@@ -90,9 +90,9 @@ describe('resolveAdminModelVariantFromHeaders', () => {
     const result = resolveAdminModelVariantFromHeaders(
       fakeHeaders({
         'X-Epir-Model-Variant': 'glm_flash',
-        Authorization: `Bearer ${adminKey}`,
+        Authorization: `Bearer ${panelSecret}`,
       }),
-      { ADMIN_KEY: adminKey },
+      { EPIR_OPERATOR_PANEL_SECRET: panelSecret },
       { hasImage: true },
     );
     expect(result).toBeNull();
@@ -102,9 +102,9 @@ describe('resolveAdminModelVariantFromHeaders', () => {
     const result = resolveAdminModelVariantFromHeaders(
       fakeHeaders({
         'X-Epir-Model-Variant': 'glm_flash',
-        Authorization: `Bearer ${adminKey}`,
+        Authorization: `Bearer ${panelSecret}`,
       }),
-      { ADMIN_KEY: adminKey },
+      { EPIR_OPERATOR_PANEL_SECRET: panelSecret },
       { hasImage: false },
     );
     expect(result).not.toBeNull();
@@ -115,9 +115,9 @@ describe('resolveAdminModelVariantFromHeaders', () => {
     const result = resolveAdminModelVariantFromHeaders(
       fakeHeaders({
         'X-Epir-Model-Variant': 'qwen3_30b_a3b',
-        Authorization: `Bearer ${adminKey}`,
+        Authorization: `Bearer ${panelSecret}`,
       }),
-      { ADMIN_KEY: adminKey },
+      { EPIR_OPERATOR_PANEL_SECRET: panelSecret },
       { hasImage: false },
     );
     expect(result).not.toBeNull();
@@ -128,9 +128,9 @@ describe('resolveAdminModelVariantFromHeaders', () => {
     const result = resolveAdminModelVariantFromHeaders(
       fakeHeaders({
         'X-Epir-Model-Variant': 'qwen3_30b_a3b',
-        Authorization: `Bearer ${adminKey}`,
+        Authorization: `Bearer ${panelSecret}`,
       }),
-      { ADMIN_KEY: adminKey },
+      { EPIR_OPERATOR_PANEL_SECRET: panelSecret },
       { hasImage: true },
     );
     expect(result).toBeNull();

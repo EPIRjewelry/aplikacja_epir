@@ -9,9 +9,9 @@
  *                             public URL comes from Cloudflare dashboard / workers.dev — set explicitly per environment.
  *
  * Optional env:
- *   SMOKE_ANALYTICS_ADMIN_KEY — Must match workers/analytics secret ADMIN_KEY. Required unless SKIP_D1_VERIFY=1.
- *   SKIP_D1_VERIFY           — Set to "1" to only assert POST /pixel/events returns 200 (dev / no admin key).
- *                              Default in CI: verify D1 via GET /pixel/events with x-d1-bookmark from POST (D1 Sessions API).
+ *   SMOKE_EPIR_CHAT_SHARED_SECRET — Must match workers/chat secret EPIR_CHAT_SHARED_SECRET (X-EPIR-SHARED-SECRET + storefront/channel dla GET read-back). Required unless SKIP_D1_VERIFY=1.
+ *   SKIP_D1_VERIFY           — Set to "1" to only assert POST /pixel/events returns 200 (dev / smoke S2S absent).
+ *                              Default in CI: verify D1 via GET /pixel/events with x-d1-bookmark z POST oraz nagłówkami S2S jak /chat.
  *   SMOKE_HTTP_TIMEOUT_MS    — Per-request timeout (default 15000).
  *   SMOKE_HTTP_MAX_ATTEMPTS  — Max tries per logical request incl. backoff for 429 / transient gateways (default 5).
  *
@@ -69,7 +69,7 @@ function redactSmokeBodyText(text, maxChars = 8000) {
   out = out.replace(/Bearer\s+[\w._~+/=-]{8,}\.[\w._~+/=-]+\.[\w._~+/=-]+/gi, 'Bearer [REDACTED_JWT]');
   out = out.replace(/Bearer\s+[\w.-]{24,}/gi, 'Bearer [REDACTED_TOKEN]');
   out = out.replace(/"authorization"\s*:\s*"[^"]+"/gi, '"authorization":"[REDACTED]"');
-  out = out.replace(/\bADMIN_KEY[=:]\s*[\w-]+\b/gi, 'ADMIN_KEY=[REDACTED]');
+  out = out.replace(/\b(EPIR_OPERATOR_PANEL_SECRET|EPIR_CHAT_SHARED_SECRET)[=:]\s*[\w.-]+\b/gi, '[REDACTED]');
   return out;
 }
 
@@ -265,7 +265,7 @@ async function checkRagHealth(ragHealthUrl) {
   }
 }
 
-async function checkAnalyticsPipeline(base, adminKey, correlationId) {
+async function checkAnalyticsPipeline(base, smokeChatSharedSecret, correlationId) {
   console.log('[smoke] 3/3 analytics: POST /pixel/events synthetic event (D1 bookmark from response)');
   const pixelUrl = `${base}/pixel/events`;
   const payload = {
@@ -321,8 +321,8 @@ async function checkAnalyticsPipeline(base, adminKey, correlationId) {
     return;
   }
 
-  if (!adminKey) {
-    console.error('[smoke] fail-closed: SMOKE_ANALYTICS_ADMIN_KEY required when SKIP_D1_VERIFY is not set');
+  if (!smokeChatSharedSecret) {
+    console.error('[smoke] fail-closed: SMOKE_EPIR_CHAT_SHARED_SECRET required when SKIP_D1_VERIFY is not set');
     process.exit(1);
   }
 
@@ -332,11 +332,13 @@ async function checkAnalyticsPipeline(base, adminKey, correlationId) {
   let readPollBackoffIdx = -1;
 
   for (let attempt = 1; attempt <= maxReadAttempts; attempt += 1) {
-    console.log(`[smoke] 3/3 analytics: GET /pixel/events (attempt ${attempt}/${maxReadAttempts}, x-d1-bookmark propagated)`);
+    console.log(`[smoke] 3/3 analytics: GET /pixel/events (attempt ${attempt}/${maxReadAttempts}, x-d1-bookmark propagated, S2S)`);
 
     const evHeaders = {
       Accept: 'application/json',
-      Authorization: `Bearer ${adminKey}`,
+      'X-EPIR-SHARED-SECRET': smokeChatSharedSecret,
+      'X-EPIR-STOREFRONT-ID': 'ci-smoke',
+      'X-EPIR-CHANNEL': 'ci-smoke-readback',
     };
     if (postBookmark) {
       evHeaders['x-d1-bookmark'] = postBookmark;
@@ -403,15 +405,15 @@ async function main() {
   const base = normalizeBase(mustEnv('SMOKE_BASE_URL'));
   const ragHealthUrl = mustEnv('SMOKE_RAG_HEALTH_URL');
 
-  const adminKey = skipD1
-    ? (process.env.SMOKE_ANALYTICS_ADMIN_KEY || '').trim()
-    : mustEnv('SMOKE_ANALYTICS_ADMIN_KEY');
+  const smokeS2s = skipD1
+    ? (process.env.SMOKE_EPIR_CHAT_SHARED_SECRET || '').trim()
+    : mustEnv('SMOKE_EPIR_CHAT_SHARED_SECRET');
 
   await checkIngress(base);
   await checkRagHealth(ragHealthUrl);
 
   const correlationId = `smoke_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
-  await checkAnalyticsPipeline(base, adminKey || null, correlationId);
+  await checkAnalyticsPipeline(base, smokeS2s || null, correlationId);
 
   console.log('[smoke] all checks passed');
 }

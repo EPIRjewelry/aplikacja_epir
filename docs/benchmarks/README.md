@@ -7,15 +7,15 @@ Katalog na wyniki benchmarku wariantów modelu (`scripts/bench-models.ts`).
 ```bash
 tsx workers/chat/scripts/bench-models.ts \
   --endpoint https://chat.epir-art-silver-jewellery.workers.dev \
-  --admin-key "$ADMIN_KEY" \
+  --operator-secret "$EPIR_OPERATOR_PANEL_SECRET" \
   --variants default,k26,glm_flash \
   --out docs/benchmarks/$(date +%F)-models.md \
   --csv docs/benchmarks/$(date +%F)-models.csv \
   --repeats 3
 ```
 
-Wymaga ustawionego `ADMIN_KEY` (sprawdź `wrangler secret list` dla workera `chat`).
-`X-Epir-Model-Variant` działa wyłącznie z `Authorization: Bearer ${ADMIN_KEY}`.
+Wymaga ustawionego `EPIR_OPERATOR_PANEL_SECRET` (sprawdź `wrangler secret list` dla workera `chat`).
+`X-Epir-Model-Variant` działa wyłącznie z `Authorization: Bearer` dopasowanym do tego sekretu panelu operatorskiego.
 
 ## Co mierzymy
 

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { env, SELF } from 'cloudflare:test';
 import { createHmac } from 'node:crypto';
+import { handleWarehouseChartsGet } from './cqrs/serving-charts';
+import type { WarehouseCqrsEnv } from './cqrs/types';
 
 const WEBHOOK_TEST_SECRET = 'dev-placeholder-override-with-wrangler-secret-put';
 
@@ -578,10 +580,26 @@ describe('Analytics Worker - /pixel/count endpoint', () => {
 });
 
 describe('Analytics Worker - /pixel/events endpoint', () => {
-    const ADMIN = 'epir_vitest_analytics_admin_secret_key_32char_min';
+    it('HTTP GET is disabled — privileged reads require service binding RPC', async () => {
+        await SELF.fetch('https://example.com/pixel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'rpc_gate_check',
+                data: {
+                    customerId: 'test-customer',
+                    sessionId: 'test-session',
+                },
+            }),
+        });
 
-    it('should return recent events', async () => {
-        // Insert test event
+        const response = await SELF.fetch('https://example.com/pixel/events?limit=10');
+        expect(response.status).toBe(404);
+        const result = await response.json() as { error?: string };
+        expect(result.error).toBe('privileged_read_requires_service_binding_rpc');
+    });
+
+    it('POST /pixel/events persists events observable via D1', async () => {
         await SELF.fetch('https://example.com/pixel', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -593,22 +611,17 @@ describe('Analytics Worker - /pixel/events endpoint', () => {
                     productVariant: {
                         product: {
                             id: 'product-123',
-                            title: 'Test Product'
-                        }
-                    }
-                }
-            })
+                            title: 'Test Product',
+                        },
+                    },
+                },
+            }),
         });
 
-        const response = await SELF.fetch('https://example.com/pixel/events?limit=10', {
-            headers: { Authorization: `Bearer ${ADMIN}` },
-        });
-        expect(response.status).toBe(200);
-
-        const result = await response.json();
-        expect(result).toHaveProperty('events');
-        expect(Array.isArray(result.events)).toBe(true);
-        expect(result.events.length).toBeGreaterThan(0);
+        const row = await env.DB.prepare('SELECT COUNT(*) as c FROM pixel_events WHERE raw_data LIKE ?')
+            .bind('%product_viewed%')
+            .first<{ c: number }>();
+        expect(row?.c ?? 0).toBeGreaterThan(0);
     });
 
     it('POST /pixel/events aliases POST /pixel', async () => {
@@ -627,13 +640,80 @@ describe('Analytics Worker - /pixel/events endpoint', () => {
         const json = await response.json() as { ok?: boolean };
         expect(json.ok).toBe(true);
 
-        const verify = await SELF.fetch('https://example.com/pixel/events?limit=5', {
-            headers: { Authorization: `Bearer ${ADMIN}` },
-        });
-        expect(verify.status).toBe(200);
-        const list = await verify.json() as { events: Array<{ event?: string }> };
-        const hit = list.events.some((e) => e.event === 'vitest_pixel_events_alias');
-        expect(hit).toBe(true);
+        const row = await env.DB.prepare('SELECT COUNT(*) as c FROM pixel_events WHERE raw_data LIKE ?')
+            .bind('%vitest_pixel_events_alias%')
+            .first<{ c: number }>();
+        expect(row?.c ?? 0).toBeGreaterThan(0);
+    });
+});
+
+function makeWarehouseCqrsTestEnv(): WarehouseCqrsEnv {
+    return {
+        DB: env.DB,
+        CHART_EDGE_CACHE: env.CHART_EDGE_CACHE,
+        WAREHOUSE_CQRS_WF: {
+            async create() {
+                return { id: 'vitest-workflow-stub' };
+            },
+        },
+    };
+}
+
+describe('Analytics Worker - CQRS warehouse charts (serving)', () => {
+    beforeAll(async () => {
+        await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS warehouse_serving_daily (
+                snapshot_date TEXT PRIMARY KEY,
+                event_rows INTEGER NOT NULL,
+                approx_sessions REAL NOT NULL,
+                chart_json TEXT NOT NULL,
+                source_engine TEXT NOT NULL DEFAULT 'r2_sql',
+                computed_at INTEGER NOT NULL
+            )
+        `).run();
+    });
+
+    afterEach(async () => {
+        await env.DB.prepare('DELETE FROM warehouse_serving_daily').run();
+        await env.CHART_EDGE_CACHE!.delete(`cqrs:chart:v1:2099-06-15`).catch(() => {});
+    });
+
+    it('worker HTTP GET /internal/warehouse/charts returns 404 (RPC only)', async () => {
+        const res = await SELF.fetch('https://example.com/internal/warehouse/charts?snapshot_date=2099-01-01');
+        expect(res.status).toBe(404);
+        const j = await res.json() as { error?: string };
+        expect(j.error).toBe('privileged_read_requires_service_binding_rpc');
+    });
+
+    it('handleWarehouseChartsGet serves JSON; subsequent call hits KV edge', async () => {
+        const snapshot = '2099-06-15';
+        const chartJson = JSON.stringify({ version: 1, snapshot_date: snapshot, series: [] });
+        await env.DB.prepare(
+            `INSERT INTO warehouse_serving_daily (snapshot_date, event_rows, approx_sessions, chart_json, computed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)`,
+        )
+            .bind(snapshot, 10, 3.5, chartJson, Date.now())
+            .run();
+
+        const cq = makeWarehouseCqrsTestEnv();
+        const cors: Record<string, string> = { 'Access-Control-Allow-Origin': '*' };
+
+        const res = await handleWarehouseChartsGet(
+            new Request(`https://example.com/internal/warehouse/charts?snapshot_date=${snapshot}`),
+            cq,
+            cors,
+        );
+        expect(res.status).toBe(200);
+        const src = res.headers.get('X-EPIR-Chart-Source');
+        expect(src === 'd1-materialized' || src === 'kv-edge').toBe(true);
+
+        const res2 = await handleWarehouseChartsGet(
+            new Request(`https://example.com/internal/warehouse/charts?snapshot_date=${snapshot}`),
+            cq,
+            cors,
+        );
+        expect(res2.status).toBe(200);
+        expect(res2.headers.get('X-EPIR-Chart-Source')).toBe('kv-edge');
     });
 });
 

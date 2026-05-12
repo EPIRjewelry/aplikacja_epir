@@ -103,15 +103,33 @@ binding = "AI"
 binding = "RAG_WORKER"
 service = "epir-rag-worker"
 
-# Gateway pattern: Service binding to analytics-worker (zamiast zewnętrznego fetch)
+# Gateway: publiczny skrypt Workera czatu nadal proxuje POST /pixel* do analytics przez HTTP binding.
 [[services]]
 binding = "ANALYTICS_WORKER"
 service = "epir-analityc-worker"
 
-# Analytics query (run_analytics_query) – internal only, wymaga ADMIN_KEY
+# S2S chronione odczyty — RPC + props (bez statycznego shared secret dla worker→worker na krawędzi aplikacji).
 [[services]]
-binding = "BIGQUERY_BATCH"
+binding = "ANALYTICS_S2S_RPC"
+service = "epir-analityc-worker"
+entrypoint = "AnalyticsS2SRpc"
+
+  [services.props]
+  scopes = [
+    "analytics.charts.read",
+    "analytics.pixel_events.read",
+    "analytics.journey.read",
+    "analytics.sessions.read",
+]
+
+# narzędzie run_analytics_query (whitelist SQL) wyłącznie przez Workers RPC (`ctx.props`)
+[[services]]
+binding = "BIGQUERY_BATCH_RPC"
 service = "epir-bigquery-batch"
+entrypoint = "BigQueryBatchS2SRpc"
+
+  [services.props]
+  scopes = ["bigquery.analytics_query"]
 
 [observability]
 enabled = true

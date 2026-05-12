@@ -19,10 +19,18 @@ workers_dev = false
 [vars]
 # `null` = literal Origin string from Shopify Web Pixel sandbox (opaque origin)
 ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://zareczyny.epirbizuteria.pl,https://epir-art-silver-jewellery.myshopify.com,https://asystent.epirbizuteria.pl,null"
+# CQRS: R2 SQL → D1 materialized charts (Iceberg warehouse bucket name from R2 Data Catalog; not D1 database id)
+R2_SQL_ACCOUNT_ID = "73283c24dc79f92edef30dcdbc98f230"
+R2_SQL_WAREHOUSE_BUCKET = "epir-analytics-iceberg-warehouse"
+WAREHOUSE_SQL_NAMESPACE = "analytics"
+WAREHOUSE_SQL_TABLE = "epir_pixel_events_raw"
+WAREHOUSE_DISTINCT_COLUMN = "session_id"
 # Webhook secret:
 # wrangler secret put SHOPIFY_WEBHOOK_SECRET
-# Admin key for protected read endpoints (/pixel/events, /journey, /sessions):
-# wrangler secret put ADMIN_KEY
+# Chronione odczyty CQRS/charts/pixel są wyłączone przez publiczny HTTP — wyłącznie Workers RPC (`AnalyticsS2SRpc`)
+# przez service bindings z czatu (`ctx.props`; żadnego statycznego klucza współdzielonego dla S2S w kodzie analytics).
+# R2 SQL read token (Workers R2 SQL Read + Data Catalog + storage read per Cloudflare docs):
+# wrangler secret put R2_SQL_API_TOKEN
 
 [[d1_databases]]
 binding = "DB"
@@ -37,6 +45,20 @@ script_name = "epir-art-jewellery-worker"
 
 # AI_WORKER removed per Cloudflare architecture plan - analytics gracefully skips
 # AI analysis when env.AI_WORKER is undefined (analyzeCustomerBehaviorWithAI returns false)
+
+# Nightly CQRS materialization (after BigQuery batch cron at 02:00 UTC)
+[triggers]
+crons = ["30 3 * * *"]
+
+[[kv_namespaces]]
+binding = "CHART_EDGE_CACHE"
+id = "c2ea110f6df74080bb7a026546f2acfa"
+preview_id = "379e017a2e9543a1847bdb12b7bddf06"
+
+[[workflows]]
+name = "epir-warehouse-cqrs-materialize"
+binding = "WAREHOUSE_CQRS_WF"
+class_name = "WarehouseCqrsWorkflow"
 
 [observability]
 enabled = true

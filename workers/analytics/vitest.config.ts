@@ -9,9 +9,9 @@ export default defineWorkersConfig({
           compatibilityDate: '2025-09-30',
           compatibilityFlags: ['nodejs_compat'],
           d1Databases: ['DB'],
+          kvNamespaces: ['CHART_EDGE_CACHE'],
           bindings: {
             SHOPIFY_WEBHOOK_SECRET: 'dev-placeholder-override-with-wrangler-secret-put',
-            ADMIN_KEY: 'epir_vitest_analytics_admin_secret_key_32char_min',
           },
         },
       },

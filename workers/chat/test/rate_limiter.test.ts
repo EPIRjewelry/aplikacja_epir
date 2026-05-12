@@ -40,8 +40,9 @@ describe('RateLimiterDO persistence', () => {
     const checkBody = (await checkResponse.json()) as { tokens: number; maxTokens: number };
 
     expect(checkBody.maxTokens).toBe(40);
-    expect(checkBody.tokens).toBeLessThanOrEqual(35);
-    expect(checkBody.tokens).toBeGreaterThanOrEqual(0);
+    // Consume left 35 persisted; refillTokens() may run before check (real time), so tokens ∈ [35, max].
+    expect(checkBody.tokens).toBeGreaterThanOrEqual(35);
+    expect(checkBody.tokens).toBeLessThanOrEqual(40);
   });
 
   it('preserves consume/check/reset semantics after rehydration', async () => {

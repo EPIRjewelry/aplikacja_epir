@@ -19,6 +19,43 @@ type QueueProducer<T = unknown> = {
   sendBatch?: (messages: Array<{ body: T; contentType?: string; delaySeconds?: number }>) => Promise<void>;
 };
 
+/** Odpowiedź RPC (Workers service binding → `AnalyticsS2SRpc`) rekonstruowana na `Response` w czacie. */
+export type RpcSerializedHttpResponse = {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+};
+
+/** Publiczny stub `AnalyticsS2SRpc` (`workers/analytics` entrypoint workers). */
+export type AnalyticsS2SRpcStub = {
+  getWarehouseCharts(snapshotDate?: string | null, d1Bookmark?: string | null): Promise<RpcSerializedHttpResponse>;
+  getPixelEvents(limit?: number | null, d1Bookmark?: string | null): Promise<RpcSerializedHttpResponse>;
+  getCustomerJourney(args: {
+    d1Bookmark?: string | null;
+    customerId?: string | null;
+    sessionId?: string | null;
+    limit?: number | null;
+  }): Promise<RpcSerializedHttpResponse>;
+  getCustomerSessions(args: {
+    d1Bookmark?: string | null;
+    customerId?: string | null;
+    limit?: number | null;
+  }): Promise<RpcSerializedHttpResponse>;
+};
+
+/** Publiczny stub `BigQueryBatchS2SRpc` (`workers/bigquery-batch`). */
+export type BigQueryBatchRpcStub = {
+  runAnalyticsQuery(args: {
+    queryId?: string;
+    dateFrom?: number;
+    dateTo?: number;
+  }): Promise<
+    | { ok: true; queryId: string; rows: Record<string, unknown>[] }
+    | { ok: false; error: string; status: number }
+  >;
+};
+
 export interface Env {
   // Durable Objects
   SESSION_DO: DurableObjectNamespace;
@@ -102,8 +139,13 @@ export interface Env {
 
   RAG_WORKER?: Fetcher;
   ANALYTICS_WORKER?: Fetcher;
-  BIGQUERY_BATCH?: Fetcher;
-  ADMIN_KEY?: string;
+  ANALYTICS_S2S_RPC?: AnalyticsS2SRpcStub;
+  BIGQUERY_BATCH_RPC?: BigQueryBatchRpcStub;
+  /**
+   * Sekret panelu operatorskiego (`X-Admin-Key`, `Authorization: Bearer` dla narzędzi wewnętrznych,
+   * np. nagłówek `X-Epir-Model-Variant`). Nie jest przekazywany do innych workerów — S2S używa service bindings + props.
+   */
+  EPIR_OPERATOR_PANEL_SECRET?: string;
 }
 
 export const REQUIRED_SECRETS = [] as const;
@@ -120,6 +162,7 @@ export const OPTIONAL_SECRETS = [
   'X-EPIR-SHARED-SECRET',
   'GCP_SERVICE_ACCOUNT_KEY',
   'AI_GATEWAY_TOKEN',
+  'EPIR_OPERATOR_PANEL_SECRET',
 ] as const;
 
 export const REQUIRED_VARS = ['SHOP_DOMAIN', 'ALLOWED_ORIGIN'] as const;
