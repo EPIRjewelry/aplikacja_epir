@@ -32,7 +32,7 @@ Format Harmony dla `groq/openai/gpt-oss-120b` jest spójny z konfiguracją i par
 | Parser SSE (worker) | **Uwaga** | Kanoniczny pełny parser: `createGroqStreamTransform` w `ai-client.ts`. Dodatkowo istnieje uproszczony `streamGroqResponse` (tylko `delta.content` → string) — **nie** używany z `index.ts`; ścieżka legacy / eksport. |
 | Parser klienta | PASS | Jeden `processSSEStream` w `extensions/asystent-klienta/assets/assistant-runtime.js` |
 | ESLint | N/A | W `workers/chat/package.json` brak skryptu `lint` — pominięto |
-| `tsc` | **Częściowo** | Błędy wyłącznie w `test/*.ts` (pre-existing); `src/**` bez błędów w logu `tsc` |
+| `tsc` | **Częściowo** | Pełny `tsconfig.json` obejmuje `test/**` → exit 2 (pre-existing). **`tsconfig.src.json`** (tylko `src/**`) → exit 0. |
 
 ---
 
