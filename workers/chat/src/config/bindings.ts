@@ -139,7 +139,7 @@ export interface Env {
   BIGQUERY_BATCH_RPC?: BigQueryBatchRpcStub;
   /**
    * Sekret panelu operatorskiego dla powierzchni HTTP: `X-Admin-Key`, `Authorization: Bearer`
-   * (m.in. `X-Epir-Model-Variant`). Odczyty BigQuery z czatu idą przez Workers RPC (`BIGQUERY_BATCH_RPC`) z `ctx.props.scopes`,
+   * (m.in. `X-Epir-Model-Variant`). Odczyty whitelist `run_analytics_query` (R2 SQL) idą przez Workers RPC (`BIGQUERY_BATCH_RPC`) z `ctx.props.scopes`,
    * nie przez ten sekret.
    */
   EPIR_OPERATOR_PANEL_SECRET?: string;

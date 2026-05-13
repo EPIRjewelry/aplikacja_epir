@@ -40,9 +40,11 @@ wrangler secret put AI_GATEWAY_TOKEN
 wrangler secret put SHOPIFY_APP_SECRET
 
 cd d:\aplikacja_epir\workers\bigquery-batch
-wrangler secret put GOOGLE_CLIENT_EMAIL
-wrangler secret put GOOGLE_PRIVATE_KEY
-wrangler secret put GOOGLE_PROJECT_ID
+# Pipelines (eksport D1 → Iceberg) oraz R2 SQL (`run_analytics_query`):
+# wrangler secret put PIPELINE_PIXEL_INGEST_URL
+# wrangler secret put PIPELINE_MESSAGES_INGEST_URL
+# wrangler secret put R2_SQL_API_TOKEN
+# (opcjonalnie) wrangler secret put PIPELINE_INGEST_TOKEN
 
 # 3. RAG worker (w aplikacja_epir – deploy.ps1 go deployuje przed chat; ręcznie tylko gdy chcesz zaktualizować sam RAG)
 cd d:\aplikacja_epir\workers\rag-worker

@@ -138,7 +138,8 @@ export const TOOL_SCHEMAS = {
 
   run_analytics_query: {
     name: 'run_analytics_query',
-    description: 'Wykonuje whitelistowane zapytanie analityczne zgodne z kanonicznym kontraktem danych EPIR. Dostępne TYLKO dla internal-dashboard. Zwraca wyniki z BigQuery (epir_pixel_events_raw, messages_raw).',
+    description:
+      'Wykonuje whitelistowane zapytanie analityczne zgodne z kanonicznym kontraktem danych EPIR. Dostępne TYLKO dla internal-dashboard. Zwraca wyniki z R2 SQL nad tabelami Iceberg (odpowiedniki epir_pixel_events_raw i messages_raw w katalogu R2 Data Catalog).',
     parameters: {
       type: 'object',
       properties: {
@@ -325,7 +326,8 @@ export const TOOL_SCHEMAS_SLIM = {
 
   run_analytics_query: {
     name: 'run_analytics_query',
-    description: 'Wykonuje whitelistowane zapytanie analityczne (internal-dashboard only).',
+    description:
+      'Wykonuje whitelistowane zapytanie analityczne (internal-dashboard only). Wyniki z R2 SQL / Iceberg (Workers RPC do epir-bigquery-batch).',
     parameters: {
       type: 'object',
       properties: {

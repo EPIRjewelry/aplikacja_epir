@@ -58,7 +58,7 @@ import { callMcpToolDirect, handleMcpRequest } from './mcp_server';
 import { STOREFRONTS, resolveStorefrontConfig } from './config/storefronts';
 import { chatPipelineLog } from './utils/chat-pipeline-log';
 
-/** Wywołanie run_analytics_query – tylko gdy channel=internal-dashboard (`BIGQUERY_BATCH_RPC` przez Workers RPC). */
+/** Wywołanie run_analytics_query – tylko gdy channel=internal-dashboard (`BIGQUERY_BATCH_RPC` → R2 SQL whitelist). */
 async function runAnalyticsQuery(env: Env, args: { queryId?: string }): Promise<{ result?: unknown; error?: unknown }> {
   const t0 = Date.now();
   const rpc = env.BIGQUERY_BATCH_RPC;

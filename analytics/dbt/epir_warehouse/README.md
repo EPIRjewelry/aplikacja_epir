@@ -5,9 +5,9 @@ Transformacje na danych BigQuery dla EPIR (staging → później marts). Nie zas
 ## Krok C — weryfikacja przed pierwszym runem dbt
 
 1. **D1** (`jewelry-analytics-db`): czy są wiersze w `pixel_events` (sklep generuje ruch).
-2. **Sekrety** workera `epir-bigquery-batch`: `GOOGLE_PROJECT_ID`, email + klucz SA z uprawnieniem do **BigQuery Data Editor** (insert) na docelowym projekcie.
+2. **Eksport** z D1 do hurtowni odbywa się workerm `epir-bigquery-batch` przez **Pipelines** (nie przez BigQuery). Patrz `docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md`.
 3. **Cron** batcha: czy job się wykonuje (logi Cloudflare).
-4. **BigQuery**: po pierwszym udanym eksporcie powinna pojawić się tabela **`epir_pixel_events_raw`** (pierwszy insert tworzy schemat zgodny z payloadem batcha). Zapytanie kontrolne:
+4. **dbt na BigQuery** (osobna ścieżka): jeśli ładujesz dane z GCP, po eksporcie do BQ (np. z innego narzędzia) powinna istnieć tabela **`epir_pixel_events_raw`**. Zapytanie kontrolne:
 
 ```sql
 SELECT COUNT(*) AS n

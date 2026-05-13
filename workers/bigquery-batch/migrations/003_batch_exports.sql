@@ -1,4 +1,4 @@
--- Migration 003: batch_exports – śledzenie ostatnich eksportów do BigQuery
+-- Migration 003: batch_exports – śledzenie ostatnich eksportów do hurtowni (Pipelines / Iceberg)
 -- Tabela w DB (jewelry-analytics-db) – pojedynczy wiersz stanu
 
 CREATE TABLE IF NOT EXISTS batch_exports (

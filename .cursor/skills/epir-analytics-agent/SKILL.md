@@ -1,6 +1,6 @@
 ---
 name: epir-analytics-agent
-description: EPIR Analytics Agent (EAA) – analityka zdarzeń, Web Pixel, worker analytics, BigQuery batch, schematy zdarzeń i spójność session_id z lejkiem koszyka. Używać gdy prosi o pixel_events, BigQuery, schemat SQL analityki, lejek zakupowy, _epir_session_id, workers/analytics lub epir-bigquery-batch.
+description: EPIR Analytics Agent (EAA) – analityka zdarzeń, Web Pixel, worker analytics, Pipelines/Iceberg batch (epir-bigquery-batch), R2 SQL, schematy zdarzeń i spójność session_id z lejkiem koszyka. Używać gdy prosi o pixel_events, R2 SQL, Pipelines, schemat SQL analityki, lejek zakupowy, _epir_session_id, workers/analytics lub epir-bigquery-batch.
 ---
 
 # EPIR Analytics Agent (EAA) – Skill

@@ -29,11 +29,22 @@ binding = "DB_CHATBOT"
 database_name = "ai-assistant-sessions-db"
 database_id = "475a1cb7-f1b5-47ba-94ed-40fd64c32451"
 
-# Sekrety BigQuery (wymagane do eksportu):
-# wrangler secret put GOOGLE_CLIENT_EMAIL
-# wrangler secret put GOOGLE_PRIVATE_KEY
-# wrangler secret put GOOGLE_PROJECT_ID
-# run_analytics_query: wyłącznie Workers RPC (`BigQueryBatchS2SRpc`) z czatu przez service binding (`ctx.props`).
+# Sekrety Pipelines (HTTP ingest D1 → Iceberg):
+# wrangler secret put PIPELINE_PIXEL_INGEST_URL    # https://{stream-id}.ingest.cloudflare.com
+# wrangler secret put PIPELINE_MESSAGES_INGEST_URL
+# wrangler secret put PIPELINE_INGEST_TOKEN       # opcjonalny Bearer (Workers Pipelines Send)
+#
+# R2 SQL — `run_analytics_query` (Iceberg w tym samym katalogu co CQRS w `epir-analityc-worker`):
+# wrangler secret put R2_SQL_API_TOKEN (Workers R2 SQL Read + Data Catalog + storage read)
+#
+# run_analytics_query: wyłącznie Workers RPC (`BigQueryBatchS2SRpc`) z czatu (`ctx.props`, scope `bigquery.analytics_query`).
+
+[vars]
+R2_SQL_ACCOUNT_ID = "73283c24dc79f92edef30dcdbc98f230"
+R2_SQL_WAREHOUSE_BUCKET = "epir-analytics-iceberg-warehouse"
+WAREHOUSE_SQL_NAMESPACE = "analytics"
+WAREHOUSE_SQL_PIXEL_TABLE = "epir_pixel_events_raw"
+WAREHOUSE_SQL_MESSAGES_TABLE = "messages_raw"
 
 [observability]
 enabled = true

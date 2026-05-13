@@ -53,7 +53,7 @@ Wymagane sekrety backendowe:
 - `AI_GATEWAY_TOKEN` (nagłówek `cf-aig-authorization` do AI Gateway; model Groq idzie przez gateway, nie przez `Authorization: Bearer` z kluczem Groq)
 - `SHOPIFY_APP_SECRET`
 - `EPIR_CHAT_SHARED_SECRET`
-- `EPIR_OPERATOR_PANEL_SECRET` (powierzchnie HTTP panelu: `X-Admin-Key`, `Bearer` przy `X-Epir-Model-Variant`; odrębnie od S2S czatu `EPIR_CHAT_SHARED_SECRET` oraz od RPC BigQuery, gdzie gateway przekazuje `ctx.props.scopes` na binding)
+- `EPIR_OPERATOR_PANEL_SECRET` (powierzchnie HTTP panelu: `X-Admin-Key`, `Bearer` przy `X-Epir-Model-Variant`; odrębnie od S2S czatu `EPIR_CHAT_SHARED_SECRET` oraz od RPC `BIGQUERY_BATCH_RPC`, gdzie gateway przekazuje `ctx.props.scopes` na binding)
 - tokeny storefrontów używane przez worker, zależnie od konfiguracji:
   - `SHOPIFY_STOREFRONT_TOKEN`
   - `PUBLIC_STOREFRONT_API_TOKEN_KAZKA`
@@ -89,9 +89,21 @@ Dodatkowe wymaganie bezpieczeństwa:
 
 ### `workers/bigquery-batch`
 
-- `GOOGLE_CLIENT_EMAIL`
-- `GOOGLE_PRIVATE_KEY`
-- `GOOGLE_PROJECT_ID`
+**Eksport nocny (D1 → Pipelines / Iceberg)** — wymaga co najmniej jednego URL ingest:
+
+- `PIPELINE_PIXEL_INGEST_URL` — HTTP ingest dla strumienia zdarzeń pixel
+- `PIPELINE_MESSAGES_INGEST_URL` — HTTP ingest dla strumienia wiadomości czatu
+- `PIPELINE_INGEST_TOKEN` — opcjonalny Bearer, jeśli ingest wymaga autoryzacji
+
+**`run_analytics_query` (Workers RPC)** — **R2 SQL** nad Iceberg:
+
+- `R2_SQL_ACCOUNT_ID`, `R2_SQL_WAREHOUSE_BUCKET` — `[vars]` w `wrangler.toml`
+- `R2_SQL_API_TOKEN` — `wrangler secret put R2_SQL_API_TOKEN`
+- opcjonalnie: `WAREHOUSE_SQL_NAMESPACE`, `WAREHOUSE_SQL_PIXEL_TABLE`, `WAREHOUSE_SQL_MESSAGES_TABLE`
+
+Google BigQuery **nie** jest używane przez ten worker (ani eksport, ani odczyty whitelisty).
+
+Cron eksportu uruchamia się tylko przy skonfigurowanym **co najmniej jednym** z URLi Pipelines powyżej.
 
 Postura ingress dla produkcji:
 
@@ -108,11 +120,11 @@ Postura ingress dla produkcji:
 
 - publiczne `GET /pixel/events`, `GET /journey`, `GET /sessions`, `GET /internal/warehouse/charts` zwracają `404` (brak odczytów przez surowy HTTP); gateway czatu dla tych funkcji wywołuje **`ANALYTICS_S2S_RPC`** (`AnalyticsS2SRpc`) z `props` zakresów.
 
-### Kontrakt service binding (chat -> analytics/bigquery)
+### Kontrakt service binding (chat -> analytics / warehouse)
 
 - Gateway HTTP: **`ANALYTICS_WORKER`** (np. ingest `POST /pixel*`),
 - chronione odczyty: **`ANALYTICS_S2S_RPC`** (RPC),
-- BigQuery whitelist: **`BIGQUERY_BATCH_RPC`** (RPC).
+- zapytania whitelist `run_analytics_query` (R2 SQL): **`BIGQUERY_BATCH_RPC`** (RPC; nazwa bindingu historyczna).
 - Nie utrzymujemy fallbacków do publicznych adresów `*.workers.dev` dla ruchu internal.
 
 ### Cloudflare Pages (`kazka`, `zareczyny`)
@@ -225,7 +237,7 @@ Sprawdź:
 Sprawdź:
 
 - zapisy do D1,
-- eksport batch do BigQuery,
+- eksport batch przez Pipelines (Iceberg), zgodnie z konfiguracją `workers/bigquery-batch`,
 - spójność `session_id` / `_epir_session_id`, jeśli dotyczy.
 
 ### Shopify i frontend
@@ -325,7 +337,7 @@ Oczekiwany sygnał: oba skrypty kończą się kodem `0` i drukują końcowy stat
 | 5 | Sekrety `workers/chat` | ustawione w środowisku produkcyjnym: `AI_GATEWAY_TOKEN`, `SHOPIFY_APP_SECRET`, `EPIR_CHAT_SHARED_SECRET`, `EPIR_OPERATOR_PANEL_SECRET` (panel operatorski — nie dla S2S worker→worker), oraz token storefrontu pasujący do `SHOP_DOMAIN` (`SHOPIFY_STOREFRONT_TOKEN` lub odpowiedni per-storefront token) |
 | 6 | Sekrety `workers/rag-worker` | `ADMIN_TOKEN` ustawiony i **nie jest placeholderem** z repo; `CANONICAL_MCP_URL`, `SHOP_DOMAIN` ustawione; bindingi `AI`, `VECTOR_INDEX` widoczne dla workera |
 | 7 | Sekrety `workers/analytics` | `SHOPIFY_WEBHOOK_SECRET` ustawione |
-| 8 | Sekrety `workers/bigquery-batch` | `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `GOOGLE_PROJECT_ID` ustawione |
+| 8 | Sekrety i vars `workers/bigquery-batch` | eksport: `PIPELINE_*_INGEST_URL` (co najmniej jeden); **RPC `run_analytics_query`:** `R2_SQL_API_TOKEN` + vars `R2_SQL_*` / `WAREHOUSE_SQL_*` (patrz [`wrangler.toml`](../../workers/bigquery-batch/wrangler.toml)) |
 | 9 | Sekrety Cloudflare Pages (`kazka`, `zareczyny`) | `SESSION_SECRET`, `PUBLIC_STOREFRONT_API_TOKEN`, `PRIVATE_STOREFRONT_API_TOKEN` (gdzie wymagany), `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`, `EPIR_CHAT_SHARED_SECRET` ustawione w obu projektach Pages |
 | 10 | Migracja D1 `ai-assistant-sessions-db` | `005_consent_events.sql` zaaplikowana (`wrangler d1 execute ai-assistant-sessions-db --remote --file=./migrations/005_consent_events.sql` z katalogu `workers/chat`); tabela `consent_events` istnieje |
 | 11 | Migracje D1 `jewelry-analytics-db` | wszystkie aktualne pliki migracyjne z `workers/bigquery-batch` zaaplikowane na bazę docelową |
@@ -341,7 +353,7 @@ Każda pozycja w tej fazie ma być sprawdzona na zdeployowanej (lub planowanej) 
 | 14 | `workers/analytics` `GET /pixel/events`, … (chronione odczyty) | bezpośredni HTTP ⇒ `404` (odczyty z edge czatu idą przez **`ANALYTICS_S2S_RPC`**) |
 | 15 | `workers/chat` S2S `POST /chat`, `POST /consent` | brak `X-EPIR-SHARED-SECRET` ⇒ `401`; brak `storefrontId` lub `channel` ⇒ `400` |
 | 16 | `workers/chat` App Proxy `POST /apps/assistant/chat`, `POST /apps/assistant/consent` | błędny / brakujący HMAC ⇒ `401` (weryfikowane przez `workers/chat/src/security.ts`) |
-| 17 | Service binding chat → analytics / bigquery | `workers/chat/wrangler.toml` definiuje **`ANALYTICS_WORKER`**, **`ANALYTICS_S2S_RPC`** i **`BIGQUERY_BATCH_RPC`**; **brak** fallbacku po publicznym `*.workers.dev` w kodzie ruchu internal |
+| 17 | Service binding chat → analytics / warehouse RPC | `workers/chat/wrangler.toml` definiuje **`ANALYTICS_WORKER`**, **`ANALYTICS_S2S_RPC`** i **`BIGQUERY_BATCH_RPC`**; **brak** fallbacku po publicznym `*.workers.dev` w kodzie ruchu internal |
 
 ### Faza 4. Deploy w kanonicznej kolejności
 
@@ -375,7 +387,7 @@ Weryfikacja D1 w tej bramce odbywa się **przez HTTP** (`GET /pixel/events`), ni
 | 26 | Hydrogen `zareczyny` | jak poz. 25, z odpowiednim `storefrontId` / `channel` |
 | 27 | D1 `consent_events` | nowy wiersz append-only dla każdego pomyślnego zapisu zgody (potwierdzone `wrangler d1 execute ai-assistant-sessions-db --remote --command="SELECT * FROM consent_events ORDER BY created_at DESC LIMIT 5;"`) |
 | 28 | RAG retrieval | `GET /health` ⇒ 200; `POST /search/policies` i `POST /search/products` zwracają wyniki dla referencyjnego zapytania; `ADMIN_TOKEN` nie jest placeholderem |
-| 29 | Analytics pipeline | webhooki Shopify trafiają do D1 `jewelry-analytics-db`; batch eksport do BigQuery dostarcza partycję dnia; spójność `_epir_session_id` ↔ `session_id` zachowana w lejku |
+| 29 | Analytics pipeline | webhooki Shopify trafiają do D1 `jewelry-analytics-db`; batch eksport przez Pipelines do Iceberg; spójność `_epir_session_id` ↔ `session_id` zachowana w lejku |
 | 30 | Negatywny smoke (no-go canary) | powtórzenie poz. **12**, **13**, **15** na produkcyjnym workerze — nieautoryzowany klient dostaje oczekiwany `401`/`400`/`404` zgodnie z kontraktem |
 
 ### Reguła blokady
