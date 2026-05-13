@@ -24,6 +24,7 @@ import type { Env } from '../src/config/bindings';
 import { streamAssistantResponse } from '../src/index';
 import * as mcpServer from '../src/mcp_server';
 import * as aiClient from '../src/ai-client';
+import type { GroqMessage } from '../src/ai-client';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -517,5 +518,73 @@ describe('Harmony smoke — odporność na HTTP 400 z Groq Gateway', () => {
 
     // Fallback `getGroqResponse` NIE jest uruchamiany przy hard-failu pętli (rzut → catch).
     expect(getGroqResponseSpy).not.toHaveBeenCalled();
+  }, 15_000);
+});
+
+// ---------------------------------------------------------------------------
+// Case 4: Multi-turn — historia assistant bez kanału analysis / pól reasoning
+// ---------------------------------------------------------------------------
+
+describe('Harmony smoke — sanitizeHarmonyHistory przed Gateway', () => {
+  it('usuwa markery Harmony i pola reasoning z assistant; tool_calls i tool verbatim', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      return new Response(harmonyFinalTextStream('sanitized-ok'), {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      });
+    });
+
+    const toolJson = '{"k":"v","nested":{"a":1}}';
+    const poisonedAssistant = {
+      role: 'assistant' as const,
+      content: 'Hello <|channel|>analysis<|message|>thinking out loud<|end|> Final answer',
+      tool_calls: [
+        {
+          id: 'x',
+          type: 'function' as const,
+          function: { name: 'search_catalog', arguments: '{}' },
+        },
+      ],
+      reasoning: 'leaked',
+    };
+
+    const messages: GroqMessage[] = [
+      poisonedAssistant as unknown as GroqMessage,
+      { role: 'tool', tool_call_id: 'x', name: 'search_catalog', content: toolJson },
+    ];
+
+    const env = baseEnv();
+    const stream = await aiClient.streamGroqEventsViaGateway(
+      messages,
+      env,
+      [
+        {
+          type: 'function',
+          function: { name: 'search_catalog', parameters: { type: 'object', properties: {} } },
+        },
+      ],
+    );
+
+    const reader = stream.getReader();
+    while (true) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+
+    expect(fetchSpy).toHaveBeenCalled();
+    const init = fetchSpy.mock.calls[0]![1] as RequestInit;
+    const payload = JSON.parse(init.body as string) as { messages: Record<string, unknown>[] };
+    const assistant = payload.messages[0]!;
+    const toolMsg = payload.messages[1]!;
+
+    expect(assistant).not.toHaveProperty('reasoning');
+    expect(assistant).not.toHaveProperty('reasoning_content');
+    expect(assistant).not.toHaveProperty('analysis');
+    const ac = assistant.content as string;
+    expect(ac).not.toMatch(/<\|/);
+    expect(ac).not.toContain('assistantanalysis');
+    expect(ac).not.toMatch(/\btool_calls\s*:\s*\[/);
+    expect(assistant.tool_calls).toEqual(poisonedAssistant.tool_calls);
+    expect(toolMsg.content).toBe(toolJson);
   }, 15_000);
 });

@@ -12,6 +12,7 @@ import {
   type ModelCapabilities,
   type ModelVariantKey,
 } from './config/model-params';
+import { sanitizeHarmonyHistory } from './utils/sanitizeHarmonyHistory';
 
 export type GroqToolCall = {
   id: string;
@@ -515,7 +516,7 @@ export async function streamGroqResponse(
   sessionId?: string,
 ): Promise<ReadableStream<string>> {
   let buffer = '';
-  const stream = await runModelStream(messages, env, {
+  const stream = await runModelStream(sanitizeHarmonyHistory(messages), env, {
     sessionId,
     timingLabel: 'streamGroqResponse',
   });
@@ -887,11 +888,12 @@ async function streamGroqEventsWorkersAi(
   timingLabel?: string,
   options?: StreamGroqEventsOptions,
 ): Promise<ReadableStream<GroqStreamEvent>> {
+  const sanitizedMessages = sanitizeHarmonyHistory(messages);
   const defaultToolChoice = tools && tools.length > 0 ? 'auto' : undefined;
   const resolvedToolChoice =
     options?.toolChoice !== undefined ? options.toolChoice : defaultToolChoice;
 
-  const stream = await runModelStream(messages, env, {
+  const stream = await runModelStream(sanitizedMessages, env, {
     tools,
     tool_choice: resolvedToolChoice,
     sessionId,
@@ -927,6 +929,7 @@ export async function streamGroqEventsViaGateway(
 ): Promise<ReadableStream<GroqStreamEvent>> {
   void sessionId;
 
+  const sanitizedMessages = sanitizeHarmonyHistory(messages);
   const defaultToolChoice = tools && tools.length > 0 ? 'auto' : undefined;
   const resolvedToolChoice =
     options?.toolChoice !== undefined ? options.toolChoice : defaultToolChoice;
@@ -935,7 +938,7 @@ export async function streamGroqEventsViaGateway(
 
   const body: GatewayCompatBody = {
     model: resolvedModel,
-    messages,
+    messages: sanitizedMessages,
     stream: true,
     tools,
     tool_choice: resolvedToolChoice,
@@ -1080,6 +1083,7 @@ async function getGroqResponseWorkersAi(
   const startTime = Date.now();
   const resolvedModel = options?.modelId ?? CHAT_MODEL_ID;
   const forMemory = options?.forMemory === true;
+  const sanitizedMessages = sanitizeHarmonyHistory(messages);
 
   // Nie doklejaj szablonów typu `User input: "..."` / `Context:` ani drugiego „debugowego”
   // system/user — tylko `messages` przekazane z callera. `mapMessageForWorkersAI` to wyłącznie
@@ -1089,7 +1093,7 @@ async function getGroqResponseWorkersAi(
     const result = (await ai.run(
       resolvedModel,
       {
-        messages: messages.map(mapMessageForWorkersAI),
+        messages: sanitizedMessages.map(mapMessageForWorkersAI),
         max_tokens: options?.max_tokens ?? MODEL_PARAMS.max_tokens,
         temperature: MODEL_PARAMS.temperature,
         top_p: MODEL_PARAMS.top_p,
@@ -1169,10 +1173,11 @@ export async function getGroqResponseViaGateway(
   const startTime = Date.now();
   const resolvedModel = options?.modelId ?? MODEL_VARIANTS.default.id;
   const forMemory = options?.forMemory === true;
+  const sanitizedMessages = sanitizeHarmonyHistory(messages);
 
   const body: GatewayCompatBody = {
     model: resolvedModel,
-    messages,
+    messages: sanitizedMessages,
     stream: false,
     max_tokens: options?.max_tokens ?? MODEL_PARAMS.max_tokens,
     temperature: MODEL_PARAMS.temperature,

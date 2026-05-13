@@ -15,9 +15,8 @@ export type { Env, RpcSerializedHttpResponse } from './config/bindings';
  * 2.  **POPRAWKA INTENCJI/RAG:** Usunięto agresywną logikę RAG z `handleChat`.
  * Teraz to AI decyduje, kiedy wywołać narzędzia (jak search_catalog)
  * zgodnie z logiką w nowym prompcie Harmony.
- * 3.  **POPRAWKA HARMONY:** `streamAssistantResponse` poprawnie wywołuje
- * `streamGroqHarmonyEvents` (zamiast streamGroqResponse) i implementuje
- * pełną pętlę wywołań narzędzi (tool-calling loop).
+ * 3.  **POPRAWKA HARMONY:** `streamAssistantResponse` używa `streamGroqEvents`
+ * (AI Gateway + parser `createGroqStreamTransform`) i pełnej pętli `tool_calls`.
  */
 
 // Importy bezpieczeństwa i DO
@@ -48,6 +47,7 @@ import {
 import { INTERNAL_DASHBOARD_SYSTEM_PROMPT } from './prompts/internal-dashboard-system-prompt';
 import { LUXURY_SYSTEM_PROMPT } from './prompts/luxury-system-prompt'; // 🟢 Używa nowego promptu v2
 import { TOOL_SCHEMAS, resolveToolSchemas, shouldUseSlimToolSchemas } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2 (+ slim wariant za flagą)
+import { sanitizeHarmonyHistory } from './utils/sanitizeHarmonyHistory';
 import { detectPolicyInformationIntent } from './intent/policy-information';
 import { truncateWithSummary, type Message as HistoryMessage } from './utils/history'; // 🔵 History truncation
 import { hashPromptPrefix } from './utils/prompt-stability';
@@ -3242,15 +3242,20 @@ async function streamAssistantResponse(
       // Filtrujemy historię, aby usunąć pola, których AI nie rozumie
       const isOnlineStoreLiquid = storefrontContext?.channel === 'online-store';
       const maxHistoryAi = isOnlineStoreLiquid ? MAX_HISTORY_FOR_AI_ONLINE_STORE : MAX_HISTORY_FOR_AI;
-      const aiHistory = history
-        .slice(-maxHistoryAi) // Weź tylko X ostatnich wiadomości (mniej dla Liquid / online-store)
-        .map(h => ({
-            role: h.role,
-            content: h.content ?? '',
-            ...(h.role === 'tool' && h.name && { name: h.name }),
-            ...(h.role === 'tool' && h.tool_call_id && { tool_call_id: h.tool_call_id }),
-            ...(h.tool_calls && { tool_calls: h.tool_calls as any }),
-        }));
+      const aiHistory = sanitizeHarmonyHistory(
+        history
+          .slice(-maxHistoryAi) // Weź tylko X ostatnich wiadomości (mniej dla Liquid / online-store)
+          .map(
+            (h) =>
+              ({
+                role: h.role,
+                content: h.content ?? '',
+                ...(h.role === 'tool' && h.name && { name: h.name }),
+                ...(h.role === 'tool' && h.tool_call_id && { tool_call_id: h.tool_call_id }),
+                ...(h.tool_calls && { tool_calls: h.tool_calls as any }),
+              }) as GroqMessage,
+          ),
+      );
       const sessionHistoryVisibilityContext = buildCurrentSessionVisibilityContext(aiHistory.length);
         
       const promptBuildT0 = Date.now();
@@ -4009,7 +4014,7 @@ async function streamAssistantResponse(
               : JSON.stringify(toolResult.result);
 
             // ZOPTYMALIZOWANO: Zmniejszono limit outputu z narzędzi z 14000 do 3000 znaków.
-            // Zapobiega to zapychaniu się okna kontekstowego (Context Overflow) dla Kimi K2.5
+            // Chroni okno kontekstowe (Harmony / GPT-OSS-120B i alternatywne modele Workers AI).
             const MAX_TOOL_OUTPUT_LENGTH = 3000;
             if (toolResultString.length > MAX_TOOL_OUTPUT_LENGTH) {
               toolResultString =

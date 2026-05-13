@@ -43,6 +43,11 @@ export const MODEL_VARIANTS = {
     toolLeak: false,
     label: 'GPT-OSS-120B (Groq via AI Gateway — Harmony, canonical)',
   },
+  /**
+   * @deprecated Legacy Workers AI (`kimi-k2.5`). Nadal dostępny wyłącznie przez
+   * `X-Epir-Model-Variant` + Bearer `EPIR_OPERATOR_PANEL_SECRET` — patrz
+   * `resolveAdminModelVariantFromHeaders` w `ai-client.ts` oraz `index.ts`.
+   */
   kimi_k25: {
     id: '@cf/moonshotai/kimi-k2.5',
     multimodal: true,

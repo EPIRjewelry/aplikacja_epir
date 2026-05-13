@@ -1,4 +1,5 @@
 node_modules
+.kilo/
 .env
 .wrangler
 dist
