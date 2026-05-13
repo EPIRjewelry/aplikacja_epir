@@ -1,10 +1,17 @@
 # MODEL LOCK FILE
-# Produkcja: wyłącznie Workers AI `@cf/moonshotai/kimi-k2.5` (multimodal).
-# Konfiguracja runtime: `workers/chat/src/config/model-params.ts` (`CHAT_MODEL_ID`).
+# Produkcja: wyłącznie `groq/openai/gpt-oss-120b` (Harmony) przez Cloudflare AI Gateway → Groq.
+# Konfiguracja runtime: `workers/chat/src/config/model-params.ts` (`CHAT_MODEL_ID`, `MODEL_PARAMS`).
 #
-# Warianty alternatywne (benchmark / A-B): `MODEL_VARIANTS` w model-params.ts.
-# Routing: nagłówek `X-Epir-Model-Variant` (WYMAGA `Authorization: Bearer` dopasowanego do `EPIR_OPERATOR_PANEL_SECRET`).
-# W produkcji bez nagłówka default pozostaje `@cf/moonshotai/kimi-k2.5`.
+# Warianty alternatywne (benchmark / A-B): `MODEL_VARIANTS` w model-params.ts — m.in.
+# `kimi_k25` (poprzedni canonical Workers AI), `k26`, `glm_flash`, `qwen3_30b_a3b`, `gemma4_26b`.
+# Routing: nagłówek `X-Epir-Model-Variant` (WYMAGA `Authorization: Bearer` zgodnego z `EPIR_OPERATOR_PANEL_SECRET`).
+# W produkcji bez nagłówka default pozostaje `groq/openai/gpt-oss-120b`.
+#
+# Hard params (Harmony):
+#   max_tokens         = 2048
+#   include_reasoning  = true
+#   reasoning_effort   = "low"
+#   parallel_tool_calls = true
 
-LOCKED_MODEL_ID=@cf/moonshotai/kimi-k2.5
-LOCKED_PROVIDER=cloudflare-workers-ai
+LOCKED_MODEL_ID=groq/openai/gpt-oss-120b
+LOCKED_PROVIDER=groq-via-cloudflare-ai-gateway

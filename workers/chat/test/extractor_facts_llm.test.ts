@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { Env } from '../src/config/bindings';
 import { EXTRACTOR_LLM_MAX_TOKENS, EXTRACTOR_LLM_MODEL_ID } from '../src/config/model-params';
 
 const getGroqResponse = vi.fn();
@@ -16,12 +17,15 @@ describe('extractFactsLLM', () => {
     );
     const env = { AI: { run: vi.fn() } };
 
-    await extractFactsLLM(env, ['coś wystarczająco długiego żeby przejść próg'], {});
+    await extractFactsLLM(env as unknown as Env, [
+      'coś wystarczająco długiego żeby przejść próg',
+    ], {});
 
     expect(getGroqResponse).toHaveBeenCalled();
     const opts = getGroqResponse.mock.calls[0]?.[2] as {
       max_tokens?: number;
       modelId?: string;
+      forMemory?: boolean;
     };
     expect(opts?.max_tokens).toBe(EXTRACTOR_LLM_MAX_TOKENS);
     expect(opts?.modelId).toBe(EXTRACTOR_LLM_MODEL_ID);

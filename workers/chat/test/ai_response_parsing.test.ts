@@ -1,4 +1,4 @@
-import type { DurableObjectStub } from '@cloudflare/workers-types';
+/// <reference types="@cloudflare/workers-types" />
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import * as aiClient from '../src/ai-client';
 import { getGroqResponse, type GroqMessage } from '../src/ai-client';
@@ -245,7 +245,7 @@ describe('streamAssistantResponse – brak tool_calls nie uruchamia fallbacku', 
       CF_ACCOUNT_ID: 'test_cf_account',
       AI_GATEWAY_TOKEN: 'test_ai_gateway_token',
       GROQ_API_KEY: 'test_groq_api_key_for_vitest',
-    } as Env;
+    } as unknown as Env;
 
     const stub = {
       fetch: vi.fn(async (input: RequestInfo) => {

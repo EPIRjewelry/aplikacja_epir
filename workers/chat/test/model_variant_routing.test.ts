@@ -138,10 +138,14 @@ describe('resolveAdminModelVariantFromHeaders', () => {
 });
 
 describe('MODEL_VARIANTS integrity', () => {
-  it('default variant is the canonical Kimi K2.5', () => {
-    expect(MODEL_VARIANTS.default.id).toBe('@cf/moonshotai/kimi-k2.5');
-    expect(MODEL_VARIANTS.default.multimodal).toBe(true);
-    expect(MODEL_VARIANTS.default.toolLeak).toBe(true);
+  it('default variant is the canonical Harmony GPT-OSS-120B (Groq)', () => {
+    expect(MODEL_VARIANTS.default.id).toBe('groq/openai/gpt-oss-120b');
+    expect(MODEL_VARIANTS.default.toolLeak).toBe(false);
+  });
+
+  it('legacy Kimi K2.5 variant remains available for admin A/B', () => {
+    expect(MODEL_VARIANTS.kimi_k25.id).toBe('@cf/moonshotai/kimi-k2.5');
+    expect(MODEL_VARIANTS.kimi_k25.multimodal).toBe(true);
   });
 
   it('resolveModelVariant falls back to default for unknown keys', () => {

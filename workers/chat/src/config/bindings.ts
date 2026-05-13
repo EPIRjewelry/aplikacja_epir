@@ -145,6 +145,15 @@ export interface Env {
   EPIR_OPERATOR_PANEL_SECRET?: string;
 }
 
+/**
+ * Fragment {@link Env} używany przez [`ai-client`](../ai-client.ts): Workers AI + AI Gateway (Groq).
+ * Wszystkie wybrane pola są w {@link Env} opcjonalne — w testach wystarczy minimalny obiekt.
+ */
+export type AiClientEnv = Pick<
+  Env,
+  'AI' | 'CF_ACCOUNT_ID' | 'AI_GATEWAY_ID' | 'AI_GATEWAY_TOKEN' | 'GROQ_API_KEY'
+>;
+
 export const REQUIRED_SECRETS = [] as const;
 
 export const OPTIONAL_SECRETS = [

@@ -273,7 +273,7 @@ describe('App Proxy ingress POST /apps/assistant/consent', () => {
 
   it('returns 500 when DB_CHATBOT is not configured', async () => {
     const { env: base } = makeEnv();
-    const env = { ...base, DB_CHATBOT: undefined } as Env;
+    const env = { ...base, DB_CHATBOT: undefined } as unknown as Env;
     const url = buildConsentUrl();
     const body = validConsentBody();
     const signature = signRequest(url, body, env.SHOPIFY_APP_SECRET);

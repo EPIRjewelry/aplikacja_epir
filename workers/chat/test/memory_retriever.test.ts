@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Env } from '../src/config/bindings';
 
 vi.mock('../src/memory/repo', () => ({
   listActiveMemoryFacts: vi.fn(),

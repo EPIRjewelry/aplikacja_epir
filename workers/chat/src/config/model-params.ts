@@ -2,18 +2,25 @@
  * worker/src/config/model-params.ts
  *
  * Centralna konfiguracja modelu AI dla chat workera.
- * EPIR używa jednego modelu tekstowo-obrazowego dla całego strumienia:
- * `@cf/moonshotai/kimi-k2.5`.
+ *
+ * Po migracji na format Harmony kanonicznym modelem czatu jest
+ * `groq/openai/gpt-oss-120b` (Groq via Cloudflare AI Gateway). Model:
+ * • używa kanałów Harmony (`analysis` / `commentary` / `final`) — wycieki narzędzi
+ *   do warstwy klienta są hermetyzowane przez API, nie wymagają regex-scrubbingu,
+ * • obsługuje natywne, równoległe `tool_calls` w jednym kroku,
+ * • respektuje parametry `include_reasoning` i `reasoning_effort` w body.
  */
 
 /**
  * Capabilities pojedynczego wariantu modelu. Używane do guardów runtime:
  * - `multimodal: false` → ignoruj wariant dla requestów z obrazem (fallback do default).
- * - `toolLeak: true`   → uruchom `stripLeakedToolCallsLiterals` na output (Kimi-specific bug).
+ * - `toolLeak: true`   → DEPRECATED: zostawione jako metadana historyczna; nie jest już używane
+ *   do regex-scrubbingu po stronie workera (Harmony hermetyzuje kanały narzędzi).
  */
 export type ModelCapabilities = {
   readonly id: string;
   readonly multimodal: boolean;
+  /** @deprecated od wersji 4.0 (Harmony). Trzymane wyłącznie dla zgodności wariantów A/B. */
   readonly toolLeak: boolean;
   /** Opcjonalny opis dla logów / bench raportów. */
   readonly label?: string;
@@ -21,18 +28,26 @@ export type ModelCapabilities = {
 
 /**
  * Zbiór wariantów modelu dostępnych za headerem `X-Epir-Model-Variant` (admin-only).
- * `default` MUSI pozostać `@cf/moonshotai/kimi-k2.5` — to kanoniczny model z `.model-lock`.
- * Nowe warianty dodawaj tu, żeby benchmark harness (`scripts/bench-models.ts`) automatycznie
- * je pokrył.
  *
+ * `default` to `groq/openai/gpt-oss-120b` (Harmony, Groq przez AI Gateway). Wariant
+ * `kimi_k25` (poprzedni kanon Workers AI) zostawiamy jako alternatywę admin-only
+ * do testów A/B i fallbacku, ale produkcyjnie nie jest już używany.
+ *
+ * @see https://console.groq.com/docs/model/openai/gpt-oss-120b
  * @see https://developers.cloudflare.com/workers-ai/models/kimi-k2.5/
  */
 export const MODEL_VARIANTS = {
   default: {
+    id: 'groq/openai/gpt-oss-120b',
+    multimodal: false,
+    toolLeak: false,
+    label: 'GPT-OSS-120B (Groq via AI Gateway — Harmony, canonical)',
+  },
+  kimi_k25: {
     id: '@cf/moonshotai/kimi-k2.5',
     multimodal: true,
     toolLeak: true,
-    label: 'Kimi K2.5 (canonical)',
+    label: 'Kimi K2.5 (Workers AI — legacy admin-only fallback)',
   },
   k26: {
     id: '@cf/moonshotai/kimi-k2.6',
@@ -68,35 +83,37 @@ export const MODEL_VARIANTS = {
     label: 'Gemma 4 26B A4B IT (candidate — cheaper Kimi-class)',
   },
   /**
-   * Groq Llama 4 Scout 17B — MoE, 131K context, strong reasoning + tools.
-   * Dostępny przez AI Gateway (/compat) jako `groq/llama-4-scout-17b-16e-instruct`.
+   * Alias `scout_17b` — wcześniej oznaczał kandydata Llama 4 Scout, dzisiaj wskazuje
+   * na ten sam `groq/openai/gpt-oss-120b` co default. Zachowany dla benchmarków /
+   * skryptów, które historycznie podawały klucz `scout_17b`.
    */
   scout_17b: {
     id: 'groq/openai/gpt-oss-120b',
-    multimodal: true,
+    multimodal: false,
     toolLeak: false,
-    label: 'Llama 4 Scout 17B (Groq via AI Gateway — candidate)',
+    label: 'GPT-OSS-120B (alias scout_17b, Harmony)',
   },
 } as const satisfies Record<string, ModelCapabilities>;
 
 export type ModelVariantKey = keyof typeof MODEL_VARIANTS;
 
 /**
- * Kanoniczny model inference dla czatu (tekst + obraz + tool calls).
+ * Kanoniczny model inference dla czatu (Harmony — `groq/openai/gpt-oss-120b`).
  * Domyślnie używany dla ruchu storefront i internal dashboard.
  * Warianty ALT dostępne tylko za adminskim nagłówkiem; patrz `resolveModelVariant`.
  */
-export const CHAT_MODEL_ID = MODEL_VARIANTS.scout_17b.id;
+export const CHAT_MODEL_ID = MODEL_VARIANTS.default.id;
 
 /** getGroqResponse po nieudanej pętli narzędzi — bardzo krótki tekst (np. 1–2 zdania), minimalne opóźnienie. */
-export const CHAT_RECOVERY_MAX_TOKENS = 160;
+export const CHAT_RECOVERY_MAX_TOKENS = 256;
 
 /**
- * Większy limit gdy model może zwrócić `tool_calls` (JSON argumentów).
- * Niższy po wiadomościach `tool` — typowa odpowiedź tekstowa dla klienta.
+ * Bufor `max_tokens` dla rundy, w której model może zwrócić `tool_calls` (JSON argumentów)
+ * razem z preambułą Harmony — Harmony konsumuje część budżetu na kanał `analysis`,
+ * więc trzymamy 2048, aby uniknąć ucięcia odpowiedzi w połowie.
  */
-export const CHAT_MAX_TOKENS_TOOL_ROUND = 1200;
-export const CHAT_MAX_TOKENS_AFTER_TOOL = 450;
+export const CHAT_MAX_TOKENS_TOOL_ROUND = 2048;
+export const CHAT_MAX_TOKENS_AFTER_TOOL = 768;
 
 /**
  * Dedykowany model dla ekstrakcji soft-facts (style/intent/event).
@@ -133,15 +150,20 @@ export function resolveModelVariant(key: string | undefined | null): ModelCapabi
 /** Lista kluczy wariantów — przydatna w bench scripts i testach. */
 export const MODEL_VARIANT_KEYS = Object.keys(MODEL_VARIANTS) as readonly ModelVariantKey[];
 
+/** Poziomy wysiłku rozumowania Harmony. `low` = krótki łańcuch myśli, lepsza latencja. */
+export type ReasoningEffort = 'low' | 'medium' | 'high';
+
 /**
- * Model parameters for chat completions
- * 
- * These values are optimized for luxury jewelry e-commerce assistant:
- * - temperature: Controls randomness (0.5 = balanced creativity/consistency)
- * - max_tokens: Maximum response length (1300 ≈ zwięzła odpowiedź po polsku)
- * - top_p: Nucleus sampling threshold (0.9 = high quality, diverse responses)
- * 
- * For future tuning: create a new config file instead of mutating callers ad hoc.
+ * Parametry modelu dla Harmony / GPT-OSS-120B (Groq via AI Gateway).
+ *
+ * Kluczowe różnice względem poprzedniej generacji (Kimi/Workers AI):
+ * - `max_tokens` = 2048 — Harmony zużywa część budżetu na kanał `analysis`
+ *   (`reasoning`), więc 1300 było za mało i ucinało finalną wypowiedź.
+ * - `include_reasoning` = `true` — Groq zwraca `delta.reasoning` w streamie;
+ *   parser w `ai-client.ts createGroqStreamTransform` odrzuca ten kanał z widoku
+ *   klienta, ale używamy go do telemetrii i ewentualnego debugowania.
+ * - `reasoning_effort` = `'low'` — buyer-facing UX wymaga niskiej latencji
+ *   i krótkiego łańcucha myśli; admin/internal-dashboard może override'ować.
  */
 export const MODEL_PARAMS = {
   /**
@@ -149,35 +171,48 @@ export const MODEL_PARAMS = {
    * - 0.0 = deterministic (same input → same output)
    * - 1.0 = maximum creativity
    * - 0.5 = balanced (RECOMMENDED for luxury assistant)
-   * 
+   *
    * @default 0.5
    */
   temperature: 0.5,
 
   /**
-   * Max tokens: Maximum response length
-   * - 1 token ≈ 0.75 words (English)
-   * - 1 token ≈ 0.5 words (Polish, due to diacritics)
-   * - 1300 tokens ≈ ok. 600–900 słów po polsku (orientacyjnie)
-   * 
-   * @default 1300
+   * Max tokens: maksymalna długość odpowiedzi (łącznie z kanałem `analysis`
+   * w formacie Harmony). 2048 zostawia ~1.5K na finalny tekst po obsłudze
+   * `reasoning_effort: 'low'` i ewentualnych argumentach `tool_calls`.
+   *
+   * @default 2048
    */
-  max_tokens: 1300,
+  max_tokens: 2048,
 
   /**
    * Top-p (nucleus sampling): Probability threshold for token selection
    * - 1.0 = consider all tokens
    * - 0.9 = consider top 90% probability mass (RECOMMENDED)
-   * - 0.5 = very focused, less diverse
-   * 
+   *
    * @default 0.9
    */
   top_p: 0.9,
 
   /**
-   * Stream options: Include usage statistics in streaming response
-   * Required for cost tracking and monitoring.
-   * 
+   * Twardy flag Harmony: dołącz kanał `reasoning` do streamu. Parser odfiltrowuje
+   * go z `delta` widocznego dla klienta i emituje jako osobne zdarzenie diagnostyczne.
+   *
+   * @default true
+   */
+  include_reasoning: true as const,
+
+  /**
+   * Niski poziom „chain of thought" — szybsze TTFT i mniej tokenów reasoning.
+   *
+   * @default 'low'
+   */
+  reasoning_effort: 'low' as ReasoningEffort,
+
+  /**
+   * Stream options: Include usage statistics in streaming response.
+   * Wymagane do liczenia kosztów i metryk cache.
+   *
    * @default { include_usage: true }
    */
   stream_options: {

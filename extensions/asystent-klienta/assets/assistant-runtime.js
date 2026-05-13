@@ -689,45 +689,13 @@ async function getShopifyCartId() {
 }
 
 /**
- * Usuwa z treści literalny śmieć `tool_calls: [...]` (model czasem powiela przykłady z promptu).
- */
-function stripLeakedToolCallsLiterals(text) {
-  if (!text || typeof text !== 'string') return '';
-  var out = text;
-  for (var guard = 0; guard < 12; guard++) {
-    var m = /\btool_calls\s*:/i.exec(out);
-    if (!m) break;
-    var start = m.index;
-    var i = start + m[0].length;
-    while (i < out.length && /\s/.test(out[i])) i++;
-    if (out[i] !== '[') {
-      out = out.slice(0, start) + out.slice(i);
-      continue;
-    }
-    var depth = 0;
-    var j = i;
-    for (; j < out.length; j++) {
-      var c = out[j];
-      if (c === '[') depth++;
-      else if (c === ']') {
-        depth--;
-        if (depth === 0) {
-          out = out.slice(0, start) + out.slice(j + 1);
-          break;
-        }
-      }
-    }
-    if (j >= out.length) {
-      out = out.slice(0, start).replace(/\s+$/,'');
-      break;
-    }
-  }
-  return out.replace(/\n{3,}/g, '\n\n').trim();
-}
-
-/**
  * Parsuje odpowiedź asystenta i wyodrębnia specjalne akcje
- * Zwraca obiekt z parsed text + extracted actions
+ * Zwraca obiekt z parsed text + extracted actions.
+ *
+ * UWAGA: Z chwilą migracji na natywny format Harmony (GPT-OSS-120B przez Groq),
+ * wycieki sekcji narzędzi (`tool_calls`) i kanałów Harmony (`<|...|>`) są
+ * hermetyzowane przez backend (`workers/chat/src/ai-client.ts createGroqStreamTransform`),
+ * więc front nie wykonuje już regex-scrubbingu tych literalów.
  */
 function parseAssistantResponse(text) {
   const actions = {
@@ -738,18 +706,8 @@ function parseAssistantResponse(text) {
     hasOrderStatus: false,
     orderDetails: null
   };
-  
-  let cleanedText = text;
 
-  // Model czasem wypisuje literalny tekst `tool_calls: [...]` (powielenie przykładów z promptu) zamiast użyć API — ukryj przed klientem
-  cleanedText = stripLeakedToolCallsLiterals(cleanedText);
-  
-  // Wyczyść ewentualne markery Harmony/tool_call (fallback) zanim pokażemy userowi
-  cleanedText = cleanedText
-    .replace(/<\|call\|>[\s\S]*?<\|end\|>/g, '')
-    .replace(/<\|return\|>[\s\S]*?<\|end\|>/g, '')
-    .replace(/<\|.*?\|>/g, '')
-    .trim();
+  let cleanedText = typeof text === 'string' ? text : '';
   
   // Wykryj checkout URL
   const checkoutUrlMatch = text.match(/https:\/\/[^\s]+\/checkouts\/[^\s]+/);

@@ -4,6 +4,7 @@
  * Nazwy typów/historycznych funkcji pozostają dla kompatybilności z istniejącym kodem.
  */
 
+import type { AiClientEnv } from './config/bindings';
 import {
   CHAT_MODEL_ID,
   MODEL_PARAMS,
@@ -49,13 +50,32 @@ type GatewayCompatBody = {
   stream?: boolean;
   tools?: GroqToolCallDefinition[];
   tool_choice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
+  /**
+   * Twardy flag: Harmony pozwala modelowi emitować równoległe `tool_calls` w jednym
+   * kroku. Aktualne API Groq akceptuje `parallel_tool_calls: true` (domyślnie true).
+   */
+  parallel_tool_calls?: boolean;
   max_tokens?: number;
   temperature?: number;
   top_p?: number;
+  /** Harmony: dołącz kanał reasoning (`delta.reasoning`) do streamu. */
+  include_reasoning?: boolean;
+  /** Harmony: budżet rozumowania (`low` = krótszy chain-of-thought, niższe TTFT). */
+  reasoning_effort?: 'low' | 'medium' | 'high';
 };
 
+/**
+ * Format Harmony (GPT-OSS-120B przez Groq) dostarcza trzy kanały w jednym strumieniu:
+ * - `analysis` (reasoning / chain of thought) — w odpowiedzi pola `delta.reasoning`
+ *   lub `delta.reasoning_content`. NIGDY nie trafia do widoku klienta;
+ *   emitujemy jako osobne zdarzenie `reasoning` dla telemetrii i fallbacku w pamięci.
+ * - `commentary` (preambuła + `tool_calls`) — pola `delta.tool_calls`. Hermetyzowane przez API.
+ * - `final` (odpowiedź dla klienta) — pole `delta.content`. To jedyna treść `'text'`,
+ *   którą parser przekazuje na frontend.
+ */
 export type GroqStreamEvent =
   | { type: 'text'; delta: string }
+  | { type: 'reasoning'; delta: string }
   | { type: 'tool_call'; call: GroqToolCall }
   | {
       type: 'usage';
@@ -67,6 +87,8 @@ export type GroqStreamEvent =
        * Używane do wyliczenia `cache_hit_ratio = cached_tokens / prompt_tokens`.
        */
       cached_tokens?: number;
+      /** Tokeny rozumowania (Harmony `analysis`). Liczone po stronie Groq. */
+      reasoning_tokens?: number;
     }
   | { type: 'done'; finish_reason?: string };
 
@@ -78,15 +100,7 @@ type AIBinding = {
   ) => Promise<unknown>;
 };
 
-interface Env {
-  AI?: AIBinding;
-  CF_ACCOUNT_ID?: string;
-  AI_GATEWAY_ID?: string;
-  /** Bearer dla nagłówka `cf-aig-authorization` (AI Gateway); `wrangler secret put AI_GATEWAY_TOKEN`. */
-  AI_GATEWAY_TOKEN?: string;
-}
-
-export function shouldUseWorkersAi(env: Env): boolean {
+export function shouldUseWorkersAi(env: AiClientEnv): boolean {
   return !!env.AI?.run;
 }
 
@@ -131,19 +145,21 @@ export function injectKimiMultimodalUserContent(
 ): GroqMessage[] {
   const out = messages.map((m) => ({ ...m }));
   for (let i = out.length - 1; i >= 0; i--) {
-    if (out[i].role === 'user' && typeof out[i].content === 'string') {
-      const text = out[i].content ?? '';
-      const parts: KimiContentPart[] = [];
-      if (text.trim()) parts.push({ type: 'text', text: text.trim() });
-      parts.push({ type: 'image_url', image_url: { url: imageDataUri } });
-      out[i] = { ...out[i], content: parts };
-      break;
-    }
+    const msg = out[i]!;
+    if (msg.role !== 'user') continue;
+    const content = msg.content;
+    if (typeof content !== 'string') continue;
+    const text = content;
+    const parts: KimiContentPart[] = [];
+    if (text.trim()) parts.push({ type: 'text', text: text.trim() });
+    parts.push({ type: 'image_url', image_url: { url: imageDataUri } });
+    out[i] = { ...msg, content: parts };
+    break;
   }
   return out;
 }
 
-function requireAi(env: Env): AIBinding {
+function requireAi(env: AiClientEnv): AIBinding {
   if (!env.AI?.run) {
     throw new Error('Workers AI binding missing. Add [ai] binding in wrangler.toml.');
   }
@@ -151,7 +167,7 @@ function requireAi(env: Env): AIBinding {
 }
 
 async function callGatewayCompat(
-  env: Env,
+  env: AiClientEnv,
   body: GatewayCompatBody,
   {
     timingLabel = 'callGatewayCompat',
@@ -175,10 +191,6 @@ async function callGatewayCompat(
   };
 
   const t0 = Date.now();
-  console.log('[DEBUG] URL:', url);
-  console.log('[DEBUG] groqApiKey (first 8):', groqApiKey?.slice(0, 8));
-  console.log('[DEBUG] gatewayToken (first 8):', gatewayToken?.slice(0, 8));
-  console.log('[DEBUG] model:', body.model);
   const res = await fetch(url, {
     method: 'POST',
     signal: abortSignal,
@@ -451,7 +463,7 @@ function describeEmptyAiResult(result: unknown): Record<string, unknown> {
 
 async function runModelStream(
   messages: GroqMessage[],
-  env: Env,
+  env: AiClientEnv,
   options?: {
     tools?: GroqToolCallDefinition[];
     tool_choice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
@@ -499,7 +511,7 @@ async function runModelStream(
 
 export async function streamGroqResponse(
   messages: GroqMessage[],
-  env: Env,
+  env: AiClientEnv,
   sessionId?: string,
 ): Promise<ReadableStream<string>> {
   let buffer = '';
@@ -670,13 +682,40 @@ function createGroqStreamTransform(): TransformStream<string, GroqStreamEvent> {
     const choice = parsed?.choices?.[0];
     const finishReason = choice?.finish_reason as string | undefined;
 
-    const deltaText = choice?.delta?.content;
-    const msgContent = choice?.message?.content;
-    const text =
-      typeof deltaText === 'string' ? deltaText : typeof msgContent === 'string' ? msgContent : '';
+    const delta = choice?.delta;
+    const message = choice?.message;
+
+    // ====== Harmony: kanał `final` (treść dla klienta) ======
+    // Wymagamy stringa; obiekt/tablica `content` (multimodal) zostanie zignorowana,
+    // bo Harmony emituje finalną wypowiedź klienta zawsze jako tekst.
+    const deltaText = typeof delta?.content === 'string' ? delta.content : '';
+    const msgText = typeof message?.content === 'string' ? message.content : '';
+    const text = deltaText || msgText;
     if (text) controller.enqueue({ type: 'text', delta: text });
 
-    const toolCalls = choice?.delta?.tool_calls || choice?.message?.tool_calls;
+    // ====== Harmony: kanał `analysis` (reasoning / chain of thought) ======
+    // Groq zwraca pole `delta.reasoning` (preferowane) lub `delta.reasoning_content`
+    // (alias). Nie przekazujemy go na frontend — emitujemy jako osobne zdarzenie
+    // diagnostyczne, które konsumują logi/telemetria.
+    const reasoningDeltaRaw =
+      typeof delta?.reasoning === 'string'
+        ? delta.reasoning
+        : typeof delta?.reasoning_content === 'string'
+          ? delta.reasoning_content
+          : typeof message?.reasoning === 'string'
+            ? message.reasoning
+            : typeof message?.reasoning_content === 'string'
+              ? message.reasoning_content
+              : '';
+    if (reasoningDeltaRaw) {
+      controller.enqueue({ type: 'reasoning', delta: reasoningDeltaRaw });
+    }
+
+    // ====== Harmony: kanał `commentary` (`tool_calls`, równoległe) ======
+    // GPT-OSS-120B potrafi wyemitować wiele tool_calls w jednym kroku — każde
+    // ma własny `index` w tablicy `delta.tool_calls`. Slot-based merge gwarantuje,
+    // że argumenty kolejnych chunków trafiają do właściwej pozycji.
+    const toolCalls = delta?.tool_calls || message?.tool_calls;
     if (Array.isArray(toolCalls)) {
       for (let i = 0; i < toolCalls.length; i++) {
         const call = toolCalls[i];
@@ -708,12 +747,22 @@ function createGroqStreamTransform(): TransformStream<string, GroqStreamEvent> {
         0;
       const cached = Number.isFinite(Number(cachedRaw)) ? Number(cachedRaw) : 0;
       const cachedNormalized = cached > 0 ? cached : 0;
-      controller.enqueue({
+
+      // Harmony zwraca dodatkowo `completion_tokens_details.reasoning_tokens`
+      // — to pomaga ocenić, ile budżetu zjadł kanał `analysis`.
+      const reasoningRaw =
+        usage.completion_tokens_details?.reasoning_tokens ?? usage.reasoning_tokens ?? 0;
+      const reasoningTokens = Number.isFinite(Number(reasoningRaw)) ? Number(reasoningRaw) : 0;
+
+      const evt: Extract<GroqStreamEvent, { type: 'usage' }> = {
         type: 'usage',
         prompt_tokens: p,
         completion_tokens: c,
         cached_tokens: cachedNormalized,
-      });
+      };
+      if (reasoningTokens > 0) evt.reasoning_tokens = reasoningTokens;
+      controller.enqueue(evt);
+
       if (p > 0 && cachedNormalized > 0) {
         const ratio = cachedNormalized / p;
         console.log(
@@ -832,7 +881,7 @@ export type StreamGroqEventsOptions = {
 
 async function streamGroqEventsWorkersAi(
   messages: GroqMessage[],
-  env: Env,
+  env: AiClientEnv,
   tools?: GroqToolCallDefinition[],
   sessionId?: string,
   timingLabel?: string,
@@ -858,7 +907,7 @@ async function streamGroqEventsWorkersAi(
 
 export async function streamGroqEvents(
   messages: GroqMessage[],
-  env: Env,
+  env: AiClientEnv,
   tools?: GroqToolCallDefinition[],
   sessionId?: string,
   /** Np. `tool_loop_0` — w logach `wrangler tail` odróżnia kolejne wywołania modelu w pętli narzędzi. */
@@ -870,7 +919,7 @@ export async function streamGroqEvents(
 
 export async function streamGroqEventsViaGateway(
   messages: GroqMessage[],
-  env: Env,
+  env: AiClientEnv,
   tools?: GroqToolCallDefinition[],
   sessionId?: string,
   timingLabel?: string,
@@ -882,7 +931,7 @@ export async function streamGroqEventsViaGateway(
   const resolvedToolChoice =
     options?.toolChoice !== undefined ? options.toolChoice : defaultToolChoice;
 
-  const resolvedModel = options?.modelId ?? MODEL_VARIANTS.scout_17b.id;
+  const resolvedModel = options?.modelId ?? MODEL_VARIANTS.default.id;
 
   const body: GatewayCompatBody = {
     model: resolvedModel,
@@ -890,9 +939,12 @@ export async function streamGroqEventsViaGateway(
     stream: true,
     tools,
     tool_choice: resolvedToolChoice,
+    parallel_tool_calls: true,
     max_tokens: options?.maxTokens ?? MODEL_PARAMS.max_tokens,
     temperature: MODEL_PARAMS.temperature,
     top_p: MODEL_PARAMS.top_p,
+    include_reasoning: MODEL_PARAMS.include_reasoning,
+    reasoning_effort: MODEL_PARAMS.reasoning_effort,
   };
 
   const res = await callGatewayCompat(env, body, {
@@ -908,27 +960,7 @@ export async function streamGroqEventsViaGateway(
     throw new Error(`AI Gateway streaming error: ${res.status}`);
   }
 
-  const byteStream = res.body as ReadableStream<Uint8Array>;
-  const [debugStream, parseStream] = byteStream.tee();
-
-  void (async () => {
-    const reader = debugStream.getReader();
-    const decoder = new TextDecoder();
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        console.log('[DEBUG-CHUNK]', chunk.slice(0, 200));
-      }
-    } catch (err) {
-      console.warn('[DEBUG-CHUNK] read_error', stringifyForLog(err));
-    } finally {
-      reader.releaseLock();
-    }
-  })();
-
-  return parseStream
+  return (res.body as ReadableStream<Uint8Array>)
     .pipeThrough(new TextDecoderStream() as unknown as TransformStream<Uint8Array, string>)
     .pipeThrough(createGroqStreamTransform());
 }
@@ -940,7 +972,7 @@ function isGatewayModelId(modelId: string): boolean {
 
 async function routedGetGroqResponse(
   messages: GroqMessage[],
-  env: Env,
+  env: AiClientEnv,
   options?: GetGroqResponseOptions,
 ): Promise<string> {
   const modelId = options?.modelId ?? CHAT_MODEL_ID;
@@ -952,7 +984,7 @@ async function routedGetGroqResponse(
 
 async function routedStreamGroqEvents(
   messages: GroqMessage[],
-  env: Env,
+  env: AiClientEnv,
   tools?: GroqToolCallDefinition[],
   sessionId?: string,
   timingLabel?: string,
@@ -1041,7 +1073,7 @@ export type GetGroqResponseOptions = {
 
 async function getGroqResponseWorkersAi(
   messages: GroqMessage[],
-  env: Env,
+  env: AiClientEnv,
   options?: GetGroqResponseOptions,
 ): Promise<string> {
   const ai = requireAi(env);
@@ -1123,7 +1155,7 @@ async function getGroqResponseWorkersAi(
 
 export async function getGroqResponse(
   messages: GroqMessage[],
-  env: Env,
+  env: AiClientEnv,
   options?: GetGroqResponseOptions,
 ): Promise<string> {
   return routedGetGroqResponse(messages, env, options);
@@ -1131,11 +1163,11 @@ export async function getGroqResponse(
 
 export async function getGroqResponseViaGateway(
   messages: GroqMessage[],
-  env: Env,
+  env: AiClientEnv,
   options?: GetGroqResponseOptions,
 ): Promise<string> {
   const startTime = Date.now();
-  const resolvedModel = options?.modelId ?? MODEL_VARIANTS.scout_17b.id;
+  const resolvedModel = options?.modelId ?? MODEL_VARIANTS.default.id;
   const forMemory = options?.forMemory === true;
 
   const body: GatewayCompatBody = {
@@ -1145,6 +1177,8 @@ export async function getGroqResponseViaGateway(
     max_tokens: options?.max_tokens ?? MODEL_PARAMS.max_tokens,
     temperature: MODEL_PARAMS.temperature,
     top_p: MODEL_PARAMS.top_p,
+    include_reasoning: MODEL_PARAMS.include_reasoning,
+    reasoning_effort: MODEL_PARAMS.reasoning_effort,
   };
 
   let res: Response;

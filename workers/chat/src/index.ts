@@ -40,6 +40,8 @@ import {
 } from './ai-client';
 import {
   CHAT_MODEL_ID,
+  CHAT_MAX_TOKENS_AFTER_TOOL,
+  CHAT_MAX_TOKENS_TOOL_ROUND,
   CHAT_RECOVERY_MAX_TOKENS,
   type ModelCapabilities,
 } from './config/model-params';
@@ -50,7 +52,6 @@ import { detectPolicyInformationIntent } from './intent/policy-information';
 import { truncateWithSummary, type Message as HistoryMessage } from './utils/history'; // 🔵 History truncation
 import { hashPromptPrefix } from './utils/prompt-stability';
 import { mergeEphemeralBlockIntoLastUser } from './utils/merge-ephemeral-last-user';
-import { stripLeakedToolCallsLiterals, containsLikelyToolMarkupLeak } from './utils/stripLeakedToolCallsLiterals';
 import { buildMessagesForToolFailureRecovery } from './utils/buildRecoveryMessages';
 import { executeToolWithParsedArguments } from './utils/tool-call-args';
 import { callMcpToolDirect, handleMcpRequest } from './mcp_server';
@@ -3571,9 +3572,11 @@ async function streamAssistantResponse(
         }
         return outcome.text;
       };
-      /** Po wiadomości `role: tool` — krótsza odpowiedź; w pozostałych turach limit UX dla krótkich odpowiedzi. */
-      const MAX_TOKENS_AFTER_TOOL_MESSAGE = 300;
-      const MAX_TOKENS_NORMAL_ROUND = 400;
+      // Harmony zużywa część budżetu na kanał `analysis` (reasoning) — bierzemy limity
+      // bezpośrednio z `model-params.ts` zamiast trzymać tu lokalne magic numbers,
+      // żeby A/B model wariantów nie ucinał finalnej odpowiedzi w połowie.
+      const MAX_TOKENS_AFTER_TOOL_MESSAGE = CHAT_MAX_TOKENS_AFTER_TOOL;
+      const MAX_TOKENS_NORMAL_ROUND = CHAT_MAX_TOKENS_TOOL_ROUND;
 
       // Wymuszenie MCP dla intencji „polityka/zwroty/regulamin": w pierwszej turze narzędzi
       // pchamy model bezpośrednio do `search_shop_policies_and_faqs` zamiast pozwolić mu
@@ -3601,18 +3604,34 @@ async function streamAssistantResponse(
       let finalTextResponse = ''; 
 
       for (let i = 0; i < MAX_TOOL_CALLS; i++) {
-        let iterationText = ''; // Tymczasowy buffer dla tej iteracji
+        let iterationText = ''; // Tymczasowy buffer dla kanału `final` Harmony.
+        let reasoningPreview = ''; // Bufor diagnostyczny kanału `analysis` (do logu, nie do klienta).
+        let reasoningChunkCount = 0;
+        // Slot-based key: zachowujemy kolejność równoległych tool_calls (`tool_call.id`
+        // ALBO `slot:<index>` fallback z `ai-client.ts`).
         let pendingToolCalls = new Map<string, { id: string; name: string; arguments: string }>();
         let finishReason: string | null = null;
-        let usageTotals = { prompt_tokens: 0, completion_tokens: 0, cached_tokens: 0 };
+        let usageTotals = {
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          cached_tokens: 0,
+          reasoning_tokens: 0,
+        };
         let attemptUsed = 0;
 
         const maxAttempts = i === 0 && forcePolicyMcp ? 2 : 1;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
           iterationText = '';
+          reasoningPreview = '';
+          reasoningChunkCount = 0;
           pendingToolCalls = new Map();
           finishReason = null;
-          usageTotals = { prompt_tokens: 0, completion_tokens: 0, cached_tokens: 0 };
+          usageTotals = {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            cached_tokens: 0,
+            reasoning_tokens: 0,
+          };
           attemptUsed = attempt;
 
           const toolChoiceResolved =
@@ -3677,21 +3696,39 @@ async function streamAssistantResponse(
 
             switch (event.type) {
               case 'text':
+                // Harmony `final` channel — wyłącznie to trafia do klienta.
                 iterationText += event.delta;
                 break;
 
+              case 'reasoning':
+                // Harmony `analysis` channel — NIGDY do klienta. Zapisujemy tylko
+                // krótki preview (do 512 znaków) dla logów i diagnostyki TTFT,
+                // żeby nie nadmuchiwać pamięci na long-runach z `reasoning_effort: high`.
+                reasoningChunkCount += 1;
+                if (reasoningPreview.length < 512) {
+                  reasoningPreview = (reasoningPreview + event.delta).slice(0, 512);
+                }
+                break;
+
               case 'tool_call':
-                console.log(`[streamAssistant] 🤖 Wykryto wywołanie narzędzia: ${event.call.name}`);
+                // Każdy parallel tool_call ma własny `event.call.id` (z modelu lub
+                // slot-based fallback), więc Map.set nie scali równoległych wywołań.
+                console.log(
+                  `[streamAssistant] 🤖 Wykryto wywołanie narzędzia: ${event.call.name} (id=${event.call.id})`,
+                );
                 pendingToolCalls.set(event.call.id, event.call);
                 break;
 
               case 'usage':
-                // Nie sumuj wielu zdarzeń usage w jednej turze: Workers AI może powtarzać chunki
-                // z tym samym lub rosnącym skumulowanym usage — sumowanie zawyżało metryki w logach.
+                // Nie sumuj wielu zdarzeń usage w jednej turze: Workers AI / Groq mogą
+                // powtarzać chunki ze skumulowanym usage — sumowanie zawyżało metryki.
                 usageTotals.prompt_tokens = event.prompt_tokens;
                 usageTotals.completion_tokens = event.completion_tokens;
                 if (typeof event.cached_tokens === 'number' && event.cached_tokens >= 0) {
                   usageTotals.cached_tokens = event.cached_tokens;
+                }
+                if (typeof event.reasoning_tokens === 'number' && event.reasoning_tokens >= 0) {
+                  usageTotals.reasoning_tokens = event.reasoning_tokens;
                 }
                 break;
 
@@ -3700,6 +3737,21 @@ async function streamAssistantResponse(
                 break;
             }
           } // koniec while(reader)
+
+          if (reasoningChunkCount > 0) {
+            console.log(
+              JSON.stringify({
+                tag: 'chat.harmony.reasoning',
+                session_id: sessionId,
+                tool_loop: i,
+                attempt,
+                model: activeChatModelId,
+                reasoning_chunks: reasoningChunkCount,
+                reasoning_preview: reasoningPreview,
+                reasoning_tokens: usageTotals.reasoning_tokens,
+              }),
+            );
+          }
 
           const shouldRetry =
             i === 0 &&
@@ -3739,9 +3791,11 @@ async function streamAssistantResponse(
             session_history_visibility_marker_present: Boolean(sessionHistoryVisibilityContext),
             finish_reason: finishReason,
             tool_calls_count: pendingToolCalls.size,
+            parallel_tool_calls: pendingToolCalls.size > 1,
             usage_prompt_tokens: usageTotals.prompt_tokens,
             usage_completion_tokens: usageTotals.completion_tokens,
             usage_cached_tokens: usageTotals.cached_tokens,
+            usage_reasoning_tokens: usageTotals.reasoning_tokens,
             cache_hit_ratio:
               usageTotals.prompt_tokens > 0
                 ? Number((usageTotals.cached_tokens / usageTotals.prompt_tokens).toFixed(3))
@@ -3762,6 +3816,7 @@ async function streamAssistantResponse(
           usage_prompt_tokens: usageTotals.prompt_tokens,
           usage_completion_tokens: usageTotals.completion_tokens,
           usage_cached_tokens: usageTotals.cached_tokens,
+          usage_reasoning_tokens: usageTotals.reasoning_tokens,
         });
 
         const iterationUsageTotal = usageTotals.prompt_tokens + usageTotals.completion_tokens;
@@ -3994,20 +4049,11 @@ async function streamAssistantResponse(
 
         } else {
           if (iterationText.trim()) {
-            // NIE - To była finalna odpowiedź tekstowa (bez wywołań narzędzi)
-            // Model czasem powiela z promptu literalny tekst `tool_calls: [...]` — nie pokazuj tego klientowi.
-            // Warianty z `toolLeak: false` (np. GLM) nie mają tego buga → skip stripping.
-            finalTextResponse = activeModelVariant && activeModelVariant.toolLeak === false
-              ? iterationText
-              : stripLeakedToolCallsLiterals(iterationText);
-
-            // Agresywne kasowanie tylko, gdy w tej rundzie rzeczywiście były tool-calls.
-            if (hadToolCallsInThisRound && containsLikelyToolMarkupLeak(finalTextResponse)) {
-              console.warn(
-                '[streamAssistant] final iteration text still contained tool-like markup after strip in a tool round; clearing for UX fallback',
-              );
-              finalTextResponse = '';
-            }
+            // Finalna odpowiedź tekstowa kanału prezentacyjnego Harmony.
+            // GPT-OSS-120B hermetyzuje wywołania narzędzi w oddzielnym kanale (`commentary`)
+            // oraz reasoning w kanale `analysis` — wycieki do widoku klienta są fizycznie
+            // niemożliwe na poziomie API, więc nie sanityzujemy treści regexami.
+            finalTextResponse = iterationText;
 
             if (finalTextResponse.trim()) {
               finalTextResponse = applyPricingSanitizer(finalTextResponse);
@@ -4016,7 +4062,7 @@ async function streamAssistantResponse(
               }
             }
           }
-          break; // Wyjdź z pętli for
+          break;
         }
       } // koniec for(MAX_TOOL_CALLS)
 
@@ -4034,8 +4080,7 @@ async function streamAssistantResponse(
             modelId: activeChatModelId,
           });
           if (typeof recoveryText === 'string' && recoveryText.trim()) {
-            finalTextResponse = stripLeakedToolCallsLiterals(recoveryText);
-            finalTextResponse = applyPricingSanitizer(finalTextResponse);
+            finalTextResponse = applyPricingSanitizer(recoveryText.trim());
             if (finalTextResponse) {
               await sendDelta(finalTextResponse);
             }
