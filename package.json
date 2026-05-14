@@ -8,6 +8,7 @@
     "packages/*"
   ],
   "scripts": {
+    "deps": "npm install --legacy-peer-deps --no-audit --no-fund",
     "cf:deploy:chat": "wrangler deploy",
     "shopify:version": "shopify version",
     "shopify:app:build": "shopify app build",

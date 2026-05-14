@@ -54,6 +54,20 @@ W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md
 4. NotebookLM nie ma własnej wersji dokumentacji — utrzymuje mirror 1:1 repozytorium.
 5. Jeżeli jakaś lokalna wiedza nie została zapisana w repo, nie istnieje jako źródło prawdy.
 
+## Środowisko deweloperskie (Node, monorepo)
+
+- **Instalacja zależności z katalogu głównego repo** (root), nie z pojedynczego `workers/*` ani `apps/*` jako substytut całego drzewa workspaces.
+- **Standardowa komenda odświeżenia** (minimalna, idempotentna, zgodna z jobami GitHub Actions w tym repo):
+
+  ```bash
+  npm install --legacy-peer-deps --no-audit --no-fund
+  ```
+
+  (Skrót w root `package.json`: `npm run deps` — to samo.)
+
+  Wyjaśnienie: `--legacy-peer-deps` omija twarde konflikty peer między workspace’ami; `--no-audit` i `--no-fund` skracają log (CI też tak robi).
+- **Deploy lokalny** (`deploy.ps1`) używa `npm ci` z lockfile — to osobna, reprodukowalna ścieżka; przy pierwszym klonie albo po zmianach locka wykonaj `npm ci` z roota zgodnie ze skryptem.
+
 ## Typowe rozróżnienia, których nie wolno gubić
 
 - Frontend (`Theme App Extension`, `Hydrogen`) to UI i klient API.
