@@ -232,6 +232,13 @@ Wymagania operacyjne:
 - partycjonowanie po czasie,
 - sensowne klastrowanie po kluczach analitycznych.
 
+### R2 Data Catalog (Iceberg) — marketing (GA4 / Google Ads)
+
+- **Źródło zapisu:** worker [`workers/marketing-ingest`](../workers/marketing-ingest) (`epir-marketing-ingest`) wysyła **wyłącznie agregaty** (brak identyfikatorów użytkowników) na HTTP ingest Cloudflare Pipelines; konfiguracja Pipelines zapisuje do Iceberg w buckecie współdzielonym z hurtownią pixeli (np. `epir-analytics-iceberg-warehouse`), logiczny namespace **`marketing`**.
+- **Kształt rekordu strumienia:** typ `MarketingStreamRecord` w [`workers/marketing-ingest/src/schema.ts`](../workers/marketing-ingest/src/schema.ts) — pola `source` (`google_analytics` \| `google_ads`), `date` (ISO `YYYY-MM-DD`), `campaign_id`, `campaign_name`, `session_source`, metryki `metric_*` (liczby lub `null`).
+- **Mapowanie:** GA4 Data API — wymiary `date`, `sessionCampaignName`, `sessionSource`; metryki `sessions`, `eventCount`, `totalRevenue`. Google Ads — GAQL po `campaign` z `segments.date`, metryki `impressions`, `clicks`, `cost_micros` (koszt unormalizowany do jednostki pieniężnej w warstwie workera), `conversions`.
+- **BigQuery** (`epir_jewelry`) pozostaje **osobną** ścieżką długoterminową (D1 → batch → BQ tam, gdzie wdrożone); brak podwójnego zapisu marketingu do BQ w tej iteracji — ewentualny cutover wg epiku w [`EPIR_DEPLOYMENT_AND_OPERATIONS.md`](EPIR_DEPLOYMENT_AND_OPERATIONS.md) (sekcja BigQuery cutover).
+
 ## Reguły wielokanałowości
 
 MUST:

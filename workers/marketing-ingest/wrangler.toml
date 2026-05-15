@@ -1,0 +1,39 @@
+name = "epir-marketing-ingest"
+main = "src/index.ts"
+compatibility_date = "2025-09-30"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+
+[build]
+command = ""
+
+[env.staging]
+
+[env.production]
+workers_dev = false
+
+# Co 6 h UTC — zgodnie z planem (quota Google); zmień na rzadsze jeśli potrzeba.
+[triggers]
+crons = ["0 */6 * * *"]
+
+# Ten sam bucket Iceberg co analytics / bigquery-batch; tabele marketingowe w namespace `marketing`
+# (ustalane w Pipeline SQL → R2 Data Catalog). Nie duplikujemy `analytics.epir_pixel_events_raw`.
+[vars]
+MARKETING_ICEBERG_BUCKET = "epir-analytics-iceberg-warehouse"
+MARKETING_SQL_NAMESPACE = "marketing"
+
+# wrangler secret put MARKETING_PIPELINE_INGEST_URL   # https://{stream-id}.ingest.cloudflare.com
+# wrangler secret put MARKETING_PIPELINE_INGEST_TOKEN # opcjonalny Bearer
+# GA4 (service account JSON jednym secretem):
+# wrangler secret put GA4_SERVICE_ACCOUNT_JSON
+# wrangler secret put GOOGLE_ADS_CLIENT_SECRET
+# wrangler secret put GOOGLE_ADS_REFRESH_TOKEN
+# wrangler secret put GOOGLE_ADS_DEVELOPER_TOKEN
+# Vars (nie-sekret): GA4_PROPERTY_ID, GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CUSTOMER_ID — dodaj w [vars] lub Dashboard
+
+[observability]
+enabled = true
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true

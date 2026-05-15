@@ -95,6 +95,8 @@ Dodatkowe wymaganie bezpieczeństwa:
 - `PIPELINE_MESSAGES_INGEST_URL` — HTTP ingest dla strumienia wiadomości czatu
 - `PIPELINE_INGEST_TOKEN` — opcjonalny Bearer, jeśli ingest wymaga autoryzacji
 
+**Schematy streamów Pipelines** (zgodne z kształtem JSON z batcha): [`workers/bigquery-batch/pipelines-schemas/`](../workers/bigquery-batch/pipelines-schemas/) — pliki `*.schema.json` + `README.md` z komendą `wrangler pipelines streams create`.
+
 **`run_analytics_query` (Workers RPC)** — **R2 SQL** nad Iceberg:
 
 - `R2_SQL_ACCOUNT_ID`, `R2_SQL_WAREHOUSE_BUCKET` — `[vars]` w `wrangler.toml`
@@ -109,6 +111,35 @@ Postura ingress dla produkcji:
 
 - `workers_dev = false` (brak publicznej domeny developerskiej dla workera batch),
 - `run_analytics_query` realizowane przez **Workers RPC** (`BIGQUERY_BATCH_RPC` → `BigQueryBatchS2SRpc`, `ctx.props`); ścieżka HTTP `POST /internal/analytics/query` pozostaje celowo zamknięta (`404`).
+
+### `workers/marketing-ingest` (`epir-marketing-ingest`)
+
+Osobny worker od `workers/bigquery-batch`: **pull** GA4 (Data API) + Google Ads (GAQL), zapis **agregatów** do Cloudflare Pipelines (HTTP ingest) → Iceberg w **tym samym** buckecie co hurtownia pixeli (`MARKETING_ICEBERG_BUCKET`, domyślnie `epir-analytics-iceberg-warehouse`), logiczny namespace docelowy **`marketing`** (`MARKETING_SQL_NAMESPACE`). Brak mieszania z eksportem D1 → Iceberg z batcha.
+
+**Sekrety** (`wrangler secret put` w katalogu workera):
+
+- `MARKETING_PIPELINE_INGEST_URL` — URL HTTP ingest z `npx wrangler pipelines setup` (wartość tylko w vault / sekretach),
+- opcjonalnie `MARKETING_PIPELINE_INGEST_TOKEN` — nagłówek `Authorization: Bearer …` przy ingest,
+- `GA4_SERVICE_ACCOUNT_JSON` — pełny JSON konta usługi z dostępem do GA4 (scope aplikacji: read-only Analytics),
+- Google Ads: `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_ADS_DEVELOPER_TOKEN`.
+
+**Vars (nie-sekret)** — Dashboard Cloudflare albo `[vars]` / `wrangler vars`: `GA4_PROPERTY_ID` (np. `properties/123` lub sam numeryczny id), `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CUSTOMER_ID` (bez myślników).
+
+**Cron:** `0 */6 * * *` (UTC) — patrz `workers/marketing-ingest/wrangler.toml`. Worker nie publikuje routingu HTTP poza `GET /` i `GET /healthz` (`404` dla reszty).
+
+**Pipelines (jednorazowo, operatorsko):**
+
+1. `cd workers/marketing-ingest` (lub root z zalogowanym `wrangler login`).
+2. `npx wrangler pipelines setup` — utwórz pipeline / stream HTTP zgodnie z aktualną dokumentacją Cloudflare; nazwa operacyjna np. `epir-marketing-ingest`.
+3. W UI Pipelines ustaw **pole rekordu** zgodnie z kształtem `MarketingStreamRecord` w [`workers/marketing-ingest/src/schema.ts`](../workers/marketing-ingest/src/schema.ts) (`source`, `date`, `campaign_id`, `campaign_name`, `session_source`, `metric_*`).
+4. Docelowe tabele Iceberg (np. `marketing.marketing_daily`) definiuje **SQL transform** stream → sink; szkic: [`workers/marketing-ingest/pipeline-transform.example.sql`](../workers/marketing-ingest/pipeline-transform.example.sql).
+
+**Smoke (operatorsko, bez commitowania tokenów):**
+
+1. `curl -X POST -H "Content-Type: application/json" --data-binary @- "$MARKETING_PIPELINE_INGEST_URL" <<'EOF'
+[{"source":"google_analytics","date":"2026-05-13","campaign_id":null,"campaign_name":"(direct)","session_source":"google","metric_sessions":1,"metric_conversions":0,"metric_revenue":0,"metric_impressions":null,"metric_clicks":null,"metric_cost":null}]
+EOF`
+2. Kontrola odczytu (dopiero po propagacji Iceberg / Data Catalog), z konta z tokenem R2 SQL: `wrangler r2 sql query <WAREHOUSE> --database <CATALOG> --command="SELECT * FROM marketing.marketing_daily LIMIT 5;"` (dostosuj `WAREHOUSE`, `CATALOG` i nazwę tabeli do konfiguracji pipeline’u).
 
 ### `workers/analytics`
 
@@ -187,7 +218,8 @@ Kolejność zalecana:
 1. `workers/rag-worker`
 2. `workers/analytics`
 3. `workers/bigquery-batch`
-4. `workers/chat` (**musi obejmować trasy Consent Gate:** `POST /apps/assistant/consent`, `POST /consent` oraz zapis do `consent_events` po zastosowaniu migracji D1)
+4. `workers/marketing-ingest`
+5. `workers/chat` (**musi obejmować trasy Consent Gate:** `POST /apps/assistant/consent`, `POST /consent` oraz zapis do `consent_events` po zastosowaniu migracji D1)
 
 W praktyce `deploy.ps1` powinien utrzymywać tę kolejność.
 
@@ -238,7 +270,8 @@ Sprawdź:
 
 - zapisy do D1,
 - eksport batch przez Pipelines (Iceberg), zgodnie z konfiguracją `workers/bigquery-batch`,
-- spójność `session_id` / `_epir_session_id`, jeśli dotyczy.
+- spójność `session_id` / `_epir_session_id`, jeśli dotyczy,
+- worker `workers/marketing-ingest`: ostatni przebieg cron (logi `[MARKETING_INGEST]`), ingest HTTP (bez tokenów w logach), opcjonalnie próbka `wrangler r2 sql query` nad tabelą marketingową po skonfigurowaniu Pipelines (patrz sekcja `workers/marketing-ingest` powyżej).
 
 ### Shopify i frontend
 
@@ -338,9 +371,10 @@ Oczekiwany sygnał: oba skrypty kończą się kodem `0` i drukują końcowy stat
 | 6 | Sekrety `workers/rag-worker` | `ADMIN_TOKEN` ustawiony i **nie jest placeholderem** z repo; `CANONICAL_MCP_URL`, `SHOP_DOMAIN` ustawione; bindingi `AI`, `VECTOR_INDEX` widoczne dla workera |
 | 7 | Sekrety `workers/analytics` | `SHOPIFY_WEBHOOK_SECRET` ustawione |
 | 8 | Sekrety i vars `workers/bigquery-batch` | eksport: `PIPELINE_*_INGEST_URL` (co najmniej jeden); **RPC `run_analytics_query`:** `R2_SQL_API_TOKEN` + vars `R2_SQL_*` / `WAREHOUSE_SQL_*` (patrz [`wrangler.toml`](../../workers/bigquery-batch/wrangler.toml)) |
-| 9 | Sekrety Cloudflare Pages (`kazka`, `zareczyny`) | `SESSION_SECRET`, `PUBLIC_STOREFRONT_API_TOKEN`, `PRIVATE_STOREFRONT_API_TOKEN` (gdzie wymagany), `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`, `EPIR_CHAT_SHARED_SECRET` ustawione w obu projektach Pages |
-| 10 | Migracja D1 `ai-assistant-sessions-db` | `005_consent_events.sql` zaaplikowana (`wrangler d1 execute ai-assistant-sessions-db --remote --file=./migrations/005_consent_events.sql` z katalogu `workers/chat`); tabela `consent_events` istnieje |
-| 11 | Migracje D1 `jewelry-analytics-db` | wszystkie aktualne pliki migracyjne z `workers/bigquery-batch` zaaplikowane na bazę docelową |
+| 9 | Sekrety `workers/marketing-ingest` | `MARKETING_PIPELINE_INGEST_URL`; opcjonalnie `MARKETING_PIPELINE_INGEST_TOKEN`; `GA4_SERVICE_ACCOUNT_JSON`; Ads: `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_ADS_DEVELOPER_TOKEN`; vars (nie-sekret): `GA4_PROPERTY_ID`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CUSTOMER_ID` (Dashboard / `[vars]` — patrz [`wrangler.toml`](../workers/marketing-ingest/wrangler.toml)) |
+| 10 | Sekrety Cloudflare Pages (`kazka`, `zareczyny`) | `SESSION_SECRET`, `PUBLIC_STOREFRONT_API_TOKEN`, `PRIVATE_STOREFRONT_API_TOKEN` (gdzie wymagany), `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`, `EPIR_CHAT_SHARED_SECRET` ustawione w obu projektach Pages |
+| 11 | Migracja D1 `ai-assistant-sessions-db` | `005_consent_events.sql` zaaplikowana (`wrangler d1 execute ai-assistant-sessions-db --remote --file=./migrations/005_consent_events.sql` z katalogu `workers/chat`); tabela `consent_events` istnieje |
+| 12 | Migracje D1 `jewelry-analytics-db` | wszystkie aktualne pliki migracyjne z `workers/bigquery-batch` zaaplikowane na bazę docelową |
 
 ### Faza 3. Postura ingress i fail-closed (przed-deploy guard)
 
@@ -348,23 +382,24 @@ Każda pozycja w tej fazie ma być sprawdzona na zdeployowanej (lub planowanej) 
 
 | # | Endpoint / kontrakt | Warunek PASS |
 |----|---------------------|--------------|
-| 12 | `workers/rag-worker` `POST /admin/upsert` | fail-closed: brak / placeholder / niepoprawny `ADMIN_TOKEN` ⇒ `401` |
-| 13 | `workers/bigquery-batch` `POST /internal/analytics/query` | `workers_dev = false` w `wrangler.toml`; wywołanie HTTP zwraca `404` (tylko **RPC** `BigQueryBatchS2SRpc` z czatu) |
-| 14 | `workers/analytics` `GET /pixel/events`, … (chronione odczyty) | bezpośredni HTTP ⇒ `404` (odczyty z edge czatu idą przez **`ANALYTICS_S2S_RPC`**) |
-| 15 | `workers/chat` S2S `POST /chat`, `POST /consent` | brak `X-EPIR-SHARED-SECRET` ⇒ `401`; brak `storefrontId` lub `channel` ⇒ `400` |
-| 16 | `workers/chat` App Proxy `POST /apps/assistant/chat`, `POST /apps/assistant/consent` | błędny / brakujący HMAC ⇒ `401` (weryfikowane przez `workers/chat/src/security.ts`) |
-| 17 | Service binding chat → analytics / warehouse RPC | `workers/chat/wrangler.toml` definiuje **`ANALYTICS_WORKER`**, **`ANALYTICS_S2S_RPC`** i **`BIGQUERY_BATCH_RPC`**; **brak** fallbacku po publicznym `*.workers.dev` w kodzie ruchu internal |
+| 13 | `workers/rag-worker` `POST /admin/upsert` | fail-closed: brak / placeholder / niepoprawny `ADMIN_TOKEN` ⇒ `401` |
+| 14 | `workers/bigquery-batch` `POST /internal/analytics/query` | `workers_dev = false` w `wrangler.toml`; wywołanie HTTP zwraca `404` (tylko **RPC** `BigQueryBatchS2SRpc` z czatu) |
+| 15 | `workers/analytics` `GET /pixel/events`, … (chronione odczyty) | bezpośredni HTTP ⇒ `404` (odczyty z edge czatu idą przez **`ANALYTICS_S2S_RPC`**) |
+| 16 | `workers/chat` S2S `POST /chat`, `POST /consent` | brak `X-EPIR-SHARED-SECRET` ⇒ `401`; brak `storefrontId` lub `channel` ⇒ `400` |
+| 17 | `workers/chat` App Proxy `POST /apps/assistant/chat`, `POST /apps/assistant/consent` | błędny / brakujący HMAC ⇒ `401` (weryfikowane przez `workers/chat/src/security.ts`) |
+| 18 | Service binding chat → analytics / warehouse RPC | `workers/chat/wrangler.toml` definiuje **`ANALYTICS_WORKER`**, **`ANALYTICS_S2S_RPC`** i **`BIGQUERY_BATCH_RPC`**; **brak** fallbacku po publicznym `*.workers.dev` w kodzie ruchu internal |
 
 ### Faza 4. Deploy w kanonicznej kolejności
 
 | # | Krok | Warunek PASS |
 |----|------|--------------|
-| 18 | `workers/rag-worker` deploy | `wrangler deploy` zakończony 200; `GET /health` zwraca 200 z produkcyjnej domeny workera |
-| 19 | `workers/analytics` deploy | `wrangler deploy` zakończony; bindingi i sekrety widoczne; brak publicznego dostępu do chronionych endpointów (zob. poz. 14) |
-| 20 | `workers/bigquery-batch` deploy | `wrangler deploy` zakończony; `workers_dev` pozostaje `false` po deployu (zob. poz. 13) |
-| 21 | `workers/chat` deploy | uruchamiany **po** poz. 10 i poz. 18–20; obejmuje trasy `POST /chat`, `POST /consent`, `POST /apps/assistant/chat`, `POST /apps/assistant/consent` |
-| 22 | `shopify app deploy` | TAE `asystent-klienta` (z Consent Gate w assetach) + App Proxy `prefix=apps`, `subpath=assistant` zsynchronizowane z workerem |
-| 23 | Cloudflare Pages deploy | `apps/kazka` → `kazka-hydrogen-pages` (`--branch=main`); `apps/zareczyny` → `zareczyny-hydrogen-pages` (`--branch=main`); obie aplikacje serwują trasy `api.chat.ts` i `api.consent.ts` |
+| 19 | `workers/rag-worker` deploy | `wrangler deploy` zakończony 200; `GET /health` zwraca 200 z produkcyjnej domeny workera |
+| 20 | `workers/analytics` deploy | `wrangler deploy` zakończony; bindingi i sekrety widoczne; brak publicznego dostępu do chronionych endpointów (zob. poz. 15) |
+| 21 | `workers/bigquery-batch` deploy | `wrangler deploy` zakończony; `workers_dev` pozostaje `false` po deployu (zob. poz. 14) |
+| 22 | `workers/marketing-ingest` deploy | `wrangler deploy` zakończony; `workers_dev = false`; ingest URL i sekrety Google ustawione zgodnie z poz. 9 |
+| 23 | `workers/chat` deploy | uruchamiany **po** poz. 11 i poz. 19–22; obejmuje trasy `POST /chat`, `POST /consent`, `POST /apps/assistant/chat`, `POST /apps/assistant/consent` |
+| 24 | `shopify app deploy` | TAE `asystent-klienta` (z Consent Gate w assetach) + App Proxy `prefix=apps`, `subpath=assistant` zsynchronizowane z workerem |
+| 25 | Cloudflare Pages deploy | `apps/kazka` → `kazka-hydrogen-pages` (`--branch=main`); `apps/zareczyny` → `zareczyny-hydrogen-pages` (`--branch=main`); obie aplikacje serwują trasy `api.chat.ts` i `api.consent.ts` |
 
 ### Faza 5. Smoke testy po deployu
 
@@ -382,19 +417,30 @@ Weryfikacja D1 w tej bramce odbywa się **przez HTTP** (`GET /pixel/events`), ni
 
 | # | Ścieżka / dane | Warunek PASS |
 |----|----------------|--------------|
-| 24 | Online Store (TAE) | `POST {shop}/apps/assistant/consent` po wyrażeniu zgody ⇒ **2xx** (typowo **204**); `POST {shop}/apps/assistant/chat` ⇒ odpowiedź `Content-Type: text/event-stream` |
-| 25 | Hydrogen `kazka` | `POST /api/consent` ⇒ **204**; `POST /api/chat` ⇒ `text/event-stream`; BFF dokleja `X-EPIR-SHARED-SECRET`, `X-EPIR-STOREFRONT-ID`, `X-EPIR-CHANNEL` |
-| 26 | Hydrogen `zareczyny` | jak poz. 25, z odpowiednim `storefrontId` / `channel` |
-| 27 | D1 `consent_events` | nowy wiersz append-only dla każdego pomyślnego zapisu zgody (potwierdzone `wrangler d1 execute ai-assistant-sessions-db --remote --command="SELECT * FROM consent_events ORDER BY created_at DESC LIMIT 5;"`) |
-| 28 | RAG retrieval | `GET /health` ⇒ 200; `POST /search/policies` i `POST /search/products` zwracają wyniki dla referencyjnego zapytania; `ADMIN_TOKEN` nie jest placeholderem |
-| 29 | Analytics pipeline | webhooki Shopify trafiają do D1 `jewelry-analytics-db`; batch eksport przez Pipelines do Iceberg; spójność `_epir_session_id` ↔ `session_id` zachowana w lejku |
-| 30 | Negatywny smoke (no-go canary) | powtórzenie poz. **12**, **13**, **15** na produkcyjnym workerze — nieautoryzowany klient dostaje oczekiwany `401`/`400`/`404` zgodnie z kontraktem |
+| 26 | Online Store (TAE) | `POST {shop}/apps/assistant/consent` po wyrażeniu zgody ⇒ **2xx** (typowo **204**); `POST {shop}/apps/assistant/chat` ⇒ odpowiedź `Content-Type: text/event-stream` |
+| 27 | Hydrogen `kazka` | `POST /api/consent` ⇒ **204**; `POST /api/chat` ⇒ `text/event-stream`; BFF dokleja `X-EPIR-SHARED-SECRET`, `X-EPIR-STOREFRONT-ID`, `X-EPIR-CHANNEL` |
+| 28 | Hydrogen `zareczyny` | jak poz. 27, z odpowiednim `storefrontId` / `channel` |
+| 29 | D1 `consent_events` | nowy wiersz append-only dla każdego pomyślnego zapisu zgody (potwierdzone `wrangler d1 execute ai-assistant-sessions-db --remote --command="SELECT * FROM consent_events ORDER BY created_at DESC LIMIT 5;"`) |
+| 30 | RAG retrieval | `GET /health` ⇒ 200; `POST /search/policies` i `POST /search/products` zwracają wyniki dla referencyjnego zapytania; `ADMIN_TOKEN` nie jest placeholderem |
+| 31 | Analytics pipeline | webhooki Shopify trafiają do D1 `jewelry-analytics-db`; batch eksport przez Pipelines do Iceberg; spójność `_epir_session_id` ↔ `session_id` zachowana w lejku; **marketing:** worker `epir-marketing-ingest` zasil ingest GA4/Ads (bez PII w logach), Iceberg w namespace `marketing` zgodnie z operacyjną konfiguracją Pipelines |
+| 32 | Negatywny smoke (no-go canary) | powtórzenie poz. **13**, **14**, **16** na produkcyjnym workerze — nieautoryzowany klient dostaje oczekiwany `401`/`400`/`404` zgodnie z kontraktem |
 
 ### Reguła blokady
 
-- **PASS = wszystkie pozycje 1–30 spełnione.** Jakikolwiek FAIL ⇒ **NO-GO**, niezależnie od jego „wagi”. Nie przepuszczamy bramki pojedynczym wyjątkiem ani notatką „dopiszemy w hotfixie”.
+- **PASS = wszystkie pozycje 1–32 spełnione.** Jakikolwiek FAIL ⇒ **NO-GO**, niezależnie od jego „wagi”. Nie przepuszczamy bramki pojedynczym wyjątkiem ani notatką „dopiszemy w hotfixie”.
 - Nowy sekret, endpoint, migracja albo check CI musi być dopisany do tej checklisty **przed** release, w którym staje się wymagany. Niezdokumentowana zależność jest traktowana jako FAIL.
 - Bramka jest jedna i jest tutaj. Nie utrzymujemy „roboczych” checklist w PR, issue ani notatkach prywatnych.
+
+## Epik (opcjonalny): BigQuery → R2 SQL / Iceberg cutover
+
+Nie jest wymagany do działania strumienia marketingowego (GA4/Ads → Pipelines → Iceberg w namespace `marketing`). Uruchom dopiero po stabilnym zasilaniu hurtowni i akceptacji produktowej.
+
+Checklista (issue w trackerze z tym samym tytułem):
+
+1. **Dual-read:** porównaj wyniki raportów referencyjnych między BigQuery a R2 SQL (te same zapytania logiczne, tolerancja różnic czasowych eksportu).
+2. **Checksum / reconciliation:** dzienne sumy kontrolne po kluczu biznesowym (np. data + kanał) dla wybranych tabel.
+3. **Produkt:** decyzja, czy `run_analytics_query`, dbt (`analytics/dbt`) i narzędzia wewnętrzne przełączają odczyt na R2 SQL; aktualizacja [`EPIR_DATA_SCHEMA_CONTRACT.md`](EPIR_DATA_SCHEMA_CONTRACT.md) jako jednego kontraktu.
+4. **Rollback:** procedura powrotu do BigQuery jako źródła odczytów bez utraty zapisów (Iceberg pozostaje źródłem prawdy dla nowych strumieni niezależnie od BQ).
 
 ## Zasady utrzymania
 

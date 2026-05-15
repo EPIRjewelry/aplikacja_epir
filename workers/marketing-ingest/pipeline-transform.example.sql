@@ -1,0 +1,17 @@
+-- Przykład SQL w konfiguracji Cloudflare Pipelines (stream → sink Iceberg).
+-- Dostosuj nazwy streamu/tabeli do własnego pipeline’u. Namespace docelowy: marketing.*
+--
+-- INSERT INTO marketing.marketing_daily
+-- SELECT
+--   source,
+--   CAST(date AS DATE) AS event_date,
+--   campaign_id,
+--   campaign_name,
+--   session_source,
+--   metric_sessions,
+--   metric_conversions,
+--   metric_revenue,
+--   metric_impressions,
+--   metric_clicks,
+--   metric_cost
+-- FROM marketing_raw_stream;

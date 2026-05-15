@@ -1,0 +1,12 @@
+{
+  "fields": [
+    { "name": "event_type", "type": "string", "required": true },
+    { "name": "session_id", "type": "string", "required": true },
+    { "name": "customer_id", "type": "string", "required": false },
+    { "name": "storefront_id", "type": "string", "required": false },
+    { "name": "channel", "type": "string", "required": false },
+    { "name": "url", "type": "string", "required": true },
+    { "name": "payload", "type": "string", "required": true },
+    { "name": "created_at", "type": "timestamp", "required": true }
+  ]
+}

@@ -46,6 +46,16 @@ cd d:\aplikacja_epir\workers\bigquery-batch
 # wrangler secret put R2_SQL_API_TOKEN
 # (opcjonalnie) wrangler secret put PIPELINE_INGEST_TOKEN
 
+cd d:\aplikacja_epir\workers\marketing-ingest
+# Marketing → Pipelines (HTTP ingest) + Google:
+# wrangler secret put MARKETING_PIPELINE_INGEST_URL
+# (opcjonalnie) wrangler secret put MARKETING_PIPELINE_INGEST_TOKEN
+# wrangler secret put GA4_SERVICE_ACCOUNT_JSON
+# wrangler secret put GOOGLE_ADS_CLIENT_SECRET
+# wrangler secret put GOOGLE_ADS_REFRESH_TOKEN
+# wrangler secret put GOOGLE_ADS_DEVELOPER_TOKEN
+# Vars (nie-sekret): GA4_PROPERTY_ID, GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CUSTOMER_ID — Dashboard lub [vars] w wrangler.toml
+
 # 3. RAG worker (w aplikacja_epir – deploy.ps1 go deployuje przed chat; ręcznie tylko gdy chcesz zaktualizować sam RAG)
 cd d:\aplikacja_epir\workers\rag-worker
 wrangler deploy
@@ -58,7 +68,7 @@ cd d:\aplikacja_epir
 .\deploy.ps1
 ```
 
-Skrypt wykonuje: npm install → **RAG** → analytics → bigquery-batch → chat → **shopify app build** → **shopify app deploy**.
+Skrypt wykonuje: npm ci → **RAG** → analytics → bigquery-batch → **marketing-ingest** → chat → **shopify app build** → **shopify app deploy**.
 
 ### Shopify – podłączenie pod apkę w dev (OBOWIĄZKOWE przed deployem)
 
@@ -112,6 +122,7 @@ wrangler pages deploy public --project-name=zareczyny-hydrogen-pages
 | -------------- | ---------------------------------------------------------------------------- |
 | Główny projekt | `d:\aplikacja_epir`                                                          |
 | RAG worker     | `d:\aplikacja_epir\workers\rag-worker`                                       |
+| Marketing ingest | `d:\aplikacja_epir\workers\marketing-ingest`                             |
 | Dokumentacja   | `docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md`, `docs/EPIR_INGRESS_AND_RUNTIME.md` |
 
 ## Zachowanie agenta

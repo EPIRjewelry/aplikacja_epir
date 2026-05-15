@@ -1,0 +1,14 @@
+{
+  "fields": [
+    { "name": "id", "type": "int64", "required": true },
+    { "name": "session_id", "type": "string", "required": true },
+    { "name": "role", "type": "string", "required": true },
+    { "name": "content", "type": "string", "required": true },
+    { "name": "timestamp", "type": "int64", "required": true },
+    { "name": "tool_calls", "type": "string", "required": false },
+    { "name": "tool_call_id", "type": "string", "required": false },
+    { "name": "name", "type": "string", "required": false },
+    { "name": "storefront_id", "type": "string", "required": false },
+    { "name": "channel", "type": "string", "required": false }
+  ]
+}

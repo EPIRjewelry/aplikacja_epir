@@ -71,7 +71,7 @@ W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md
 ## Typowe rozróżnienia, których nie wolno gubić
 
 - Frontend (`Theme App Extension`, `Hydrogen`) to UI i klient API.
-- Backend (`workers/chat`, `workers/rag-worker`, `workers/analytics`, `workers/bigquery-batch`) utrzymuje logikę AI, sekrety, stan i integracje.
+- Backend (`workers/chat`, `workers/rag-worker`, `workers/analytics`, `workers/bigquery-batch`, `workers/marketing-ingest`) utrzymuje logikę AI, sekrety, stan i integracje.
 - `storefrontId` i `channel` są pierwszoklasowym kontekstem routingu.
 - Buyer-facing `Gemma` i internal `Dev-asystent` to dwa różne konteksty pracy AI.
 

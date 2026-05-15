@@ -19,6 +19,16 @@ pnpm-lock.yaml
 bigquery-secrets.txt
 chat-secrets.txt
 
+# Cloudflare / Pipelines / R2 — lokalne notatki z URL ingest, tokenów, katalogu (operatorskie; nigdy w repo)
+**/pipelines-schemas/.local/
+**/pipelines-schemas/*-secrets.*
+**/pipelines-schemas/*.local.env
+**/pipelines-ingest*.local.*
+**/cf-secrets.local.*
+**/r2-sql-token*.txt
+workers/**/.dev.vars
+!**/.dev.vars.example
+
 # Cache buildów
 **/.cache/
 .npm-cache-local/

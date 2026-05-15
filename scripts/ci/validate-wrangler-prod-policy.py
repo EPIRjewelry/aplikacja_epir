@@ -51,6 +51,10 @@ WORKERS: dict[str, dict[str, frozenset[str]]] = {
         "label": "bigquery-batch (epir-bigquery-batch)",
         "required_bindings": frozenset({"DB", "DB_CHATBOT"}),
     },
+    "workers/marketing-ingest/wrangler.toml": {
+        "label": "marketing-ingest (epir-marketing-ingest)",
+        "required_bindings": frozenset(),
+    },
 }
 
 # Wartości var — oczywiste placeholdery / dev-only
