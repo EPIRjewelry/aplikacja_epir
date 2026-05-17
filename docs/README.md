@@ -11,6 +11,8 @@ Ten katalog jest częścią jedynego kanonicznego pakietu dokumentacji EPIR. Ten
 
 ## Kanoniczny zestaw dokumentów
 
+Źródło prawdy dla architektury, release i kontraktów — **wiążące** przy konflikcie z research, notatkami lub odpowiedziami modeli.
+
 ### Dokumenty bazowe
 
 - [`../AGENTS.md`](../AGENTS.md) — onboarding dla ludzi i narzędzi AI
@@ -27,9 +29,21 @@ Ten katalog jest częścią jedynego kanonicznego pakietu dokumentacji EPIR. Ten
 - [`EPIR_BLUEPRINTS_AND_EXCEPTIONS.md`](EPIR_BLUEPRINTS_AND_EXCEPTIONS.md) — Project B, automatyzacje, limity API i zasady agentowe
 - `merge-gates/` — karty merge gate per zakres PR (go/no-go dla pojedynczych pakietów zmian, zgodne z kanoniczną bramką release)
 
+### Materiały robocze (mirror 1:1 z repo; niewiążące do czasu weryfikacji i wchłonięcia)
+
+Te pliki **muszą** być w tym samym drzewie co NotebookLM (mirror 1:1), ale **nie** równają się kanonowi: to syntezy, Q&A i kompas z research — przed decyzją produkcyjną obowiązuje weryfikacja w **aktualnych** dokumentach dostawców oraz w kodzie `aplikacja_epir`.
+
+- [`Architektura AI Analityka w Ekosystemie Cloudflare i Google Ads.md`](Architektura%20AI%20Analityka%20w%20Ekosystemie%20Cloudflare%20i%20Google%20Ads.md) — synteza (np. NotebookLM / deep research): hipotezy, linki, ryzyka; nie zastępuje `EPIR_*` ani wdrożenia.
+
+## Research i NotebookLM (zasada)
+
+1. **Research i eksport z NotebookLM** — **kompas**: kierunki, lista repozytoriów, ostrzeżenia; **nie** ostateczne brzmienie limitów API (np. R2 SQL) ani „drugi kanon”.
+2. **Decyzje architektoniczne i produkcyjne** dopiero po **dowodzie** z dokumentów w sekcji **Kanoniczny zestaw** powyżej albo z kodu w repo.
+3. Gdy treść z materiału roboczego zostanie **wchłonięta** do kanonu, **usuń lub okroj** plik roboczy (bez duplikacji prawdy).
+
 ## Zasada porządku
 
-Poza plikami z tej listy nie utrzymujemy dodatkowych helperów, quizów, checkpointów ani „historycznych” dokumentów. Gdy treść zostaje wchłonięta do pakietu kanonicznego, stary plik znika.
+Poza plikami z sekcji **Kanoniczny zestaw dokumentów** oraz **Materiały robocze** nie utrzymujemy dodatkowych helperów, quizów, checkpointów ani „historycznych” dokumentów. Gdy treść zostaje wchłonięta do pakietu kanonicznego, stary plik roboczy znika. Nowe syntezy research umieszczaj w `docs/` i od razu dopisuj tutaj (sekcja Materiały robocze) albo włącz treść do kanonu po redakcji.
 
 ## Dla agentów i onboardingów
 

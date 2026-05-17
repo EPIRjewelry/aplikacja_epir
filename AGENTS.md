@@ -4,7 +4,7 @@
 
 Ten plik jest wspólnym onboardingiem dla ludzi i narzędzi AI pracujących w `d:\aplikacja_epir`.
 
-Repo i mirror NotebookLM mają utrzymywać **dokładnie ten sam zestaw dokumentów**. Nie ma tu miejsca na równoległe notatki, archiwa „na wszelki wypadek” ani alternatywne opisy architektury.
+Repo i mirror NotebookLM mają utrzymywać **dokładnie ten sam zestaw dokumentów** (kanon + materiały robocze wymienione w `docs/README.md`). Nie ma miejsca na **drugi kanoniczny** zestaw docs ani alternatywne opisy architektury poza tą listą. Syntezy research są dopuszczone **wyłącznie** jako **Materiały robocze** w `docs/README.md` — reguły i status w README.
 
 ## Czytaj najpierw
 
@@ -20,7 +20,8 @@ Obowiązkowa kolejność:
 - **Jedna aplikacja Shopify:** `epir_ai`
 - **Jedna gałąź kanoniczna:** `main`
 - **Jedno repo źródłowe:** `EPIRjewelry/aplikacja_epir`
-- **Jedna dokumentacja kanoniczna:** wyłącznie pliki wymienione w `docs/README.md`
+- **Jedna dokumentacja wiążąca (kanon):** wyłącznie sekcja **Kanoniczny zestaw dokumentów** w `docs/README.md`.
+- **Materiały robocze** (ta sama sekcja w README): syntezy research / NotebookLM — **mirror 1:1**, lecz **niewiążące** do czasu weryfikacji i ewentualnego wchłonięcia do kanonu (szczegóły w README).
 
 Jeżeli propozycja zmian zakłada drugi backend, drugi zestaw dokumentów lub drugi „prawdziwszy” stan poza tym repo, traktuj to jako błąd założeń.
 
@@ -53,6 +54,7 @@ W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md
 3. Nie utrzymuj starych helperów, quizów ani checkpointów, jeśli ich treść została już wchłonięta do pakietu kanonicznego.
 4. NotebookLM nie ma własnej wersji dokumentacji — utrzymuje mirror 1:1 repozytorium.
 5. Jeżeli jakaś lokalna wiedza nie została zapisana w repo, nie istnieje jako źródło prawdy.
+6. **Research i NotebookLM** nie zastępują kanonu: kompas i hipotezy — decyzje po weryfikacji z README (kanon) i kodem (`docs/README.md`, sekcje *Kanoniczny zestaw* i *Research i NotebookLM*).
 
 ## Środowisko deweloperskie (Node, monorepo)
 
