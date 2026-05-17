@@ -31,6 +31,11 @@ GA4_PROPERTY_ID = "435783047"
 # npx wrangler secret put GOOGLE_ADS_CLIENT_SECRET --env=""
 # npx wrangler secret put GOOGLE_ADS_REFRESH_TOKEN --env=""
 # npx wrangler secret put GOOGLE_ADS_DEVELOPER_TOKEN --env=""
+# Opcjonalnie MCC: npx wrangler secret put GOOGLE_ADS_LOGIN_CUSTOMER_ID --env=""  # CID menedżera, bez myślników
+# Ops (odczyt GA4+Ads w JSON, bez ingestu Pipelines): ustaw sekret, przypisz trasę HTTP do workera, potem:
+#   GET /ops/marketing-preview  z nagłówkiem  Authorization: Bearer <MARKETING_OPS_PREVIEW_KEY>
+#   opcjonalnie ?date=YYYY-MM-DD (domyślnie wczoraj UTC). Bez sekretu MARKETING_OPS_PREVIEW_KEY → 404.
+# npx wrangler secret put MARKETING_OPS_PREVIEW_KEY --env=""
 # Ads: GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CUSTOMER_ID — [vars] lub Dashboard (nie-sekret).
 #
 # Nie używaj (Worker ich nie czyta — usuń z CF jeśli istnieją):

@@ -125,7 +125,7 @@ Osobny worker od `workers/bigquery-batch`: **pull** GA4 (Data API) + Google Ads 
 
 **Vars (nie-sekret)** — Dashboard Cloudflare albo `[vars]` / `wrangler vars`: `GA4_PROPERTY_ID` (np. `properties/123` lub sam numeryczny id), `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CUSTOMER_ID` (bez myślników).
 
-**Cron:** `0 */6 * * *` (UTC) — patrz `workers/marketing-ingest/wrangler.toml`. Worker nie publikuje routingu HTTP poza `GET /` i `GET /healthz` (`404` dla reszty).
+**Cron:** `0 */6 * * *` (UTC) — patrz `workers/marketing-ingest/wrangler.toml`. Publicznie: `GET /`, `GET /healthz`. Opcjonalnie **`GET /ops/marketing-preview`** — podgląd JSON (GA4 + Google Ads, bez ingestu), tylko gdy ustawisz sekret `MARKETING_OPS_PREVIEW_KEY` i nagłówek `Authorization: Bearer …`; bez sekretu ścieżka zwraca `404`. Wymaga **trasy HTTP** do `epir-marketing-ingest` (custom domain / route w Cloudflare). Opcjonalnie sekret `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (CID MCC) dla zapytań pod konto klienckie.
 
 **Pipelines (jednorazowo, operatorsko):**
 
@@ -371,7 +371,7 @@ Oczekiwany sygnał: oba skrypty kończą się kodem `0` i drukują końcowy stat
 | 6 | Sekrety `workers/rag-worker` | `ADMIN_TOKEN` ustawiony i **nie jest placeholderem** z repo; `CANONICAL_MCP_URL`, `SHOP_DOMAIN` ustawione; bindingi `AI`, `VECTOR_INDEX` widoczne dla workera |
 | 7 | Sekrety `workers/analytics` | `SHOPIFY_WEBHOOK_SECRET` ustawione |
 | 8 | Sekrety i vars `workers/bigquery-batch` | eksport: `PIPELINE_*_INGEST_URL` (co najmniej jeden); **RPC `run_analytics_query`:** `R2_SQL_API_TOKEN` + vars `R2_SQL_*` / `WAREHOUSE_SQL_*` (patrz [`wrangler.toml`](../../workers/bigquery-batch/wrangler.toml)) |
-| 9 | Sekrety `workers/marketing-ingest` | `MARKETING_PIPELINE_INGEST_URL`; opcjonalnie `MARKETING_PIPELINE_INGEST_TOKEN`; `GA4_SERVICE_ACCOUNT_JSON`; Ads: `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_ADS_DEVELOPER_TOKEN`; vars (nie-sekret): `GA4_PROPERTY_ID`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CUSTOMER_ID` (Dashboard / `[vars]` — patrz [`wrangler.toml`](../workers/marketing-ingest/wrangler.toml)) |
+| 9 | Sekrety `workers/marketing-ingest` | `MARKETING_PIPELINE_INGEST_URL`; opcjonalnie `MARKETING_PIPELINE_INGEST_TOKEN`; `GA4_SERVICE_ACCOUNT_JSON`; Ads: `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_ADS_DEVELOPER_TOKEN`; opcjonalnie `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (MCC), `MARKETING_OPS_PREVIEW_KEY` (Bearer do `/ops/marketing-preview`); vars (nie-sekret): `GA4_PROPERTY_ID`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CUSTOMER_ID` (Dashboard / `[vars]` — patrz [`wrangler.toml`](../workers/marketing-ingest/wrangler.toml)) |
 | 10 | Sekrety Cloudflare Pages (`kazka`, `zareczyny`) | `SESSION_SECRET`, `PUBLIC_STOREFRONT_API_TOKEN`, `PRIVATE_STOREFRONT_API_TOKEN` (gdzie wymagany), `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`, `EPIR_CHAT_SHARED_SECRET` ustawione w obu projektach Pages |
 | 11 | Migracja D1 `ai-assistant-sessions-db` | `005_consent_events.sql` zaaplikowana (`wrangler d1 execute ai-assistant-sessions-db --remote --file=./migrations/005_consent_events.sql` z katalogu `workers/chat`); tabela `consent_events` istnieje |
 | 12 | Migracje D1 `jewelry-analytics-db` | wszystkie aktualne pliki migracyjne z `workers/bigquery-batch` zaaplikowane na bazę docelową |

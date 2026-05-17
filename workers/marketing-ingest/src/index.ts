@@ -2,6 +2,7 @@
 
 import { fetchAdsMarketingRows } from './ads';
 import { fetchGa4MarketingRows, yesterdayUtcDate } from './ga4';
+import { handleMarketingPreview } from './ops-preview';
 import { postPipelineIngestBatch } from './pipeline-post';
 
 export interface Env {
@@ -15,6 +16,10 @@ export interface Env {
   GOOGLE_ADS_REFRESH_TOKEN?: string;
   GOOGLE_ADS_DEVELOPER_TOKEN?: string;
   GOOGLE_ADS_CUSTOMER_ID?: string;
+  /** CID MCC bez myślników — nagłówek login-customer-id (Ads API). */
+  GOOGLE_ADS_LOGIN_CUSTOMER_ID?: string;
+  /** Bearer do GET /ops/marketing-preview (odczyt GA4+Ads bez ingestu). Brak sekretu → endpoint zwraca 404. */
+  MARKETING_OPS_PREVIEW_KEY?: string;
 }
 
 const BATCH = 200;
@@ -37,8 +42,10 @@ async function sendBatches(env: Env, records: Record<string, unknown>[]): Promis
 }
 
 export default {
-  async fetch(req: Request): Promise<Response> {
+  async fetch(req: Request, env: Env): Promise<Response> {
     const u = new URL(req.url);
+    const preview = await handleMarketingPreview(req, env);
+    if (preview) return preview;
     if (req.method === 'GET' && (u.pathname === '/' || u.pathname === '/healthz')) {
       return new Response('ok', { status: 200 });
     }

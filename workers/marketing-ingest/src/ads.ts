@@ -7,6 +7,8 @@ export interface AdsEnv {
   GOOGLE_ADS_DEVELOPER_TOKEN?: string;
   /** Bez myślników */
   GOOGLE_ADS_CUSTOMER_ID?: string;
+  /** Opcjonalnie: CID konta menedżerskiego (MCC), bez myślników — nagłówek login-customer-id przy zapytaniach do konta klienckiego. */
+  GOOGLE_ADS_LOGIN_CUSTOMER_ID?: string;
 }
 
 async function refreshAdsAccessToken(env: AdsEnv): Promise<string | null> {
@@ -48,14 +50,19 @@ export async function fetchAdsMarketingRows(env: AdsEnv, date: string): Promise<
     LIMIT 10000
   `.trim();
 
+  const loginCid = (env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ?? '').replace(/-/g, '').trim();
+
   const url = `https://googleads.googleapis.com/v17/customers/${customerId}/googleAds:search`;
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${access}`,
+    'developer-token': devTok,
+    'Content-Type': 'application/json',
+  };
+  if (loginCid) headers['login-customer-id'] = loginCid;
+
   const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${access}`,
-      'developer-token': devTok,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({ query }),
   });
   if (!res.ok) {
