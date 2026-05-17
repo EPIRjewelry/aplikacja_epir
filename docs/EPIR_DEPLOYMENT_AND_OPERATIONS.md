@@ -221,7 +221,7 @@ Kolejność zalecana:
 4. `workers/marketing-ingest`
 5. `workers/chat` (**musi obejmować trasy Consent Gate:** `POST /apps/assistant/consent`, `POST /consent` oraz zapis do `consent_events` po zastosowaniu migracji D1)
 
-W praktyce `deploy.ps1` powinien utrzymywać tę kolejność.
+W praktyce `deploy.ps1` powinien utrzymywać tę kolejność. Aby wdrożyć **wyłącznie** te pięć workerów bez `npm ci` i bez kroku Shopify, użyj `deploy-workers.ps1` w katalogu głównym repo.
 
 ### 5. Deploy aplikacji Shopify
 

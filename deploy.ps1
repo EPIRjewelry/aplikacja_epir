@@ -1,5 +1,6 @@
 # deploy.ps1 – sekwencja wdrożenia EPIR
 # Uruchom z głównego katalogu projektu: .\deploy.ps1
+# Tylko Workers (bez npm ci / Shopify): .\deploy-workers.ps1
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot

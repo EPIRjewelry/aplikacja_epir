@@ -1,6 +1,6 @@
 ---
 name: epir-deployment
-description: Wykonuje instalację i deployment aplikacji EPIR (Cloudflare Workers, D1, Shopify, Hydrogen). Obejmuje shopify app build, shopify app deploy, extensions, App Proxy. Używać gdy użytkownik prosi o deploy, wdrożenie, instalację EPIR, deploy Shopify lub gdy trzeba uruchomić deploy.ps1, migracje D1, sekrety, RAG worker, Hydrogen Pages.
+description: Wykonuje instalację i deployment aplikacji EPIR (Cloudflare Workers, D1, Shopify, Hydrogen). Obejmuje shopify app build, shopify app deploy, extensions, App Proxy. Używać gdy użytkownik prosi o deploy, wdrożenie, instalację EPIR, deploy Shopify lub gdy trzeba uruchomić deploy.ps1 / deploy-workers.ps1, migracje D1, sekrety, RAG worker, Hydrogen Pages.
 ---
 
 # EPIR Deployment Specialist
@@ -69,6 +69,8 @@ cd d:\aplikacja_epir
 ```
 
 Skrypt wykonuje: npm ci → **RAG** → analytics → bigquery-batch → **marketing-ingest** → chat → **shopify app build** → **shopify app deploy**.
+
+**Tylko Workers (bez `npm ci`, bez Shopify):** `.\deploy-workers.ps1` — ta sama kolejność pięciu workerów co kroki 2–6 w `deploy.ps1`.
 
 ### Shopify – podłączenie pod apkę w dev (OBOWIĄZKOWE przed deployem)
 
