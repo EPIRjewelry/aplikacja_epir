@@ -12,6 +12,7 @@ Komponenty objęte tym dokumentem:
 - `workers/rag-worker`
 - `workers/analytics`
 - `workers/bigquery-batch`
+- `workers/analyst-worker`
 - `apps/kazka`
 - `apps/zareczyny`
 - aplikacja Shopify `epir_ai`
@@ -25,14 +26,15 @@ Komponenty objęte tym dokumentem:
 
 ## Sekrety i konfiguracja
 
-### Profile środowisk `staging` / `production` w `wrangler.toml` (4 workery)
+### Profile środowisk `staging` / `production` w `wrangler.toml` (workery backendowe)
 
-Aktualny stan repo dla:
+Aktualny stan repo dla m.in.:
 
 - `workers/chat/wrangler.toml`
 - `workers/rag-worker/wrangler.toml`
 - `workers/analytics/wrangler.toml`
 - `workers/bigquery-batch/wrangler.toml`
+- `workers/analyst-worker/wrangler.toml`
 
 Każdy plik definiuje sekcje `[env.staging]` i `[env.production]` jako profile dziedziczące konfigurację top-level (bindingi, sekrety, triggery/routy), bez jawnych override'ów w samych sekcjach env.
 
@@ -44,7 +46,7 @@ Kontrakt operacyjny:
 
 Wymóg polityki deploy:
 
-- `workers_dev` nie może być `true` w root ani w `[env.production]` (walidowane przez `scripts/ci/validate-wrangler-prod-policy.py` dla workerów objętych polityką).
+- `workers_dev` nie może być `true` w root ani w `[env.production]` dla workerów **wpisanych w** `scripts/ci/validate-wrangler-prod-policy.py` (m.in. chat, rag, analytics, bigquery-batch, marketing-ingest). Inne workery (np. `workers/analyst-worker` z publicznym `*.workers.dev`) mogą mieć inną posturę — o ile jest to jawne w `wrangler.toml` i w tym dokumencie.
 
 ### `workers/chat`
 
@@ -111,6 +113,16 @@ Postura ingress dla produkcji:
 
 - `workers_dev = false` (brak publicznej domeny developerskiej dla workera batch),
 - `run_analytics_query` realizowane przez **Workers RPC** (`BIGQUERY_BATCH_RPC` → `BigQueryBatchS2SRpc`, `ctx.props`); ścieżka HTTP `POST /internal/analytics/query` pozostaje celowo zamknięta (`404`).
+
+### `workers/analyst-worker` (`epir-analyst-worker`)
+
+Cienki worker **HTTP + Bearer** (np. narzędzia w Cursorze): `POST /v1/warehouse/query` z JSON `{ "queryId": "…" }` — **bez surowego SQL**; whitelist `queryId` jest współdzielona z batch workerem (`workers/bigquery-batch/src/analytics-query-ids.ts`). Wywołanie idzie przez binding **`BIGQUERY_BATCH_RPC`** → `runAnalyticsQuery` (ten sam kontrakt co czat).
+
+**Sekrety:** `ANALYST_HTTP_BEARER` — `wrangler secret put ANALYST_HTTP_BEARER --env=""` z katalogu `workers/analyst-worker` (wartość tylko w vault).
+
+**Deploy:** po `workers/bigquery-batch` (usługa docelowa RPC musi istnieć). W repo: krok `[4/6]` w `deploy-workers.ps1` / `[5/9]` w `deploy.ps1`.
+
+**Postura:** w `wrangler.toml` root **`workers_dev = true`** — worker ma publiczny URL `*.workers.dev`; dostęp do zapytań magazynowych wyłącznie przy poprawnym Bearerze i whitelistowanym `queryId`.
 
 ### `workers/marketing-ingest` (`epir-marketing-ingest`)
 
@@ -218,10 +230,11 @@ Kolejność zalecana:
 1. `workers/rag-worker`
 2. `workers/analytics`
 3. `workers/bigquery-batch`
-4. `workers/marketing-ingest`
-5. `workers/chat` (**musi obejmować trasy Consent Gate:** `POST /apps/assistant/consent`, `POST /consent` oraz zapis do `consent_events` po zastosowaniu migracji D1)
+4. `workers/analyst-worker` (RPC do `epir-bigquery-batch`; wymaga wcześniejszego deployu batch)
+5. `workers/marketing-ingest`
+6. `workers/chat` (**musi obejmować trasy Consent Gate:** `POST /apps/assistant/consent`, `POST /consent` oraz zapis do `consent_events` po zastosowaniu migracji D1)
 
-W praktyce `deploy.ps1` powinien utrzymywać tę kolejność. Aby wdrożyć **wyłącznie** te pięć workerów bez `npm ci` i bez kroku Shopify, użyj `deploy-workers.ps1` w katalogu głównym repo.
+W praktyce `deploy.ps1` powinien utrzymywać tę kolejność. Aby wdrożyć **wyłącznie** te sześć workerów bez `npm ci` i bez kroku Shopify, użyj `deploy-workers.ps1` w katalogu głównym repo.
 
 ### 5. Deploy aplikacji Shopify
 
@@ -371,10 +384,11 @@ Oczekiwany sygnał: oba skrypty kończą się kodem `0` i drukują końcowy stat
 | 6 | Sekrety `workers/rag-worker` | `ADMIN_TOKEN` ustawiony i **nie jest placeholderem** z repo; `CANONICAL_MCP_URL`, `SHOP_DOMAIN` ustawione; bindingi `AI`, `VECTOR_INDEX` widoczne dla workera |
 | 7 | Sekrety `workers/analytics` | `SHOPIFY_WEBHOOK_SECRET` ustawione |
 | 8 | Sekrety i vars `workers/bigquery-batch` | eksport: `PIPELINE_*_INGEST_URL` (co najmniej jeden); **RPC `run_analytics_query`:** `R2_SQL_API_TOKEN` + vars `R2_SQL_*` / `WAREHOUSE_SQL_*` (patrz [`wrangler.toml`](../../workers/bigquery-batch/wrangler.toml)) |
-| 9 | Sekrety `workers/marketing-ingest` | `MARKETING_PIPELINE_INGEST_URL`; opcjonalnie `MARKETING_PIPELINE_INGEST_TOKEN`; `GA4_SERVICE_ACCOUNT_JSON`; Ads: `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_ADS_DEVELOPER_TOKEN`; opcjonalnie `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (MCC), `MARKETING_OPS_PREVIEW_KEY` (Bearer do `/ops/marketing-preview`); vars (nie-sekret): `GA4_PROPERTY_ID`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CUSTOMER_ID` (Dashboard / `[vars]` — patrz [`wrangler.toml`](../workers/marketing-ingest/wrangler.toml)) |
-| 10 | Sekrety Cloudflare Pages (`kazka`, `zareczyny`) | `SESSION_SECRET`, `PUBLIC_STOREFRONT_API_TOKEN`, `PRIVATE_STOREFRONT_API_TOKEN` (gdzie wymagany), `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`, `EPIR_CHAT_SHARED_SECRET` ustawione w obu projektach Pages |
-| 11 | Migracja D1 `ai-assistant-sessions-db` | `005_consent_events.sql` zaaplikowana (`wrangler d1 execute ai-assistant-sessions-db --remote --file=./migrations/005_consent_events.sql` z katalogu `workers/chat`); tabela `consent_events` istnieje |
-| 12 | Migracje D1 `jewelry-analytics-db` | wszystkie aktualne pliki migracyjne z `workers/bigquery-batch` zaaplikowane na bazę docelową |
+| 9 | Sekrety `workers/analyst-worker` | jeśli używasz publicznego HTTP magazynu: `ANALYST_HTTP_BEARER` (`wrangler secret put` w katalogu workera); deploy workera **po** `workers/bigquery-batch` (binding RPC) |
+| 10 | Sekrety `workers/marketing-ingest` | `MARKETING_PIPELINE_INGEST_URL`; opcjonalnie `MARKETING_PIPELINE_INGEST_TOKEN`; `GA4_SERVICE_ACCOUNT_JSON`; Ads: `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_ADS_DEVELOPER_TOKEN`; opcjonalnie `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (MCC), `MARKETING_OPS_PREVIEW_KEY` (Bearer do `/ops/marketing-preview`); vars (nie-sekret): `GA4_PROPERTY_ID`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CUSTOMER_ID` (Dashboard / `[vars]` — patrz [`wrangler.toml`](../workers/marketing-ingest/wrangler.toml)) |
+| 11 | Sekrety Cloudflare Pages (`kazka`, `zareczyny`) | `SESSION_SECRET`, `PUBLIC_STOREFRONT_API_TOKEN`, `PRIVATE_STOREFRONT_API_TOKEN` (gdzie wymagany), `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`, `EPIR_CHAT_SHARED_SECRET` ustawione w obu projektach Pages |
+| 12 | Migracja D1 `ai-assistant-sessions-db` | `005_consent_events.sql` zaaplikowana (`wrangler d1 execute ai-assistant-sessions-db --remote --file=./migrations/005_consent_events.sql` z katalogu `workers/chat`); tabela `consent_events` istnieje |
+| 13 | Migracje D1 `jewelry-analytics-db` | wszystkie aktualne pliki migracyjne z `workers/bigquery-batch` zaaplikowane na bazę docelową |
 
 ### Faza 3. Postura ingress i fail-closed (przed-deploy guard)
 
@@ -383,23 +397,25 @@ Każda pozycja w tej fazie ma być sprawdzona na zdeployowanej (lub planowanej) 
 | # | Endpoint / kontrakt | Warunek PASS |
 |----|---------------------|--------------|
 | 13 | `workers/rag-worker` `POST /admin/upsert` | fail-closed: brak / placeholder / niepoprawny `ADMIN_TOKEN` ⇒ `401` |
-| 14 | `workers/bigquery-batch` `POST /internal/analytics/query` | `workers_dev = false` w `wrangler.toml`; wywołanie HTTP zwraca `404` (tylko **RPC** `BigQueryBatchS2SRpc` z czatu) |
-| 15 | `workers/analytics` `GET /pixel/events`, … (chronione odczyty) | bezpośredni HTTP ⇒ `404` (odczyty z edge czatu idą przez **`ANALYTICS_S2S_RPC`**) |
-| 16 | `workers/chat` S2S `POST /chat`, `POST /consent` | brak `X-EPIR-SHARED-SECRET` ⇒ `401`; brak `storefrontId` lub `channel` ⇒ `400` |
-| 17 | `workers/chat` App Proxy `POST /apps/assistant/chat`, `POST /apps/assistant/consent` | błędny / brakujący HMAC ⇒ `401` (weryfikowane przez `workers/chat/src/security.ts`) |
-| 18 | Service binding chat → analytics / warehouse RPC | `workers/chat/wrangler.toml` definiuje **`ANALYTICS_WORKER`**, **`ANALYTICS_S2S_RPC`** i **`BIGQUERY_BATCH_RPC`**; **brak** fallbacku po publicznym `*.workers.dev` w kodzie ruchu internal |
+| 14 | `workers/bigquery-batch` `POST /internal/analytics/query` | `workers_dev = false` w `wrangler.toml`; wywołanie HTTP zwraca `404` (tylko **RPC** `BigQueryBatchS2SRpc` z czatu lub `epir-analyst-worker`) |
+| 15 | `workers/analyst-worker` `POST /v1/warehouse/query` | bez `Authorization: Bearer` zgodnego z `ANALYST_HTTP_BEARER` ⇒ `401`; brak sekretu w środowisku ⇒ `503`; nieznany `queryId` ⇒ `400` (whitelist jak `run_analytics_query`) |
+| 16 | `workers/analytics` `GET /pixel/events`, … (chronione odczyty) | bezpośredni HTTP ⇒ `404` (odczyty z edge czatu idą przez **`ANALYTICS_S2S_RPC`**) |
+| 17 | `workers/chat` S2S `POST /chat`, `POST /consent` | brak `X-EPIR-SHARED-SECRET` ⇒ `401`; brak `storefrontId` lub `channel` ⇒ `400` |
+| 18 | `workers/chat` App Proxy `POST /apps/assistant/chat`, `POST /apps/assistant/consent` | błędny / brakujący HMAC ⇒ `401` (weryfikowane przez `workers/chat/src/security.ts`) |
+| 19 | Service binding chat → analytics / warehouse RPC | `workers/chat/wrangler.toml` definiuje **`ANALYTICS_WORKER`**, **`ANALYTICS_S2S_RPC`** i **`BIGQUERY_BATCH_RPC`**; **brak** fallbacku po publicznym `*.workers.dev` w kodzie ruchu internal |
 
 ### Faza 4. Deploy w kanonicznej kolejności
 
 | # | Krok | Warunek PASS |
 |----|------|--------------|
-| 19 | `workers/rag-worker` deploy | `wrangler deploy` zakończony 200; `GET /health` zwraca 200 z produkcyjnej domeny workera |
-| 20 | `workers/analytics` deploy | `wrangler deploy` zakończony; bindingi i sekrety widoczne; brak publicznego dostępu do chronionych endpointów (zob. poz. 15) |
-| 21 | `workers/bigquery-batch` deploy | `wrangler deploy` zakończony; `workers_dev` pozostaje `false` po deployu (zob. poz. 14) |
-| 22 | `workers/marketing-ingest` deploy | `wrangler deploy` zakończony; `workers_dev = false`; ingest URL i sekrety Google ustawione zgodnie z poz. 9 |
-| 23 | `workers/chat` deploy | uruchamiany **po** poz. 11 i poz. 19–22; obejmuje trasy `POST /chat`, `POST /consent`, `POST /apps/assistant/chat`, `POST /apps/assistant/consent` |
-| 24 | `shopify app deploy` | TAE `asystent-klienta` (z Consent Gate w assetach) + App Proxy `prefix=apps`, `subpath=assistant` zsynchronizowane z workerem |
-| 25 | Cloudflare Pages deploy | `apps/kazka` → `kazka-hydrogen-pages` (`--branch=main`); `apps/zareczyny` → `zareczyny-hydrogen-pages` (`--branch=main`); obie aplikacje serwują trasy `api.chat.ts` i `api.consent.ts` |
+| 20 | `workers/rag-worker` deploy | `wrangler deploy` zakończony 200; `GET /health` zwraca 200 z produkcyjnej domeny workera |
+| 21 | `workers/analytics` deploy | `wrangler deploy` zakończony; bindingi i sekrety widoczne; brak publicznego dostępu do chronionych endpointów (zob. poz. 16) |
+| 22 | `workers/bigquery-batch` deploy | `wrangler deploy` zakończony; `workers_dev` pozostaje `false` po deployu (zob. poz. 14) |
+| 23 | `workers/analyst-worker` deploy | `wrangler deploy` zakończony **po** poz. 22; binding `BIGQUERY_BATCH_RPC` widoczny; `ANALYST_HTTP_BEARER` ustawiony zgodnie z poz. 9, jeśli używasz HTTP |
+| 24 | `workers/marketing-ingest` deploy | `wrangler deploy` zakończony; `workers_dev = false`; ingest URL i sekrety Google ustawione zgodnie z poz. 10 |
+| 25 | `workers/chat` deploy | uruchamiany **po** poz. 12 i poz. 20–24; obejmuje trasy `POST /chat`, `POST /consent`, `POST /apps/assistant/chat`, `POST /apps/assistant/consent` |
+| 26 | `shopify app deploy` | TAE `asystent-klienta` (z Consent Gate w assetach) + App Proxy `prefix=apps`, `subpath=assistant` zsynchronizowane z workerem |
+| 27 | Cloudflare Pages deploy | `apps/kazka` → `kazka-hydrogen-pages` (`--branch=main`); `apps/zareczyny` → `zareczyny-hydrogen-pages` (`--branch=main`); obie aplikacje serwują trasy `api.chat.ts` i `api.consent.ts` |
 
 ### Faza 5. Smoke testy po deployu
 

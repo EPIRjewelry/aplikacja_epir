@@ -49,6 +49,10 @@ jobs:
         working-directory: workers/bigquery-batch
         run: npx wrangler deploy
 
+      - name: Deploy analyst-worker worker
+        working-directory: workers/analyst-worker
+        run: npx wrangler deploy
+
       - name: Deploy marketing-ingest worker
         working-directory: workers/marketing-ingest
         run: npx wrangler deploy

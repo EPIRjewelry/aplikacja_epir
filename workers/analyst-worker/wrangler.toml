@@ -1,0 +1,33 @@
+name = "epir-analyst-worker"
+main = "src/index.ts"
+compatibility_date = "2025-09-30"
+compatibility_flags = ["nodejs_compat"]
+# Publiczny URL pod Cursor/curl; ogranicz Bearer + ewentualnie wyłącz po własnej trasie DNS.
+workers_dev = true
+
+[build]
+command = ""
+
+# `npm run deploy` / CI: `wrangler deploy --env=""` — celujesz w środowisko top-level; `[env.*]` jest puste (jak w innych workerach), bez mylącego override `workers_dev`.
+[env.staging]
+
+[env.production]
+
+# Ten sam RPC co czat: whitelist R2 SQL w epir-bigquery-batch.
+[[services]]
+binding = "BIGQUERY_BATCH_RPC"
+service = "epir-bigquery-batch"
+entrypoint = "BigQueryBatchS2SRpc"
+
+  [services.props]
+  scopes = ["bigquery.analytics_query"]
+
+# wrangler secret put ANALYST_HTTP_BEARER --env=""
+# (Bearer do POST /v1/warehouse/query — dodawany w kroku implement-fetch)
+
+[observability]
+enabled = true
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true

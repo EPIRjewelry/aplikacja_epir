@@ -6,6 +6,9 @@
  */
 
 import { assertSqlIdentifier } from './sql-identifiers';
+import type { AnalyticsQueryId } from './analytics-query-ids';
+
+export { VALID_QUERY_IDS, type AnalyticsQueryId } from './analytics-query-ids';
 
 export interface WarehouseTableEnv {
   WAREHOUSE_SQL_NAMESPACE?: string;
@@ -22,7 +25,7 @@ function fqTables(env: WarehouseTableEnv): { pixel: string; messages: string } {
   return { pixel: `${ns}.${pt}`, messages: `${ns}.${mt}` };
 }
 
-const QUERY_BUILDERS: Record<string, (P: string, M: string) => string> = {
+const QUERY_BUILDERS: Record<AnalyticsQueryId, (P: string, M: string) => string> = {
   Q1_CONVERSION_CHAT: (P, M) => `
 WITH chat_sessions AS (
   SELECT DISTINCT session_id FROM ${M} WHERE role = 'user'
@@ -124,8 +127,6 @@ ORDER BY duration_seconds DESC
 LIMIT 100
 `,
 };
-
-export const VALID_QUERY_IDS = Object.keys(QUERY_BUILDERS);
 
 export function getR2AnalyticsSql(env: WarehouseTableEnv, queryId: string): string | undefined {
   const builder = QUERY_BUILDERS[queryId];
