@@ -1,0 +1,10 @@
+# Kopiuj do .dev.vars (nie commituj). Nazwy zgodne z Env w src/index.ts.
+# MARKETING_PIPELINE_INGEST_URL=https://....ingest.cloudflare.com
+# MARKETING_PIPELINE_INGEST_TOKEN=
+# GA4_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
+# GOOGLE_ADS_CLIENT_ID=
+# GOOGLE_ADS_CLIENT_SECRET=
+# GOOGLE_ADS_REFRESH_TOKEN=
+# GOOGLE_ADS_DEVELOPER_TOKEN=
+# GOOGLE_ADS_CUSTOMER_ID=
+# GA4_PROPERTY_ID ustaw w wrangler.toml [vars] lub tutaj dla lokalnego dev.

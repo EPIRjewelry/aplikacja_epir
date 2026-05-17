@@ -21,15 +21,21 @@ crons = ["0 */6 * * *"]
 [vars]
 MARKETING_ICEBERG_BUCKET = "epir-analytics-iceberg-warehouse"
 MARKETING_SQL_NAMESPACE = "marketing"
+# Numeryczne Property ID z GA4 Admin (nie Measurement ID / prefiks analytics_*).
+GA4_PROPERTY_ID = "435783047"
 
-# wrangler secret put MARKETING_PIPELINE_INGEST_URL   # https://{stream-id}.ingest.cloudflare.com
-# wrangler secret put MARKETING_PIPELINE_INGEST_TOKEN # opcjonalny Bearer
-# GA4 (service account JSON jednym secretem):
-# wrangler secret put GA4_SERVICE_ACCOUNT_JSON
-# wrangler secret put GOOGLE_ADS_CLIENT_SECRET
-# wrangler secret put GOOGLE_ADS_REFRESH_TOKEN
-# wrangler secret put GOOGLE_ADS_DEVELOPER_TOKEN
-# Vars (nie-sekret): GA4_PROPERTY_ID, GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CUSTOMER_ID — dodaj w [vars] lub Dashboard
+# Sekrety (z katalogu workers/marketing-ingest). Przy wielu [env.*] podaj domyślny worker: --env=""
+# npx wrangler secret put MARKETING_PIPELINE_INGEST_URL --env=""
+# npx wrangler secret put MARKETING_PIPELINE_INGEST_TOKEN --env=""
+# npx wrangler secret put GA4_SERVICE_ACCOUNT_JSON --env=""
+# npx wrangler secret put GOOGLE_ADS_CLIENT_SECRET --env=""
+# npx wrangler secret put GOOGLE_ADS_REFRESH_TOKEN --env=""
+# npx wrangler secret put GOOGLE_ADS_DEVELOPER_TOKEN --env=""
+# Ads: GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CUSTOMER_ID — [vars] lub Dashboard (nie-sekret).
+#
+# Nie używaj (Worker ich nie czyta — usuń z CF jeśli istnieją):
+# PIPELINE_GA4_INGEST_URL, PIPELINE_ADS_INGEST_URL, GA4_CLIENT_EMAIL, GA4_PRIVATE_KEY
+# R2_SQL_API_TOKEN na tym workerze nie jest używany przez kod marketing-ingest.
 
 [observability]
 enabled = true
