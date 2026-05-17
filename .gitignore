@@ -29,6 +29,9 @@ chat-secrets.txt
 workers/**/.dev.vars
 !**/.dev.vars.example
 
+# Google Ads lokalny smoke (workers/marketing-ingest/scripts/ads-query-smoke.ps1)
+workers/marketing-ingest/scripts/.ads-smoke.env
+
 # Cache buildów
 **/.cache/
 .npm-cache-local/
