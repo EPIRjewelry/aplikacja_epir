@@ -1,6 +1,7 @@
 # deploy-workers.ps1 — tylko Cloudflare Workers (bez npm ci, bez Shopify).
 # Uruchom z katalogu repo: .\deploy-workers.ps1
 # Kolejność jak w deploy.ps1: rag → analytics → bigquery-batch → marketing-ingest → chat.
+# Każdy deploy: npx wrangler deploy --env="" (jawny top-level przy [env.*] w wrangler.toml).
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
@@ -14,7 +15,8 @@ function Deploy-Worker {
     )
     Write-Host "`n$Label" -ForegroundColor Yellow
     Set-Location (Join-Path $root $RelativePath)
-    npx wrangler deploy
+    # Jawny top-level (root) — zgodnie z ostrzeżeniem Wranglera przy [env.staging]/[env.production].
+    npx wrangler deploy --env=""
     if ($LASTEXITCODE -ne 0) { throw "Deploy failed: $RelativePath" }
 }
 

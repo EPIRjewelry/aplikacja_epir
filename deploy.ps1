@@ -13,30 +13,31 @@ Set-Location $root
 npm ci
 if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
 
-# 2. Deploy workers (rag → analytics → bigquery-batch → marketing-ingest → chat; chat wymaga rag + analytics)
+# 2. Deploy workers (rag → analytics → bigquery-batch → marketing-ingest → chat; chat wymaga rag + analytics).
+#    wrangler deploy --env="" = jawny top-level przy [env.*] w wrangler.toml (zalecenie CLI).
 Write-Host "`n[2/8] Deploy epir-rag-worker..." -ForegroundColor Yellow
 Set-Location "$root\workers\rag-worker"
-wrangler deploy
+wrangler deploy --env=""
 if ($LASTEXITCODE -ne 0) { throw "rag deploy failed" }
 
 Write-Host "`n[3/8] Deploy epir-analityc-worker..." -ForegroundColor Yellow
 Set-Location "$root\workers\analytics"
-wrangler deploy
+wrangler deploy --env=""
 if ($LASTEXITCODE -ne 0) { throw "analytics deploy failed" }
 
 Write-Host "`n[4/8] Deploy epir-bigquery-batch..." -ForegroundColor Yellow
 Set-Location "$root\workers\bigquery-batch"
-wrangler deploy
+wrangler deploy --env=""
 if ($LASTEXITCODE -ne 0) { throw "bigquery-batch deploy failed" }
 
 Write-Host "`n[5/8] Deploy epir-marketing-ingest..." -ForegroundColor Yellow
 Set-Location "$root\workers\marketing-ingest"
-wrangler deploy
+wrangler deploy --env=""
 if ($LASTEXITCODE -ne 0) { throw "marketing-ingest deploy failed" }
 
 Write-Host "`n[6/8] Deploy epir-art-jewellery-worker (chat)..." -ForegroundColor Yellow
 Set-Location "$root\workers\chat"
-wrangler deploy
+wrangler deploy --env=""
 if ($LASTEXITCODE -ne 0) { throw "chat deploy failed" }
 
 # 4. Shopify app – build i deploy (extensions, app proxy)
