@@ -4,7 +4,7 @@
 
 Ten plik jest wspólnym onboardingiem dla ludzi i narzędzi AI pracujących w `d:\aplikacja_epir`.
 
-Repo i mirror NotebookLM mają utrzymywać **dokładnie ten sam zestaw dokumentów**. Nie ma tu miejsca na równoległe notatki, archiwa „na wszelki wypadek" ani alternatywne opisy architektury.
+Repo i mirror NotebookLM mają utrzymywać **dokładnie ten sam zestaw dokumentów**. Nie ma tu miejsca na równoległe notatki, archiwa „na wszelki wypadek” ani alternatywne opisy architektury.
 
 ## Czytaj najpierw
 
@@ -22,7 +22,7 @@ Obowiązkowa kolejność:
 - **Jedno repo źródłowe:** `EPIRjewelry/aplikacja_epir`
 - **Jedna dokumentacja kanoniczna:** wyłącznie pliki wymienione w `docs/README.md`
 
-Jeżeli propozycja zmian zakłada drugi backend, drugi zestaw dokumentów lub drugi „prawdziwszy" stan poza tym repo, traktuj to jako błąd założeń.
+Jeżeli propozycja zmian zakłada drugi backend, drugi zestaw dokumentów lub drugi „prawdziwszy” stan poza tym repo, traktuj to jako błąd założeń.
 
 ## Rola dokumentów bazowych
 
@@ -63,7 +63,7 @@ W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md
 
 ## Jeśli nie wiesz, od czego zacząć
 
-Przeczytaj cztery pliki z sekcji „Czytaj najpierw", a dopiero potem przechodź do kodu i dokumentów technicznych w `docs/`.
+Przeczytaj cztery pliki z sekcji „Czytaj najpierw”, a dopiero potem przechodź do kodu i dokumentów technicznych w `docs/`.
 
 ## Cursor Cloud specific instructions
 
