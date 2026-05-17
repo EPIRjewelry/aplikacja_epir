@@ -2,7 +2,8 @@ name = "epir-marketing-ingest"
 main = "src/index.ts"
 compatibility_date = "2025-09-30"
 compatibility_flags = ["nodejs_compat"]
-workers_dev = false
+# Włącza publiczny URL *.workers.dev — potrzebny do GET /ops/marketing-preview bez własnej trasy DNS (Bearer i tak chroni dane).
+workers_dev = true
 
 [build]
 command = ""

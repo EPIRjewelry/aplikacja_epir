@@ -125,7 +125,7 @@ Osobny worker od `workers/bigquery-batch`: **pull** GA4 (Data API) + Google Ads 
 
 **Vars (nie-sekret)** — Dashboard Cloudflare albo `[vars]` / `wrangler vars`: `GA4_PROPERTY_ID` (np. `properties/123` lub sam numeryczny id), `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CUSTOMER_ID` (bez myślników).
 
-**Cron:** `0 */6 * * *` (UTC) — patrz `workers/marketing-ingest/wrangler.toml`. Publicznie: `GET /`, `GET /healthz`. Opcjonalnie **`GET /ops/marketing-preview`** — podgląd JSON (GA4 + Google Ads, bez ingestu), tylko gdy ustawisz sekret `MARKETING_OPS_PREVIEW_KEY` i nagłówek `Authorization: Bearer …`; bez sekretu ścieżka zwraca `404`. Wymaga **trasy HTTP** do `epir-marketing-ingest` (custom domain / route w Cloudflare). Opcjonalnie sekret `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (CID MCC) dla zapytań pod konto klienckie.
+**Cron:** `0 */6 * * *` (UTC) — patrz `workers/marketing-ingest/wrangler.toml`. Publicznie: `GET /`, `GET /healthz`. Z `workers_dev = true` worker ma też URL **`*.workers.dev`** (użyteczne do `GET /ops/marketing-preview`). Opcjonalnie **`GET /ops/marketing-preview`** — podgląd JSON (GA4 + Google Ads, bez ingestu), tylko gdy ustawisz sekret `MARKETING_OPS_PREVIEW_KEY` i nagłówek `Authorization: Bearer …`; bez sekretu ścieżka zwraca `404`. Opcjonalnie sekret `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (CID MCC) dla zapytań pod konto klienckie.
 
 **Pipelines (jednorazowo, operatorsko):**
 
