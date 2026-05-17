@@ -78,3 +78,41 @@ W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md
 ## Jeśli nie wiesz, od czego zacząć
 
 Przeczytaj cztery pliki z sekcji „Czytaj najpierw”, a dopiero potem przechodź do kodu i dokumentów technicznych w `docs/`.
+
+## Cursor Cloud specific instructions
+
+### Package manager
+
+The project uses **npm workspaces** (root `package-lock.json`). Despite the `packageManager` field mentioning pnpm, all CI workflows, deploy scripts, and lockfiles use npm. Always use `npm install --legacy-peer-deps` to install dependencies.
+
+### Running tests
+
+Each worker and extension has its own Vitest config. Run tests per-workspace:
+
+| Workspace | Command |
+|---|---|
+| `workers/chat` | `npx vitest run` |
+| `workers/rag-worker` | `npx vitest run` |
+| `workers/analytics` | `npx vitest run` |
+| `workers/bigquery-batch` | `npx vitest run` |
+| `extensions/my-web-pixel` | `npx vitest run` |
+
+### Running lint
+
+- `apps/zareczyny`: `npm run lint` (uses `.eslintrc.cjs`, works)
+- `apps/kazka`: has a pre-existing issue — `.eslintrc.js` should be `.eslintrc.cjs` due to `"type": "module"` in `package.json`. Lint currently fails with a CJS/ESM mismatch error.
+
+### Running dev servers locally
+
+- **Chat worker**: `cd workers/chat && npx wrangler dev --port 8787 --local` — starts on `localhost:8787`. Root `/` returns `ok`. The `--local` flag avoids Cloudflare OAuth login; AI and Vectorize bindings are unavailable locally (`not supported`), so `/chat` returns 500 without remote credentials.
+- **Hydrogen storefronts** (kazka/zareczyny): `cd apps/<name> && npm run build:css && npx wrangler pages dev ./public --port <port> --local` — starts the Remix SSR worker. Returns 500 without Shopify API tokens (`PUBLIC_STOREFRONT_API_TOKEN`, `SESSION_SECRET`, etc.).
+
+### Building storefronts
+
+`cd apps/kazka && npm run build` (or `apps/zareczyny`). Both build cleanly via PostCSS + Remix.
+
+### Known pre-existing issues
+
+- **TypeScript**: `npm run typecheck` in both Hydrogen apps fails with `StorefrontHeaders` export error in `@shopify/hydrogen` — this is a version mismatch in `packages/utils/src/hydrogen.ts`, not caused by the dev environment.
+- **ESLint kazka**: see lint section above.
+- **Prettier zareczyny**: `npm run lint` reports ~89 formatting issues (pre-existing).
