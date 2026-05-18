@@ -54,6 +54,9 @@ WORKERS: dict[str, dict[str, frozenset[str]]] = {
     "workers/marketing-ingest/wrangler.toml": {
         "label": "marketing-ingest (epir-marketing-ingest)",
         "required_bindings": frozenset(),
+        # Domyślny deploy (`--env=""`) publikuje na *.workers.dev — celowe dla publicznego
+        # `GET /ops/marketing-preview` (Bearer + brak sekretu ⇒ 404). Inne workery EPIR: workers_dev=false.
+        "allow_workers_dev_at_root": True,
     },
 }
 
@@ -90,12 +93,12 @@ def load_toml(rel: Path) -> dict:
     return data
 
 
-def check_workers_dev(data: dict, rel_s: str, label: str) -> None:
+def check_workers_dev(data: dict, rel_s: str, label: str, *, allow_root_workers_dev: bool = False) -> None:
     """
     `wrangler deploy` bez --env bierze workers_dev z root.
     `wrangler deploy --env production` może nadpisać w [env.production] — oba poziomy muszą być bezpieczne.
     """
-    if data.get("workers_dev") is True:
+    if data.get("workers_dev") is True and not allow_root_workers_dev:
         fail(
             f"{rel_s} ({label}): workers_dev=true na poziomie root — domyślny `wrangler deploy` "
             "publikuje też na *.workers.dev; ustaw false w root (lub nie używaj domyślnego deployu z tą flagą)."
@@ -189,7 +192,8 @@ def main() -> None:
         label = meta["label"]
         required = meta["required_bindings"]
 
-        check_workers_dev(data, rel_s, label)
+        allow_wd = bool(meta.get("allow_workers_dev_at_root"))
+        check_workers_dev(data, rel_s, label, allow_root_workers_dev=allow_wd)
 
         check_vars(rel, label, merged_production_vars(data))
 
