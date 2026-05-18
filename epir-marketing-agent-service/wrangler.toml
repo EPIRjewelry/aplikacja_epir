@@ -1,0 +1,24 @@
+# Standalone worker — NOT a member of root npm workspaces (plan: https://github.com/EPIRjewelry/aplikacja_epir/blob/main/docs/EPIR_CLOUDFLARE_AGENT_SERVICE_PLAN.md).
+name = "epir_analityc"
+main = "src/index.ts"
+compatibility_date = "2026-05-13"
+compatibility_flags = [ "nodejs_compat" ]
+
+[vars]
+# Public origin of epir-marketing-ingest only (no secrets). Example: https://epir-marketing-ingest.<account>.workers.dev
+MARKETING_INGEST_ORIGIN = "https://example.invalid"
+
+[[durable_objects.bindings]]
+name = "MarketingSidecarAgent"
+class_name = "MarketingSidecarAgent"
+
+[[migrations]]
+tag = "v1_epir_marketing_sidecar"
+new_sqlite_classes = [ "MarketingSidecarAgent" ]
+
+# Zod 4.x ships ESM "import" subpath targets that omit .js on disk (only .cjs); esbuild needs explicit aliases.
+[alias]
+"zod" = "./node_modules/zod/index.cjs"
+"zod/v3" = "./node_modules/zod/v3/index.cjs"
+"zod/v4" = "./node_modules/zod/v4/index.cjs"
+"zod/v4-mini" = "./node_modules/zod/v4-mini/index.cjs"

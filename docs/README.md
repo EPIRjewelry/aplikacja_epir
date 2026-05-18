@@ -34,6 +34,9 @@ Ten katalog jest częścią jedynego kanonicznego pakietu dokumentacji EPIR. Ten
 Te pliki **muszą** być w tym samym drzewie co NotebookLM (mirror 1:1), ale **nie** równają się kanonowi: to syntezy, Q&A i kompas z research — przed decyzją produkcyjną obowiązuje weryfikacja w **aktualnych** dokumentach dostawców oraz w kodzie `aplikacja_epir`.
 
 - [`Architektura AI Analityka w Ekosystemie Cloudflare i Google Ads.md`](Architektura%20AI%20Analityka%20w%20Ekosystemie%20Cloudflare%20i%20Google%20Ads.md) — synteza (np. NotebookLM / deep research): hipotezy, linki, ryzyka; nie zastępuje `EPIR_*` ani wdrożenia.
+- [`EPIR_CLOUDFLARE_AGENT_SERVICE_PLAN.md`](EPIR_CLOUDFLARE_AGENT_SERVICE_PLAN.md) — plan warstwy „agent jako usługa” (Agents SDK obok monorepo, bramki ESOG, publiczne repo); nie zastępuje kanonu ani kontraktu danych w `EPIR_*`.
+- [`EPIR_PROJECT_B_COPILOT_VISION.md`](EPIR_PROJECT_B_COPILOT_VISION.md) — wizja „copilota” Project B (dane pixel/GA4/Ads, pamięć, koszt tokenów, tło, Workspace, okno czatu); kompas do wchłonięcia w kanon po ESOG.
+- **Publiczne repo Project B (kod):** [github.com/EPIRjewelry/epir_analityc](https://github.com/EPIRjewelry/epir_analityc) — Worker Cloudflare Agents (`epir_analityc`); lustro źródła w katalogu [`epir-marketing-agent-service/`](../epir-marketing-agent-service/) w monorepo.
 
 ## Research i NotebookLM (zasada)
 

@@ -1,0 +1,20 @@
+{
+  "name": "epir_analityc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone Cloudflare Agents SDK worker calling EPIR marketing-ingest HTTP only. Push to a public GitHub repo; no secrets in git.",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250525.0",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.46.0"
+  },
+  "dependencies": {
+    "agents": "0.12.4",
+    "core-js-pure": "3.41.0"
+  }
+}
