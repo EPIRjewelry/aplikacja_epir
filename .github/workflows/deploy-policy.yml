@@ -18,5 +18,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate Wrangler production policy
-        run: python3 scripts/ci/validate-wrangler-prod-policy.py
+      - name: Validate Shopify Admin API version (TOML vs chat worker)
+        run: python3 scripts/ci/validate-shopify-admin-api-version.py
+

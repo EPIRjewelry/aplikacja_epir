@@ -19,7 +19,8 @@ extension_directories = [
 api_version = "2026-04"
 
 [access_scopes]
-scopes = "customer_read_customers,customer_read_orders,customer_read_store_credit_accounts,unauthenticated_read_product_listings"
+# read_reports: ShopifyQL / shopifyqlQuery (natywna analityka Admin) — wymaga ponownej instalacji aplikacji po zmianie scope.
+scopes = "customer_read_customers,customer_read_orders,customer_read_store_credit_accounts,unauthenticated_read_product_listings,read_reports"
 
 [auth]
 redirect_urls = [

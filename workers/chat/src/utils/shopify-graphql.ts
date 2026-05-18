@@ -3,6 +3,8 @@
  * Extracted from duplicated adminGraphql functions
  */
 
+import { SHOPIFY_ADMIN_API_VERSION } from '../config/shopify-api-version';
+
 export interface ShopifyEnv {
   SHOP_DOMAIN?: string;
   SHOPIFY_ADMIN_TOKEN?: string;
@@ -31,7 +33,7 @@ export async function adminGraphql<T = any>(
     throw new Error('SHOPIFY_ADMIN_TOKEN not set (use: wrangler secret put SHOPIFY_ADMIN_TOKEN)');
   }
 
-  const endpoint = `https://${shopDomain}/admin/api/2024-07/graphql.json`;
+  const endpoint = `https://${shopDomain}/admin/api/${SHOPIFY_ADMIN_API_VERSION}/graphql.json`;
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {

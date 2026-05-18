@@ -267,7 +267,7 @@ describe('S2S ingress for /chat', () => {
 
     expect(response.status).toBe(200);
     const payload = (await response.json()) as { reply?: string; session_id?: string };
-    expect(payload.reply).toContain('Dev-asystent EPIR');
+    expect(payload.reply).toContain('analityczno-doradczym');
     expect(payload.session_id).toBeTruthy();
   });
 

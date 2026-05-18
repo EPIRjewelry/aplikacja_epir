@@ -8,6 +8,7 @@
 
 import { type McpRequest, type McpResponse } from './utils/jsonrpc';
 import { compactCatalogResult } from './mcp/catalog-result-compact';
+import { SHOPIFY_ADMIN_API_VERSION } from './config/shopify-api-version';
 
 export interface Env {
   SHOP_DOMAIN?: string;
@@ -477,7 +478,7 @@ export async function getCustomerById(env: Env, customerId: string): Promise<{ f
       ? customerId
       : `gid://shopify/Customer/${customerId}`;
     const query = `query customer($id: ID!) { customer(id: $id) { firstName lastName email } }`;
-    const endpoint = `https://${shopDomain}/admin/api/2024-07/graphql.json`;
+    const endpoint = `https://${shopDomain}/admin/api/${SHOPIFY_ADMIN_API_VERSION}/graphql.json`;
     const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': adminToken }, body: JSON.stringify({ query, variables: { id: normalizedId } }) });
     if (!response.ok) return null;
     const json: any = await response.json().catch(() => null);

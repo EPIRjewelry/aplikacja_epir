@@ -95,8 +95,13 @@ binding = "AI"
 
 # Headless / BFF S2S ingress secret (must be set via secret, never in [vars]):
 # wrangler secret put EPIR_CHAT_SHARED_SECRET
-# Shopify Admin API enrichment dla zalogowanego klienta (imię / email / profil):
+# Shopify Admin API enrichment dla zalogowanego klienta (imię / email / profil) oraz shopifyqlQuery (read_reports):
 # wrangler secret put SHOPIFY_ADMIN_TOKEN
+# Shopify Admin (m.in. shopifyqlQuery): wersja URL = `SHOPIFY_ADMIN_API_VERSION` w src/config/shopify-api-version.ts (spięte z shopify.app.toml [webhooks] api_version).
+# Storefront GraphQL (metaobject / AI profile): osobny pin w tym samym pliku — nie mylić z Admin.
+# Project B — fetch_marketing_preview: publiczny origin epir-marketing-ingest (var) + ten sam Bearer co MARKETING_OPS_PREVIEW_KEY na ingest:
+#   [vars] MARKETING_INGEST_ORIGIN = "https://…"
+#   wrangler secret put MARKETING_OPS_PREVIEW_KEY
 
 # Service binding to RAG worker (reusable RAG orchestrator)
 [[services]]

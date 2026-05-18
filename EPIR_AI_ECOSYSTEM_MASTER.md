@@ -130,16 +130,15 @@ Nie wolno jej:
 
 Aktywny w IDE i w `internal-dashboard`.
 
-Zakres:
+Zakres (priorytet w kanale `internal-dashboard`):
 
-- architektura Shopify / EPIR,
-- MCP i backend,
-- analityka, RAG, workers, deployment.
+- **analityka sklepu i marketingu**: hurtownia EPIR (whitelist `run_analytics_query`), podgląd GA4+Ads (`fetch_marketing_preview` → `epir-marketing-ingest`), natywna analityka Shopify (`run_shopify_shopifyql` / ShopifyQL, scope `read_reports`), lejki, kampanie **Google Ads** (w perspektywie także Meta), spójność danych z kanałami storefrontu,
+- architektura Shopify / EPIR, MCP, workers, deployment tam, gdzie wspiera analizę lub operacje.
 
 Nie wolno mu:
 
-- udawać Gemmy,
-- mieszać tonu buyer-facing z technicznym.
+- prowadzić rozmowy **sprzedażowej z kupującym** (to osobna rola buyer-facing w osobnych kanałach ingressu),
+- zmyślać metryk ani dostępu do systemów, których nie ma w wynikach narzędzi / danych.
 
 ### 6. Obieg danych
 
@@ -184,6 +183,8 @@ To obszar wewnętrzny:
 - BigQuery,
 - operacje administracyjne,
 - agentowe workflow developerskie.
+
+**Filozofia (copilot operatora):** w tym obszarze działa **Twój analityczno-doradczy „copilot”** — ma rozumieć **firmę i ciągłość pracy** (kampanie, lejki, dane z pixela, GA4, Ads), nie jest kanałem do kupującego i **nie zastępuje** Project A. Dostęp do danych i narzędzi jest **serwerowy**; integracje z zewnętrznymi systemami (np. Google Workspace) muszą być jawne w architekturze i sekretach — patrz materiał roboczy `docs/EPIR_PROJECT_B_COPILOT_VISION.md`.
 
 Project B może korzystać z serwerowych wyjątków operacyjnych, ale nie wolno przenosić tych wyjątków do frontendu buyer-facing.
 

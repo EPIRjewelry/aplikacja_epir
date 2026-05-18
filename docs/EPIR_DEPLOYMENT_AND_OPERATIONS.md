@@ -56,11 +56,14 @@ Wymagane sekrety backendowe:
 - `SHOPIFY_APP_SECRET`
 - `EPIR_CHAT_SHARED_SECRET`
 - `EPIR_OPERATOR_PANEL_SECRET` (powierzchnie HTTP panelu: `X-Admin-Key`, `Bearer` przy `X-Epir-Model-Variant`; odrębnie od S2S czatu `EPIR_CHAT_SHARED_SECRET` oraz od RPC `BIGQUERY_BATCH_RPC`, gdzie gateway przekazuje `ctx.props.scopes` na binding)
+- **Prywatny Dev-asystent (jeden operator):** po deployu `workers/chat` otwórz w przeglądarce `GET https://<host workera czatu>/internal/solo-dev-chat` (ten sam host co BFF `/chat`, np. produkcyjny worker). UI może trzymać `EPIR_OPERATOR_PANEL_SECRET` w `sessionStorage` tej przeglądarki i wołać `POST /internal/solo-dev-chat/api/chat` — worker **sam** dokleja S2S (`EPIR_CHAT_SHARED_SECRET`) oraz kanał `internal-dashboard` (agent analityczno-doradczy wewnętrzny). Lista modeli w UI odpowiada nagłówkowi `X-Epir-Model-Variant` (domyślnie Groq GPT-OSS-120B przez AI Gateway; alternatywy Workers AI, np. Kimi). **Produkcja:** przed publicznym hostem ustaw **Cloudflare Access** (lub ruch wyłącznie przez VPN / tunel) — sekret operatora zostaje w Cloudflare Secrets; Access decyduje, kto w ogóle może załadować stronę i wywołać API (najlepsze dopięcie do „sekret tylko w Secrets”).
 - tokeny storefrontów używane przez worker, zależnie od konfiguracji:
   - `SHOPIFY_STOREFRONT_TOKEN`
   - `PUBLIC_STOREFRONT_API_TOKEN_KAZKA`
   - `PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY`
   - `PRIVATE_STOREFRONT_API_TOKEN_ZARECZYNY`
+
+**Wersje Shopify API w kodzie workera czatu:** Storefront GraphQL jest pinowany na **`2024-10`** (`SHOPIFY_STOREFRONT_API_VERSION` w [`workers/chat/src/config/shopify-api-version.ts`](../../workers/chat/src/config/shopify-api-version.ts)); Admin GraphQL (w tym `shopifyqlQuery` dla `run_shopify_shopifyql`) na **`2026-04`**, zgodnie z `[webhooks] api_version` w [`shopify.app.toml`](../../shopify.app.toml). **Storefront nie jest automatycznie podbijany razem z Admin** — osobna decyzja i retest metaobjectów / tabeli rozmiarów / AI profile. **Podbicie wersji Admin:** w jednym PR zmień `shopify.app.toml` (`[webhooks] api_version`) oraz `SHOPIFY_ADMIN_API_VERSION` w `shopify-api-version.ts`; przed merge uruchom `python3 scripts/ci/validate-shopify-admin-api-version.py` (ten sam krok jest w workflow **Deploy safety policy** na PR).
 
 #### Wybór tokenu Storefront dla Online Store / TAE
 
@@ -392,7 +395,7 @@ Oczekiwany sygnał: oba skrypty kończą się kodem `0` i drukują końcowy stat
 
 | # | Kontrola | Warunek PASS |
 |---|----------|--------------|
-| 5 | Sekrety `workers/chat` | ustawione w środowisku produkcyjnym: `AI_GATEWAY_TOKEN`, `SHOPIFY_APP_SECRET`, `EPIR_CHAT_SHARED_SECRET`, `EPIR_OPERATOR_PANEL_SECRET` (panel operatorski — nie dla S2S worker→worker), oraz token storefrontu pasujący do `SHOP_DOMAIN` (`SHOPIFY_STOREFRONT_TOKEN` lub odpowiedni per-storefront token) |
+| 5 | Sekrety `workers/chat` | ustawione w środowisku produkcyjnym: `AI_GATEWAY_TOKEN`, `SHOPIFY_APP_SECRET`, `EPIR_CHAT_SHARED_SECRET`, `EPIR_OPERATOR_PANEL_SECRET` (panel operatorski — nie dla S2S worker→worker), oraz token storefrontu pasujący do `SHOP_DOMAIN` (`SHOPIFY_STOREFRONT_TOKEN` lub odpowiedni per-storefront token); dla **Project B / internal-dashboard**: `SHOPIFY_ADMIN_TOKEN` (m.in. `read_reports` dla ShopifyQL), opcjonalnie **`MARKETING_OPS_PREVIEW_KEY`** + var **`MARKETING_INGEST_ORIGIN`** (narzędzie `fetch_marketing_preview` — ten sam Bearer co `MARKETING_OPS_PREVIEW_KEY` na `epir-marketing-ingest`) |
 | 6 | Sekrety `workers/rag-worker` | `ADMIN_TOKEN` ustawiony i **nie jest placeholderem** z repo; `CANONICAL_MCP_URL`, `SHOP_DOMAIN` ustawione; bindingi `AI`, `VECTOR_INDEX` widoczne dla workera |
 | 7 | Sekrety `workers/analytics` | `SHOPIFY_WEBHOOK_SECRET` ustawione |
 | 8 | Sekrety i vars `workers/bigquery-batch` | eksport: `PIPELINE_*_INGEST_URL` (co najmniej jeden); **RPC `run_analytics_query`:** `R2_SQL_API_TOKEN` + vars `R2_SQL_*` / `WAREHOUSE_SQL_*` (patrz [`wrangler.toml`](../../workers/bigquery-batch/wrangler.toml)) |

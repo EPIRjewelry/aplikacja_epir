@@ -153,6 +153,47 @@ export const TOOL_SCHEMAS = {
     },
   },
 
+  fetch_marketing_preview: {
+    name: 'fetch_marketing_preview',
+    description:
+      'Pobiera z serwera epir-marketing-ingest agregowany podgląd GA4 + Google Ads (GET /ops/marketing-preview, Bearer). Dostępne TYLKO dla internal-dashboard. Wynik ma pole source=marketing_preview; cytuj liczby wyłącznie z payloadu.',
+    parameters: {
+      type: 'object',
+      properties: {
+        date: {
+          type: 'string',
+          description: 'Opcjonalna data snapshotu w formacie YYYY-MM-DD (UTC). Pominięcie = wczoraj wg logiki worker-a marketingu.',
+        },
+      },
+      required: [],
+    },
+  },
+
+  run_shopify_shopifyql: {
+    name: 'run_shopify_shopifyql',
+    description:
+      'Natywna analityka Shopify przez Admin GraphQL shopifyqlQuery — wyłącznie whitelista presetów (S1…S6). Wymaga read_reports. Gdy Shopify zwróci parseErrors, narzędzie zgłasza ShopifyQLPresetExecutionError — nie retry tego samego presetId w pętli.',
+    parameters: {
+      type: 'object',
+      properties: {
+        presetId: {
+          type: 'string',
+          description:
+            'S1: sales+sessions dzienne 30d. S2: miesięcznie last_year. S3: net+total sales dzienne 90d. S4: sales tygodniowo 12w. S5: sales+sessions 7d. S6: sales miesięcznie 13m.',
+          enum: [
+            'S1_SALES_SESSIONS_DAILY_30D',
+            'S2_SALES_SESSIONS_MONTHLY_LAST_YEAR',
+            'S3_SALES_NET_TOTAL_DAILY_90D',
+            'S4_SALES_WEEKLY_12W',
+            'S5_SALES_SESSIONS_DAILY_7D',
+            'S6_SALES_MONTHLY_13M',
+          ],
+        },
+      },
+      required: ['presetId'],
+    },
+  },
+
   update_cart: {
     name: 'update_cart',
     description: 'Perform updates to a cart including add/update/remove line items and buyer identity.',
@@ -348,6 +389,42 @@ export const TOOL_SCHEMAS_SLIM = {
         },
       },
       required: ['queryId'],
+    },
+  },
+
+  fetch_marketing_preview: {
+    name: 'fetch_marketing_preview',
+    description:
+      'GA4+Ads preview z epir-marketing-ingest (/ops/marketing-preview). internal-dashboard only.',
+    parameters: {
+      type: 'object',
+      properties: {
+        date: { type: 'string' },
+      },
+      required: [],
+    },
+  },
+
+  run_shopify_shopifyql: {
+    name: 'run_shopify_shopifyql',
+    description:
+      'ShopifyQL shopifyqlQuery (read_reports), presety S1–S6; przy parseErrors — ShopifyQLPresetExecutionError, bez retry presetu w pętli.',
+    parameters: {
+      type: 'object',
+      properties: {
+        presetId: {
+          type: 'string',
+          enum: [
+            'S1_SALES_SESSIONS_DAILY_30D',
+            'S2_SALES_SESSIONS_MONTHLY_LAST_YEAR',
+            'S3_SALES_NET_TOTAL_DAILY_90D',
+            'S4_SALES_WEEKLY_12W',
+            'S5_SALES_SESSIONS_DAILY_7D',
+            'S6_SALES_MONTHLY_13M',
+          ],
+        },
+      },
+      required: ['presetId'],
     },
   },
 

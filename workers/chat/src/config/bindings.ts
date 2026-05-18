@@ -104,6 +104,13 @@ export interface Env {
 
   SHOPIFY_STOREFRONT_TOKEN?: string;
   SHOPIFY_ADMIN_TOKEN?: string;
+  /**
+   * Origin workera `epir-marketing-ingest` (bez końcowego `/`), np. `https://epir-marketing-ingest.<subdomain>.workers.dev`.
+   * Razem z {@link MARKETING_OPS_PREVIEW_KEY} zasila narzędzie `fetch_marketing_preview` w `internal-dashboard`.
+   */
+  MARKETING_INGEST_ORIGIN?: string;
+  /** Ten sam sekret co `MARKETING_OPS_PREVIEW_KEY` na workerze marketing-ingest (Bearer do GET /ops/marketing-preview). */
+  MARKETING_OPS_PREVIEW_KEY?: string;
   GROQ_API_KEY?: string;
   SHOP_DOMAIN?: string;
   /** Opcjonalnie: GID wpisu metaobject z tabelą rozmiarów (gdy handle wpisu ≠ `tabela_rozmiarow`). */
@@ -164,6 +171,7 @@ export const OPTIONAL_SECRETS = [
   'PRIVATE_STOREFRONT_API_TOKEN',
   'PRIVATE_STOREFRONT_API_TOKEN_ZARECZYNY',
   'SHOPIFY_ADMIN_TOKEN',
+  'MARKETING_OPS_PREVIEW_KEY',
   'EPIR_CHAT_SHARED_SECRET',
   'X-EPIR-SHARED-SECRET',
   'GCP_SERVICE_ACCOUNT_KEY',
@@ -173,7 +181,12 @@ export const OPTIONAL_SECRETS = [
 
 export const REQUIRED_VARS = ['SHOP_DOMAIN', 'ALLOWED_ORIGIN'] as const;
 
-export const OPTIONAL_VARS = ['WORKER_ORIGIN', 'DEV_BYPASS', 'SHOPIFY_CUSTOMER_ACCOUNTS_MODE'] as const;
+export const OPTIONAL_VARS = [
+  'WORKER_ORIGIN',
+  'DEV_BYPASS',
+  'SHOPIFY_CUSTOMER_ACCOUNTS_MODE',
+  'MARKETING_INGEST_ORIGIN',
+] as const;
 
 export function getEnvBinding<K extends keyof Env>(env: Env, key: K): NonNullable<Env[K]> {
   const value = env[key];

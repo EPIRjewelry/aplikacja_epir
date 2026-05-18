@@ -256,6 +256,12 @@ const scenarios = [
       if (toolNames.includes('run_analytics_query')) {
         throw new Error(`${label}: run_analytics_query musi być internal-only i niedostępne w App Proxy.`);
       }
+      if (toolNames.includes('fetch_marketing_preview')) {
+        throw new Error(`${label}: fetch_marketing_preview musi być internal-only i niedostępne w App Proxy.`);
+      }
+      if (toolNames.includes('run_shopify_shopifyql')) {
+        throw new Error(`${label}: run_shopify_shopifyql musi być internal-only i niedostępne w App Proxy.`);
+      }
     },
   },
 ];

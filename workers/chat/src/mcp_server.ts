@@ -402,6 +402,20 @@ function normalizeCartArgs(raw: any, sessionCartKey?: string): any {
 }
 
 async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: string): Promise<{ result?: any; error?: any }> {
+  const internalDashboardOnly = new Set([
+    'run_analytics_query',
+    'fetch_marketing_preview',
+    'run_shopify_shopifyql',
+  ]);
+  if (internalDashboardOnly.has(toolName)) {
+    return {
+      error: {
+        code: -32601,
+        message: `Tool "${toolName}" is internal-dashboard only and is not available via Shop MCP.`,
+      },
+    };
+  }
+
   if (toolName === 'get_size_table') {
     return { result: await getSizeTable(env, brand) };
   }

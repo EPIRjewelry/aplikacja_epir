@@ -31,10 +31,16 @@ describe('TOOL_SCHEMAS_SLIM size reduction', () => {
     }
   });
 
-  it('slim preserves enum values (semantic validation)', () => {
-    const fullAnalytics = (TOOL_SCHEMAS as any).run_analytics_query.parameters.properties.queryId.enum;
-    const slimAnalytics = (TOOL_SCHEMAS_SLIM as any).run_analytics_query.parameters.properties.queryId.enum;
-    expect(slimAnalytics).toEqual(fullAnalytics);
+  it('slim preserves enum values for internal analytics tools', () => {
+    const pairs: Array<[string, string]> = [
+      ['run_analytics_query', 'queryId'],
+      ['run_shopify_shopifyql', 'presetId'],
+    ];
+    for (const [tool, prop] of pairs) {
+      const fullEnum = (TOOL_SCHEMAS as any)[tool].parameters.properties[prop].enum;
+      const slimEnum = (TOOL_SCHEMAS_SLIM as any)[tool].parameters.properties[prop].enum;
+      expect(slimEnum).toEqual(fullEnum);
+    }
   });
 
   it('slim preserves additionalProperties: false on update_cart', () => {

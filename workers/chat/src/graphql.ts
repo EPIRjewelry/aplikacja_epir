@@ -3,7 +3,9 @@
  * Handles Storefront and Admin API calls with retry logic and rate limiting
  */
 
-const SHOPIFY_API_VERSION = '2024-10';
+import { SHOPIFY_ADMIN_API_VERSION, SHOPIFY_STOREFRONT_API_VERSION } from './config/shopify-api-version';
+
+/** Admin i Storefront mają osobne piny wersji — patrz `config/shopify-api-version.ts`. */
 const MAX_RETRIES = 3;
 const RATE_LIMIT_DELAY_MS = 100;
 const INITIAL_RETRY_DELAY_MS = 1000;
@@ -140,7 +142,7 @@ export async function callStorefrontAPI<T>(
   query: string,
   variables?: Record<string, unknown>
 ): Promise<T> {
-  const url = `https://${shopDomain}/api/${SHOPIFY_API_VERSION}/graphql.json`;
+  const url = `https://${shopDomain}/api/${SHOPIFY_STOREFRONT_API_VERSION}/graphql.json`;
   const headers = {
     'X-Shopify-Storefront-Access-Token': storefrontToken,
   };
@@ -162,7 +164,7 @@ export async function callAdminAPI<T>(
   query: string,
   variables?: Record<string, unknown>
 ): Promise<T> {
-  const url = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
+  const url = `https://${shopDomain}/admin/api/${SHOPIFY_ADMIN_API_VERSION}/graphql.json`;
   const headers = {
     'X-Shopify-Access-Token': adminToken,
   };

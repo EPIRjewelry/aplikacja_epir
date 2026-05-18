@@ -57,65 +57,15 @@ import { executeToolWithParsedArguments } from './utils/tool-call-args';
 import { callMcpToolDirect, handleMcpRequest } from './mcp_server';
 import { STOREFRONTS, resolveStorefrontConfig } from './config/storefronts';
 import { chatPipelineLog } from './utils/chat-pipeline-log';
-
-/** Wywołanie run_analytics_query – tylko gdy channel=internal-dashboard (`BIGQUERY_BATCH_RPC` → R2 SQL whitelist). */
-async function runAnalyticsQuery(env: Env, args: { queryId?: string }): Promise<{ result?: unknown; error?: unknown }> {
-  const t0 = Date.now();
-  const rpc = env.BIGQUERY_BATCH_RPC;
-  if (!rpc) {
-    chatPipelineLog({
-      phase: 'analytics_bigquery_tool',
-      duration_ms: Date.now() - t0,
-      ok: false,
-      reason: 'binding_missing',
-    });
-    return { error: { code: -32603, message: 'run_analytics_query not configured (BIGQUERY_BATCH_RPC binding missing)' } };
-  }
-  const queryId = args?.queryId;
-  if (!queryId || typeof queryId !== 'string') {
-    chatPipelineLog({
-      phase: 'analytics_bigquery_tool',
-      duration_ms: Date.now() - t0,
-      ok: false,
-      reason: 'query_id_required',
-    });
-    return { error: { code: -32602, message: 'queryId required' } };
-  }
-  try {
-    const data = await rpc.runAnalyticsQuery({ queryId });
-    if (!data.ok) {
-      chatPipelineLog({
-        phase: 'analytics_bigquery_tool',
-        duration_ms: Date.now() - t0,
-        ok: false,
-        queryId,
-        http_status: data.status,
-      });
-      return { error: { code: data.status, message: data.error } };
-    }
-    const rows = data.rows ?? [];
-    chatPipelineLog({
-      phase: 'analytics_bigquery_tool',
-      duration_ms: Date.now() - t0,
-      ok: true,
-      queryId,
-      row_count: Array.isArray(rows) ? rows.length : 0,
-    });
-    return { result: { queryId: data.queryId, rows } };
-  } catch (e: any) {
-    chatPipelineLog({
-      phase: 'analytics_bigquery_tool',
-      duration_ms: Date.now() - t0,
-      ok: false,
-      queryId,
-      exception: true,
-    });
-    return { error: { code: -32000, message: e?.message ?? 'run_analytics_query failed' } };
-  }
-}
+import {
+  runWarehouseAnalyticsQuery,
+  fetchMarketingPreviewTool,
+  runShopifyShopifyqlTool,
+} from './internal-analytics-tools';
 import { ProfileService } from './profile';
 import { AnalyticsService } from './analytics-service';
 import { DASHBOARD_HTML } from './dashboard-html';
+import { SOLO_DEV_CHAT_HTML } from './solo-dev-chat-html';
 import { buildAIProfilePrompt, fetchAIProfile } from './ai-profile';
 import {
   loadPersonMemory,
@@ -187,6 +137,13 @@ interface ChatRequestBody {
 }
 
 const IMAGE_ATTACHMENT_PLACEHOLDER = '(załącznik obrazu)';
+
+/** Narzędzia wyłącznie dla kanału internal-dashboard (nie w App Proxy MCP). */
+const INTERNAL_DASHBOARD_ONLY_TOOL_NAMES = new Set([
+  'run_analytics_query',
+  'fetch_marketing_preview',
+  'run_shopify_shopifyql',
+]);
 
 type ChatContextOverride = {
   storefrontId?: string;
@@ -992,6 +949,9 @@ function cors(env: Env, request?: Request): Record<string, string> {
       EPIR_SHARED_SECRET_HEADER,
       EPIR_STOREFRONT_HEADER,
       EPIR_CHANNEL_HEADER,
+      'X-Admin-Key',
+      'X-Epir-Model-Variant',
+      'x-epir-model-variant',
       'x-d1-bookmark',
     ].join(','),
     'Access-Control-Expose-Headers': 'x-d1-bookmark,X-EPIR-Chart-Source',
@@ -2876,7 +2836,7 @@ async function handleChat(
 
   if (isShortGreeting) {
     const greetingReply = payload.channel === 'internal-dashboard'
-      ? 'Witaj! Jestem Dev-asystent EPIR. Mogę pomóc w architekturze, analytics i operacjach systemu. 🛠️'
+      ? 'Witaj! Jestem wewnętrznym agentem analityczno-doradczym EPIR (dane sklepu, pixel, kampanie). W czym pomóc?'
       : (payload.storefrontId === 'kazka' || payload.brand === 'kazka')
         ? 'Witaj! Jestem Gemma, doradca marki Kazka Jewelry. Jak mogę Ci dzisiaj pomóc? ✨'
         : (payload.storefrontId === 'zareczyny' || payload.brand === 'zareczyny')
@@ -3265,7 +3225,7 @@ async function streamAssistantResponse(
       const activeSchemas = resolveToolSchemas(env as { SLIM_TOOL_SCHEMAS?: string | boolean });
       const schemasToUse = storefrontContext?.channel === 'internal-dashboard'
         ? Object.values(activeSchemas)
-        : Object.values(activeSchemas).filter((s) => s.name !== 'run_analytics_query');
+        : Object.values(activeSchemas).filter((s) => !INTERNAL_DASHBOARD_ONLY_TOOL_NAMES.has(s.name));
       const toolDefinitions = schemasToUse.map((schema) => ({
         type: 'function' as const,
         function: {
@@ -3878,7 +3838,13 @@ async function streamAssistantResponse(
               call.arguments,
               async (safeArgs) => {
                 if (call.name === 'run_analytics_query') {
-                  return runAnalyticsQuery(env, safeArgs as { queryId?: string });
+                  return runWarehouseAnalyticsQuery(env, safeArgs as { queryId?: string });
+                }
+                if (call.name === 'fetch_marketing_preview') {
+                  return fetchMarketingPreviewTool(env, safeArgs as { date?: string });
+                }
+                if (call.name === 'run_shopify_shopifyql') {
+                  return runShopifyShopifyqlTool(env, safeArgs as { presetId?: string });
                 }
                 const brandForMcp = (storefrontContext?.storefrontId === 'kazka' || storefrontContext?.storefrontId === 'zareczyny')
                   ? storefrontContext.storefrontId
@@ -4152,6 +4118,114 @@ async function streamAssistantResponse(
   });
 }
 
+/** Kontekst S2S zgodny z testem `internal-dashboard` (Dev-asystent). */
+const SOLO_DEV_CHAT_CONTEXT: ChatContextOverride = {
+  storefrontId: 'online-store',
+  channel: 'internal-dashboard',
+  brand: 'epir',
+};
+
+function configuredChatSharedSecretForSoloProxy(env: Env): string {
+  if (typeof env.EPIR_CHAT_SHARED_SECRET === 'string' && env.EPIR_CHAT_SHARED_SECRET.trim().length > 0) {
+    return env.EPIR_CHAT_SHARED_SECRET.trim();
+  }
+  const legacy = env['X-EPIR-SHARED-SECRET'];
+  if (typeof legacy === 'string' && legacy.trim().length > 0) return legacy.trim();
+  return '';
+}
+
+/**
+ * UI + proxy HTTP dla jednego operatora: przeglądarka zna tylko `EPIR_OPERATOR_PANEL_SECRET`;
+ * worker dokleja S2S do `/chat` i Bearer dla `X-Epir-Model-Variant` (Groq / Workers AI).
+ */
+async function handleSoloDevChatIngress(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  url: URL,
+  method: string,
+): Promise<Response | null> {
+  const path = url.pathname;
+  if (path === '/internal/solo-dev-chat' && method === 'GET') {
+    return new Response(SOLO_DEV_CHAT_HTML, {
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Security-Policy':
+          "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'none'; font-src 'none'; connect-src 'self'; base-uri 'none'; form-action 'self'",
+        ...cors(env, request),
+      },
+    });
+  }
+
+  if (path === '/internal/solo-dev-chat/api/chat' && method === 'POST') {
+    const provided = request.headers.get('X-Admin-Key')?.trim() ?? '';
+    const expected = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
+    if (!expected || !provided || !timingSafeEqualText(expected, provided)) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    const shared = configuredChatSharedSecretForSoloProxy(env);
+    if (!shared) {
+      return new Response(JSON.stringify({ error: 'EPIR_CHAT_SHARED_SECRET not configured' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    const bodyText = await request.text();
+    const variant =
+      request.headers.get('X-Epir-Model-Variant')?.trim() ?? request.headers.get('x-epir-model-variant')?.trim() ?? '';
+    const innerHeaders = new Headers({
+      'Content-Type': 'application/json',
+      'X-EPIR-SHARED-SECRET': shared,
+      'X-EPIR-STOREFRONT-ID': 'online-store',
+      'X-EPIR-CHANNEL': 'internal-dashboard',
+      Authorization: `Bearer ${expected}`,
+    });
+    if (variant) innerHeaders.set('X-Epir-Model-Variant', variant);
+
+    const innerRequest = new Request('https://worker.internal/chat', {
+      method: 'POST',
+      headers: innerHeaders,
+      body: bodyText,
+    });
+    return handleChat(innerRequest, env, SOLO_DEV_CHAT_CONTEXT, ctx);
+  }
+
+  if (path === '/internal/solo-dev-chat/api/history' && method === 'POST') {
+    const provided = request.headers.get('X-Admin-Key')?.trim() ?? '';
+    const expected = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
+    if (!expected || !provided || !timingSafeEqualText(expected, provided)) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    const shared = configuredChatSharedSecretForSoloProxy(env);
+    if (!shared) {
+      return new Response(JSON.stringify({ error: 'EPIR_CHAT_SHARED_SECRET not configured' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    const bodyText = await request.text();
+    const innerRequest = new Request('https://worker.internal/history', {
+      method: 'POST',
+      headers: new Headers({
+        'Content-Type': 'application/json',
+        'X-EPIR-SHARED-SECRET': shared,
+        'X-EPIR-STOREFRONT-ID': 'online-store',
+        'X-EPIR-CHANNEL': 'internal-dashboard',
+      }),
+      body: bodyText,
+    });
+    return handleHistoryRequest(innerRequest, env);
+  }
+
+  return null;
+}
+
 // ============================================================================
 // GŁÓWNY EXPORT WORKERA
 // ============================================================================
@@ -4283,6 +4357,9 @@ export default {
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/ping' || url.pathname === '/health')) {
       return new Response('ok', { status: 200, headers: cors(env, request) });
     }
+
+    const soloDev = await handleSoloDevChatIngress(request, env, ctx, url, method);
+    if (soloDev) return soloDev;
 
     // Dashboard leadów (Agent Command Center)
     if (url.pathname === '/admin/dashboard' && request.method === 'GET') {
