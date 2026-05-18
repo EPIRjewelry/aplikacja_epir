@@ -147,7 +147,9 @@ Osobny worker od `workers/bigquery-batch`: **pull** GA4 (Data API) + Google Ads 
 
 **Vars (nie-sekret)** — Dashboard Cloudflare albo `[vars]` / `wrangler vars`: `GA4_PROPERTY_ID` (np. `properties/123` lub sam numeryczny id), `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CUSTOMER_ID` (bez myślników).
 
-**Cron:** `0 */6 * * *` (UTC) — patrz `workers/marketing-ingest/wrangler.toml`. Publicznie: `GET /`, `GET /healthz`. Z `workers_dev = true` worker ma też URL **`*.workers.dev`** (użyteczne do `GET /ops/marketing-preview`). Opcjonalnie **`GET /ops/marketing-preview`** — podgląd JSON (GA4 + Google Ads, bez ingestu), tylko gdy ustawisz sekret `MARKETING_OPS_PREVIEW_KEY` i nagłówek `Authorization: Bearer …`; bez sekretu ścieżka zwraca `404`. Opcjonalnie sekret `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (CID MCC) dla zapytań pod konto klienckie.
+**Cron:** `0 */6 * * *` (UTC) — patrz `workers/marketing-ingest/wrangler.toml`. Publicznie: `GET /`, `GET /healthz`. Z `workers_dev = true` worker ma też URL **`*.workers.dev`** (użyteczne do `GET /ops/marketing-preview`). Opcjonalnie **`GET /ops/marketing-preview`** — podgląd JSON (GA4 + Google Ads, bez ingestu), tylko gdy ustawisz sekret `MARKETING_OPS_PREVIEW_KEY` i nagłówek `Authorization: Bearer …`; bez sekretu ścieżka zwraca `404`.
+
+**Stanowy asystent analityk (Durable Object, bez dodatkowego workera):** przy tym samym sekrecie `MARKETING_OPS_PREVIEW_KEY` — `POST /ops/marketing-analyst/{instance}/refresh` (opcjonalne body JSON `{"date":"YYYY-MM-DD"}`) wywołuje tę samą logikę co preview, zapisuje skrót w DO i zwraca pełny JSON podglądu; `GET /ops/marketing-analyst/{instance}/state` zwraca ostatni skrót. Pakiet npm `agents` **nie** jest użyty (konflikt `zod` w bundlu monorepo z Wrangler/Shopify); możliwa późniejsza migracja na Cloudflare Agents SDK po ustabilizowaniu zależności.
 
 **Pipelines (jednorazowo, operatorsko):**
 

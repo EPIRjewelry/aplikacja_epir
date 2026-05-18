@@ -1,28 +1,24 @@
 /// <reference types="@cloudflare/workers-types" />
 
+import type { Env } from './env';
 import { fetchAdsMarketingRows } from './ads';
 import { fetchGa4MarketingRows, yesterdayUtcDate } from './ga4';
 import { handleMarketingPreview } from './ops-preview';
 import { postPipelineIngestBatch } from './pipeline-post';
 
-export interface Env {
-  /** HTTP ingest Pipelines (marketing stream). */
-  MARKETING_PIPELINE_INGEST_URL?: string;
-  MARKETING_PIPELINE_INGEST_TOKEN?: string;
-  GA4_PROPERTY_ID?: string;
-  GA4_SERVICE_ACCOUNT_JSON?: string;
-  GOOGLE_ADS_CLIENT_ID?: string;
-  GOOGLE_ADS_CLIENT_SECRET?: string;
-  GOOGLE_ADS_REFRESH_TOKEN?: string;
-  GOOGLE_ADS_DEVELOPER_TOKEN?: string;
-  GOOGLE_ADS_CUSTOMER_ID?: string;
-  /** CID MCC bez myślników — nagłówek login-customer-id (Ads API). */
-  GOOGLE_ADS_LOGIN_CUSTOMER_ID?: string;
-  /** Bearer do GET /ops/marketing-preview (odczyt GA4+Ads bez ingestu). Brak sekretu → endpoint zwraca 404. */
-  MARKETING_OPS_PREVIEW_KEY?: string;
-}
+export { MarketingAnalystAgent } from './marketing-analyst-agent';
+export type { Env } from './env';
 
 const BATCH = 200;
+
+const MARKETING_ANALYST_PATH = /^\/ops\/marketing-analyst\/([^/]+)\/(refresh|state)$/;
+
+function verifyMarketingOpsBearer(req: Request, env: Env): boolean {
+  const key = (env.MARKETING_OPS_PREVIEW_KEY ?? '').trim();
+  if (!key) return false;
+  const m = /^Bearer\s+(\S+)/i.exec(req.headers.get('Authorization') ?? '');
+  return (m?.[1]?.trim() ?? '') === key;
+}
 
 async function sendBatches(env: Env, records: Record<string, unknown>[]): Promise<{ ok: boolean; sent: number }> {
   const url = (env.MARKETING_PIPELINE_INGEST_URL ?? '').trim();
@@ -42,8 +38,30 @@ async function sendBatches(env: Env, records: Record<string, unknown>[]): Promis
 }
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const u = new URL(req.url);
+    const analystMatch = MARKETING_ANALYST_PATH.exec(u.pathname);
+    if (analystMatch) {
+      const mode = analystMatch[2];
+      if (!((req.method === 'POST' && mode === 'refresh') || (req.method === 'GET' && mode === 'state'))) {
+        return new Response('Method Not Allowed', { status: 405, headers: { 'Cache-Control': 'no-store' } });
+      }
+      const key = (env.MARKETING_OPS_PREVIEW_KEY ?? '').trim();
+      if (!key) {
+        return new Response('Not Found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+      }
+      if (!verifyMarketingOpsBearer(req, env)) {
+        return new Response('Unauthorized', {
+          status: 401,
+          headers: { 'WWW-Authenticate': 'Bearer', 'Cache-Control': 'no-store' },
+        });
+      }
+      const instance = decodeURIComponent(analystMatch[1]);
+      const id = env.MarketingAnalystAgent.idFromName(instance);
+      const stub = env.MarketingAnalystAgent.get(id);
+      return stub.fetch(req);
+    }
+
     const preview = await handleMarketingPreview(req, env);
     if (preview) return preview;
     if (req.method === 'GET' && (u.pathname === '/' || u.pathname === '/healthz')) {
