@@ -41,20 +41,20 @@ export async function buildMarketingPreviewBody(env: MarketingPreviewEnv, date: 
 
   const adsSorted = [...adsRows].sort((a, b) => (b.metric_impressions ?? 0) - (a.metric_impressions ?? 0));
   const topAds = adsSorted.slice(0, 20).map((r) => ({
-    campaign_id: r.campaign_id,
-    campaign_name: r.campaign_name,
-    impressions: r.metric_impressions,
-    clicks: r.metric_clicks,
-    cost: r.metric_cost,
-    conversions: r.metric_conversions,
+    campaign_id: r.campaign_id ?? '',
+    campaign_name: r.campaign_name ?? '',
+    impressions: r.metric_impressions ?? 0,
+    clicks: r.metric_clicks ?? 0,
+    cost: r.metric_cost ?? 0,
+    conversions: r.metric_conversions ?? 0,
   }));
 
   const topGa = gaRows.slice(0, 20).map((r) => ({
-    campaign_name: r.campaign_name,
-    session_source: r.session_source,
-    sessions: r.metric_sessions,
-    conversions: r.metric_conversions,
-    revenue: r.metric_revenue,
+    campaign_name: r.campaign_name ?? '',
+    session_source: r.session_source ?? '',
+    sessions: r.metric_sessions ?? 0,
+    conversions: r.metric_conversions ?? 0,
+    revenue: r.metric_revenue ?? 0,
   }));
 
   return {

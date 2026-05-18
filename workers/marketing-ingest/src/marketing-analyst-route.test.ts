@@ -1,3 +1,5 @@
+/// <reference types="@cloudflare/workers-types" />
+
 import { describe, expect, it, vi } from 'vitest';
 import worker from './index';
 import type { Env } from './env';
@@ -7,6 +9,7 @@ describe('marketing analyst HTTP gate', () => {
     const res = await worker.fetch(
       new Request('https://x/ops/marketing-analyst/solo/refresh', { method: 'POST' }),
       { MarketingAnalystAgent: {} } as unknown as Env,
+      {} as ExecutionContext,
     );
     expect(res.status).toBe(404);
   });
@@ -21,6 +24,7 @@ describe('marketing analyst HTTP gate', () => {
         MARKETING_OPS_PREVIEW_KEY: 'good',
         MarketingAnalystAgent: {},
       } as unknown as Env,
+      {} as ExecutionContext,
     );
     expect(res.status).toBe(401);
   });
@@ -41,12 +45,12 @@ describe('marketing analyst HTTP gate', () => {
         headers: { Authorization: 'Bearer tok' },
       }),
       env,
+      {} as ExecutionContext,
     );
     expect(res.status).toBe(200);
     expect(await res.text()).toBe('from-do');
-    expect((env.MarketingAnalystAgent as { idFromName: ReturnType<typeof vi.fn> }).idFromName).toHaveBeenCalledWith(
-      'my-session',
-    );
+    const ns = env.MarketingAnalystAgent as unknown as { idFromName: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> };
+    expect(ns.idFromName).toHaveBeenCalledWith('my-session');
     expect(stubFetch).toHaveBeenCalled();
   });
 });

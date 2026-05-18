@@ -82,7 +82,7 @@ export default {
     ctx.waitUntil(
       (async () => {
         const ga = await fetchGa4MarketingRows(env, date);
-        const r = await sendBatches(env, ga);
+        const r = await sendBatches(env, ga as unknown as Record<string, unknown>[]);
         console.log('[MARKETING_INGEST] GA4', { rows: ga.length, sent: r.sent, ok: r.ok });
       })(),
     );
@@ -90,7 +90,7 @@ export default {
     ctx.waitUntil(
       (async () => {
         const ads = await fetchAdsMarketingRows(env, date);
-        const r = await sendBatches(env, ads);
+        const r = await sendBatches(env, ads as unknown as Record<string, unknown>[]);
         console.log('[MARKETING_INGEST] Ads', { rows: ads.length, sent: r.sent, ok: r.ok });
       })(),
     );
