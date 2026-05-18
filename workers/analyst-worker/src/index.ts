@@ -1,6 +1,7 @@
 /// <reference types="@cloudflare/workers-types" />
 
 import { VALID_QUERY_IDS } from '../../bigquery-batch/src/analytics-query-ids';
+import { checkPostWarehouseRateLimit } from './analyst-rate-limit';
 
 /**
  * epir-analyst-worker — HTTP + Bearer dla Cursora; R2 SQL wyłącznie przez RPC do epir-bigquery-batch.
@@ -18,6 +19,12 @@ export interface Env {
   BIGQUERY_BATCH_RPC?: BigQueryBatchRpcStub;
   /** Sekret: wrangler secret put ANALYST_HTTP_BEARER --env="" */
   ANALYST_HTTP_BEARER?: string;
+  /** "true" / "1" — w odpowiedzi 400 dołącz `validQueryIds` (tylko debug). */
+  ANALYST_EXPOSE_VALID_QUERY_IDS?: string;
+  /** Max liczba POST /v1/warehouse/query na klucz (IP) w oknie; domyślnie 60. */
+  ANALYST_RATE_LIMIT_MAX?: string;
+  /** Okno rate limitu w ms; domyślnie 60000. */
+  ANALYST_RATE_LIMIT_WINDOW_MS?: string;
 }
 
 function parseBearer(req: Request): string | null {
@@ -31,6 +38,21 @@ function isAuthorized(req: Request, env: Env): boolean {
   if (!expected) return false;
   const token = parseBearer(req);
   return token === expected;
+}
+
+function parsePositiveInt(v: string | undefined, fallback: number): number {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
+function wantsExposeQueryIds(env: Env): boolean {
+  const v = (env.ANALYST_EXPOSE_VALID_QUERY_IDS ?? '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
+function isJsonContentType(req: Request): boolean {
+  const ct = (req.headers.get('Content-Type') ?? '').trim().toLowerCase();
+  return ct.includes('application/json');
 }
 
 export default {
@@ -61,6 +83,13 @@ export default {
         });
       }
 
+      if (!isJsonContentType(req)) {
+        return new Response(JSON.stringify({ error: 'Content-Type must be application/json' }), {
+          status: 415,
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+        });
+      }
+
       let body: { queryId?: string };
       try {
         body = (await req.json()) as { queryId?: string };
@@ -72,13 +101,29 @@ export default {
       }
       const queryId = typeof body.queryId === 'string' ? body.queryId.trim() : '';
       if (!queryId || !VALID_QUERY_IDS.includes(queryId)) {
-        return new Response(
-          JSON.stringify({
-            error: 'invalid or missing queryId',
-            validQueryIds: VALID_QUERY_IDS,
-          }),
-          { status: 400, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } },
-        );
+        const expose = wantsExposeQueryIds(env);
+        const payload = expose
+          ? { error: 'invalid or missing queryId', validQueryIds: [...VALID_QUERY_IDS] }
+          : { error: 'invalid or missing queryId' };
+        return new Response(JSON.stringify(payload), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+        });
+      }
+
+      const rlMax = parsePositiveInt(env.ANALYST_RATE_LIMIT_MAX, 60);
+      const rlWindow = parsePositiveInt(env.ANALYST_RATE_LIMIT_WINDOW_MS, 60_000);
+      const rlKey = req.headers.get('CF-Connecting-IP')?.trim() || 'unknown';
+      const rl = checkPostWarehouseRateLimit(rlKey, rlMax, rlWindow);
+      if (!rl.ok) {
+        return new Response(JSON.stringify({ error: 'rate_limited', retry_after_seconds: rl.retryAfterSec }), {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+            'Retry-After': String(rl.retryAfterSec),
+          },
+        });
       }
 
       const result = await env.BIGQUERY_BATCH_RPC.runAnalyticsQuery({ queryId });

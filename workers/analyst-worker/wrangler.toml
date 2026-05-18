@@ -8,6 +8,11 @@ workers_dev = true
 [build]
 command = ""
 
+[vars]
+# "true" / "1" = odpowiedź 400 może zawierać `validQueryIds` (tylko debug); domyślnie prod bez enumeracji.
+ANALYST_EXPOSE_VALID_QUERY_IDS = "false"
+# Opcjonalnie: ANALYST_RATE_LIMIT_MAX, ANALYST_RATE_LIMIT_WINDOW_MS (ms) — patrz docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md
+
 # `npm run deploy` / CI: `wrangler deploy --env=""` — celujesz w środowisko top-level; `[env.*]` jest puste (jak w innych workerach), bez mylącego override `workers_dev`.
 [env.staging]
 

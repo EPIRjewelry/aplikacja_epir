@@ -3,6 +3,11 @@
  * Osobny moduł bez szablonów SQL — lekki import w workerach klienckich (np. analyst).
  *
  * `QUERY_BUILDERS` w `analytics-queries.ts` musi definiować każdy identyfikator (typ wymusza spójność).
+ *
+ * Import z `workers/analyst-worker` przez ścieżkę względną w monorepo:
+ * - Plus: jedna lista ID, brak duplikacji, bundel analysta bez szablonów SQL.
+ * - Minus: zależność kompilacji między workerami (refaktor ścieżki wymaga zgodności obu projektów);
+ *   przy wielu maintainerach rozważ osobny pakiet workspace (`packages/…`); przy jednym — akceptowalne.
  */
 export const VALID_QUERY_IDS = [
   'Q1_CONVERSION_CHAT',

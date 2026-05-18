@@ -1,8 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import worker from './index';
 import { VALID_QUERY_IDS } from '../../bigquery-batch/src/analytics-query-ids';
+import { __resetAnalystRateLimitForTests } from './analyst-rate-limit';
 
 const validId = VALID_QUERY_IDS[0];
+
+const jsonHeaders = (auth?: string) => {
+  const h: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (auth) h.Authorization = auth;
+  return h;
+};
 
 describe('epir-analyst-worker', () => {
   it('GET /healthz returns ok', async () => {
@@ -15,7 +22,7 @@ describe('epir-analyst-worker', () => {
     const res = await worker.fetch(
       new Request('http://x/v1/warehouse/query', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: jsonHeaders(),
         body: '{}',
       }),
       {
@@ -31,7 +38,7 @@ describe('epir-analyst-worker', () => {
     const res = await worker.fetch(
       new Request('http://x/v1/warehouse/query', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer wrong' },
+        headers: jsonHeaders('Bearer wrong'),
         body: JSON.stringify({ queryId: validId }),
       }),
       {
@@ -48,12 +55,29 @@ describe('epir-analyst-worker', () => {
     const res = await worker.fetch(
       new Request('http://x/v1/warehouse/query', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer secret' },
+        headers: jsonHeaders('Bearer secret'),
         body: JSON.stringify({ queryId: validId }),
       }),
       { ANALYST_HTTP_BEARER: 'secret' },
     );
     expect(res.status).toBe(503);
+  });
+
+  it('POST without application/json Content-Type returns 415', async () => {
+    const res = await worker.fetch(
+      new Request('http://x/v1/warehouse/query', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer secret', 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ queryId: validId }),
+      }),
+      {
+        ANALYST_HTTP_BEARER: 'secret',
+        BIGQUERY_BATCH_RPC: {
+          runAnalyticsQuery: async () => ({ ok: true as const, queryId: validId, rows: [] }),
+        },
+      },
+    );
+    expect(res.status).toBe(415);
   });
 
   it('POST with valid queryId calls RPC and returns 200', async () => {
@@ -65,7 +89,7 @@ describe('epir-analyst-worker', () => {
     const res = await worker.fetch(
       new Request('http://x/v1/warehouse/query', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer secret' },
+        headers: jsonHeaders('Bearer secret'),
         body: JSON.stringify({ queryId: validId }),
       }),
       { ANALYST_HTTP_BEARER: 'secret', BIGQUERY_BATCH_RPC: { runAnalyticsQuery } },
@@ -75,15 +99,36 @@ describe('epir-analyst-worker', () => {
     expect(await res.json()).toEqual({ ok: true, queryId: validId, rows: [{ a: 1 }] });
   });
 
-  it('POST with unknown queryId returns 400', async () => {
+  it('POST with unknown queryId returns 400 without validQueryIds by default', async () => {
     const res = await worker.fetch(
       new Request('http://x/v1/warehouse/query', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer secret' },
+        headers: jsonHeaders('Bearer secret'),
         body: JSON.stringify({ queryId: 'NOT_WHITELISTED' }),
       }),
       {
         ANALYST_HTTP_BEARER: 'secret',
+        ANALYST_EXPOSE_VALID_QUERY_IDS: 'false',
+        BIGQUERY_BATCH_RPC: {
+          runAnalyticsQuery: async () => ({ ok: true as const, queryId: validId, rows: [] }),
+        },
+      },
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { validQueryIds?: string[] };
+    expect(body.validQueryIds).toBeUndefined();
+  });
+
+  it('POST with unknown queryId includes validQueryIds when ANALYST_EXPOSE_VALID_QUERY_IDS=true', async () => {
+    const res = await worker.fetch(
+      new Request('http://x/v1/warehouse/query', {
+        method: 'POST',
+        headers: jsonHeaders('Bearer secret'),
+        body: JSON.stringify({ queryId: 'NOT_WHITELISTED' }),
+      }),
+      {
+        ANALYST_HTTP_BEARER: 'secret',
+        ANALYST_EXPOSE_VALID_QUERY_IDS: 'true',
         BIGQUERY_BATCH_RPC: {
           runAnalyticsQuery: async () => ({ ok: true as const, queryId: validId, rows: [] }),
         },
@@ -98,7 +143,7 @@ describe('epir-analyst-worker', () => {
     const res = await worker.fetch(
       new Request('http://x/v1/warehouse/query', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer secret' },
+        headers: jsonHeaders('Bearer secret'),
         body: 'not-json',
       }),
       {
@@ -115,7 +160,7 @@ describe('epir-analyst-worker', () => {
     const res = await worker.fetch(
       new Request('http://x/v1/warehouse/query', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer secret' },
+        headers: jsonHeaders('Bearer secret'),
         body: JSON.stringify({ queryId: validId }),
       }),
       {
@@ -130,5 +175,35 @@ describe('epir-analyst-worker', () => {
       },
     );
     expect(res.status).toBe(422);
+  });
+
+  it('returns 429 when rate limit exceeded', async () => {
+    __resetAnalystRateLimitForTests();
+    const runAnalyticsQuery = vi.fn(async () => ({
+      ok: true as const,
+      queryId: validId,
+      rows: [],
+    }));
+    const env = {
+      ANALYST_HTTP_BEARER: 'secret',
+      ANALYST_RATE_LIMIT_MAX: '2',
+      ANALYST_RATE_LIMIT_WINDOW_MS: '60000',
+      BIGQUERY_BATCH_RPC: { runAnalyticsQuery },
+    };
+    const mk = () =>
+      new Request('http://x/v1/warehouse/query', {
+        method: 'POST',
+        headers: { ...jsonHeaders('Bearer secret'), 'CF-Connecting-IP': '203.0.113.55' },
+        body: JSON.stringify({ queryId: validId }),
+      });
+    expect((await worker.fetch(mk(), env)).status).toBe(200);
+    expect((await worker.fetch(mk(), env)).status).toBe(200);
+    const res429 = await worker.fetch(mk(), env);
+    expect(res429.status).toBe(429);
+    const j = (await res429.json()) as { error?: string; retry_after_seconds?: number };
+    expect(j.error).toBe('rate_limited');
+    expect(j.retry_after_seconds).toBeGreaterThanOrEqual(1);
+    expect(res429.headers.get('Retry-After')).toBeTruthy();
+    __resetAnalystRateLimitForTests();
   });
 });

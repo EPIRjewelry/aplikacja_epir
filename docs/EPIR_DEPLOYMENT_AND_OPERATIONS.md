@@ -120,6 +120,16 @@ Cienki worker **HTTP + Bearer** (np. narzędzia w Cursorze): `POST /v1/warehouse
 
 **Sekrety:** `ANALYST_HTTP_BEARER` — `wrangler secret put ANALYST_HTTP_BEARER --env=""` z katalogu `workers/analyst-worker` (wartość tylko w vault).
 
+**Vars (nie-sekret)** — `[vars]` w `wrangler.toml` lub Dashboard:
+
+- `ANALYST_EXPOSE_VALID_QUERY_IDS` — domyślnie `false`; ustaw `true` tylko lokalnie / debug, jeśli w odpowiedzi `400` dla złego `queryId` mają wrócić enumerowane ID (w prod zostaw `false`, żeby nie ujawniać schematu przy wycieku Bearer).
+- `ANALYST_RATE_LIMIT_MAX` (opcjonalnie, domyślnie `60`) — max liczba żądań `POST /v1/warehouse/query` na adres (`CF-Connecting-IP`, inaczej `unknown`) w oknie czasu.
+- `ANALYST_RATE_LIMIT_WINDOW_MS` (opcjonalnie, domyślnie `60000`) — długość okna w ms. Przekroczenie ⇒ `429` + `Retry-After` (limit best-effort per izolat Workers; przy bardzo dużym ruchu rozważ WAF / produkt Rate Limiting po stronie Cloudflare).
+
+**Kontrakt HTTP:** nagłówek `Content-Type` musi zawierać `application/json` (np. `application/json; charset=utf-8`); inaczej `415`.
+
+**Plan utrzymania (import whitelisty):** lista `queryId` żyje w `workers/bigquery-batch/src/analytics-query-ids.ts`; `epir-analyst-worker` importuje ten plik względną ścieżką w monorepo — jedna prawda, brak SQL w bundlu analysta; koszt to zależność build/deploy między workerami (przy jednym maintainerze zwykle OK; przy rozroście zespołu rozważ wydzielenie `packages/…` z samym eksportem ID).
+
 **Deploy:** po `workers/bigquery-batch` (usługa docelowa RPC musi istnieć). W repo: krok `[4/6]` w `deploy-workers.ps1` / `[5/9]` w `deploy.ps1`.
 
 **Postura:** w `wrangler.toml` root **`workers_dev = true`** — worker ma publiczny URL `*.workers.dev`; dostęp do zapytań magazynowych wyłącznie przy poprawnym Bearerze i whitelistowanym `queryId`.
@@ -384,7 +394,7 @@ Oczekiwany sygnał: oba skrypty kończą się kodem `0` i drukują końcowy stat
 | 6 | Sekrety `workers/rag-worker` | `ADMIN_TOKEN` ustawiony i **nie jest placeholderem** z repo; `CANONICAL_MCP_URL`, `SHOP_DOMAIN` ustawione; bindingi `AI`, `VECTOR_INDEX` widoczne dla workera |
 | 7 | Sekrety `workers/analytics` | `SHOPIFY_WEBHOOK_SECRET` ustawione |
 | 8 | Sekrety i vars `workers/bigquery-batch` | eksport: `PIPELINE_*_INGEST_URL` (co najmniej jeden); **RPC `run_analytics_query`:** `R2_SQL_API_TOKEN` + vars `R2_SQL_*` / `WAREHOUSE_SQL_*` (patrz [`wrangler.toml`](../../workers/bigquery-batch/wrangler.toml)) |
-| 9 | Sekrety `workers/analyst-worker` | jeśli używasz publicznego HTTP magazynu: `ANALYST_HTTP_BEARER` (`wrangler secret put` w katalogu workera); deploy workera **po** `workers/bigquery-batch` (binding RPC) |
+| 9 | Sekrety i vars `workers/analyst-worker` | `ANALYST_HTTP_BEARER` (`wrangler secret put` w katalogu workera); deploy **po** `workers/bigquery-batch`; w prod **`ANALYST_EXPOSE_VALID_QUERY_IDS=false`** (lub brak); opcjonalnie limity `ANALYST_RATE_LIMIT_*` jak w sekcji `workers/analyst-worker` poniżej |
 | 10 | Sekrety `workers/marketing-ingest` | `MARKETING_PIPELINE_INGEST_URL`; opcjonalnie `MARKETING_PIPELINE_INGEST_TOKEN`; `GA4_SERVICE_ACCOUNT_JSON`; Ads: `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_ADS_DEVELOPER_TOKEN`; opcjonalnie `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (MCC), `MARKETING_OPS_PREVIEW_KEY` (Bearer do `/ops/marketing-preview`); vars (nie-sekret): `GA4_PROPERTY_ID`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CUSTOMER_ID` (Dashboard / `[vars]` — patrz [`wrangler.toml`](../workers/marketing-ingest/wrangler.toml)) |
 | 11 | Sekrety Cloudflare Pages (`kazka`, `zareczyny`) | `SESSION_SECRET`, `PUBLIC_STOREFRONT_API_TOKEN`, `PRIVATE_STOREFRONT_API_TOKEN` (gdzie wymagany), `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`, `EPIR_CHAT_SHARED_SECRET` ustawione w obu projektach Pages |
 | 12 | Migracja D1 `ai-assistant-sessions-db` | `005_consent_events.sql` zaaplikowana (`wrangler d1 execute ai-assistant-sessions-db --remote --file=./migrations/005_consent_events.sql` z katalogu `workers/chat`); tabela `consent_events` istnieje |
@@ -398,7 +408,7 @@ Każda pozycja w tej fazie ma być sprawdzona na zdeployowanej (lub planowanej) 
 |----|---------------------|--------------|
 | 13 | `workers/rag-worker` `POST /admin/upsert` | fail-closed: brak / placeholder / niepoprawny `ADMIN_TOKEN` ⇒ `401` |
 | 14 | `workers/bigquery-batch` `POST /internal/analytics/query` | `workers_dev = false` w `wrangler.toml`; wywołanie HTTP zwraca `404` (tylko **RPC** `BigQueryBatchS2SRpc` z czatu lub `epir-analyst-worker`) |
-| 15 | `workers/analyst-worker` `POST /v1/warehouse/query` | bez `Authorization: Bearer` zgodnego z `ANALYST_HTTP_BEARER` ⇒ `401`; brak sekretu w środowisku ⇒ `503`; nieznany `queryId` ⇒ `400` (whitelist jak `run_analytics_query`) |
+| 15 | `workers/analyst-worker` `POST /v1/warehouse/query` | bez `Authorization: Bearer` zgodnego z `ANALYST_HTTP_BEARER` ⇒ `401`; brak sekretu ⇒ `503`; zły `Content-Type` (brak `application/json`) ⇒ `415`; nieznany `queryId` ⇒ `400` (enumeracja `validQueryIds` tylko gdy `ANALYST_EXPOSE_VALID_QUERY_IDS=true`); przekroczenie limitu żądań ⇒ `429` |
 | 16 | `workers/analytics` `GET /pixel/events`, … (chronione odczyty) | bezpośredni HTTP ⇒ `404` (odczyty z edge czatu idą przez **`ANALYTICS_S2S_RPC`**) |
 | 17 | `workers/chat` S2S `POST /chat`, `POST /consent` | brak `X-EPIR-SHARED-SECRET` ⇒ `401`; brak `storefrontId` lub `channel` ⇒ `400` |
 | 18 | `workers/chat` App Proxy `POST /apps/assistant/chat`, `POST /apps/assistant/consent` | błędny / brakujący HMAC ⇒ `401` (weryfikowane przez `workers/chat/src/security.ts`) |
