@@ -77,6 +77,14 @@ W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md
 - `storefrontId` i `channel` są pierwszoklasowym kontekstem routingu.
 - Buyer-facing `Gemma` i internal `Dev-asystent` to dwa różne konteksty pracy AI.
 
+## Strażnicy i kontrakt danych (warehouse)
+
+- **ESOG** — ortodoksia Shopify/app: `.cursor/skills/epir-esog-agent/SKILL.md`
+- **EDCG** — kontrakt danych analitycznych (D1 → Pipelines → Iceberg → R2 SQL): `.cursor/skills/epir-edcg-agent/SKILL.md`
+- **Kanon szczegółowy:** `docs/EPIR_ANALYTICS_DATA_CONTRACT.md`
+- **Bramka kroków** (każdy krok wymaga `ESOG: PASS` **oraz** `EDCG: PASS` przed kolejnym): `docs/merge-gates/WAREHOUSE_DATA_CONTRACT.md`
+- **CI kontraktu:** `python scripts/ci/validate-data-contract.py`
+
 ## Jeśli nie wiesz, od czego zacząć
 
 Przeczytaj cztery pliki z sekcji „Czytaj najpierw”, a dopiero potem przechodź do kodu i dokumentów technicznych w `docs/`.

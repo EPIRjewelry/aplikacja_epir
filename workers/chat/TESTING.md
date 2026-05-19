@@ -11,6 +11,15 @@ npx --yes vitest@3.2.4 run
 
 Oczekiwane: brak regresji w modułach `memory/`, `mcp_*`, `app_proxy_ingress_hmac`, `session_*`, `strip_leaked_tool_calls`.
 
+**Polityka Wrangler (CI / przed deployem):** z root repo:
+
+```powershell
+Set-Location d:\aplikacja_epir
+python scripts/ci/validate-wrangler-prod-policy.py
+```
+
+Skrypt m.in. wymaga, by binding `BIGQUERY_BATCH_RPC` w `workers/chat/wrangler.toml` miał `props.scopes` z `bigquery.analytics_query` (inaczej po deployu narzędzie `run_analytics_query` kończy się `rpc:forbidden missing scope …`).
+
 ## 2. Ręczne scenariusze E2E (theme + zalogowany klient)
 
 W jednym terminalu:
@@ -43,3 +52,4 @@ Warningi dopuszczalne: `LLM extractor skipped: extractor_timeout` (opcjonalne wz
 1. Powtórz scenariusz z zakładką DevTools → Network, zapisz payload `/chat`.
 2. Dorzuć przypadek brzegowy do `workers/chat/test/` (Vitest) zanim zrobisz fix.
 3. Redeploy: `npx --yes wrangler@4.45.3 deploy` z `workers/chat`.
+4. **`run_analytics_query` / `rpc:forbidden missing scope bigquery.analytics_query`:** najpierw upewnij się, że `python scripts/ci/validate-wrangler-prod-policy.py` przechodzi; potem wdróż workery w kolejności jak w `.github/workflows/deploy.yml` (`bigquery-batch` → `analyst-worker` → `chat`). Szczegóły: [`docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md`](../../docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md) (sekcja troubleshooting przy kontrakcie service binding).

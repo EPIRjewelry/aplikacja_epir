@@ -40,6 +40,16 @@ Priorytety napraw:
 - **SHOULD** – zalecane, best practices
 - **NICE-TO-HAVE** – opcjonalne ulepszenia
 
+### Werdykt PASS / FAIL (bramka hurtowni)
+
+Przy recenzji **kroku** z [`docs/merge-gates/WAREHOUSE_DATA_CONTRACT.md`](../../../docs/merge-gates/WAREHOUSE_DATA_CONTRACT.md) zakończ werdyktem bramki:
+
+```text
+ESOG: PASS
+```
+
+albo `ESOG: FAIL` z listą MUST. Kolejny krok dopiero po **`ESOG: PASS`** **oraz** **`EDCG: PASS`** na tym samym kroku.
+
 ---
 
 ## Zasady orthodoksji (co pilnujesz)

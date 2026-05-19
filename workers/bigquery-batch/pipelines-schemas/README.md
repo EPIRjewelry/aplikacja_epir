@@ -86,6 +86,8 @@ npx wrangler pipelines create epir_messages_pipeline \
 
 ### Produkcja — jawny SQL i zgodność z batchem
 
+**Szablon kanoniczny (repo):** [`pixel-pipeline-production.example.sql`](pixel-pipeline-production.example.sql) — mapowanie stream → kolumny Iceberg zgodne z [`docs/EPIR_ANALYTICS_DATA_CONTRACT.md`](../../docs/EPIR_ANALYTICS_DATA_CONTRACT.md). Po zmianie w Dashboard zaktualizuj ten plik i przejdź recenzję **EDCG**.
+
 Worker [`src/index.ts`](../src/index.ts) wysyła na ingest **pixel** JSON z polami:
 
 `event_type`, `session_id`, `customer_id`, `storefront_id`, `channel`, **`url`** (z `page_url` w D1), `payload`, **`created_at`** (ISO z D1).

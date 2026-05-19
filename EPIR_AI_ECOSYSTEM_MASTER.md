@@ -48,14 +48,14 @@ Jeżeli inny dokument opisuje architekturę inaczej, ten plik wygrywa razem z `E
 - `workers/chat` — główny Chat Worker / MCP
 - `workers/rag-worker` — wyszukiwanie RAG i budowa kontekstu
 - `workers/analytics` — ingest zdarzeń analitycznych
-- `workers/bigquery-batch` — batch export do BigQuery
+- `workers/bigquery-batch` — batch export D1 → Pipelines → Iceberg; odczyt R2 SQL (`run_analytics_query`, `Q1`–`Q10`)
 
 #### Storage i runtime state
 
 - Durable Objects: `SessionDO`, `RateLimiterDO`, `TokenVaultDO`
 - D1: `ai-assistant-sessions-db`, `jewelry-analytics-db`
 - Vectorize: warstwa wiedzy / retrieval
-- BigQuery: hurtownia analityczna
+- Iceberg (R2 Data Catalog) + R2 SQL: hurtownia analityczna operacyjna; BigQuery/dbt — ścieżka legacy (patrz `docs/EPIR_ANALYTICS_DATA_CONTRACT.md`)
 
 ### 3. Ingress i routing ruchu
 
@@ -161,7 +161,16 @@ Nie wolno mu:
 
 - frontend i worker generują zdarzenia,
 - `workers/analytics` zapisuje je do D1,
-- `workers/bigquery-batch` eksportuje je do BigQuery.
+- `workers/bigquery-batch` eksportuje je do Pipelines → Iceberg; panel wewnętrzny czyta przez RPC R2 SQL.
+
+**Strażnicy kontraktu i ortodoksji (Project B / hurtownia):**
+
+| Agent | Rola | Dokument / skill |
+|-------|------|------------------|
+| **ESOG** | Ortodoksia Shopify, workers, ingress, sekrety | `.cursor/skills/epir-esog-agent/SKILL.md` |
+| **EDCG** | Kontrakt danych D1 → Iceberg → R2 SQL | `docs/EPIR_ANALYTICS_DATA_CONTRACT.md`, `.cursor/skills/epir-edcg-agent/SKILL.md` |
+
+Bramka kroków hurtowni: `docs/merge-gates/WAREHOUSE_DATA_CONTRACT.md` — każdy krok wymaga **`ESOG: PASS`** i **`EDCG: PASS`** przed kolejnym.
 
 ## Project A vs Project B
 
@@ -197,6 +206,7 @@ Poza tym plikiem obowiązują jeszcze:
 - `docs/README.md`
 - `docs/EPIR_INGRESS_AND_RUNTIME.md`
 - `docs/EPIR_DATA_SCHEMA_CONTRACT.md`
+- `docs/EPIR_ANALYTICS_DATA_CONTRACT.md` — szczegółowy kontrakt hurtowni pixel/czat (EDCG)
 - `docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md`
 - `docs/EPIR_BLUEPRINTS_AND_EXCEPTIONS.md`
 

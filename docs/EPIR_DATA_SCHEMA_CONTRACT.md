@@ -210,6 +210,8 @@ Przykładowe pola metadanych:
 
 ## Analytics i hurtownia danych
 
+**Kontrakt szczegółowy (pixel, czat, Iceberg, R2 SQL, `Q1`–`Q10`):** [`EPIR_ANALYTICS_DATA_CONTRACT.md`](EPIR_ANALYTICS_DATA_CONTRACT.md) — wiążący dla hurtowni operacyjnej; strażnik **EDCG**. Bramka merge: [`merge-gates/WAREHOUSE_DATA_CONTRACT.md`](merge-gates/WAREHOUSE_DATA_CONTRACT.md).
+
 ### D1 `jewelry-analytics-db`
 
 Kluczowe obszary:

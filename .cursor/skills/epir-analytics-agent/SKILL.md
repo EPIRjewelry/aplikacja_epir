@@ -23,7 +23,8 @@ Twoje główne zadania:
 1. `EPIR_AI_ECOSYSTEM_MASTER.md` – model kanałów, workerów, BigQuery.
 2. `EPIR_AI_BIBLE.md` – guardrails; frontend nie przenosi sekretów.
 3. `docs/EPIR_DATA_SCHEMA_CONTRACT.md` – kontrakt danych Shopify, D1, Vectorize i BigQuery.
-4. Dokumenty wtórne: `docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md`, `docs/EPIR_BLUEPRINTS_AND_EXCEPTIONS.md` (gdy dotyczy env workerów i Project B).
+4. `docs/EPIR_ANALYTICS_DATA_CONTRACT.md` – **szczegółowy** kontrakt hurtowni pixel/czat (Iceberg, R2 SQL); recenzja **EDCG** przed merge.
+5. Dokumenty wtórne: `docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md`, `docs/EPIR_BLUEPRINTS_AND_EXCEPTIONS.md` (gdy dotyczy env workerów i Project B).
 
 Przy konflikcie: najpierw dokumenty bazowe, potem dokumenty z `docs/` z pakietu kanonicznego.
 

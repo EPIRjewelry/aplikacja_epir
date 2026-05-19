@@ -185,6 +185,24 @@ Postura ingress dla produkcji:
 - zapytania whitelist `run_analytics_query` (R2 SQL): **`BIGQUERY_BATCH_RPC`** (RPC; nazwa bindingu historyczna).
 - Nie utrzymujemy fallbacków do publicznych adresów `*.workers.dev` dla ruchu internal.
 
+**Troubleshooting: `rpc:forbidden missing scope bigquery.analytics_query`**
+
+- To **nie** jest brak uprawnień GCP BigQuery — to brak (lub pustej) tablicy **`ctx.props.scopes`** po stronie workera **`epir-bigquery-batch`** przy wywołaniu RPC `runAnalyticsQuery`.
+- **Caller** (`epir-art-jewellery-worker` / `epir-analyst-worker`) musi w `wrangler.toml` mieć pod bindingiem `BIGQUERY_BATCH_RPC` blok **`[services.props]`** z `scopes = ["bigquery.analytics_query"]` (jak w repo). Repo waliduje to w **`scripts/ci/validate-wrangler-prod-policy.py`** (`rpc_props_scopes`).
+- **Naprawa:** wdróż ponownie workera **wołającego** (`workers/chat` i/lub `workers/analyst-worker`): `npx wrangler deploy` z odpowiedniego katalogu — tak jak w [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) (najpierw `bigquery-batch`, potem `analyst-worker`, potem `chat`). Jeśli binding był kiedyś składany ręcznie w Dashboardzie bez `props`, nadpisz go deployem z TOML z repo.
+- **Lokalnie:** `ctx.props` z service bindingów nie zawsze działa przy **wielu osobnych** `wrangler dev`; użyj [multi-worker dev](https://developers.cloudflare.com/workers/development-testing/multi-workers/) (`wrangler dev -c ./workers/chat/wrangler.toml -c ./workers/bigquery-batch/wrangler.toml` itd.) albo testuj RPC na wdrożonym środowisku.
+
+**Troubleshooting: R2 SQL — brak kolumny `payload` / `url` w `analytics.epir_pixel_events_raw`**
+
+- Batch HTTP ingest nadal wysyła `url` + `payload` (zob. [`workers/bigquery-batch/src/index.ts`](../workers/bigquery-batch/src/index.ts) i [`pipelines-schemas/pixel-events-stream.schema.json`](../workers/bigquery-batch/pipelines-schemas/pixel-events-stream.schema.json)), ale **produkcyjna** tabela Iceberg ma układ **spłaszczony** (np. `page_url`, `referrer_url`, `id`, `__ingest_ts`) — mapowanie robi **SQL pipeline’u** w Cloudflare (Dashboard / `wrangler pipelines get`), nie repo.
+- Whitelist `run_analytics_query` w [`workers/bigquery-batch/src/analytics-queries.ts`](../workers/bigquery-batch/src/analytics-queries.ts) musi odwoływać się do kolumn Iceberg (`page_url`, nie `url`; bez `json_get_str(payload, …)`). Po zmianie presetów: `wrangler deploy` z `workers/bigquery-batch`, potem `workers/chat`.
+- Weryfikacja operatorska: `wrangler r2 sql query … --command "DESCRIBE analytics.epir_pixel_events_raw"` (dostosuj katalog/bucket) i porównaj z presetami Q1–Q10. **Q1** nie używa `payload`; typowe błędy dotyczą **Q4** (`page_url`) i **Q5** (agregacja po `page_url`).
+
+**Troubleshooting: R2 SQL — `SELECT DISTINCT is not supported` / `COUNT(DISTINCT …)`**
+
+- Silnik **R2 SQL** nie obsługuje `SELECT DISTINCT` ani agregatu `COUNT(DISTINCT col)` — patrz [ograniczenia R2 SQL](https://developers.cloudflare.com/r2-sql/reference/limitations-best-practices/). Presety w [`workers/bigquery-batch/src/analytics-queries.ts`](../workers/bigquery-batch/src/analytics-queries.ts) muszą używać `GROUP BY` oraz `approx_distinct()` (jak CQRS w `workers/analytics/src/cqrs/r2-warehouse-query.ts`).
+- Po zmianie presetów: `wrangler deploy` z `workers/bigquery-batch`, potem retest `Q1_CONVERSION_CHAT` w internal-dashboard.
+
 ### Cloudflare Pages (`kazka`, `zareczyny`)
 
 W zależności od storefrontu i runtime:

@@ -34,6 +34,9 @@ jobs:
       - name: Walidacja polityki produkcyjnej Wrangler
         run: python3 scripts/ci/validate-wrangler-prod-policy.py
 
+      - name: Walidacja kontraktu danych analitycznych (EDCG)
+        run: python3 scripts/ci/validate-data-contract.py
+
       - name: Validate Cloudflare secrets
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then

@@ -2,6 +2,16 @@
  * Whitelist zapytań analitycznych (run_analytics_query) — silnik **R2 SQL** nad tabelami Iceberg
  * w R2 Data Catalog (ten sam magazyn co Pipelines / `epir-analityc-worker` CQRS).
  *
+ * **Kontrakt odczytu (prod):** tabela pixel (np. `analytics.epir_pixel_events_raw`) ma układ
+ * spłaszczony z D1 / pipeline (m.in. `page_url`, `referrer_url`, `session_id`, `event_type`,
+ * `created_at`; opcjonalnie `product_id` / `product_title` gdy pipeline je mapuje) — **bez**
+ * kolumn stream ingest `url` / `payload`. SQL poniżej
+ * odwołuje się wyłącznie do kolumn Iceberg; mapowanie HTTP ingest → Iceberg jest w Pipelines
+ * (Dashboard), nie w tym pliku.
+ *
+ * **R2 SQL:** brak `SELECT DISTINCT` i `COUNT(DISTINCT …)` — używaj `GROUP BY` oraz
+ * `approx_distinct()` (jak w `workers/analytics/src/cqrs/r2-warehouse-query.ts`).
+ *
  * queryId musi pochodzić z listy — brak surowego SQL od użytkownika.
  */
 
@@ -28,24 +38,27 @@ function fqTables(env: WarehouseTableEnv): { pixel: string; messages: string } {
 const QUERY_BUILDERS: Record<AnalyticsQueryId, (P: string, M: string) => string> = {
   Q1_CONVERSION_CHAT: (P, M) => `
 WITH chat_sessions AS (
-  SELECT DISTINCT session_id FROM ${M} WHERE role = 'user'
+  SELECT session_id FROM ${M} WHERE role = 'user' GROUP BY session_id
 ),
 purchase_sessions AS (
-  SELECT DISTINCT session_id FROM ${P}
-  WHERE event_type = 'purchase_completed'
+  SELECT session_id FROM ${P} WHERE event_type = 'purchase_completed' GROUP BY session_id
+),
+chat_with_purchase AS (
+  SELECT c.session_id
+  FROM chat_sessions c
+  INNER JOIN purchase_sessions p ON c.session_id = p.session_id
 )
-SELECT 'with_chat' AS segment, COUNT(DISTINCT c.session_id) AS sessions_with_chat, COUNT(DISTINCT p.session_id) AS sessions_with_purchase
-FROM chat_sessions c LEFT JOIN purchase_sessions p ON c.session_id = p.session_id
+SELECT 'with_chat' AS segment,
+  (SELECT approx_distinct(session_id) FROM chat_sessions) AS sessions_with_chat,
+  (SELECT approx_distinct(session_id) FROM chat_with_purchase) AS sessions_with_purchase
 UNION ALL
 SELECT 'without_chat' AS segment,
-  (SELECT COUNT(DISTINCT session_id) FROM ${P}) - (SELECT COUNT(*) FROM chat_sessions),
-  (SELECT COUNT(DISTINCT session_id) FROM purchase_sessions) - (
-    SELECT COUNT(DISTINCT c.session_id) FROM chat_sessions c JOIN purchase_sessions p ON c.session_id = p.session_id
-  )
+  (SELECT approx_distinct(session_id) FROM ${P}) - (SELECT approx_distinct(session_id) FROM chat_sessions),
+  (SELECT approx_distinct(session_id) FROM purchase_sessions) - (SELECT approx_distinct(session_id) FROM chat_with_purchase)
 `,
 
   Q2_CONVERSION_PATHS: (P) => `
-SELECT event_type, COUNT(*) AS event_count, COUNT(DISTINCT session_id) AS unique_sessions
+SELECT event_type, COUNT(*) AS event_count, approx_distinct(session_id) AS unique_sessions
 FROM ${P}
 WHERE event_type IN ('page_viewed', 'product_viewed', 'product_added_to_cart', 'cart_updated', 'purchase_completed')
   AND CAST(created_at AS TIMESTAMP) >= now() - INTERVAL '30' DAY
@@ -62,19 +75,34 @@ GROUP BY content ORDER BY occurrence_count DESC LIMIT 20
 `,
 
   Q4_STOREFRONT_SEGMENTATION: (P) => `
-SELECT CASE WHEN url LIKE '%kazka%' THEN 'kazka' WHEN url LIKE '%zareczyny%' THEN 'zareczyny' ELSE 'online-store' END AS storefront_inferred,
+SELECT CASE
+  WHEN page_url LIKE '%kazka%' THEN 'kazka'
+  WHEN page_url LIKE '%zareczyny%' THEN 'zareczyny'
+  ELSE 'online-store'
+END AS storefront_inferred,
   event_type, COUNT(*) AS event_count
 FROM ${P}
 WHERE CAST(created_at AS TIMESTAMP) >= now() - INTERVAL '30' DAY
-GROUP BY CASE WHEN url LIKE '%kazka%' THEN 'kazka' WHEN url LIKE '%zareczyny%' THEN 'zareczyny' ELSE 'online-store' END, event_type
+GROUP BY CASE
+  WHEN page_url LIKE '%kazka%' THEN 'kazka'
+  WHEN page_url LIKE '%zareczyny%' THEN 'zareczyny'
+  ELSE 'online-store'
+END, event_type
 ORDER BY storefront_inferred, event_count DESC
 `,
 
   Q5_TOP_PRODUCTS: (P) => `
-SELECT json_get_str(payload, 'product_id') AS product_id, json_get_str(payload, 'product_title') AS product_title, COUNT(*) AS view_count
+SELECT
+  page_url AS product_id,
+  page_url AS product_title,
+  COUNT(*) AS view_count
 FROM ${P}
-WHERE event_type = 'product_viewed' AND CAST(created_at AS TIMESTAMP) >= now() - INTERVAL '30' DAY
-GROUP BY json_get_str(payload, 'product_id'), json_get_str(payload, 'product_title') ORDER BY view_count DESC LIMIT 20
+WHERE event_type = 'product_viewed'
+  AND CAST(created_at AS TIMESTAMP) >= now() - INTERVAL '30' DAY
+  AND COALESCE(NULLIF(trim(page_url), ''), '') <> ''
+GROUP BY page_url
+ORDER BY view_count DESC
+LIMIT 20
 `,
 
   Q6_CHAT_ENGAGEMENT: (_, M) => `
@@ -87,11 +115,25 @@ GROUP BY session_id ORDER BY message_count DESC LIMIT 50
 `,
 
   Q7_PRODUCT_TO_PURCHASE: (P) => `
-WITH product_sessions AS (SELECT DISTINCT session_id FROM ${P} WHERE event_type = 'product_viewed'),
-purchase_sessions AS (SELECT DISTINCT session_id FROM ${P} WHERE event_type = 'purchase_completed')
-SELECT COUNT(DISTINCT p.session_id) AS product_view_sessions, COUNT(DISTINCT pur.session_id) AS purchase_sessions,
-  ROUND(100.0 * COUNT(DISTINCT pur.session_id) / NULLIF(COUNT(DISTINCT p.session_id), 0), 2) AS conversion_rate_pct
-FROM product_sessions p LEFT JOIN purchase_sessions pur ON p.session_id = pur.session_id
+WITH product_sessions AS (
+  SELECT session_id FROM ${P} WHERE event_type = 'product_viewed' GROUP BY session_id
+),
+purchase_sessions AS (
+  SELECT session_id FROM ${P} WHERE event_type = 'purchase_completed' GROUP BY session_id
+),
+product_with_purchase AS (
+  SELECT p.session_id
+  FROM product_sessions p
+  INNER JOIN purchase_sessions pur ON p.session_id = pur.session_id
+)
+SELECT
+  (SELECT approx_distinct(session_id) FROM product_sessions) AS product_view_sessions,
+  (SELECT approx_distinct(session_id) FROM purchase_sessions) AS purchase_sessions,
+  ROUND(
+    100.0 * (SELECT approx_distinct(session_id) FROM product_with_purchase)
+      / NULLIF((SELECT approx_distinct(session_id) FROM product_sessions), 0),
+    2
+  ) AS conversion_rate_pct
 `,
 
   Q8_DAILY_EVENTS: (P) => `

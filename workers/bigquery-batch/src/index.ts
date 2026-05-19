@@ -205,7 +205,11 @@ type BigQueryS2SProps = { scopes?: string[] };
 function requireBigQueryS2SScopes(props: BigQueryS2SProps | undefined, scope: string): void {
   const got = Array.isArray(props?.scopes) ? props.scopes : [];
   if (!got.includes(scope)) {
-    throw new Error(`rpc:forbidden missing scope ${scope}`);
+    const hint =
+      got.length === 0
+        ? ' (ctx.props.scopes puste — zwykle brak `[services.props] scopes` na bindingu wołającego workera albo stary deploy; zrób `wrangler deploy` z `workers/chat` lub `workers/analyst-worker`, lokalnie: jeden `wrangler dev -c …` dla wielu workerów)'
+        : '';
+    throw new Error(`rpc:forbidden missing scope ${scope}${hint}`);
   }
 }
 

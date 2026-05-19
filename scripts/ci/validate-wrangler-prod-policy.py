@@ -18,7 +18,7 @@ import tomllib
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-WORKERS: dict[str, dict[str, frozenset[str]]] = {
+WORKERS: dict[str, dict[str, object]] = {
     "workers/chat/wrangler.toml": {
         "label": "chat (epir-art-jewellery-worker)",
         "required_bindings": frozenset(
@@ -38,6 +38,19 @@ WORKERS: dict[str, dict[str, frozenset[str]]] = {
                 "AI",
             }
         ),
+        # Service binding `props.scopes` muszą trafić do `ctx.props` callee (RPC); brak → runtime
+        # `rpc:forbidden missing scope …` mimo poprawnego kodu.
+        "rpc_props_scopes": {
+            "BIGQUERY_BATCH_RPC": frozenset({"bigquery.analytics_query"}),
+            "ANALYTICS_S2S_RPC": frozenset(
+                {
+                    "analytics.charts.read",
+                    "analytics.pixel_events.read",
+                    "analytics.journey.read",
+                    "analytics.sessions.read",
+                }
+            ),
+        },
     },
     "workers/rag-worker/wrangler.toml": {
         "label": "rag (epir-rag-worker)",
@@ -57,6 +70,14 @@ WORKERS: dict[str, dict[str, frozenset[str]]] = {
         # Domyślny deploy (`--env=""`) publikuje na *.workers.dev — celowe dla publicznego
         # `GET /ops/marketing-preview` (Bearer + brak sekretu ⇒ 404). Inne workery EPIR: workers_dev=false.
         "allow_workers_dev_at_root": True,
+    },
+    "workers/analyst-worker/wrangler.toml": {
+        "label": "analyst-worker (epir-analyst-worker)",
+        "required_bindings": frozenset({"BIGQUERY_BATCH_RPC"}),
+        "allow_workers_dev_at_root": True,
+        "rpc_props_scopes": {
+            "BIGQUERY_BATCH_RPC": frozenset({"bigquery.analytics_query"}),
+        },
     },
 }
 
@@ -127,6 +148,46 @@ def merged_production_vars(data: dict) -> dict[str, object]:
     return out
 
 
+def check_rpc_props_scopes(
+    rel_s: str,
+    label: str,
+    data: dict,
+    binding_to_required: dict[str, frozenset[str]],
+) -> None:
+    services = data.get("services")
+    if not isinstance(services, list):
+        fail(f"{rel_s} ({label}): brak tablicy `services` w TOML — nie można zweryfikować RPC props.")
+
+    by_binding: dict[str, dict] = {}
+    for item in services:
+        if isinstance(item, dict) and "binding" in item:
+            by_binding[str(item["binding"])] = item
+
+    for binding, required in binding_to_required.items():
+        entry = by_binding.get(binding)
+        if not entry:
+            continue  # missing binding caught by required_bindings check
+        props = entry.get("props")
+        if not isinstance(props, dict):
+            fail(
+                f"{rel_s} ({label}): binding `{binding}` musi mieć `[services.props]` "
+                f"(scopes dla RPC) — brak lub niepoprawna struktura props."
+            )
+        scopes_raw = props.get("scopes")
+        if not isinstance(scopes_raw, list):
+            fail(
+                f"{rel_s} ({label}): binding `{binding}` — `props.scopes` musi być tablicą stringów "
+                f"(Workers przekazuje je do callee jako ctx.props.scopes)."
+            )
+        got = {str(s) for s in scopes_raw if isinstance(s, str)}
+        missing = sorted(required - got)
+        if missing:
+            fail(
+                f"{rel_s} ({label}): binding `{binding}` — brak wymaganych `props.scopes`: "
+                f"{', '.join(missing)}. Uzupełnij wrangler.toml i zrób redeploy workera wołającego."
+            )
+
+
 def collect_bindings(data: dict) -> set[str]:
     names: set[str] = set()
 
@@ -191,6 +252,8 @@ def main() -> None:
         data = load_toml(rel)
         label = meta["label"]
         required = meta["required_bindings"]
+        if not isinstance(required, frozenset):
+            fail(f"{rel_s}: wewnętrzny błąd — `required_bindings` musi być frozenset.")
 
         allow_wd = bool(meta.get("allow_workers_dev_at_root"))
         check_workers_dev(data, rel_s, label, allow_root_workers_dev=allow_wd)
@@ -205,7 +268,18 @@ def main() -> None:
                 "uzupełnij wrangler.toml (D1, DO, services, Vectorize, KV, kolejki, [ai])."
             )
 
-    print("[deploy-policy] OK — profil produkcyjny (wrangler): workers_dev, vars, bindingi.")
+        rpc_checks = meta.get("rpc_props_scopes")
+        if isinstance(rpc_checks, dict) and rpc_checks:
+            normalized: dict[str, frozenset[str]] = {}
+            for b, scopes in rpc_checks.items():
+                if not isinstance(scopes, frozenset):
+                    fail(f"{rel_s}: rpc_props_scopes[{b!r}] musi być frozenset.")
+                normalized[str(b)] = scopes
+            check_rpc_props_scopes(rel_s, label, data, normalized)
+
+    print(
+        "[deploy-policy] OK — profil produkcyjny (wrangler): workers_dev, vars, bindingi, RPC props.scopes."
+    )
 
 
 if __name__ == "__main__":
