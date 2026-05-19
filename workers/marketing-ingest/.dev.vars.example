@@ -1,12 +1,21 @@
-# Kopiuj do .dev.vars (nie commituj). Nazwy zgodne z Env w src/index.ts.
+# Kopiuj do .dev.vars (nie commituj). Nazwy zgodne z Env w src/env.ts.
+# Szczegóły połączeń GA4 + Google Ads: README.md w tym katalogu.
+
+# --- Cloudflare Pipelines (HTTP ingest marketing stream) ---
 # MARKETING_PIPELINE_INGEST_URL=https://....ingest.cloudflare.com
 # MARKETING_PIPELINE_INGEST_TOKEN=
-# GA4_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
-# GOOGLE_ADS_CLIENT_ID=
+
+# --- GA4 (Data API) — JSON konta usługi z GA4 Property → Viewer ---
+# GA4_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"...","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n","client_email":"...@....iam.gserviceaccount.com",...}
+# GA4_PROPERTY_ID — domyślnie z [vars] w wrangler.toml; nadpisz tutaj dla lokalnego dev, jeśli potrzeba.
+
+# --- Google Ads (OAuth refresh + developer token) ---
+# GOOGLE_ADS_CLIENT_ID=....apps.googleusercontent.com
 # GOOGLE_ADS_CLIENT_SECRET=
 # GOOGLE_ADS_REFRESH_TOKEN=
 # GOOGLE_ADS_DEVELOPER_TOKEN=
-# GOOGLE_ADS_CUSTOMER_ID=
+# GOOGLE_ADS_CUSTOMER_ID=1234567890
 # GOOGLE_ADS_LOGIN_CUSTOMER_ID=   # opcjonalnie MCC (CID menedżera, bez myślników)
-# MARKETING_OPS_PREVIEW_KEY=      # opcjonalnie: Bearer do GET /ops/marketing-preview
-# GA4_PROPERTY_ID ustaw w wrangler.toml [vars] lub tutaj dla lokalnego dev.
+
+# --- Ops (podgląd JSON bez ingestu) ---
+# MARKETING_OPS_PREVIEW_KEY=

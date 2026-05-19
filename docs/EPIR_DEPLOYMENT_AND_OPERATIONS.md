@@ -141,6 +141,8 @@ Cienki worker **HTTP + Bearer** (np. narzędzia w Cursorze): `POST /v1/warehouse
 
 Osobny worker od `workers/bigquery-batch`: **pull** GA4 (Data API) + Google Ads (GAQL), zapis **agregatów** do Cloudflare Pipelines (HTTP ingest) → Iceberg w **tym samym** buckecie co hurtownia pixeli (`MARKETING_ICEBERG_BUCKET`, domyślnie `epir-analytics-iceberg-warehouse`), logiczny namespace docelowy **`marketing`** (`MARKETING_SQL_NAMESPACE`). Brak mieszania z eksportem D1 → Iceberg z batcha.
 
+**Konfiguracja połączeń GA4 + Google Ads** (service account, OAuth refresh, developer token, `wrangler secret put`): [`workers/marketing-ingest/README.md`](../workers/marketing-ingest/README.md).
+
 **Sekrety** (`wrangler secret put` w katalogu workera):
 
 - `MARKETING_PIPELINE_INGEST_URL` — URL HTTP ingest z `npx wrangler pipelines setup` (wartość tylko w vault / sekretach),

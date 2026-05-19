@@ -1,0 +1,6 @@
+# Kopiuj do .dev.vars (nie commituj). Lokalny dev — opcjonalnie nadpisz origin marketing-ingest.
+#
+# MARKETING_INGEST_ORIGIN=https://epir-marketing-ingest.krzysztofdzugaj.workers.dev
+# MARKETING_OPS_PREVIEW_KEY=<ten sam Bearer co na workerze epir-marketing-ingest>
+#
+# Ustawienie sekretu (interaktywnie): z workers/chat → npx wrangler secret put MARKETING_OPS_PREVIEW_KEY

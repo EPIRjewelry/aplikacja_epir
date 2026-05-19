@@ -99,9 +99,8 @@ binding = "AI"
 # wrangler secret put SHOPIFY_ADMIN_TOKEN
 # Shopify Admin (m.in. shopifyqlQuery): wersja URL = `SHOPIFY_ADMIN_API_VERSION` w src/config/shopify-api-version.ts (spięte z shopify.app.toml [webhooks] api_version).
 # Storefront GraphQL (metaobject / AI profile): osobny pin w tym samym pliku — nie mylić z Admin.
-# Project B — fetch_marketing_preview: publiczny origin epir-marketing-ingest (var) + ten sam Bearer co MARKETING_OPS_PREVIEW_KEY na ingest:
-#   [vars] MARKETING_INGEST_ORIGIN = "https://…"
-#   wrangler secret put MARKETING_OPS_PREVIEW_KEY
+# Project B — fetch_marketing_preview: origin workera epir-marketing-ingest (bez `/`) — NIE mylić z MARKETING_PIPELINE_INGEST_URL (Pipelines).
+# Ten sam sekret MARKETING_OPS_PREVIEW_KEY musi być na `epir-art-jewellery-worker` i `epir-marketing-ingest`: wrangler secret put (oba katalogi).
 
 # Service binding to RAG worker (reusable RAG orchestrator)
 [[services]]
@@ -179,6 +178,8 @@ MCP_ENDPOINT = "https://epir-art-silver-jewellery.myshopify.com/api/mcp"
 # W produkcji: https://asystent.epirbizuteria.pl
 # W dev: https://asystent-epir.YOUR-NAME.workers.dev
 WORKER_ORIGIN = "https://asystent.epirbizuteria.pl"
+# Base URL workera `epir-marketing-ingest` (GET /ops/marketing-preview). Zmień subdomain, jeśli konto CF ma inny workers.dev.
+MARKETING_INGEST_ORIGIN = "https://epir-marketing-ingest.krzysztofdzugaj.workers.dev"
 # --- Sekrety Storefront (ustaw ręcznie: wrangler secret put <NAZWA>; NIE commituj wartości) ---
 # Fallback dla kanału online-store / aliasów `epir` i `epirbizuteria.pl` (App Proxy, TAE data-brand=epir):
 #   wrangler secret put SHOPIFY_STOREFRONT_TOKEN

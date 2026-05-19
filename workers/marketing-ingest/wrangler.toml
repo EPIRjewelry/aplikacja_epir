@@ -25,7 +25,9 @@ MARKETING_SQL_NAMESPACE = "marketing"
 # Numeryczne Property ID z GA4 Admin (nie Measurement ID / prefiks analytics_*).
 GA4_PROPERTY_ID = "435783047"
 
-# Sekrety (z katalogu workers/marketing-ingest). Przy wielu [env.*] podaj domyślny worker: --env=""
+# Połączenia GA4 + Google Ads — krok po kroku: README.md w tym katalogu.
+#
+# Sekrety (z katalogu workers/marketing-ingest). Przy wielu [env.*] dopasuj --env do deployu.
 # npx wrangler secret put MARKETING_PIPELINE_INGEST_URL --env=""
 # npx wrangler secret put MARKETING_PIPELINE_INGEST_TOKEN --env=""
 # npx wrangler secret put GA4_SERVICE_ACCOUNT_JSON --env=""
