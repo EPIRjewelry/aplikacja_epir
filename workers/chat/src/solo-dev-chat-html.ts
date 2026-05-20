@@ -1,7 +1,8 @@
 /**
  * Jednoużytkowy UI: Dev-asystent (`internal-dashboard`) — Project B.
  * Auth: nagłówek `X-Admin-Key` = `EPIR_OPERATOR_PANEL_SECRET` (jak `/admin/api/leads`).
- * Model: `X-Epir-Model-Variant` (default = Groq GPT-OSS-120B; alternatywy Workers AI wg `model-params.ts`).
+ * Model: `X-Epir-Model-Variant` (default = Groq GPT-OSS-120B; alternatywy Workers AI wg `model-params.ts`;
+ *        varianty `or_*` korzystają z OpenRouter).
  */
 export const SOLO_DEV_CHAT_HTML = `<!DOCTYPE html>
 <html lang="pl">
@@ -49,6 +50,15 @@ export const SOLO_DEV_CHAT_HTML = `<!DOCTYPE html>
         <option value="qwen3_30b_a3b">qwen3_30b_a3b — Qwen3 MoE</option>
         <option value="gemma4_26b">gemma4_26b — Gemma 4 26B</option>
         <option value="scout_17b">scout_17b — alias GPT-OSS-120B</option>
+        <option value="or_llama70b">or_llama70b — Llama 2 70B (OpenRouter)</option>
+        <option value="or_gemini_pro">or_gemini_pro — Gemini Pro (OpenRouter)</option>
+        <option value="or_gpt4o_mini">or_gpt4o_mini — GPT-4o-mini (OpenRouter)</option>
+        <option value="or_claude3_opus">or_claude3_opus — Claude 3 Opus (OpenRouter)</option>
+        <option value="or_mistral7b">or_mistral7b — Mistral 7B Instruct (OpenRouter)</option>
+        <option value="or_gemini2_flash">or_gemini2_flash — Gemini 2.0 Flash (OpenRouter)</option>
+        <option value="or_deepseek_v4">or_deepseek_v4 — DeepSeek V4 Flash (OpenRouter)</option>
+        <option value="or_gpt4o">or_gpt4o — GPT-4o (OpenRouter)</option>
+        <option value="or_llama31_405b">or_llama31_405b — Llama 3.1 405B (OpenRouter)</option>
       </select>
     </div>
     <div class="row" style="flex-direction:column; align-items:stretch;">

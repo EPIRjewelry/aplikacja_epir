@@ -6,15 +6,18 @@
   "scripts": {
     "check": "tsc --noEmit",
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev"
+    "dev": "wrangler dev",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250525.0",
     "typescript": "^5.8.3",
+    "vitest": "^4.1.7",
     "wrangler": "^4.46.0"
   },
   "dependencies": {
     "agents": "0.12.4",
-    "core-js-pure": "3.41.0"
+    "core-js-pure": "3.41.0",
+    "openai": "^6.38.0"
   }
 }

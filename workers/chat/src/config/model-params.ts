@@ -6,7 +6,7 @@
  * Po migracji na format Harmony kanonicznym modelem czatu jest
  * `groq/openai/gpt-oss-120b` (Groq via Cloudflare AI Gateway). Model:
  * • używa kanałów Harmony (`analysis` / `commentary` / `final`) — wycieki narzędzi
- *   do warstwy klienta są hermetyzowane przez API, nie wymagają regex-scrubbingu,
+ *   do warstwy klienta są hermetyzowane przez API, nie wymagają regex-scrubingu,
  * • obsługuje natywne, równoległe `tool_calls` w jednym kroku,
  * • respektuje parametry `include_reasoning` i `reasoning_effort` w body.
  */
@@ -97,6 +97,60 @@ export const MODEL_VARIANTS = {
     multimodal: false,
     toolLeak: false,
     label: 'GPT-OSS-120B (alias scout_17b, Harmony)',
+  },
+  or_llama70b: {
+    id: 'openrouter/meta-llama/llama-2-70b-chat',
+    multimodal: false,
+    toolLeak: false,
+    label: 'Llama 2 70B (OpenRouter)',
+  },
+  or_gemini_pro: {
+    id: 'openrouter/google/gemini-pro',
+    multimodal: true,
+    toolLeak: false,
+    label: 'Gemini Pro (OpenRouter)',
+  },
+  or_gpt4o_mini: {
+    id: 'openrouter/openai/gpt-4o-mini',
+    multimodal: true,
+    toolLeak: false,
+    label: 'GPT-4o-mini (OpenRouter)',
+  },
+  or_claude3_opus: {
+    id: 'openrouter/anthropic/claude-3-opus',
+    multimodal: true,
+    toolLeak: false,
+    label: 'Claude 3 Opus (OpenRouter)',
+  },
+  or_mistral7b: {
+    id: 'openrouter/mistralai/mistral-7b-instruct',
+    multimodal: false,
+    toolLeak: false,
+    label: 'Mistral 7B Instruct (OpenRouter)',
+  },
+  or_gemini2_flash: {
+    id: 'openrouter/google/gemini-flash-2.0',
+    multimodal: true,
+    toolLeak: false,
+    label: 'Gemini 2.0 Flash (OpenRouter)',
+  },
+  or_deepseek_v4: {
+    id: 'openrouter/deepseek/deepseek-chat',
+    multimodal: false,
+    toolLeak: false,
+    label: 'DeepSeek V4 Flash (OpenRouter)',
+  },
+  or_gpt4o: {
+    id: 'openrouter/openai/gpt-4o',
+    multimodal: true,
+    toolLeak: false,
+    label: 'GPT-4o (OpenRouter)',
+  },
+  or_llama31_405b: {
+    id: 'openrouter/meta-llama/llama-3.1-405b-instruct',
+    multimodal: false,
+    toolLeak: false,
+    label: 'Llama 3.1 405B (OpenRouter)',
   },
 } as const satisfies Record<string, ModelCapabilities>;
 

@@ -150,6 +150,8 @@ export interface Env {
    * nie przez ten sekret.
    */
   EPIR_OPERATOR_PANEL_SECRET?: string;
+  /** OpenRouter API key – wymagany dla wariantów modelu `openrouter/*`. */
+  OPENROUTER_API_KEY?: string;
 }
 
 /**
@@ -158,7 +160,7 @@ export interface Env {
  */
 export type AiClientEnv = Pick<
   Env,
-  'AI' | 'CF_ACCOUNT_ID' | 'AI_GATEWAY_ID' | 'AI_GATEWAY_TOKEN' | 'GROQ_API_KEY'
+  'AI' | 'CF_ACCOUNT_ID' | 'AI_GATEWAY_ID' | 'AI_GATEWAY_TOKEN' | 'GROQ_API_KEY' | 'OPENROUTER_API_KEY'
 >;
 
 export const REQUIRED_SECRETS = [] as const;
@@ -177,6 +179,7 @@ export const OPTIONAL_SECRETS = [
   'GCP_SERVICE_ACCOUNT_KEY',
   'AI_GATEWAY_TOKEN',
   'EPIR_OPERATOR_PANEL_SECRET',
+  'OPENROUTER_API_KEY',
 ] as const;
 
 export const REQUIRED_VARS = ['SHOP_DOMAIN', 'ALLOWED_ORIGIN'] as const;

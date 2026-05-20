@@ -11,7 +11,8 @@ Ten katalog w monorepo jest **lustrem źródła** tego repozytorium (kopiowany r
 1. `npm install` w root tego repo.
 2. Ustaw `MARKETING_INGEST_ORIGIN` w `wrangler.toml` → `[vars]` albo w dashboardzie (tylko origin, np. `https://…workers.dev`).
 3. `npx wrangler secret put MARKETING_OPS_BEARER_TOKEN` — ta sama semantyka co `MARKETING_OPS_PREVIEW_KEY` na workerze `epir-marketing-ingest`.
-4. `npm run deploy` lub `npx wrangler deploy`.
+4. Opcjonalnie `npx wrangler secret put OPENROUTER_API_KEY` — callable `listModels()` (katalog modeli); analityka danych nadal przez `epir-marketing-ingest` / warehouse RPC, nie przez LLM.
+5. `npm run deploy` lub `npx wrangler deploy`.
 
 ## Routing agenta
 

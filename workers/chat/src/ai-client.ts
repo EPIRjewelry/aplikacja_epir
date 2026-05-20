@@ -973,12 +973,119 @@ function isGatewayModelId(modelId: string): boolean {
   return modelId.startsWith('groq/');
 }
 
+function isOpenRouterModelId(modelId: string): boolean {
+  return modelId.startsWith('openrouter/');
+}
+
+async function streamGroqEventsOpenRouter(
+  messages: GroqMessage[],
+  env: AiClientEnv,
+  tools?: GroqToolCallDefinition[],
+  _sessionId?: string,
+  timingLabel?: string,
+  options?: StreamGroqEventsOptions,
+): Promise<ReadableStream<GroqStreamEvent>> {
+  const apiKey = env.OPENROUTER_API_KEY?.trim();
+  if (!apiKey) throw new Error('OPENROUTER_API_KEY is missing');
+
+  const sanitizedMessages = sanitizeHarmonyHistory(messages);
+  const defaultToolChoice = tools && tools.length > 0 ? 'auto' : undefined;
+  const resolvedToolChoice =
+    options?.toolChoice !== undefined ? options.toolChoice : defaultToolChoice;
+
+  const modelId = options?.modelId ?? CHAT_MODEL_ID;
+  const modelName = modelId.replace('openrouter/', '');
+
+  const body = {
+    model: modelName,
+    messages: sanitizedMessages,
+    stream: true,
+    ...(tools ? { tools, tool_choice: resolvedToolChoice, parallel_tool_calls: true } : {}),
+    max_tokens: options?.maxTokens ?? MODEL_PARAMS.max_tokens,
+    temperature: MODEL_PARAMS.temperature,
+    top_p: MODEL_PARAMS.top_p,
+  };
+
+  const t0 = Date.now();
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+    signal: options?.abortSignal,
+  });
+
+  const dt = Date.now() - t0;
+  console.log(
+    `[OpenRouter] ${timingLabel ?? 'stream'} status=${res.status} model=${modelName} duration_ms=${dt}`,
+  );
+
+  if (!res.ok || !res.body) {
+    const text = await safeReadText(res);
+    throw new Error(`OpenRouter streaming error: ${res.status} ${text}`);
+  }
+
+  return (res.body as ReadableStream<Uint8Array>)
+    .pipeThrough(new TextDecoderStream() as unknown as TransformStream<Uint8Array, string>)
+    .pipeThrough(createGroqStreamTransform());
+}
+
+async function getGroqResponseOpenRouter(
+  messages: GroqMessage[],
+  env: AiClientEnv,
+  options?: GetGroqResponseOptions,
+): Promise<string> {
+  const apiKey = env.OPENROUTER_API_KEY?.trim();
+  if (!apiKey) throw new Error('OPENROUTER_API_KEY is missing');
+
+  const modelId = options?.modelId ?? CHAT_MODEL_ID;
+  const modelName = modelId.replace('openrouter/', '');
+
+  const body = {
+    model: modelName,
+    messages: sanitizeHarmonyHistory(messages),
+    stream: false,
+    max_tokens: options?.max_tokens ?? MODEL_PARAMS.max_tokens,
+    temperature: MODEL_PARAMS.temperature,
+    top_p: MODEL_PARAMS.top_p,
+  };
+
+  const t0 = Date.now();
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const dt = Date.now() - t0;
+  console.log(
+    `[OpenRouter] getGroqResponse model=${modelName} status=${res.status} duration_ms=${dt}`,
+  );
+
+  if (!res.ok) {
+    const text = await safeReadText(res);
+    throw new Error(`OpenRouter error: ${res.status} ${text}`);
+  }
+
+  const json: any = await res.json();
+  const content: string = json?.choices?.[0]?.message?.content ?? '';
+  return content;
+}
+
 async function routedGetGroqResponse(
   messages: GroqMessage[],
   env: AiClientEnv,
   options?: GetGroqResponseOptions,
 ): Promise<string> {
   const modelId = options?.modelId ?? CHAT_MODEL_ID;
+  if (isOpenRouterModelId(modelId)) {
+    return getGroqResponseOpenRouter(messages, env, { ...options, modelId });
+  }
   if (isGatewayModelId(modelId)) {
     return getGroqResponseViaGateway(messages, env, { ...options, modelId });
   }
@@ -994,6 +1101,12 @@ async function routedStreamGroqEvents(
   options?: StreamGroqEventsOptions,
 ): Promise<ReadableStream<GroqStreamEvent>> {
   const modelId = options?.modelId ?? CHAT_MODEL_ID;
+  if (isOpenRouterModelId(modelId)) {
+    return streamGroqEventsOpenRouter(messages, env, tools, sessionId, timingLabel, {
+      ...options,
+      modelId,
+    });
+  }
   if (isGatewayModelId(modelId)) {
     return streamGroqEventsViaGateway(messages, env, tools, sessionId, timingLabel, {
       ...options,
