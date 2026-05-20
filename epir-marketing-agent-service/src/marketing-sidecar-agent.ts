@@ -1,5 +1,6 @@
 import { Agent, callable } from 'agents';
 import type { Env } from './env';
+import { OpenRouterClient } from './openrouter-client';
 
 export type SidecarState = {
   lastFetchAt: string | null;
@@ -66,5 +67,10 @@ export class MarketingSidecarAgent extends Agent<Env, SidecarState> {
   @callable()
   getSidecarSummary(): SidecarState {
     return this.state;
+  }
+
+  @callable()
+  listModels(): readonly { id: string; label: string }[] {
+    return OpenRouterClient.listModels();
   }
 }
