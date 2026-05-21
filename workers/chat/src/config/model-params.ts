@@ -22,7 +22,7 @@ export type ModelCapabilities = {
   readonly multimodal: boolean;
   /** @deprecated od wersji 4.0 (Harmony). Trzymane wyłącznie dla zgodności wariantów A/B. */
   readonly toolLeak: boolean;
-  /** OpenRouter: generacja obrazu / SVG (Recraft V4.1 — wymaga modalities image+text). */
+  /** OpenRouter: generacja obrazu / SVG (Recraft — modalities `["image"]` na OR). */
   readonly imageGen?: boolean;
   /** Opcjonalny opis dla logów / bench raportów. */
   readonly label?: string;

@@ -288,11 +288,50 @@ export const SOLO_DEV_CHAT_HTML = `<!DOCTYPE html>
         var dec=new TextDecoder();
         var buf='';
         var acc='';
+        var genImages=[];
+        var streamFailed=false;
+        function renderAssistantBubble(){
+          var html='';
+          for(var gi=0;gi<genImages.length;gi++){
+            html+='<img class="attach" src="'+genImages[gi]+'" alt="wygenerowany obraz" />';
+          }
+          if(acc) html+=(html?'<br/>':'')+escapeHtml(acc);
+          assistantEl.innerHTML=html||'';
+        }
+        function processSseChunk(chunkText){
+          var lines=chunkText.split(NL);
+          var evtType='message';
+          for(var li=0;li<lines.length;li++){
+            var line=lines[li];
+            if(line.indexOf('event:')===0){ evtType=line.slice(6).trim(); continue; }
+            if(line.indexOf('data:')!==0) continue;
+            var js=line.slice(5).trim();
+            if(!js||js==='[DONE]') return;
+            var o=JSON.parse(js);
+            if(o.session_id){ try{ sessionStorage.setItem(KS,o.session_id);}catch(e){} }
+            if(o.error || evtType==='error') throw new Error(o.error||'Błąd strumienia');
+            if(o.images && o.images.length){
+              for(var ii=0;ii<o.images.length;ii++){
+                var iu=o.images[ii]&&o.images[ii].url;
+                if(iu && genImages.indexOf(iu)<0) genImages.push(iu);
+              }
+            }
+            if(o.delta) acc+=o.delta;
+            if(o.content!==undefined) acc=o.content;
+            renderAssistantBubble();
+            scrollThread();
+          }
+        }
         var NL=String.fromCharCode(10);
         function pump(){
           return reader.read().then(function(ev){
             if(ev.done){
-              assistantEl.textContent=acc||'(koniec)';
+              if(streamFailed) return;
+              renderAssistantBubble();
+              if(!acc && !genImages.length){
+                assistantEl.className='msg assistant';
+                assistantEl.textContent='Brak treści w odpowiedzi. Dla kodu SVG wybierz model tekstowy (np. Claude/GPT-4o), nie Recraft. Recraft zwraca obraz, nie znaczniki SVG.';
+              }
               sendBtn.disabled=false;
               stEl.textContent='';
               scrollThread();
@@ -302,19 +341,12 @@ export const SOLO_DEV_CHAT_HTML = `<!DOCTYPE html>
             var i;
             while((i=buf.indexOf(NL+NL))!==-1){
               var chunk=buf.slice(0,i); buf=buf.slice(i+2);
-              chunk.split(NL).filter(function(l){return l.indexOf('data:')===0;}).forEach(function(line){
-                var js=line.slice(5).trim();
-                if(!js||js==='[DONE]') return;
-                try{
-                  var o=JSON.parse(js);
-                  if(o.session_id){ try{ sessionStorage.setItem(KS,o.session_id);}catch(e){} }
-                  if(o.error) throw new Error(o.error);
-                  if(o.delta) acc+=o.delta;
-                  if(o.content!==undefined) acc=o.content;
-                  assistantEl.textContent=acc;
-                  scrollThread();
-                }catch(e){ if(e instanceof SyntaxError) return; throw e; }
-              });
+              try{ processSseChunk(chunk); }
+              catch(e){
+                if(e instanceof SyntaxError) continue;
+                streamFailed=true;
+                throw e;
+              }
             }
             return pump();
           });

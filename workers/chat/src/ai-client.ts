@@ -91,7 +91,9 @@ export type GroqStreamEvent =
       /** Tokeny rozumowania (Harmony `analysis`). Liczone po stronie Groq. */
       reasoning_tokens?: number;
     }
-  | { type: 'done'; finish_reason?: string };
+  | { type: 'done'; finish_reason?: string }
+  /** OpenRouter image generation (Recraft, Flux, …) — base64 data URLs. */
+  | { type: 'generated_images'; urls: string[] };
 
 type AIBinding = {
   run: (
@@ -694,6 +696,14 @@ function createGroqStreamTransform(): TransformStream<string, GroqStreamEvent> {
     const text = deltaText || msgText;
     if (text) controller.enqueue({ type: 'text', delta: text });
 
+    const imageUrls = [
+      ...extractOpenRouterImageUrls(delta),
+      ...extractOpenRouterImageUrls(message),
+    ];
+    if (imageUrls.length > 0) {
+      controller.enqueue({ type: 'generated_images', urls: imageUrls });
+    }
+
     // ====== Harmony: kanał `analysis` (reasoning / chain of thought) ======
     // Groq zwraca pole `delta.reasoning` (preferowane) lub `delta.reasoning_content`
     // (alias). Nie przekazujemy go na frontend — emitujemy jako osobne zdarzenie
@@ -977,9 +987,44 @@ function isOpenRouterModelId(modelId: string): boolean {
   return modelId.startsWith('openrouter/');
 }
 
-/** OpenRouter Recraft V4.1 — generacja obrazu/SVG (modalities image+text). */
-function isOpenRouterImageGenModel(modelName: string): boolean {
-  return modelName.startsWith('recraft/');
+function resolveOpenRouterVariantByModelName(modelName: string): ModelCapabilities | null {
+  for (const key of Object.keys(MODEL_VARIANTS) as ModelVariantKey[]) {
+    const cap = MODEL_VARIANTS[key];
+    if (cap.id === `openrouter/${modelName}`) return cap;
+  }
+  return null;
+}
+
+/** OpenRouter: modele imageGen (Recraft V4.1 itd.) — tylko `modalities: ["image"]` (nie image+text). */
+function openRouterImageGenModalities(modelId: string): string[] | undefined {
+  const modelName = modelId.replace(/^openrouter\//, '');
+  const cap = resolveOpenRouterVariantByModelName(modelName);
+  if (cap?.imageGen) return ['image'];
+  if (modelName.startsWith('recraft/')) return ['image'];
+  return undefined;
+}
+
+function extractOpenRouterImageUrls(payload: unknown): string[] {
+  if (!payload || typeof payload !== 'object') return [];
+  const obj = payload as Record<string, unknown>;
+  const images = obj.images;
+  if (!Array.isArray(images)) return [];
+  const urls: string[] = [];
+  for (const item of images) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    const imageUrl = row.image_url;
+    if (imageUrl && typeof imageUrl === 'object') {
+      const url = (imageUrl as Record<string, unknown>).url;
+      if (typeof url === 'string' && url.trim()) urls.push(url.trim());
+    }
+    const alt = row.imageUrl;
+    if (alt && typeof alt === 'object') {
+      const url = (alt as Record<string, unknown>).url;
+      if (typeof url === 'string' && url.trim()) urls.push(url.trim());
+    }
+  }
+  return urls;
 }
 
 async function streamGroqEventsOpenRouter(
@@ -1001,18 +1046,18 @@ async function streamGroqEventsOpenRouter(
   const modelId = options?.modelId ?? CHAT_MODEL_ID;
   const modelName = modelId.replace('openrouter/', '');
 
-  const imageGen = isOpenRouterImageGenModel(modelName);
+  const modalities = openRouterImageGenModalities(modelId);
   const body: Record<string, unknown> = {
     model: modelName,
     messages: sanitizedMessages,
     stream: true,
-    ...(tools && !imageGen
+    ...(tools && !modalities
       ? { tools, tool_choice: resolvedToolChoice, parallel_tool_calls: true }
       : {}),
     max_tokens: options?.maxTokens ?? MODEL_PARAMS.max_tokens,
     temperature: MODEL_PARAMS.temperature,
     top_p: MODEL_PARAMS.top_p,
-    ...(imageGen ? { modalities: ['image', 'text'] } : {}),
+    ...(modalities ? { modalities } : {}),
   };
 
   const t0 = Date.now();
@@ -1052,7 +1097,7 @@ async function getGroqResponseOpenRouter(
   const modelId = options?.modelId ?? CHAT_MODEL_ID;
   const modelName = modelId.replace('openrouter/', '');
 
-  const imageGen = isOpenRouterImageGenModel(modelName);
+  const modalities = openRouterImageGenModalities(modelId);
   const body: Record<string, unknown> = {
     model: modelName,
     messages: sanitizeHarmonyHistory(messages),
@@ -1060,7 +1105,7 @@ async function getGroqResponseOpenRouter(
     max_tokens: options?.max_tokens ?? MODEL_PARAMS.max_tokens,
     temperature: MODEL_PARAMS.temperature,
     top_p: MODEL_PARAMS.top_p,
-    ...(imageGen ? { modalities: ['image', 'text'] } : {}),
+    ...(modalities ? { modalities } : {}),
   };
 
   const t0 = Date.now();

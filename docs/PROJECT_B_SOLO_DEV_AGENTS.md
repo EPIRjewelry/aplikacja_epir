@@ -41,7 +41,7 @@ Warianty `or_*` mapują na `openrouter/<slug>` w [`model-params.ts`](../workers/
 | `or_recraft_v41_utility_pro` | `recraft/recraft-v4.1-utility-pro` |
 | `or_recraft_v41_utility_pro_vector` | `recraft/recraft-v4.1-utility-pro-vector` |
 
-Worker wysyła `modalities: ["image","text"]` dla modeli `recraft/*` (bez narzędzi MCP w tej samej turze).
+Worker wysyła `modalities: ["image"]` dla modeli Recraft (`imageGen` w `model-params.ts`) — bez narzędzi MCP w tej turze. Odpowiedź może zawierać pole SSE `images` z data URL.
 
 ### Tekst (dodatkowo)
 

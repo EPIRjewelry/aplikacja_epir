@@ -2932,6 +2932,12 @@ async function streamAssistantResponse(
     async function sendDelta(delta: string) {
         await writer.write(encoder.encode(`data: ${JSON.stringify({ delta })}\n\n`));
     }
+    async function sendGeneratedImages(urls: string[]) {
+        if (!urls.length) return;
+        await writer.write(
+          encoder.encode(`data: ${JSON.stringify({ images: urls.map((url) => ({ url })) })}\n\n`),
+        );
+    }
 
     try {
       // 🔴 KROK 1: POPRAWKA SESJI
@@ -3575,7 +3581,8 @@ async function streamAssistantResponse(
       }
 
       // 🔴 FIX: accumulatedResponse poza pętlą - nie resetuj w każdej iteracji
-      let finalTextResponse = ''; 
+      let finalTextResponse = '';
+      const streamedGeneratedImages: string[] = [];
 
       for (let i = 0; i < MAX_TOOL_CALLS; i++) {
         let iterationText = ''; // Tymczasowy buffer dla kanału `final` Harmony.
@@ -3708,6 +3715,14 @@ async function streamAssistantResponse(
 
               case 'done':
                 finishReason = event.finish_reason ?? finishReason;
+                break;
+
+              case 'generated_images':
+                for (const url of event.urls) {
+                  if (url && !streamedGeneratedImages.includes(url)) {
+                    streamedGeneratedImages.push(url);
+                  }
+                }
                 break;
             }
           } // koniec while(reader)
@@ -4071,10 +4086,17 @@ async function streamAssistantResponse(
       }
 
       // Ostateczny fallback UX — jeśli dalej pusty (np. błąd modelu / sieci):
-      if (!finalTextResponse.trim()) {
+      if (!finalTextResponse.trim() && streamedGeneratedImages.length === 0) {
         finalTextResponse =
           'Przepraszam, chwilowo nie mogę przygotować pełnej odpowiedzi. Spróbuj proszę ponownie za moment.';
         await sendDelta(finalTextResponse);
+      }
+
+      if (streamedGeneratedImages.length > 0) {
+        await sendGeneratedImages(streamedGeneratedImages);
+        if (!finalTextResponse.trim()) {
+          finalTextResponse = 'Wygenerowano obraz (zobacz podgląd w panelu).';
+        }
       }
 
       // 🔴 KROK 5: FINALIZACJA I ZAPIS

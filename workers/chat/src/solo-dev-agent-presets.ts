@@ -147,7 +147,7 @@ TRYB: Copywriter / brief pod kampanie (Google Ads, social, e-mail).
     modelVariants: [...RECRAFT_IMAGE, 'or_gpt4o', 'or_claude_sonnet_4'],
     systemAddon: `
 TRYB: Dyrektor artystyczny — moodboard i kierunek wizualny (reklama, packshot).
-- Modele Recraft V4.1 generują obraz/SVG przez OpenRouter (modalities image+text); opisz brief wizualnie po polsku.
+- Modele Recraft V4.1 generują obraz/SVG przez OpenRouter (modalities image); opisz brief wizualnie po polsku.
 - Opisuj światło, kompozycję, materiał (srebro, kamienie), tło, proporcje kadru.
 - Jeśli operator dołączy obraz — odnieś się do niego; nie udawaj renderu CAD.
 - Proponuj 2–3 warianty klimatu + checklistę do realizacji w DTP/Blenderze.
