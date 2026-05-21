@@ -17,10 +17,12 @@ Presety agenta: kod źródłowy [`workers/chat/src/solo-dev-agent-presets.ts`](.
 | ID | Grupa | Domyślny model (variant) |
 |----|-------|---------------------------|
 | `internal_analytics` | Operacje | `default` (Groq GPT-OSS-120B) |
-| `creative_svg` | Projektowanie | `or_claude3_opus` |
+| `creative_svg` | Projektowanie | `or_claude_sonnet_4` |
 | `creative_copy` | Projektowanie | `or_gpt4o_mini` |
-| `creative_image` | Projektowanie | `or_recraft_v41_utility` |
+| `creative_image` | Projektowanie | `or_recraft_v41_utility_vector` |
 | `creative_blender_flow` | Projektowanie | `or_gpt4o` |
+
+Pod listami **Agent** i **Model** panel pokazuje krótkie opisy (`uiHint` w presetach + mapa modeli) — aktualizują się przy zmianie wyboru.
 
 **Uwaga:** ścieżka produkcyjna analityki to **D1 → Pipelines → Iceberg → R2 SQL**, nie Google BigQuery (nazwa `epir-bigquery-batch` jest historyczna).
 

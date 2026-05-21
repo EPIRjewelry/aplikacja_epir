@@ -19,6 +19,8 @@ export type SoloDevAgentPreset = {
   readonly optgroup: string;
   readonly label: string;
   readonly description: string;
+  /** Krótki opis pod listą agenta w UI solo-dev-chat. */
+  readonly uiHint: string;
   /** Domyślny klucz wariantu modelu (pusty = Groq default). */
   readonly defaultModelVariant: '' | ModelVariantKey;
   /** Dozwolone warianty w UI (kolejność = kolejność w &lt;select&gt;). */
@@ -105,6 +107,8 @@ export const SOLO_DEV_AGENT_PRESETS: readonly SoloDevAgentPreset[] = [
     optgroup: 'Project B — operacje',
     label: 'Analityka / kampanie (domyślny)',
     description: 'Hurtownia, GA4/Ads, ShopifyQL — bez zmiany roli bazowej.',
+    uiHint:
+      'Dane i kampanie: pixel_events, R2 SQL, GA4/Ads, eksport D1→Pipelines. Odpowiedź tekstowa (tabele, wnioski). Model: domyślny Groq lub OpenRouter tekst — nie Recraft.',
     defaultModelVariant: '',
     modelVariants: ALL_VARIANTS,
     systemAddon: '',
@@ -114,6 +118,8 @@ export const SOLO_DEV_AGENT_PRESETS: readonly SoloDevAgentPreset[] = [
     optgroup: 'Project B — projektowanie',
     label: 'SVG / layout (Flow → krzywe)',
     description: 'Ścieżki, viewBox, grupy — pod import SVG do Blendera.',
+    uiHint:
+      'Kod SVG w czacie (<svg>…</svg>) — edycja w Inkscape, import curve do Blendera. Model: Claude Sonnet lub GPT-4o. Nie wybieraj Recraft (to obraz, nie kod).',
     defaultModelVariant: 'or_claude_sonnet_4',
     modelVariants: SVG_MODELS,
     systemAddon: `
@@ -129,6 +135,8 @@ TRYB: Projektant SVG / layout (biżuteria EPIR, materiały reklamowe).
     optgroup: 'Project B — projektowanie',
     label: 'Copy / brief reklamowy',
     description: 'Hasła, warianty A/B, opisy pod kreację.',
+    uiHint:
+      'Tekst reklamowy: nagłówki, lead, CTA, warianty A/B (Ads, social, e-mail). Tylko modele tekstowe — bez Recraft.',
     defaultModelVariant: 'or_gpt4o_mini',
     modelVariants: TEXT_OR,
     systemAddon: `
@@ -143,7 +151,9 @@ TRYB: Copywriter / brief pod kampanie (Google Ads, social, e-mail).
     optgroup: 'Project B — projektowanie',
     label: 'Moodboard / kierunek wizualny',
     description: 'Opisy wizualne, kompozycja banerów (modele multimodal).',
-    defaultModelVariant: 'or_recraft_v41_utility',
+    uiHint:
+      'Obraz w czacie (Recraft): znak, sylwetka, moodboard — Ty potem trace/konwersja do SVG lub Blender. Model: Recraft z sufiksem *_vector (logo, ryngraf). Załącznik: referencja wizualna.',
+    defaultModelVariant: 'or_recraft_v41_utility_vector',
     modelVariants: [...RECRAFT_IMAGE, 'or_gpt4o', 'or_claude_sonnet_4'],
     systemAddon: `
 TRYB: Dyrektor artystyczny — moodboard i kierunek wizualny (reklama, packshot).
@@ -158,6 +168,8 @@ TRYB: Dyrektor artystyczny — moodboard i kierunek wizualny (reklama, packshot)
     optgroup: 'Project B — projektowanie',
     label: 'Blender: curve → mesh',
     description: 'Instrukcje bpy / workflow (bez zastępowania Blender MCP).',
+    uiHint:
+      'Instrukcje workflow Blender (mm, curve→mesh, solidify/bevel, krótki bpy). Masz już SVG/curve — nie generuje nowego obrazu. Blender MCP w Cursorze to osobne narzędzie.',
     defaultModelVariant: 'or_gpt4o',
     modelVariants: ['', 'or_gpt4o', 'or_gpt4o_mini', 'or_claude3_opus', 'or_gemini2_flash', 'glm_flash'],
     systemAddon: `
@@ -291,6 +303,36 @@ export function soloDevAgentDefaultsJson(): string {
     map[p.id] = p.defaultModelVariant;
   }
   return JSON.stringify(map);
+}
+
+/** JSON: agentId → widoczny opis pod selectem agenta. */
+export function soloDevAgentUiHintsJson(): string {
+  const map: Record<string, string> = {};
+  for (const p of SOLO_DEV_AGENT_PRESETS) {
+    map[p.id] = p.uiHint;
+  }
+  return JSON.stringify(map);
+}
+
+const SOLO_DEV_MODEL_UI_HINTS: Partial<Record<ModelVariantKey, string>> = {
+  '': 'Domyślny Groq / AI Gateway (GPT-OSS-120B) — analityka i ogólny tekst.',
+  or_claude_sonnet_4: 'Tekst wysokiej jakości; kod SVG, briefy techniczne.',
+  or_gpt41: 'Tekst; dobre do SVG i instrukcji.',
+  or_gpt4o: 'Tekst + obraz wejściowy (załącznik); uniwersalny.',
+  or_gpt4o_mini: 'Szybki, tańszy tekst (copy).',
+  or_recraft_v41: 'Obraz raster — klimat, moodboard (nie pod czysty trace).',
+  or_recraft_v41_vector: 'Obraz pod wektorowanie: logo, sylwetka, prosty znak.',
+  or_recraft_v41_pro: 'Obraz raster — więcej detalu niż base.',
+  or_recraft_v41_pro_vector: 'Wektorowy styl, więcej detalu — nadal obraz do trace, nie plik SVG.',
+  or_recraft_v41_utility: 'Proste kształty, ikony, utility art.',
+  or_recraft_v41_utility_vector: 'Zalecane pod ryngraf/znak: prosta sylwetka, łatwy trace.',
+  or_recraft_v41_utility_pro: 'Utility z wyższą jakością (raster).',
+  or_recraft_v41_utility_pro_vector: 'Utility + vector — balans jakości i prostoty pod DTP.',
+};
+
+/** JSON: variant key → opis pod selectem modelu. */
+export function soloDevModelUiHintsJson(): string {
+  return JSON.stringify(SOLO_DEV_MODEL_UI_HINTS);
 }
 
 function timingSafeEqualStrings(a: string, b: string): boolean {

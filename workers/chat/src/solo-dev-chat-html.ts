@@ -8,12 +8,16 @@ import {
   buildSoloDevModelSelectHtml,
   soloDevAgentDefaultsJson,
   soloDevAgentModelMapJson,
+  soloDevAgentUiHintsJson,
+  soloDevModelUiHintsJson,
 } from './solo-dev-agent-presets';
 
 const AGENT_OPTIONS = buildSoloDevAgentSelectHtml();
 const MODEL_OPTIONS = buildSoloDevModelSelectHtml();
 const AGENT_MODEL_MAP_JSON = soloDevAgentModelMapJson();
 const AGENT_DEFAULTS_JSON = soloDevAgentDefaultsJson();
+const AGENT_UI_HINTS_JSON = soloDevAgentUiHintsJson();
+const MODEL_UI_HINTS_JSON = soloDevModelUiHintsJson();
 
 export const SOLO_DEV_CHAT_HTML = `<!DOCTYPE html>
 <html lang="pl">
@@ -55,6 +59,12 @@ export const SOLO_DEV_CHAT_HTML = `<!DOCTYPE html>
     #attachPreview img { max-height:120px; border-radius:6px; border:1px solid var(--b); }
     .err { color:#f87171; }
     .hint { font-size:.75rem; color:var(--m); }
+    .pick-hint {
+      font-size:.78rem; color:var(--m); line-height:1.45; margin:6px 0 0;
+      padding:8px 10px; border-radius:8px; background:#0f1729; border:1px solid var(--b);
+      min-height:2.6em;
+    }
+    .pick-hint strong { color:var(--tx); font-weight:600; }
   </style>
 </head>
 <body>
@@ -71,10 +81,12 @@ export const SOLO_DEV_CHAT_HTML = `<!DOCTYPE html>
       <div>
         <label for="agent">Agent (<code>X-EPIR-AGENT-PRESET</code>)</label>
         <select id="agent">${AGENT_OPTIONS}</select>
+        <p id="agentHint" class="pick-hint" aria-live="polite"></p>
       </div>
       <div>
         <label for="model">Model (<code>X-Epir-Model-Variant</code>)</label>
         <select id="model">${MODEL_OPTIONS}</select>
+        <p id="modelHint" class="pick-hint" aria-live="polite"></p>
       </div>
     </div>
     <div id="thread" aria-live="polite"></div>
@@ -104,9 +116,14 @@ export const SOLO_DEV_CHAT_HTML = `<!DOCTYPE html>
   var IMG_PLACEHOLDER='(załącznik obrazu)';
   var AGENT_MODELS=${AGENT_MODEL_MAP_JSON};
   var AGENT_DEFAULTS=${AGENT_DEFAULTS_JSON};
+  var AGENT_HINTS=${AGENT_UI_HINTS_JSON};
+  var MODEL_HINTS=${MODEL_UI_HINTS_JSON};
+  var RECRAFT_HINT='Recraft: generuje obraz w bąbelku (nie plik .svg). Wariant *_vector = pod trace/ryngraf.';
   var keyEl=document.getElementById('key');
   var agentEl=document.getElementById('agent');
   var modelEl=document.getElementById('model');
+  var agentHintEl=document.getElementById('agentHint');
+  var modelHintEl=document.getElementById('modelHint');
   var msgEl=document.getElementById('msg');
   var threadEl=document.getElementById('thread');
   var stEl=document.getElementById('status');
@@ -191,6 +208,17 @@ export const SOLO_DEV_CHAT_HTML = `<!DOCTYPE html>
     stEl.textContent='Nowa rozmowa — następna wiadomość utworzy sesję.';
   };
 
+  function updatePickHints(){
+    var aid=agentEl.value;
+    var hint=AGENT_HINTS[aid]||'';
+    agentHintEl.innerHTML=hint ? '<strong>Agent:</strong> '+escapeHtml(hint) : '';
+    var mv=modelEl.value;
+    var mh=MODEL_HINTS[mv];
+    if(!mh && mv.indexOf('or_recraft')===0) mh=RECRAFT_HINT;
+    if(!mh && mv.indexOf('or_')===0) mh='OpenRouter — tekst lub multimodal (załącznik obrazu).';
+    modelHintEl.innerHTML=mh ? '<strong>Model:</strong> '+escapeHtml(mh) : '';
+  }
+
   function filterModelsForAgent(agentId){
     var allowed=AGENT_MODELS[agentId];
     var set=null;
@@ -220,9 +248,14 @@ export const SOLO_DEV_CHAT_HTML = `<!DOCTYPE html>
 
   agentEl.onchange=function(){
     filterModelsForAgent(agentEl.value);
+    updatePickHints();
     try { sessionStorage.setItem(KA, agentEl.value); sessionStorage.setItem(KM, modelEl.value); } catch(e){}
   };
-  modelEl.onchange=function(){ try { sessionStorage.setItem(KM, modelEl.value); } catch(e){} };
+  modelEl.onchange=function(){
+    updatePickHints();
+    try { sessionStorage.setItem(KM, modelEl.value); } catch(e){}
+  };
+  updatePickHints();
   document.getElementById('saveKey').onclick=function(){
     try { sessionStorage.setItem(K,keyEl.value.trim()); stEl.textContent='Zapisano.'; loadHistory(); } catch(e){ stEl.textContent='Brak sessionStorage.'; }
   };

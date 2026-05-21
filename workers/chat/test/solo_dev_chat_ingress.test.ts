@@ -16,6 +16,9 @@ describe('solo dev chat ingress', () => {
     const text = await res.text();
     expect(text).toContain('Dev-asystent');
     expect(text).toContain('/internal/solo-dev-chat/api/chat');
+    expect(text).toContain('id="agentHint"');
+    expect(text).toContain('id="modelHint"');
+    expect(text).toContain('AGENT_HINTS');
   });
 
   it('returns 401 for POST /internal/solo-dev-chat/api/chat without X-Admin-Key', async () => {

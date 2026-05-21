@@ -3,6 +3,7 @@ import {
   getSoloDevAgentSystemAddon,
   isSoloDevAgentId,
   resolveSoloDevAgentAddonFromHeaders,
+  soloDevAgentUiHintsJson,
   SOLO_DEV_AGENT_PRESETS,
 } from '../src/solo-dev-agent-presets';
 
@@ -36,5 +37,12 @@ describe('solo-dev-agent-presets', () => {
   it('rejects unknown agent id', () => {
     expect(isSoloDevAgentId('nope')).toBe(false);
     expect(getSoloDevAgentSystemAddon('nope')).toBe('');
+  });
+
+  it('exposes ui hints for every agent', () => {
+    const hints = JSON.parse(soloDevAgentUiHintsJson()) as Record<string, string>;
+    for (const p of SOLO_DEV_AGENT_PRESETS) {
+      expect(hints[p.id]?.length).toBeGreaterThan(20);
+    }
   });
 });
