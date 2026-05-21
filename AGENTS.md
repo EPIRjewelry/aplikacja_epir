@@ -47,6 +47,13 @@ Definiuje:
 
 W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md`, a następnie `EPIR_AI_BIBLE.md`.
 
+## Cursor — skills i rules (jedno źródło definicji agentów)
+
+- **Definicje agentów** (ESOG, EFA, EDCG, EAA, deploy, OQAG, indexer): wyłącznie **`.cursor/skills/`** — indeks: [`.cursor/skills/README.md`](.cursor/skills/README.md).
+- **Reguły sesji Cursor:** [`.cursor/rules/`](.cursor/rules/) (`epir-canonical-onboarding.mdc` — zawsze; pozostałe wg globów).
+- Folder **`agents/`** — opcjonalne **Python CLI** (nie edytuj tam pełnych zasad; synchronizuj z SKILL).
+- **`.github/agents/`** — definicje pod **GitHub Copilot**, nie zastępują `.cursor/skills/`.
+
 ## Zasady pracy
 
 1. Zanim zmienisz kod lub dokumentację, ustal, czy problem dotyczy architektury, danych, ingressu, deployu, analityki czy promptów.

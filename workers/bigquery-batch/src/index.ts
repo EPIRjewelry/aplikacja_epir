@@ -10,6 +10,7 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 // ============================================================================
 
 import { getR2AnalyticsSql, VALID_QUERY_IDS } from './analytics-queries';
+import { pixelCreatedAtIso, pixelCreatedAtMs } from './d1-timestamps';
 import { postPipelineIngestBatch } from './pipeline-ingest';
 import { isR2SqlQueryConfigured, runR2SqlJob } from './r2-sql-client';
 
@@ -29,22 +30,64 @@ interface Env {
   WAREHOUSE_SQL_NAMESPACE?: string;
   WAREHOUSE_SQL_PIXEL_TABLE?: string;
   WAREHOUSE_SQL_MESSAGES_TABLE?: string;
+  /** Opcjonalnie: POST /internal/trigger-export z nagłówkiem X-Admin-Key (ręczny eksport / smoke). */
+  ADMIN_KEY?: string;
 }
 
 const BATCH_SIZE = 100;
+/** Maks. wierszy na jedno wywołanie (cron / trigger) — unika przekroczenia limitu subrequestów (~25 POST ingest). */
+const MAX_PIXEL_ROWS_PER_RUN = 2500;
+const MAX_MESSAGES_ROWS_PER_RUN = 2500;
+
+export type WarehouseExportSummary = {
+  pixelExported: number;
+  messagesExported: number;
+  last_pixel_export_at: number;
+  last_messages_export_at: number;
+  pending_pixel_after: number;
+  partial: boolean;
+  pipeline_error?: string;
+};
+
+function agentDebugLog(
+  location: string,
+  message: string,
+  data: Record<string, unknown>,
+  hypothesisId: string,
+): void {
+  const payload = {
+    sessionId: 'acf280',
+    location,
+    message,
+    data,
+    timestamp: Date.now(),
+    hypothesisId,
+  };
+  console.log('[DEBUG-acf280]', JSON.stringify(payload));
+  // #region agent log
+  fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'acf280' },
+    body: JSON.stringify(payload),
+  }).catch(() => {});
+  // #endregion
+}
 
 // ============================================================================
 // Eksport pixel_events → Pipelines
 // ============================================================================
 
-async function exportPixelEvents(env: Env, lastExportAt: number): Promise<{ exported: number; maxTimestamp: number }> {
+async function exportPixelEvents(
+  env: Env,
+  lastExportAt: number,
+): Promise<{ exported: number; maxTimestamp: number; pipelineError?: string }> {
   const pipelineUrl = (env.PIPELINE_PIXEL_INGEST_URL ?? '').trim();
   if (!pipelineUrl) {
     return { exported: 0, maxTimestamp: lastExportAt };
   }
   const stmt = env.DB.prepare(
-    `SELECT * FROM pixel_events WHERE (strftime('%s', created_at) * 1000) > ?1 ORDER BY created_at ASC`
-  ).bind(lastExportAt);
+    `SELECT * FROM pixel_events WHERE CAST(created_at AS INTEGER) > ?1 ORDER BY CAST(created_at AS INTEGER) ASC LIMIT ?2`,
+  ).bind(lastExportAt, MAX_PIXEL_ROWS_PER_RUN);
   const result = await stmt.all<Record<string, unknown>>();
   const rows = result.results ?? [];
   if (rows.length === 0) return { exported: 0, maxTimestamp: lastExportAt };
@@ -56,29 +99,45 @@ async function exportPixelEvents(env: Env, lastExportAt: number): Promise<{ expo
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const chunk = rows.slice(i, i + BATCH_SIZE);
     const records = chunk.map((r) => {
-      const createdAt = r.created_at as string;
+      const pageUrl = String(r.page_url ?? '').trim();
       return {
         event_type: r.event_type,
         session_id: r.session_id,
         customer_id: r.customer_id,
         storefront_id: r.storefront_id ?? null,
         channel: r.channel ?? null,
-        url: r.page_url ?? '',
+        // Stream schema: `url` required — puste page_url w D1 (~legacy) → placeholder (inaczej ingest odrzuca cały batch).
+        url: pageUrl || 'https://epir.local/unknown',
         payload: JSON.stringify(r),
-        created_at: createdAt ?? new Date().toISOString(),
+        created_at: pixelCreatedAtIso(r.created_at),
       };
     });
 
     const pr = await postPipelineIngestBatch(pipelineUrl, pipelineToken, records);
     if (!pr.ok) {
       console.error(`[WAREHOUSE_BATCH] pixel_events Pipeline chunk failed at offset ${i}:`, pr);
-      break;
+      agentDebugLog(
+        'bigquery-batch/index.ts:exportPixelEvents',
+        'pipeline_chunk_failed',
+        {
+          stream: 'pixel',
+          offset: i,
+          status: pr.status,
+          bodyPreview: pr.body.slice(0, 200),
+          hasIngestToken: !!(pipelineToken ?? '').trim(),
+        },
+        'H4',
+      );
+      return {
+        exported: totalInserted,
+        maxTimestamp: maxTs,
+        pipelineError: `pixel ingest HTTP ${pr.status}: ${pr.body.slice(0, 120)}`,
+      };
     }
 
     totalInserted += chunk.length;
     for (const r of chunk) {
-      const createdAt = r.created_at as string;
-      const ts = createdAt ? Math.floor(new Date(createdAt).getTime()) : 0;
+      const ts = pixelCreatedAtMs(r.created_at);
       if (ts > maxTs) maxTs = ts;
     }
   }
@@ -96,8 +155,8 @@ async function exportMessages(env: Env, lastExportAt: number): Promise<{ exporte
     return { exported: 0, maxTimestamp: lastExportAt };
   }
   const stmt = env.DB_CHATBOT.prepare(
-    `SELECT * FROM messages WHERE timestamp > ?1 ORDER BY timestamp ASC`
-  ).bind(lastExportAt);
+    `SELECT * FROM messages WHERE timestamp > ?1 ORDER BY timestamp ASC LIMIT ?2`,
+  ).bind(lastExportAt, MAX_MESSAGES_ROWS_PER_RUN);
   const result = await stmt.all<Record<string, unknown>>();
   const rows = result.results ?? [];
   if (rows.length === 0) return { exported: 0, maxTimestamp: lastExportAt };
@@ -141,15 +200,22 @@ async function exportMessages(env: Env, lastExportAt: number): Promise<{ exporte
 // Scheduled handler
 // ============================================================================
 
-async function handleScheduled(env: Env): Promise<void> {
+async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null> {
   console.log('[WAREHOUSE_BATCH] Starting scheduled export');
 
   const pixelPipeline = !!(env.PIPELINE_PIXEL_INGEST_URL ?? '').trim();
   const messagesPipeline = !!(env.PIPELINE_MESSAGES_INGEST_URL ?? '').trim();
+  const hasIngestToken = !!(env.PIPELINE_INGEST_TOKEN ?? '').trim();
 
   if (!pixelPipeline && !messagesPipeline) {
     console.warn('[WAREHOUSE_BATCH] Pipeline ingest URLs not configured, skipping');
-    return;
+    agentDebugLog(
+      'bigquery-batch/index.ts:handleScheduled',
+      'export_skipped_no_pipeline_urls',
+      { pixelPipeline, messagesPipeline, hasIngestToken },
+      'H4',
+    );
+    return null;
   }
 
   let lastPixel = 0;
@@ -166,10 +232,46 @@ async function handleScheduled(env: Env): Promise<void> {
     console.warn('[WAREHOUSE_BATCH] batch_exports table missing or empty, using 0:', e);
   }
 
+  let pendingPixel = 0;
+  try {
+    const pendingRow = await env.DB.prepare(
+      'SELECT COUNT(*) AS cnt FROM pixel_events WHERE CAST(created_at AS INTEGER) > ?1',
+    )
+      .bind(lastPixel)
+      .first<{ cnt: number }>();
+    pendingPixel = pendingRow?.cnt ?? 0;
+  } catch {
+    pendingPixel = -1;
+  }
+  agentDebugLog(
+    'bigquery-batch/index.ts:handleScheduled',
+    'export_start',
+    {
+      pixelPipeline,
+      messagesPipeline,
+      hasIngestToken,
+      pendingPixel,
+      lastPixelWatermark: lastPixel,
+      lastMessagesWatermark: lastMessages,
+    },
+    'H4',
+  );
+
   const now = Date.now();
 
   const pixelResult = await exportPixelEvents(env, lastPixel);
+  const pipelineError = pixelResult.pipelineError;
   console.log(`[WAREHOUSE_BATCH] pixel_events: exported ${pixelResult.exported} rows`);
+  agentDebugLog(
+    'bigquery-batch/index.ts:handleScheduled',
+    'pixel_export_done',
+    {
+      exported: pixelResult.exported,
+      maxTimestamp: pixelResult.maxTimestamp,
+      previousWatermark: lastPixel,
+    },
+    'H4',
+  );
 
   const messagesResult = await exportMessages(env, lastMessages);
   console.log(`[WAREHOUSE_BATCH] messages: exported ${messagesResult.exported} rows`);
@@ -193,7 +295,41 @@ async function handleScheduled(env: Env): Promise<void> {
     console.error('[WAREHOUSE_BATCH] Failed to update batch_exports:', e);
   }
 
-  console.log('[WAREHOUSE_BATCH] Export complete');
+  agentDebugLog(
+    'bigquery-batch/index.ts:handleScheduled',
+    'export_complete',
+    {
+      pixelExported: pixelResult.exported,
+      messagesExported: messagesResult.exported,
+      newPixelTs,
+      newMessagesTs,
+      hasIngestToken: !!(env.PIPELINE_INGEST_TOKEN ?? '').trim(),
+    },
+    'H4',
+  );
+  let pendingAfter = 0;
+  try {
+    const pendingRow = await env.DB.prepare(
+      'SELECT COUNT(*) AS cnt FROM pixel_events WHERE CAST(created_at AS INTEGER) > ?1',
+    )
+      .bind(newPixelTs)
+      .first<{ cnt: number }>();
+    pendingAfter = pendingRow?.cnt ?? 0;
+  } catch {
+    pendingAfter = -1;
+  }
+
+  const summary: WarehouseExportSummary = {
+    pixelExported: pixelResult.exported,
+    messagesExported: messagesResult.exported,
+    last_pixel_export_at: newPixelTs,
+    last_messages_export_at: newMessagesTs,
+    pending_pixel_after: pendingAfter,
+    partial: pendingAfter > 0,
+    ...(pipelineError ? { pipeline_error: pipelineError } : {}),
+  };
+  console.log('[WAREHOUSE_BATCH] Export complete', summary);
+  return summary;
 }
 
 // ============================================================================
@@ -244,9 +380,35 @@ async function executeRunAnalyticsQuery(
   }
   const { rows, error } = await runR2SqlJob(env, sql);
   if (error) {
+    agentDebugLog(
+      'bigquery-batch/index.ts:executeRunAnalyticsQuery',
+      'r2_sql_error',
+      { queryId, error: error.slice(0, 300) },
+      'H6',
+    );
     return { ok: false, error, status: 500 };
   }
-  return { ok: true, queryId, rows: rows ?? [] };
+  const rowList = rows ?? [];
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  let todayEventCount: number | null = null;
+  if (queryId === 'Q8_DAILY_EVENTS') {
+    todayEventCount = rowList
+      .filter((r) => String(r.event_date ?? '').startsWith(todayUtc))
+      .reduce((sum, r) => sum + (Number(r.event_count) || 0), 0);
+  }
+  agentDebugLog(
+    'bigquery-batch/index.ts:executeRunAnalyticsQuery',
+    'r2_sql_ok',
+    {
+      queryId,
+      rowCount: rowList.length,
+      todayUtc,
+      todayEventCount,
+      pixelTable: env.WAREHOUSE_SQL_PIXEL_TABLE ?? 'epir_pixel_events_raw',
+    },
+    'H1',
+  );
+  return { ok: true, queryId, rows: rowList };
 }
 
 /** S2S whitelisted queries (R2 SQL) — wywoływane wyłącznie z `epir-art-jewellery-worker` przez service binding. Zakres RPC: `bigquery.analytics_query` (nazwa historyczna). */
@@ -258,6 +420,13 @@ export class BigQueryBatchS2SRpc extends WorkerEntrypoint<Env, BigQueryS2SProps>
     requireBigQueryS2SScopes(this.ctx.props, 'bigquery.analytics_query');
     return executeRunAnalyticsQuery(this.env, args ?? {});
   }
+
+  /** Ręczny eksport D1→Pipelines (ten sam scope co odczyt hurtowni). */
+  async triggerWarehouseExport(): Promise<{ ok: true; summary: WarehouseExportSummary | null }> {
+    requireBigQueryS2SScopes(this.ctx.props, 'bigquery.analytics_query');
+    const summary = await handleScheduled(this.env);
+    return { ok: true, summary };
+  }
 }
 
 export default {
@@ -265,6 +434,43 @@ export default {
     const url = new URL(request.url);
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/healthz')) {
       return new Response('ok', { status: 200 });
+    }
+    if (request.method === 'GET' && url.pathname === '/internal/export-status') {
+      let pendingPixel = -1;
+      let batchRow: { last_pixel_export_at: number; last_messages_export_at: number; updated_at: number } | null =
+        null;
+      try {
+        const pending = await env.DB.prepare(
+          'SELECT COUNT(*) AS cnt FROM pixel_events WHERE CAST(created_at AS INTEGER) > COALESCE((SELECT last_pixel_export_at FROM batch_exports WHERE id = 1), 0)',
+        ).first<{ cnt: number }>();
+        pendingPixel = pending?.cnt ?? -1;
+        batchRow = await env.DB.prepare(
+          'SELECT last_pixel_export_at, last_messages_export_at, updated_at FROM batch_exports WHERE id = 1',
+        ).first();
+      } catch {
+        /* ignore */
+      }
+      return Response.json({
+        pending_pixel_events: pendingPixel,
+        batch_exports: batchRow,
+        pipeline_pixel_configured: !!(env.PIPELINE_PIXEL_INGEST_URL ?? '').trim(),
+        pipeline_messages_configured: !!(env.PIPELINE_MESSAGES_INGEST_URL ?? '').trim(),
+      });
+    }
+    if (request.method === 'POST' && url.pathname === '/internal/trigger-export') {
+      const admin = (env.ADMIN_KEY ?? '').trim();
+      const got = (request.headers.get('X-Admin-Key') ?? '').trim();
+      if (!admin || got !== admin) {
+        return new Response(JSON.stringify({ error: 'unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const summary = await handleScheduled(env);
+      return new Response(JSON.stringify({ ok: true, summary }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
     if (request.method === 'POST' && url.pathname === '/internal/analytics/query') {
       return new Response(JSON.stringify({ error: 'analytics_query_deprecated_use_rpc' }), {
@@ -276,6 +482,10 @@ export default {
   },
 
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(handleScheduled(env));
+    ctx.waitUntil(handleScheduled(env).then((s) => {
+      if (s?.partial) {
+        console.warn('[WAREHOUSE_BATCH] Cron partial export; pending pixel rows remain:', s.pending_pixel_after);
+      }
+    }));
   },
 };

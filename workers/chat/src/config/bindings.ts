@@ -50,6 +50,18 @@ export type BigQueryBatchRpcStub = {
     | { ok: true; queryId: string; rows: Record<string, unknown>[] }
     | { ok: false; error: string; status: number }
   >;
+  triggerWarehouseExport(): Promise<{
+    ok: true;
+    summary: {
+      pixelExported: number;
+      messagesExported: number;
+      last_pixel_export_at: number;
+      last_messages_export_at: number;
+      pending_pixel_after: number;
+      partial: boolean;
+      pipeline_error?: string;
+    } | null;
+  }>;
 };
 
 export interface Env {

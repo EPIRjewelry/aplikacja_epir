@@ -1,4 +1,6 @@
-# EPIR Fix Agent (EFA)
+# EPIR Fix Agent (EFA) — CLI
+
+**Kanon definicji:** `.cursor/skills/epir-fix-agent/SKILL.md`
 
 ## Purpose
 

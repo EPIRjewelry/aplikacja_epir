@@ -39,6 +39,28 @@ export async function buildMarketingPreviewBody(env: MarketingPreviewEnv, date: 
     fetchGa4MarketingRows(env, date),
   ]);
 
+  // #region agent log
+  fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b07ff0' },
+    body: JSON.stringify({
+      sessionId: 'b07ff0',
+      location: 'marketing-ingest/ops-preview.ts:buildMarketingPreviewBody',
+      message: 'marketing_preview_built',
+      data: {
+        date,
+        gaRowCount: gaRows.length,
+        adsRowCount: adsRows.length,
+        gaConfigured: !!(env.GA4_SERVICE_ACCOUNT_JSON ?? '').trim() && !!(env.GA4_PROPERTY_ID ?? '').trim(),
+        adsConfigured:
+          !!(env.GOOGLE_ADS_CUSTOMER_ID ?? '').trim() && !!(env.GOOGLE_ADS_DEVELOPER_TOKEN ?? '').trim(),
+      },
+      timestamp: Date.now(),
+      hypothesisId: 'H2',
+    }),
+  }).catch(() => {});
+  // #endregion
+
   const adsSorted = [...adsRows].sort((a, b) => (b.metric_impressions ?? 0) - (a.metric_impressions ?? 0));
   const topAds = adsSorted.slice(0, 20).map((r) => ({
     campaign_id: r.campaign_id ?? '',

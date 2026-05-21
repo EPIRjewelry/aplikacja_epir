@@ -143,6 +143,8 @@ Osobny worker od `workers/bigquery-batch`: **pull** GA4 (Data API) + Google Ads 
 
 **Konfiguracja połączeń GA4 + Google Ads** (service account, OAuth refresh, developer token, `wrangler secret put`): [`workers/marketing-ingest/README.md`](../workers/marketing-ingest/README.md).
 
+**Smoke eksportu D1 → Pipelines (operator):** po deployu `epir-bigquery-batch` — `POST /internal/trigger-export` z nagłówkiem `X-Admin-Key: <ADMIN_KEY>` (sekret już na workerze) albo ręczne odpalenie crona w Dashboard. Odpowiedź JSON zawiera `batch_exports`; w D1 `last_pixel_export_at` powinno rosnąć, gdy ingest HTTP akceptuje batche. Jeśli w logach `[WAREHOUSE_BATCH] pipeline_chunk_failed` — ustaw `PIPELINE_INGEST_TOKEN` (Pipelines HTTP auth).
+
 **Sekrety** (`wrangler secret put` w katalogu workera):
 
 - `MARKETING_PIPELINE_INGEST_URL` — URL HTTP ingest z `npx wrangler pipelines setup` (wartość tylko w vault / sekretach),

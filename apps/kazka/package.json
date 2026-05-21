@@ -32,12 +32,12 @@
     "graphql": "^16.6.0",
     "graphql-tag": "^2.12.6",
     "isbot": "^3.8.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "tiny-invariant": "^1.2.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20230518.0",
+    "@cloudflare/workers-types": "^4.20251117.0",
     "@epir/config": "*",
     "@remix-run/dev": "^2.15.0",
     "@shopify/prettier-config": "^1.1.2",
@@ -52,8 +52,8 @@
     "postcss-cli": "^10.1.0",
     "prettier": "^2.8.4",
     "tailwindcss": "^3.3.2",
-    "typescript": "^5.2.2",
-    "wrangler": "3.1.1"
+    "typescript": "^5.4.0",
+    "wrangler": "4.46.0"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -1,44 +1,32 @@
-# EPIR Agents Quick Start
+# `agents/` — opcjonalne CLI Python (nie kanon Cursor)
 
-This folder contains two local-first Python agents:
+**Definicje ról agentów (ESOG, EFA, indexer, granice, werdykty):** wyłącznie [`.cursor/skills/`](../.cursor/skills/README.md).
 
-- `epir_esog_agent` (ESOG): orthodoxy reviewer, returns compliance verdicts
-- `epir_fix_agent` (EFA): patch suggestion generator for ESOG findings
+Ten katalog zawiera **implementację uruchomieniową** (skrypty, Azure Framework, VS Code launch) — nie drugi zestaw zasad architektury.
 
-## Start here (terminal)
+| Folder | CLI | Kanoniczny skill |
+|--------|-----|------------------|
+| `epir_esog_agent/` | `python agents/epir_esog_agent/agent.py` | `.cursor/skills/epir-esog-agent/` |
+| `epir_fix_agent/` | `python agents/epir_fix_agent/agent.py` | `.cursor/skills/epir-fix-agent/` |
+| `indexer_agent/` | `python agents/indexer_agent/run_agent.py` | `.cursor/skills/epir-indexer-agent/` |
 
-Run from repository root (`d:\aplikacja_epir`):
+## Start (terminal, lokalnie)
+
+Z roota repo:
 
 ```powershell
-python agents/epir_esog_agent/agent.py "Check: workers/chat/src/index.ts contains admin token"
-python agents/epir_fix_agent/agent.py "Set default_start_closed = false"
+python agents/epir_esog_agent/agent.py "Check: workers/chat/src/index.ts"
+python agents/epir_fix_agent/agent.py "Opis poprawki z werdyktu ESOG"
+python agents/indexer_agent/run_agent.py
 ```
 
-Expected in default setup:
+## Tryby (`EPIR_AGENT_MODE`)
 
-- output includes `"mode": "local"`
-- commands finish without Azure setup
+- `local` — bez Azure (domyślne)
+- `auto` / `framework` — Azure AI Project (wymaga `.env` i `az login`)
 
-## Start here (VS Code / F5)
+Szczegóły w README każdego podagenta.
 
-Use launch profiles:
+## Edycja promptów
 
-- `Run ESOG Agent`
-- `Run EFA (Fix Agent)`
-
-These profiles force `EPIR_AGENT_MODE=local` for stable local runs.
-
-## Optional: enable Framework mode later
-
-1. Set real values in root `.env`:
-   - `AZURE_AI_PROJECT_ENDPOINT`
-   - `AZURE_AI_MODEL_DEPLOYMENT_NAME`
-2. Install per-agent dependencies (`requirements.txt`)
-3. Run `az login`
-4. Set `EPIR_AGENT_MODE=framework`
-
-Mode behavior:
-
-- `local`: always local, no Azure required
-- `auto`: try framework only with real config; otherwise local
-- `framework`: strict mode, fails fast on missing/invalid framework config
+Jeśli zmieniasz zachowanie agenta, edytuj **`SKILL.md`** w `.cursor/skills/`, potem zsynchronizuj skrót w `*/prompt.md` (opcjonalnie). Nie rozwijaj dwóch pełnych kopii instrukcji.

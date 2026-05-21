@@ -65,6 +65,7 @@ import {
 import { ProfileService } from './profile';
 import { AnalyticsService } from './analytics-service';
 import { DASHBOARD_HTML } from './dashboard-html';
+import { resolveSoloDevAgentAddonFromHeaders } from './solo-dev-agent-presets';
 import { SOLO_DEV_CHAT_HTML } from './solo-dev-chat-html';
 import { buildAIProfilePrompt, fetchAIProfile } from './ai-profile';
 import {
@@ -952,6 +953,8 @@ function cors(env: Env, request?: Request): Record<string, string> {
       'X-Admin-Key',
       'X-Epir-Model-Variant',
       'x-epir-model-variant',
+      'X-EPIR-AGENT-PRESET',
+      'x-epir-agent-preset',
       'x-d1-bookmark',
     ].join(','),
     'Access-Control-Expose-Headers': 'x-d1-bookmark,X-EPIR-Chart-Source',
@@ -3255,7 +3258,13 @@ async function streamAssistantResponse(
         );
       }
 
-      const baseSystemPrompt = getSystemPromptForChannel(storefrontContext?.channel);
+      const agentAddon =
+        storefrontContext?.channel === 'internal-dashboard'
+          ? resolveSoloDevAgentAddonFromHeaders(request.headers, env)
+          : '';
+      const baseSystemPrompt =
+        getSystemPromptForChannel(storefrontContext?.channel) +
+        (agentAddon ? `\n\n${agentAddon}` : '');
 
       // Zbudowanie dynamicznych linii (koszyk, sklep, cross-session); trafią do ostatniego usera, nie do systemu.
       const dynamicContext: string[] = [];
@@ -4151,7 +4160,7 @@ async function handleSoloDevChatIngress(
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
         'Content-Security-Policy':
-          "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'none'; font-src 'none'; connect-src 'self'; base-uri 'none'; form-action 'self'",
+          "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src 'none'; connect-src 'self'; base-uri 'none'; form-action 'self'",
         ...cors(env, request),
       },
     });
@@ -4176,6 +4185,8 @@ async function handleSoloDevChatIngress(
     const bodyText = await request.text();
     const variant =
       request.headers.get('X-Epir-Model-Variant')?.trim() ?? request.headers.get('x-epir-model-variant')?.trim() ?? '';
+    const agentPreset =
+      request.headers.get('X-EPIR-AGENT-PRESET')?.trim() ?? request.headers.get('x-epir-agent-preset')?.trim() ?? '';
     const innerHeaders = new Headers({
       'Content-Type': 'application/json',
       'X-EPIR-SHARED-SECRET': shared,
@@ -4184,6 +4195,7 @@ async function handleSoloDevChatIngress(
       Authorization: `Bearer ${expected}`,
     });
     if (variant) innerHeaders.set('X-Epir-Model-Variant', variant);
+    if (agentPreset) innerHeaders.set('X-EPIR-AGENT-PRESET', agentPreset);
 
     const innerRequest = new Request('https://worker.internal/chat', {
       method: 'POST',
@@ -4191,6 +4203,37 @@ async function handleSoloDevChatIngress(
       body: bodyText,
     });
     return handleChat(innerRequest, env, SOLO_DEV_CHAT_CONTEXT, ctx);
+  }
+
+  if (path === '/internal/solo-dev-chat/api/trigger-warehouse-export' && method === 'POST') {
+    const provided = request.headers.get('X-Admin-Key')?.trim() ?? '';
+    const expected = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
+    if (!expected || !provided || !timingSafeEqualText(expected, provided)) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    const rpc = env.BIGQUERY_BATCH_RPC;
+    if (!rpc?.triggerWarehouseExport) {
+      return new Response(JSON.stringify({ error: 'BIGQUERY_BATCH_RPC missing triggerWarehouseExport' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    try {
+      const out = await rpc.triggerWarehouseExport();
+      return new Response(JSON.stringify(out), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return new Response(JSON.stringify({ error: msg }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
   }
 
   if (path === '/internal/solo-dev-chat/api/history' && method === 'POST') {

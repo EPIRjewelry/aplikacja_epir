@@ -1,0 +1,49 @@
+---
+description: EPIR — jedno repo, kolejność czytania, skills jako definicje agentów (zawsze)
+alwaysApply: true
+---
+
+# EPIR — kanoniczny onboarding (Cursor)
+
+## Jedno źródło prawdy
+
+- **Repo:** `EPIRjewelry/aplikacja_epir`, gałąź **`main`**
+- **Aplikacja Shopify:** jedna — `epir_ai`
+- **Dokumentacja wiążąca:** wyłącznie sekcja *Kanoniczny zestaw dokumentów* w `docs/README.md` (+ `AGENTS.md`, `EPIR_AI_ECOSYSTEM_MASTER.md`, `EPIR_AI_BIBLE.md`)
+- **Definicje agentów AI (role, werdykty, granice):** wyłącznie `.cursor/skills/` — indeks: `.cursor/skills/README.md`
+
+Nie traktuj `agents/*/prompt.md` ani `.github/agents/*.agent.md` jako równoległego kanonu dla Cursor. Folder `agents/` to opcjonalne **CLI Python** (lokalny/Azure); `.github/agents/` to **GitHub Copilot**, nie Cursor.
+
+## Kolejność czytania (przed większą zmianą)
+
+1. `AGENTS.md`
+2. `EPIR_AI_ECOSYSTEM_MASTER.md`
+3. `EPIR_AI_BIBLE.md`
+4. `docs/README.md`
+5. Dokument techniczny z kanonu pasujący do obszaru (ingress, deploy, kontrakt danych)
+
+## Architektura sklepu (skrót)
+
+| Warstwa | Gdzie | Nie mieszaj z |
+|---------|--------|----------------|
+| Buyer-facing czat (Gemma) | App Proxy, kanały sklepowe | Project B / Dev-asystent |
+| Internal analityk (Project B) | `internal-dashboard`, `run_analytics_query`, marketing preview | Buyer-facing UI |
+| Ingress headless | BFF `/api/chat` → S2S `/chat` + `X-EPIR-*` | Bezpośredni browser → worker z sekretami |
+| Analityka zdarzeń | Web Pixel → D1 → batch → Iceberg → R2 SQL | Odczyt surowego D1 w agencie |
+| Storefronty | `apps/kazka`, `apps/zareczyny` — **dwa brandy**, wspólny backend | Drugi backend / drugi kanon docs |
+
+Zawsze podawaj **`storefrontId`** i **`channel`** przy routingu i danych.
+
+## Wybór skillu (skrót)
+
+| Potrzeba | Skill |
+|----------|--------|
+| Recenzja orthodoksji | `epir-esog-agent` |
+| Kontrakt danych / warehouse | `epir-edcg-agent` |
+| Pixel, batch, R2 SQL | `epir-analytics-agent` |
+| Naprawa kodu po ESOG | `epir-fix-agent` |
+| Deploy / wrangler | `epir-deployment` |
+| OpenRouter / jakość integracji B | `epir-oqag-agent` |
+| Indeks docs lokalny | `epir-indexer-agent` |
+
+Przed merge infrastruktury analityki: **ESOG: PASS** i **EDCG: PASS** (patrz `docs/merge-gates/`).

@@ -37,7 +37,7 @@ type LoaderData = {
 };
 
 export async function loader({context}: LoaderFunctionArgs): Promise<LoaderData> {
-  const brand = context.env.BRAND ?? 'zareczyny';
+  const brand = context.env.BRAND ?? 'kazka';
   const filter = context.env.COLLECTION_FILTER;
   const allowedHandles = filter
     ? filter.split(',').map((h) => h.trim()).filter(Boolean)

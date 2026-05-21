@@ -91,12 +91,12 @@ Vars produkcyjne: [`workers/bigquery-batch/wrangler.toml`](../workers/bigquery-b
 | `id` | TEXT PK | Id zdarzenia | W `payload` JSON; w Iceberg jako kolumna top-level po pipeline |
 | `event_type` | TEXT NOT NULL | Typ zdarzenia Web Pixel | Tak → stream `event_type` |
 | `event_name` | TEXT | Nazwa szczegółowa | W `payload` |
-| `created_at` | TEXT (ISO) | Czas zdarzenia | Tak → stream `created_at` |
+| `created_at` | **INTEGER (ms epoch)** lub TEXT (ISO) | Czas zdarzenia | Tak → stream `created_at` (batch normalizuje do ISO); eksport przyrostowy: `CAST(created_at AS INTEGER) > watermark` |
 | `customer_id` | TEXT | Shopify customer | Tak → stream |
 | `session_id` | TEXT | Sesja lejka | Tak → stream |
 | `storefront_id` | TEXT | np. kazka / zareczyny | Tak → stream |
 | `channel` | TEXT | np. hydrogen-kazka | Tak → stream |
-| `page_url` | TEXT | URL strony | Tak → stream jako **`url`** |
+| `page_url` | TEXT | URL strony | Tak → stream jako **`url`**; puste w D1 → placeholder `https://epir.local/unknown` (schemat ingest wymaga non-empty `url`) |
 | `page_title` | TEXT | Tytuł | W `payload` |
 | `referrer` | TEXT | Referrer | W `payload`; Iceberg prod: często **`referrer_url`** |
 | `product_id` | TEXT | Produkt | W `payload`; opcjonalnie top-level w Iceberg |

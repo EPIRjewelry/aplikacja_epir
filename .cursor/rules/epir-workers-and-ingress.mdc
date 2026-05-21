@@ -1,0 +1,25 @@
+---
+description: EPIR Workers — S2S, sekrety, service bindings, brak sekretów w frontendzie
+globs: workers/**/*
+alwaysApply: false
+---
+
+# Workers EPIR
+
+## Zasady
+
+- Logika AI, sekrety, D1, Vectorize, RPC — **tylko w workerach**, nigdy w `apps/*` ani `extensions/*` (poza publicznymi tokenami storefrontu).
+- `storefrontId` + `channel` — pierwszoklasowy kontekst w czacie i analityce.
+- Odczyt hurtowni: **`run_analytics_query`** (RPC `BIGQUERY_BATCH_RPC`, whitelist `queryId`) — nie surowe SQL od klienta.
+- Chronione odczyty analytics: **`ANALYTICS_S2S_RPC`** + `ctx.props.scopes`, nie publiczne GET na dane.
+- Deploy workera czatu: `workers/chat` → nazwa CF **`epir-art-jewellery-worker`** (nie repo `asystent_epir_new`).
+
+## Bindings (skrót)
+
+| Binding | Cel |
+|---------|-----|
+| `BIGQUERY_BATCH_RPC` | R2 SQL whitelist; wymaga `scopes: ["bigquery.analytics_query"]` na callerze |
+| `ANALYTICS_S2S_RPC` | journey, sessions, charts |
+| `ANALYTICS_WORKER` | proxy POST `/pixel*` |
+
+Szczegóły: `docs/EPIR_INGRESS_AND_RUNTIME.md`, `docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md`.

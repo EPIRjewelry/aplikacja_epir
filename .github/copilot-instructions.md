@@ -2,6 +2,8 @@
 
 This repository uses **repo-shared AI context**. After cloning on a new machine, GitHub Copilot should treat the files below as the canonical onboarding path.
 
+**Cursor IDE** uses the same docs plus **`.cursor/skills/`** (agent definitions) and **`.cursor/rules/`** — see `AGENTS.md` § Cursor. Copilot agent personas live in **`.github/agents/`**; do not fork architecture text into a third place.
+
 ## Read first
 
 1. `AGENTS.md`

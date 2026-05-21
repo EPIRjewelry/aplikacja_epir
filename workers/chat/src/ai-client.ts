@@ -977,6 +977,11 @@ function isOpenRouterModelId(modelId: string): boolean {
   return modelId.startsWith('openrouter/');
 }
 
+/** OpenRouter Recraft V4.1 — generacja obrazu/SVG (modalities image+text). */
+function isOpenRouterImageGenModel(modelName: string): boolean {
+  return modelName.startsWith('recraft/');
+}
+
 async function streamGroqEventsOpenRouter(
   messages: GroqMessage[],
   env: AiClientEnv,
@@ -996,14 +1001,18 @@ async function streamGroqEventsOpenRouter(
   const modelId = options?.modelId ?? CHAT_MODEL_ID;
   const modelName = modelId.replace('openrouter/', '');
 
-  const body = {
+  const imageGen = isOpenRouterImageGenModel(modelName);
+  const body: Record<string, unknown> = {
     model: modelName,
     messages: sanitizedMessages,
     stream: true,
-    ...(tools ? { tools, tool_choice: resolvedToolChoice, parallel_tool_calls: true } : {}),
+    ...(tools && !imageGen
+      ? { tools, tool_choice: resolvedToolChoice, parallel_tool_calls: true }
+      : {}),
     max_tokens: options?.maxTokens ?? MODEL_PARAMS.max_tokens,
     temperature: MODEL_PARAMS.temperature,
     top_p: MODEL_PARAMS.top_p,
+    ...(imageGen ? { modalities: ['image', 'text'] } : {}),
   };
 
   const t0 = Date.now();
@@ -1043,13 +1052,15 @@ async function getGroqResponseOpenRouter(
   const modelId = options?.modelId ?? CHAT_MODEL_ID;
   const modelName = modelId.replace('openrouter/', '');
 
-  const body = {
+  const imageGen = isOpenRouterImageGenModel(modelName);
+  const body: Record<string, unknown> = {
     model: modelName,
     messages: sanitizeHarmonyHistory(messages),
     stream: false,
     max_tokens: options?.max_tokens ?? MODEL_PARAMS.max_tokens,
     temperature: MODEL_PARAMS.temperature,
     top_p: MODEL_PARAMS.top_p,
+    ...(imageGen ? { modalities: ['image', 'text'] } : {}),
   };
 
   const t0 = Date.now();

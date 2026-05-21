@@ -1,4 +1,6 @@
-# Epir ESOG Agent
+# Epir ESOG Agent (CLI)
+
+**Kanon definicji:** `.cursor/skills/epir-esog-agent/SKILL.md`
 
 ## Purpose
 

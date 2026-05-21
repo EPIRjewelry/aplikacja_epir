@@ -206,13 +206,28 @@ export async function runWarehouseAnalyticsQuery(
       return { error: { code: data.status, message: data.error } };
     }
     const rows = data.rows ?? [];
+    const rowCount = Array.isArray(rows) ? rows.length : 0;
     chatPipelineLog({
       phase: 'analytics_bigquery_tool',
       duration_ms: Date.now() - t0,
       ok: true,
       queryId,
-      row_count: Array.isArray(rows) ? rows.length : 0,
+      row_count: rowCount,
     });
+    // #region agent log
+    fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b07ff0' },
+      body: JSON.stringify({
+        sessionId: 'b07ff0',
+        location: 'chat/internal-analytics-tools.ts:runWarehouseAnalyticsQuery',
+        message: 'warehouse_query_ok',
+        data: { queryId, rowCount },
+        timestamp: Date.now(),
+        hypothesisId: 'H1',
+      }),
+    }).catch(() => {});
+    // #endregion
     return {
       result: {
         source: 'epir_warehouse',
@@ -285,11 +300,32 @@ export async function fetchMarketingPreviewTool(
       };
     }
     const json = (await r.json()) as Record<string, unknown>;
+    const ga = json.google_analytics as { rowCount?: number } | undefined;
+    const ads = json.google_ads as { rowCount?: number } | undefined;
     chatPipelineLog({
       phase: 'marketing_preview_tool',
       duration_ms: Date.now() - t0,
       ok: true,
     });
+    // #region agent log
+    fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b07ff0' },
+      body: JSON.stringify({
+        sessionId: 'b07ff0',
+        location: 'chat/internal-analytics-tools.ts:fetchMarketingPreviewTool',
+        message: 'marketing_preview_ok',
+        data: {
+          dateParam: date ?? 'default_yesterday_utc',
+          previewDate: json.date,
+          gaRowCount: ga?.rowCount ?? null,
+          adsRowCount: ads?.rowCount ?? null,
+        },
+        timestamp: Date.now(),
+        hypothesisId: 'H2',
+      }),
+    }).catch(() => {});
+    // #endregion
     return {
       result: {
         source: 'marketing_preview',

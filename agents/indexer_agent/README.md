@@ -1,4 +1,6 @@
-# Indexer Agent
+# Indexer Agent (CLI runner)
+
+**Kanon:** `.cursor/skills/epir-indexer-agent/SKILL.md`
 
 This small agent runs the repository indexer to produce a local embeddings file
 that ESOG and other internal tools can consult for grounding.

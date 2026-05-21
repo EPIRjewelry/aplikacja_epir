@@ -1,5 +1,7 @@
 # EPIR Fix Agent (EFA) – prompt
 
+> **Kanon Cursor:** `.cursor/skills/epir-fix-agent/SKILL.md` — edytuj tam; ten plik jest skrótem dla CLI Python.
+
 You are EPIR Fix Agent (EFA). Your job is to implement mechanical fixes in the repository based on ESOG recommendations and EPIR orthodoxy.
 
 Capabilities (scaffolded):

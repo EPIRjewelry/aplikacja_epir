@@ -22,6 +22,8 @@ export type ModelCapabilities = {
   readonly multimodal: boolean;
   /** @deprecated od wersji 4.0 (Harmony). Trzymane wyłącznie dla zgodności wariantów A/B. */
   readonly toolLeak: boolean;
+  /** OpenRouter: generacja obrazu / SVG (Recraft V4.1 — wymaga modalities image+text). */
+  readonly imageGen?: boolean;
   /** Opcjonalny opis dla logów / bench raportów. */
   readonly label?: string;
 };
@@ -152,9 +154,89 @@ export const MODEL_VARIANTS = {
     toolLeak: false,
     label: 'Llama 3.1 405B (OpenRouter)',
   },
+  or_claude_sonnet_4: {
+    id: 'openrouter/anthropic/claude-sonnet-4',
+    multimodal: true,
+    toolLeak: false,
+    label: 'Claude Sonnet 4 (OpenRouter)',
+  },
+  or_gpt41: {
+    id: 'openrouter/openai/gpt-4.1',
+    multimodal: true,
+    toolLeak: false,
+    label: 'GPT-4.1 (OpenRouter)',
+  },
+  or_recraft_v41: {
+    id: 'openrouter/recraft/recraft-v4.1',
+    multimodal: true,
+    toolLeak: false,
+    imageGen: true,
+    label: 'Recraft V4.1',
+  },
+  or_recraft_v41_vector: {
+    id: 'openrouter/recraft/recraft-v4.1-vector',
+    multimodal: true,
+    toolLeak: false,
+    imageGen: true,
+    label: 'Recraft V4.1 Vector',
+  },
+  or_recraft_v41_pro: {
+    id: 'openrouter/recraft/recraft-v4.1-pro',
+    multimodal: true,
+    toolLeak: false,
+    imageGen: true,
+    label: 'Recraft V4.1 Pro',
+  },
+  or_recraft_v41_pro_vector: {
+    id: 'openrouter/recraft/recraft-v4.1-pro-vector',
+    multimodal: true,
+    toolLeak: false,
+    imageGen: true,
+    label: 'Recraft V4.1 Pro Vector',
+  },
+  or_recraft_v41_utility: {
+    id: 'openrouter/recraft/recraft-v4.1-utility',
+    multimodal: true,
+    toolLeak: false,
+    imageGen: true,
+    label: 'Recraft V4.1 Utility',
+  },
+  or_recraft_v41_utility_vector: {
+    id: 'openrouter/recraft/recraft-v4.1-utility-vector',
+    multimodal: true,
+    toolLeak: false,
+    imageGen: true,
+    label: 'Recraft V4.1 Utility Vector',
+  },
+  or_recraft_v41_utility_pro: {
+    id: 'openrouter/recraft/recraft-v4.1-utility-pro',
+    multimodal: true,
+    toolLeak: false,
+    imageGen: true,
+    label: 'Recraft V4.1 Utility Pro',
+  },
+  or_recraft_v41_utility_pro_vector: {
+    id: 'openrouter/recraft/recraft-v4.1-utility-pro-vector',
+    multimodal: true,
+    toolLeak: false,
+    imageGen: true,
+    label: 'Recraft V4.1 Utility Pro Vector',
+  },
 } as const satisfies Record<string, ModelCapabilities>;
 
 export type ModelVariantKey = keyof typeof MODEL_VARIANTS;
+
+/** Klucze wariantów Recraft V4.1 (OpenRouter image/SVG). */
+export const RECRAFT_MODEL_VARIANT_KEYS: readonly ModelVariantKey[] = [
+  'or_recraft_v41',
+  'or_recraft_v41_vector',
+  'or_recraft_v41_pro',
+  'or_recraft_v41_pro_vector',
+  'or_recraft_v41_utility',
+  'or_recraft_v41_utility_vector',
+  'or_recraft_v41_utility_pro',
+  'or_recraft_v41_utility_pro_vector',
+];
 
 /**
  * Kanoniczny model inference dla czatu (Harmony — `groq/openai/gpt-oss-120b`).
