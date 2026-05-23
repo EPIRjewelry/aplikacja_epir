@@ -39,7 +39,7 @@ Pod listami **Agent** i **Model** panel pokazuje krótkie opisy (`uiHint` w pres
 - **Profil:** tabela `internal_operator_profile` w `ai-assistant-sessions-db`; API `GET/PUT /internal/solo-dev-chat/api/operator-profile` (panel zapisuje do D1, nie tylko `sessionStorage`).
 - **Digest sesji:** `internal_session_digest` — odświeżany co 6 wiadomości w sesji `internal-dashboard`.
 - **Raport dzienny:** cron `0 9 * * *` UTC na `epir-bigquery-batch` → `operator_daily_reports`; podgląd `GET /internal/solo-dev-chat/api/operator-report/latest`.
-- **Bramka EDOG:** `run_analytics_query` blokowane gdy RPC `getFlowHealth` ≠ PASS (`EDOG_GATE_ENABLED=true` na czacie).
+- **EDOG (monitoring):** `GET /internal/flow-health` + MCP `epir-data-ops`; opcjonalna twarda bramka na czacie tylko gdy `EDOG_GATE_ENABLED=true` (domyślnie `false`).
 - **Workspace mostek:** opcjonalny `GWORKSPACE_REPORT_WEBHOOK_URL` — [`EPIR_GWORKSPACE_REPORT_BRIDGE.md`](EPIR_GWORKSPACE_REPORT_BRIDGE.md).
 
 ## Modele OpenRouter

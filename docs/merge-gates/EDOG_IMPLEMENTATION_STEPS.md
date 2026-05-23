@@ -54,5 +54,5 @@ Nie implementuje kodu następnego kroku.
 
 | Konsument | Po `EDOG: PASS` na kroku 3+ |
 |-----------|------------------------------|
-| `internal_analytics` / `run_analytics_query` | Zalecany retest Q1–Q10 dopiero po `flow-health` → `PASS` |
+| `internal_analytics` / `run_analytics_query` | Zalecany audyt `flow-health` przed interpretacją; **bez** twardej blokady w czacie (domyślnie `EDOG_GATE_ENABLED=false`) |
 | `epir_analityc` | Hurtownia pixel poza zakresem sidecara; audyt marketingu osobno (`fetch_marketing_preview`) |

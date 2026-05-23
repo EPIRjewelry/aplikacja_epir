@@ -123,7 +123,7 @@ Postura ingress dla produkcji:
 - Cron monitoringu: `0 8 * * *` i `0 20 * * *` UTC (osobno od eksportu `0 2 * * *`).
 - Opcjonalnie KV raportu: `wrangler kv namespace create epir-data-guardian` → odkomentuj `DATA_GUARDIAN_KV` w `workers/bigquery-batch/wrangler.toml`.
 - Smoke po deploy: [`scripts/smoke-flow-health.ps1`](../scripts/smoke-flow-health.ps1) lub [`scripts/smoke-flow-health.sh`](../scripts/smoke-flow-health.sh) z env `DATA_GUARDIAN_OPS_KEY`, `EPIR_BATCH_WORKER_ORIGIN`.
-- Na `epir-art-jewellery-worker`: RPC `getFlowHealth` + bramka przed `run_analytics_query` (`EDOG_GATE_ENABLED=true` domyślnie; awaryjnie `false`).
+- Na `epir-art-jewellery-worker`: RPC `getFlowHealth` (dla Operator Studio / audytu). Twarda bramka przed `run_analytics_query` tylko przy `EDOG_GATE_ENABLED=true` (domyślnie wyłączona).
 
 ### Cursor IDE i Cloud — MCP (nie deploy workera)
 

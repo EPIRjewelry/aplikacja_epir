@@ -1,6 +1,6 @@
 ---
 name: epir-edog-agent
-description: EDOG – EPIR Data Operations Guardian. Strażnik operacyjny przepływu danych (D1, batch_exports, Pipelines, R2 SQL smoke Q1) aż do internal_analytics i epir_analityc. Werdykt EDOG PASS/FAIL. Używać przy audycie flow-health, lag eksportu, MCP epir-data-ops, przed run_analytics_query w produkcji.
+description: EDOG – EPIR Data Operations Guardian. Audyt operacyjny przepływu danych (D1, batch_exports, Pipelines, R2 SQL smoke Q1, zgodność typów/tabel). Werdykt PASS/FAIL/DEGRADED. Używać przy flow-health, lag eksportu, MCP epir-data-ops — nie blokuje run_analytics_query (chyba że operator włączy EDOG_GATE_ENABLED).
 ---
 
 # EDOG – EPIR Data Operations Guardian
@@ -45,7 +45,7 @@ oraz `reasons[]`. **`EDOG: DEGRADED`** z API **nie** zamyka kroku — traktuj ja
 | `batch` | `batch_exports.updated_at` < ~26 h (DEGRADED) / < 48 h (FAIL) |
 | `pipeline` | `pipeline_pixel_configured` / messages gdy wymagane |
 | `r2sql` | `warehouse_q1_ok` — sonda **Q1_CONVERSION_CHAT** tylko gdy batch nie FAIL |
-| `consumer` | Przed `run_analytics_query`: `flow-health` → `edog_verdict: PASS` |
+| `consumer` | Zalecany audyt `flow-health` przed interpretacją hurtowni; brak twardej blokady w czacie (domyślnie) |
 
 ## Format oceny
 

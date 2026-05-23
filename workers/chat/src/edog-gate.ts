@@ -20,7 +20,7 @@ let cached: { at: number; verdict: string; reasons: string[] } | null = null;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
 function gateDisabled(env: Env): boolean {
-  const flag = (env.EDOG_GATE_ENABLED ?? 'true').trim().toLowerCase();
+  const flag = (env.EDOG_GATE_ENABLED ?? 'false').trim().toLowerCase();
   return flag === 'false' || flag === '0' || flag === 'off';
 }
 

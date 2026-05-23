@@ -47,7 +47,7 @@ export const OPERATOR_WORKFLOW_PRESETS: readonly OperatorWorkflowPreset[] = [
     agentId: 'internal_analytics',
     modelVariant: '',
     promptSuffix:
-      'Tryb EDOG: najpierw ustal stan przepływu danych (D1, batch_exports, ewentualnie flow-health / MCP epir-data-ops). Nie wywołuj run_analytics_query ani nie podawaj liczb z hurtowni, dopóki nie potwierdzisz edog_verdict PASS (lub operator jawnie zleci retest mimo DEGRADED). Przy FAIL wymień reasons[] i zaproponuj kroki ops (eksport, pipeline, sekrety).',
+      'Tryb EDOG: najpierw ustal stan przepływu (D1, batch_exports, flow-health / MCP epir-data-ops). Przy FAIL lub DEGRADED opisz reasons[] i kroki ops; przy interpretacji hurtowni ostrzeż, jeśli warstwa danych jest słaba — platforma nie blokuje run_analytics_query (chyba że operator włączył EDOG_GATE_ENABLED).',
     outcomeBanner: 'Wynik: raport EDOG (PASS/FAIL + warstwy d1/batch/r2sql) bez zmyślonych metryk.',
     sourcesHint: 'Źródło: flow-health / batch_exports; hurtownia dopiero po PASS.',
   },
