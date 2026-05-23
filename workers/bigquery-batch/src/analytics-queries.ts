@@ -47,14 +47,20 @@ chat_with_purchase AS (
   SELECT c.session_id
   FROM chat_sessions c
   INNER JOIN purchase_sessions p ON c.session_id = p.session_id
+),
+metrics AS (
+  SELECT
+    (SELECT approx_distinct(session_id) FROM chat_sessions) AS sessions_with_chat,
+    (SELECT approx_distinct(session_id) FROM chat_with_purchase) AS sessions_with_purchase,
+    (SELECT approx_distinct(session_id) FROM ${P}) AS total_pixel_sessions,
+    (SELECT approx_distinct(session_id) FROM purchase_sessions) AS total_purchase_sessions
 )
-SELECT 'with_chat' AS segment,
-  (SELECT approx_distinct(session_id) FROM chat_sessions) AS sessions_with_chat,
-  (SELECT approx_distinct(session_id) FROM chat_with_purchase) AS sessions_with_purchase
-UNION ALL
-SELECT 'without_chat' AS segment,
-  (SELECT approx_distinct(session_id) FROM ${P}) - (SELECT approx_distinct(session_id) FROM chat_sessions),
-  (SELECT approx_distinct(session_id) FROM purchase_sessions) - (SELECT approx_distinct(session_id) FROM chat_with_purchase)
+SELECT
+  sessions_with_chat,
+  sessions_with_purchase,
+  total_pixel_sessions - sessions_with_chat AS sessions_without_chat,
+  total_purchase_sessions - sessions_with_purchase AS purchase_sessions_without_chat
+FROM metrics
 `,
 
   Q2_CONVERSION_PATHS: (P) => `

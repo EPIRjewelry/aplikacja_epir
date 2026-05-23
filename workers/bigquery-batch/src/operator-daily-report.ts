@@ -1,0 +1,135 @@
+/**
+ * Dzienny raport operatora (Project B) — EDOG + Q8 + marketing preview → D1.
+ */
+import type { FlowHealthReport } from './edog-flow-health-runner';
+import { buildFlowHealthReport } from './edog-flow-health-runner';
+
+export type OperatorReportEnv = {
+  DB_CHATBOT: D1Database;
+  MARKETING_INGEST_ORIGIN?: string;
+  MARKETING_OPS_PREVIEW_KEY?: string;
+  GWORKSPACE_REPORT_WEBHOOK_URL?: string;
+};
+
+type Q1Probe = (env: OperatorReportEnv) => Promise<{
+  rowCount: number | null;
+  skipped: boolean;
+  error?: string;
+}>;
+
+type AnalyticsEnv = Parameters<typeof buildFlowHealthReport>[0];
+type AnalyticsProbe = Parameters<typeof buildFlowHealthReport>[1];
+
+export async function fetchMarketingPreviewSnippet(env: OperatorReportEnv): Promise<string> {
+  const origin = (env.MARKETING_INGEST_ORIGIN ?? '').trim().replace(/\/$/, '');
+  const key = (env.MARKETING_OPS_PREVIEW_KEY ?? '').trim();
+  if (!origin || !key) {
+    return '_Marketing preview: nie skonfigurowano MARKETING_INGEST_ORIGIN / MARKETING_OPS_PREVIEW_KEY na batch workerze._';
+  }
+  try {
+    const res = await fetch(`${origin}/ops/marketing-preview`, {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    const text = await res.text();
+    return `_Marketing preview (HTTP ${res.status}):_\n\`\`\`json\n${text.slice(0, 6000)}\n\`\`\``;
+  } catch (e) {
+    return `_Marketing preview error: ${e instanceof Error ? e.message : String(e)}_`;
+  }
+}
+
+export function buildOperatorReportMarkdown(args: {
+  reportDate: string;
+  health: FlowHealthReport;
+  q8Rows: Record<string, unknown>[] | null;
+  q8Error?: string;
+  marketingSection: string;
+}): string {
+  const { reportDate, health, q8Rows, q8Error, marketingSection } = args;
+  const lines: string[] = [
+    `# Raport EPIR — ${reportDate}`,
+    '',
+    `**EDOG:** \`${health.edog_verdict}\` — ${(health.reasons ?? []).join('; ')}`,
+    '',
+    '## Flow health',
+    `- pending_pixel_events: ${health.pending_pixel_events}`,
+    `- d1_pixel_events_24h: ${health.d1_pixel_events_24h}`,
+    `- warehouse_q1_ok: ${health.warehouse_q1_ok}`,
+    `- checked_at: ${health.checked_at}`,
+    '',
+    '## Hurtownia Q8 (dzienne zdarzenia)',
+  ];
+  if (q8Error) {
+    lines.push(`_Błąd Q8: ${q8Error}_`);
+  } else if (q8Rows?.length) {
+    lines.push('```json', JSON.stringify(q8Rows.slice(0, 14), null, 2), '```');
+  } else {
+    lines.push('_Brak wierszy Q8._');
+  }
+  lines.push('', '## Marketing', marketingSection);
+  lines.push('', '---', '_Wygenerowano automatycznie przez epir-bigquery-batch (cron raportu operatora)._');
+  return lines.join('\n');
+}
+
+export async function persistOperatorDailyReport(
+  env: OperatorReportEnv,
+  reportDate: string,
+  markdown: string,
+  edogVerdict: string,
+): Promise<void> {
+  const now = Date.now();
+  await env.DB_CHATBOT.prepare(
+    `INSERT INTO operator_daily_reports (report_date, markdown_body, edog_verdict, created_at)
+     VALUES (?1, ?2, ?3, ?4)
+     ON CONFLICT(report_date) DO UPDATE SET
+       markdown_body = excluded.markdown_body,
+       edog_verdict = excluded.edog_verdict,
+       created_at = excluded.created_at`,
+  )
+    .bind(reportDate, markdown, edogVerdict, now)
+    .run();
+}
+
+export async function postReportToWorkspaceWebhook(env: OperatorReportEnv, markdown: string): Promise<void> {
+  const url = (env.GWORKSPACE_REPORT_WEBHOOK_URL ?? '').trim();
+  if (!url) return;
+  await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: `EPIR Raport ${new Date().toISOString().slice(0, 10)}`, body: markdown }),
+  }).catch((e) => console.warn('[operator-report] webhook failed:', e));
+}
+
+export async function runOperatorDailyReport(
+  env: OperatorReportEnv,
+  probeQ1: Q1Probe,
+  runQ8: (env: AnalyticsEnv) => Promise<
+    | { ok: true; rows: Record<string, unknown>[] }
+    | { ok: false; error: string }
+  >,
+): Promise<void> {
+  const reportDate = new Date().toISOString().slice(0, 10);
+  const health = await buildFlowHealthReport(env as AnalyticsEnv, probeQ1 as AnalyticsProbe);
+
+  let q8Rows: Record<string, unknown>[] | null = null;
+  let q8Error: string | undefined;
+  if (health.edog_verdict === 'PASS') {
+    const q8 = await runQ8(env as AnalyticsEnv);
+    if (q8.ok) q8Rows = q8.rows;
+    else q8Error = q8.error;
+  } else {
+    q8Error = 'Pominięto Q8 — EDOG nie PASS';
+  }
+
+  const marketingSection = await fetchMarketingPreviewSnippet(env);
+  const markdown = buildOperatorReportMarkdown({
+    reportDate,
+    health,
+    q8Rows,
+    q8Error,
+    marketingSection,
+  });
+
+  await persistOperatorDailyReport(env, reportDate, markdown, health.edog_verdict);
+  await postReportToWorkspaceWebhook(env, markdown);
+  console.log('[operator-report] saved', reportDate, health.edog_verdict);
+}

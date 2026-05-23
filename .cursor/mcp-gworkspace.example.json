@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "epir-gworkspace": {
+      "command": "npx",
+      "args": ["tsx", "mcp-servers/gworkspace/src/index.ts"],
+      "env": {
+        "GWORKSPACE_OAUTH_CLIENT_ID": "${env:GWORKSPACE_OAUTH_CLIENT_ID}",
+        "GWORKSPACE_OAUTH_CLIENT_SECRET": "${env:GWORKSPACE_OAUTH_CLIENT_SECRET}",
+        "GWORKSPACE_MAX_CHARS": "32000"
+      }
+    }
+  }
+}

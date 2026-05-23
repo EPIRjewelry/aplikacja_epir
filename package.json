@@ -5,7 +5,8 @@
     "apps/*",
     "workers/*",
     "extensions/*",
-    "packages/*"
+    "packages/*",
+    "mcp-servers/*"
   ],
   "scripts": {
     "deps": "npm install --legacy-peer-deps --no-audit --no-fund",

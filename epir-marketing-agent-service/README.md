@@ -30,3 +30,7 @@ Zgodnie z dokumentacją Cloudflare: `/agents/{kebab-class}/{instance}` — np. `
 ## Produkcja
 
 Host workera chronij **Cloudflare Access** lub VPN; sekrety tylko w Cloudflare Secrets.
+
+## Hurtownia pixel vs ten worker
+
+Sidecar **nie** woła `run_analytics_query` (hurtownia EPIR pixel/czat). Operacyjny audyt przepływu danych pixel → **EDOG** w monorepo (`docs/EPIR_DATA_FLOW_MAP.md`, `GET /internal/flow-health` na `epir-bigquery-batch`). Ten worker: wyłącznie podgląd marketingu (`/ops/marketing-preview`).

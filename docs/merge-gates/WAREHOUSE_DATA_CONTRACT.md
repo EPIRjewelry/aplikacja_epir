@@ -37,6 +37,7 @@ Przy `FAIL` — poprawka i ponowna recenzja **tego samego** kroku.
 | **5** | dbt legacy etykieta | `analytics/dbt/**`, `sources.yml` | — |
 | **6** | Prompt internal-dashboard (retest) | `internal-dashboard-system-prompt.ts` | `vitest` chat |
 | **7** | Deploy + retest operatorski | `wrangler deploy` bigquery-batch, Q1 w panelu | smoke opcjonalny |
+| **8** | EDOG produkcja (opcjonalnie) | `GET /internal/flow-health` → `edog_verdict: PASS` | Bearer `DATA_GUARDIAN_OPS_KEY` |
 
 ---
 

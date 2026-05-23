@@ -1,6 +1,11 @@
-# Project B — agenci i modele (solo-dev-chat)
+# Project B — agenci i modele (solo-dev-chat / Operator Studio)
 
-Panel: `GET /internal/solo-dev-chat` na workerze czatu (`epir-art-jewellery-worker`).
+Panele (ten sam UI):
+
+- `GET /internal/solo-dev-chat` — kanoniczna ścieżka (wsteczna kompatybilność)
+- `GET /internal/operator-studio` — alias Operator Studio (Faza 3)
+
+Kod UI: [`workers/chat/src/solo-dev-ui/`](../workers/chat/src/solo-dev-ui/) (`build-studio-html.ts`, `workflow-presets.ts`).
 
 ## Nagłówki
 
@@ -21,10 +26,21 @@ Presety agenta: kod źródłowy [`workers/chat/src/solo-dev-agent-presets.ts`](.
 | `creative_copy` | Projektowanie | `or_gpt4o_mini` |
 | `creative_image` | Projektowanie | `or_recraft_v41_utility_vector` |
 | `creative_blender_flow` | Projektowanie | `or_gpt4o` |
+| `creative_gdocs_brief` | Projektowanie | `or_claude_sonnet_4` |
+
+**Google Workspace (lokalny MCP):** pakiet [`mcp-servers/gworkspace`](../mcp-servers/gworkspace/README.md) — odczyt briefu po **ID pliku** (`gdocs_read_markdown`, `gsheets_read_csv`). Konfiguracja Cursor: [`.cursor/mcp-gworkspace.example.json`](../.cursor/mcp-gworkspace.example.json). Sekrety OAuth tylko lokalnie (keychain).
 
 Pod listami **Agent** i **Model** panel pokazuje krótkie opisy (`uiHint` w presetach + mapa modeli) — aktualizują się przy zmianie wyboru.
 
 **Uwaga:** ścieżka produkcyjna analityki to **D1 → Pipelines → Iceberg → R2 SQL**, nie Google BigQuery (nazwa `epir-bigquery-batch` jest historyczna).
+
+## Profil operatora i raporty (D1)
+
+- **Profil:** tabela `internal_operator_profile` w `ai-assistant-sessions-db`; API `GET/PUT /internal/solo-dev-chat/api/operator-profile` (panel zapisuje do D1, nie tylko `sessionStorage`).
+- **Digest sesji:** `internal_session_digest` — odświeżany co 6 wiadomości w sesji `internal-dashboard`.
+- **Raport dzienny:** cron `0 9 * * *` UTC na `epir-bigquery-batch` → `operator_daily_reports`; podgląd `GET /internal/solo-dev-chat/api/operator-report/latest`.
+- **Bramka EDOG:** `run_analytics_query` blokowane gdy RPC `getFlowHealth` ≠ PASS (`EDOG_GATE_ENABLED=true` na czacie).
+- **Workspace mostek:** opcjonalny `GWORKSPACE_REPORT_WEBHOOK_URL` — [`EPIR_GWORKSPACE_REPORT_BRIDGE.md`](EPIR_GWORKSPACE_REPORT_BRIDGE.md).
 
 ## Modele OpenRouter
 
@@ -50,9 +66,31 @@ Worker wysyła `modalities: ["image"]` dla modeli Recraft (`imageGen` w `model-p
 - `or_claude_sonnet_4` → `anthropic/claude-sonnet-4`
 - `or_gpt41` → `openai/gpt-4.1`
 
-## UI panelu (wątek, załączniki, skróty)
+## Tryby pracy (Operator Studio)
 
+Lista **Tryb pracy** mapuje intencję na agent + model + sufiks promptu ([`workflow-presets.ts`](../workers/chat/src/solo-dev-ui/workflow-presets.ts)):
+
+| ID trybu | Agent | Model (domyślny) | Oczekiwany wynik |
+|----------|-------|------------------|------------------|
+| `data_flow_audit` | `internal_analytics` | Groq default | Raport EDOG (flow-health); bez Q1–Q10 dopóki `edog_verdict` ≠ PASS |
+| `data_warehouse` | `internal_analytics` | Groq default | Raport z `run_analytics_query` (Q1–Q10) |
+| `data_marketing` | `internal_analytics` | Groq default | `fetch_marketing_preview` (GA4+Ads) |
+| `data_shopify` | `internal_analytics` | Groq default | `run_shopify_shopifyql` (Admin, nie Storefront MCP) |
+| `creative_trace` | `creative_image` | `or_recraft_v41_utility_vector` | Obraz pod trace / ryngraf |
+| `creative_logo` | `creative_image` | `or_recraft_v41_pro_vector` | Obraz logo |
+| `creative_icon_line` | `creative_image` | `or_recraft_v41_utility_vector` | Line icon |
+| `creative_svg_code` | `creative_svg` | `or_claude_sonnet_4` | Kod `<svg>` w czacie |
+| `creative_copy` | `creative_copy` | `or_gpt4o_mini` | Copy reklamowe |
+| `production_blender` | `creative_blender_flow` | `or_gpt4o` | Kroki Blender (wykonanie: Blender MCP w Cursor) |
+| `creative_gdocs_brief` | `creative_gdocs_brief` | `or_claude_sonnet_4` | Brief z Docs/Sheets (MCP `epir-gworkspace` w Cursor) |
+
+**Storefront MCP** (`/api/mcp` — katalog, koszyk, polityki dla Gemmy) **nie** jest panelem Recraft; Project B używa **Admin GraphQL / hurtowni / OpenRouter**.
+
+## UI panelu (layout studio, wątek, załączniki)
+
+- **Layout:** lewy panel (klucz, tryb, agent, model) · środek (baner trybu + wątek) · prawy panel (źródła, eksport D1, galeria sesji, profil operatora w `sessionStorage`).
 - **Wątek:** `#thread` — wszystkie tury user/assistant; po odświeżeniu strony historia z `POST /internal/solo-dev-chat/api/history` (SessionDO).
+- **Pobierz obraz:** przycisk pod każdą miniaturą wygenerowaną w bieżącej sesji; galeria po prawej (tylko do odświeżenia strony).
 - **Załącznik:** jeden obraz na wiadomość (`image_base64` w body czatu), max **4 MB**, podgląd przed wysłaniem; wymaga modelu **multimodal** lub Recraft.
 - **Enter** — wyślij; **Shift+Enter** — nowa linia w polu wiadomości.
 - **Nowa rozmowa** — czyści `session_id` w `sessionStorage` (kolejna wiadomość = nowa sesja).

@@ -1,0 +1,25 @@
+{
+  "folders": [
+    {
+      "name": "aplikacja_epir (kanon)",
+      "path": "."
+    },
+    {
+      "name": "epir_analityc",
+      "path": "../epir_analityc"
+    },
+    {
+      "name": "Blender_Assist",
+      "path": "../Blender_Assist"
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/node_modules": true,
+      "**/dist": true
+    }
+  },
+  "extensions": {
+    "recommendations": []
+  }
+}

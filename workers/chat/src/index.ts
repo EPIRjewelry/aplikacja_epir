@@ -65,8 +65,14 @@ import {
 import { ProfileService } from './profile';
 import { AnalyticsService } from './analytics-service';
 import { DASHBOARD_HTML } from './dashboard-html';
-import { resolveSoloDevAgentAddonFromHeaders } from './solo-dev-agent-presets';
-import { SOLO_DEV_CHAT_HTML } from './solo-dev-chat-html';
+import {
+  getLatestOperatorReport,
+  getOperatorProfile,
+  maybeRefreshSessionDigest,
+  putOperatorProfile,
+  resolveInternalDashboardPromptAddons,
+} from './internal-operator-copilot';
+import { SOLO_DEV_CHAT_HTML, SOLO_DEV_OPERATOR_STUDIO_HTML } from './solo-dev-chat-html';
 import { buildAIProfilePrompt, fetchAIProfile } from './ai-profile';
 import {
   loadPersonMemory,
@@ -3266,7 +3272,7 @@ async function streamAssistantResponse(
 
       const agentAddon =
         storefrontContext?.channel === 'internal-dashboard'
-          ? resolveSoloDevAgentAddonFromHeaders(request.headers, env)
+          ? await resolveInternalDashboardPromptAddons(env, request.headers, sessionId)
           : '';
       const baseSystemPrompt =
         getSystemPromptForChannel(storefrontContext?.channel) +
@@ -4116,6 +4122,10 @@ async function streamAssistantResponse(
         });
       }
 
+      if (storefrontContext?.channel === 'internal-dashboard' && executionCtx && sessionId) {
+        executionCtx.waitUntil(maybeRefreshSessionDigest(env, sessionId));
+      }
+
       if (imageBase64) {
         maybePersistImageSurrogate();
       } else {
@@ -4177,8 +4187,10 @@ async function handleSoloDevChatIngress(
   method: string,
 ): Promise<Response | null> {
   const path = url.pathname;
-  if (path === '/internal/solo-dev-chat' && method === 'GET') {
-    return new Response(SOLO_DEV_CHAT_HTML, {
+  const studioHtmlPaths = new Set(['/internal/solo-dev-chat', '/internal/operator-studio']);
+  if (studioHtmlPaths.has(path) && method === 'GET') {
+    const html = path === '/internal/operator-studio' ? SOLO_DEV_OPERATOR_STUDIO_HTML : SOLO_DEV_CHAT_HTML;
+    return new Response(html, {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
         'Content-Security-Policy':
@@ -4256,6 +4268,54 @@ async function handleSoloDevChatIngress(
         headers: { 'Content-Type': 'application/json', ...cors(env, request) },
       });
     }
+  }
+
+  if (path === '/internal/solo-dev-chat/api/operator-profile' && (method === 'GET' || method === 'PUT')) {
+    const provided = request.headers.get('X-Admin-Key')?.trim() ?? '';
+    const expected = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
+    if (!expected || !provided || !timingSafeEqualText(expected, provided)) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    if (method === 'GET') {
+      const profile = await getOperatorProfile(env);
+      return new Response(JSON.stringify({ ok: true, profile }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    const body = (await request.json()) as {
+      brandNotes?: string;
+      defaultWorkflowId?: string;
+      campaignPriorities?: string;
+    };
+    await putOperatorProfile(env, {
+      brandNotes: body.brandNotes ?? '',
+      defaultWorkflowId: body.defaultWorkflowId ?? 'data_warehouse',
+      campaignPriorities: body.campaignPriorities ?? '',
+    });
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+    });
+  }
+
+  if (path === '/internal/solo-dev-chat/api/operator-report/latest' && method === 'GET') {
+    const provided = request.headers.get('X-Admin-Key')?.trim() ?? '';
+    const expected = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
+    if (!expected || !provided || !timingSafeEqualText(expected, provided)) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    const report = await getLatestOperatorReport(env);
+    return new Response(JSON.stringify({ ok: true, report }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+    });
   }
 
   if (path === '/internal/solo-dev-chat/api/history' && method === 'POST') {

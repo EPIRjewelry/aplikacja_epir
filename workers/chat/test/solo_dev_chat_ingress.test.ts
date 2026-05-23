@@ -19,6 +19,23 @@ describe('solo dev chat ingress', () => {
     expect(text).toContain('id="agentHint"');
     expect(text).toContain('id="modelHint"');
     expect(text).toContain('AGENT_HINTS');
+    expect(text).toContain('id="workflow"');
+    expect(text).toContain('WORKFLOWS');
+    expect(text).toContain('btn-dl');
+    expect(text).toContain('Operator Studio');
+  });
+
+  it('returns HTML for GET /internal/operator-studio', async () => {
+    const env = { EPIR_OPERATOR_PANEL_SECRET: 'op' } as unknown as Env;
+    const res = await worker.fetch(
+      new Request('https://asystent.test/internal/operator-studio', { method: 'GET' }),
+      env,
+      noopCtx,
+    );
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain('Operator Studio');
+    expect(text).toContain('id="sessionGallery"');
   });
 
   it('returns 401 for POST /internal/solo-dev-chat/api/chat without X-Admin-Key', async () => {

@@ -117,6 +117,27 @@ Postura ingress dla produkcji:
 - `workers_dev = false` (brak publicznej domeny developerskiej dla workera batch),
 - `run_analytics_query` realizowane przez **Workers RPC** (`BIGQUERY_BATCH_RPC` → `BigQueryBatchS2SRpc`, `ctx.props`); ścieżka HTTP `POST /internal/analytics/query` pozostaje celowo zamknięta (`404`).
 
+**EDOG (operacyjny przepływ danych):**
+
+- `wrangler secret put DATA_GUARDIAN_OPS_KEY` — Bearer do `GET /internal/flow-health` (oraz MCP lokalnego `epir-data-ops`).
+- Cron monitoringu: `0 8 * * *` i `0 20 * * *` UTC (osobno od eksportu `0 2 * * *`).
+- Opcjonalnie KV raportu: `wrangler kv namespace create epir-data-guardian` → odkomentuj `DATA_GUARDIAN_KV` w `workers/bigquery-batch/wrangler.toml`.
+- Smoke po deploy: [`scripts/smoke-flow-health.ps1`](../scripts/smoke-flow-health.ps1) lub [`scripts/smoke-flow-health.sh`](../scripts/smoke-flow-health.sh) z env `DATA_GUARDIAN_OPS_KEY`, `EPIR_BATCH_WORKER_ORIGIN`.
+- Na `epir-art-jewellery-worker`: RPC `getFlowHealth` + bramka przed `run_analytics_query` (`EDOG_GATE_ENABLED=true` domyślnie; awaryjnie `false`).
+
+### Cursor IDE i Cloud — MCP (nie deploy workera)
+
+Skopiuj szablon [`.cursor/mcp-epir.example.json`](../.cursor/mcp-epir.example.json) do **`.cursor/mcp.json`** (lokalnie i w środowisku Cursor Cloud — te same env).
+
+| Serwer MCP | Pakiet | Wymagane env |
+|------------|--------|----------------|
+| `epir-data-ops` | `mcp-servers/epir-data-ops` | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` (D1 Read), `EPIR_BATCH_WORKER_ORIGIN`, `DATA_GUARDIAN_OPS_KEY` |
+| `epir-gworkspace` | `mcp-servers/gworkspace` | OAuth client id/secret; `npm run auth` w pakiecie |
+
+Integracje **poza repo** (włączasz w Cursor): Shopify Admin MCP, Shopify Dev MCP, Cloudflare plugin MCP, Blender MCP — patrz [`docs/EPIR_WORKSPACE_MAP.md`](EPIR_WORKSPACE_MAP.md) i [`docs/CURSOR_CLOUD_AGENT_SETUP.md`](CURSOR_CLOUD_AGENT_SETUP.md).
+
+**Nie commituj** `.cursor/mcp.json` ani tokenów.
+
 ### `workers/analyst-worker` (`epir-analyst-worker`)
 
 Cienki worker **HTTP + Bearer** (np. narzędzia w Cursorze): `POST /v1/warehouse/query` z JSON `{ "queryId": "…" }` — **bez surowego SQL**; whitelist `queryId` jest współdzielona z batch workerem (`workers/bigquery-batch/src/analytics-query-ids.ts`). Wywołanie idzie przez binding **`BIGQUERY_BATCH_RPC`** → `runAnalyticsQuery` (ten sam kontrakt co czat).

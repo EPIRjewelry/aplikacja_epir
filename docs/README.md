@@ -26,6 +26,11 @@ Ten katalog jest częścią jedynego kanonicznego pakietu dokumentacji EPIR. Ten
 - [`EPIR_MEMORY_ARCHITECTURE.md`](EPIR_MEMORY_ARCHITECTURE.md) — semantyczna pamięć klienta (typed facts w D1 + Vectorize `memory_customer`), deterministyczny skrót, KB-clamp i pipeline async Etap 3
 - [`EPIR_DATA_SCHEMA_CONTRACT.md`](EPIR_DATA_SCHEMA_CONTRACT.md) — kontrakt danych Shopify, D1, Vectorize i BigQuery
 - [`EPIR_ANALYTICS_DATA_CONTRACT.md`](EPIR_ANALYTICS_DATA_CONTRACT.md) — **szczegółowy** kontrakt hurtowni pixel/czat (D1 → Pipelines → Iceberg → R2 SQL, `Q1`–`Q10`); strażnik **EDCG**
+- [`EPIR_DATA_FLOW_MAP.md`](EPIR_DATA_FLOW_MAP.md) — mapa operacyjna przepływu; strażnik **EDOG** (runtime)
+- [`merge-gates/EDOG_IMPLEMENTATION_STEPS.md`](merge-gates/EDOG_IMPLEMENTATION_STEPS.md) — bramka kroków wdrożenia EDOG (`EDOG: PASS` między krokami)
+- [`EPIR_WORKSPACE_MAP.md`](EPIR_WORKSPACE_MAP.md) — wiele repo + Cursor workspace + MCP
+- [`CURSOR_CLOUD_AGENT_SETUP.md`](CURSOR_CLOUD_AGENT_SETUP.md) — agent w chmurze (MCP, bez SDK)
+- [`EPIR_GWORKSPACE_REPORT_BRIDGE.md`](EPIR_GWORKSPACE_REPORT_BRIDGE.md) — raport dzienny → Drive (webhook)
 - [`EPIR_DEPLOYMENT_AND_OPERATIONS.md`](EPIR_DEPLOYMENT_AND_OPERATIONS.md) — sekrety, migracje, deploy, runbook operacyjny i **formalna bramka go/no-go** (jedyna kanoniczna checklista release: CI, sekrety, fail-closed ingress, kolejność deployu, smoke)
 - [`EPIR_BLUEPRINTS_AND_EXCEPTIONS.md`](EPIR_BLUEPRINTS_AND_EXCEPTIONS.md) — Project B, automatyzacje, limity API i zasady agentowe
 - `merge-gates/` — karty merge gate per zakres PR (go/no-go dla pojedynczych pakietów zmian, zgodne z kanoniczną bramką release)

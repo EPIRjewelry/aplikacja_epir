@@ -11,6 +11,8 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 
 import { getR2AnalyticsSql, VALID_QUERY_IDS } from './analytics-queries';
 import { pixelCreatedAtIso, pixelCreatedAtMs } from './d1-timestamps';
+import { buildFlowHealthReport } from './edog-flow-health-runner';
+import { runOperatorDailyReport } from './operator-daily-report';
 import { postPipelineIngestBatch } from './pipeline-ingest';
 import { isR2SqlQueryConfigured, runR2SqlJob } from './r2-sql-client';
 
@@ -32,6 +34,60 @@ interface Env {
   WAREHOUSE_SQL_MESSAGES_TABLE?: string;
   /** Opcjonalnie: POST /internal/trigger-export z nagłówkiem X-Admin-Key (ręczny eksport / smoke). */
   ADMIN_KEY?: string;
+  /** Bearer dla GET /internal/flow-health i crona EDOG. */
+  DATA_GUARDIAN_OPS_KEY?: string;
+  /** Opcjonalny KV — ostatni raport crona (klucz `edog:latest`). */
+  DATA_GUARDIAN_KV?: KVNamespace;
+  /** Raport dzienny operatora — podgląd marketingu. */
+  MARKETING_INGEST_ORIGIN?: string;
+  MARKETING_OPS_PREVIEW_KEY?: string;
+  /** Opcjonalny webhook (np. Google Apps Script) — zapis raportu na Drive. */
+  GWORKSPACE_REPORT_WEBHOOK_URL?: string;
+}
+
+const EDOG_KV_KEY = 'edog:latest';
+const CRON_EXPORT = '0 2 * * *';
+const CRON_EDOG_08 = '0 8 * * *';
+const CRON_EDOG_20 = '0 20 * * *';
+const CRON_OPERATOR_REPORT = '0 9 * * *';
+
+function requireDataGuardianAuth(request: Request, env: Env): Response | null {
+  const secret = (env.DATA_GUARDIAN_OPS_KEY ?? '').trim();
+  const auth = (request.headers.get('Authorization') ?? '').trim();
+  const bearer = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  if (!secret || bearer !== secret) {
+    return new Response(JSON.stringify({ error: 'unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  return null;
+}
+
+async function probeQ1ForEdog(env: Env): Promise<{
+  rowCount: number | null;
+  skipped: boolean;
+  error?: string;
+}> {
+  const result = await executeRunAnalyticsQuery(env, { queryId: 'Q1_CONVERSION_CHAT' });
+  if (!result.ok) {
+    return { rowCount: null, skipped: false, error: result.error };
+  }
+  return { rowCount: result.rows.length, skipped: false };
+}
+
+async function runEdogHealthMonitor(env: Env): Promise<void> {
+  const report = await buildFlowHealthReport(env, probeQ1ForEdog);
+  console.log('[EDOG]', JSON.stringify({ verdict: report.edog_verdict, reasons: report.reasons }));
+  if (env.DATA_GUARDIAN_KV) {
+    await env.DATA_GUARDIAN_KV.put(EDOG_KV_KEY, JSON.stringify(report), { expirationTtl: 604_800 });
+  }
+}
+
+async function runOperatorReportCron(env: Env): Promise<void> {
+  await runOperatorDailyReport(env, probeQ1ForEdog, (e) =>
+    executeRunAnalyticsQuery(e as Env, { queryId: 'Q8_DAILY_EVENTS' }),
+  );
 }
 
 const BATCH_SIZE = 100;
@@ -427,6 +483,12 @@ export class BigQueryBatchS2SRpc extends WorkerEntrypoint<Env, BigQueryS2SProps>
     const summary = await handleScheduled(this.env);
     return { ok: true, summary };
   }
+
+  /** EDOG flow-health — ten sam scope co run_analytics_query (S2S z czatu). */
+  async getFlowHealth(): Promise<Awaited<ReturnType<typeof buildFlowHealthReport>>> {
+    requireBigQueryS2SScopes(this.ctx.props, 'bigquery.analytics_query');
+    return buildFlowHealthReport(this.env, probeQ1ForEdog);
+  }
 }
 
 export default {
@@ -434,6 +496,12 @@ export default {
     const url = new URL(request.url);
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/healthz')) {
       return new Response('ok', { status: 200 });
+    }
+    if (request.method === 'GET' && url.pathname === '/internal/flow-health') {
+      const denied = requireDataGuardianAuth(request, env);
+      if (denied) return denied;
+      const report = await buildFlowHealthReport(env, probeQ1ForEdog);
+      return Response.json(report);
     }
     if (request.method === 'GET' && url.pathname === '/internal/export-status') {
       let pendingPixel = -1;
@@ -482,6 +550,15 @@ export default {
   },
 
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    const cron = event.cron ?? '';
+    if (cron === CRON_OPERATOR_REPORT) {
+      ctx.waitUntil(runOperatorReportCron(env));
+      return;
+    }
+    if (cron === CRON_EDOG_08 || cron === CRON_EDOG_20) {
+      ctx.waitUntil(runEdogHealthMonitor(env));
+      return;
+    }
     ctx.waitUntil(handleScheduled(env).then((s) => {
       if (s?.partial) {
         console.warn('[WAREHOUSE_BATCH] Cron partial export; pending pixel rows remain:', s.pending_pixel_after);

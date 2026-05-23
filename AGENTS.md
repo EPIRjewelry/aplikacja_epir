@@ -49,7 +49,7 @@ W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md
 
 ## Cursor — skills i rules (jedno źródło definicji agentów)
 
-- **Definicje agentów** (ESOG, EFA, EDCG, EAA, deploy, OQAG, indexer): wyłącznie **`.cursor/skills/`** — indeks: [`.cursor/skills/README.md`](.cursor/skills/README.md).
+- **Definicje agentów** (ESOG, EFA, EDCG, EDOG, EAA, deploy, OQAG, indexer): wyłącznie **`.cursor/skills/`** — indeks: [`.cursor/skills/README.md`](.cursor/skills/README.md).
 - **Reguły sesji Cursor:** [`.cursor/rules/`](.cursor/rules/) (`epir-canonical-onboarding.mdc` — zawsze; pozostałe wg globów).
 - Folder **`agents/`** — opcjonalne **Python CLI** (nie edytuj tam pełnych zasad; synchronizuj z SKILL).
 - **`.github/agents/`** — definicje pod **GitHub Copilot**, nie zastępują `.cursor/skills/`.
@@ -88,8 +88,10 @@ W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md
 
 - **ESOG** — ortodoksia Shopify/app: `.cursor/skills/epir-esog-agent/SKILL.md`
 - **EDCG** — kontrakt danych analitycznych (D1 → Pipelines → Iceberg → R2 SQL): `.cursor/skills/epir-edcg-agent/SKILL.md`
+- **EDOG** — operacyjny przepływ danych (flow-health, batch, sonda Q1): `.cursor/skills/epir-edog-agent/SKILL.md`
 - **Kanon szczegółowy:** `docs/EPIR_ANALYTICS_DATA_CONTRACT.md`
 - **Bramka kroków** (każdy krok wymaga `ESOG: PASS` **oraz** `EDCG: PASS` przed kolejnym): `docs/merge-gates/WAREHOUSE_DATA_CONTRACT.md`
+- **Bramka wdrożenia EDOG** (`EDOG: PASS` przed kolejnym krokiem): `docs/merge-gates/EDOG_IMPLEMENTATION_STEPS.md`
 - **CI kontraktu:** `python scripts/ci/validate-data-contract.py`
 
 ## Jeśli nie wiesz, od czego zacząć

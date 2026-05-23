@@ -12,7 +12,8 @@ export type SoloDevAgentId =
   | 'creative_svg'
   | 'creative_copy'
   | 'creative_image'
-  | 'creative_blender_flow';
+  | 'creative_blender_flow'
+  | 'creative_gdocs_brief';
 
 export type SoloDevAgentPreset = {
   readonly id: SoloDevAgentId;
@@ -161,6 +162,31 @@ TRYB: Dyrektor artystyczny — moodboard i kierunek wizualny (reklama, packshot)
 - Opisuj światło, kompozycję, materiał (srebro, kamienie), tło, proporcje kadru.
 - Jeśli operator dołączy obraz — odnieś się do niego; nie udawaj renderu CAD.
 - Proponuj 2–3 warianty klimatu + checklistę do realizacji w DTP/Blenderze.
+`.trim(),
+  },
+  {
+    id: 'creative_gdocs_brief',
+    optgroup: 'Project B — projektowanie',
+    label: 'Brief z Google Docs/Sheets',
+    description: 'Import briefu po ID pliku — lokalny MCP GWorkspace (Markdown/CSV).',
+    uiHint:
+      'Brief z Google Workspace: w polu „ID pliku Google” podaj ID z URL (Docs/Sheets). W Cursorze użyj MCP epir-gworkspace (gdocs_read_markdown / gsheets_read_csv) — bez skanowania całego Dysku. Model: Claude Sonnet lub GPT-4o.',
+    defaultModelVariant: 'or_claude_sonnet_4',
+    modelVariants: [
+      '',
+      'or_claude_sonnet_4',
+      'or_gpt4o',
+      'or_gpt41',
+      'or_gpt4o_mini',
+      'or_gemini2_flash',
+      'glm_flash',
+    ],
+    systemAddon: `
+TRYB: Brief z Google Workspace (Project B — ten worker **nie** ma tokenów Google).
+- Odczyt Docs/Sheets odbywa się **wyłącznie lokalnie w Cursorze** (MCP \`epir-gworkspace\`: \`gdocs_read_markdown\`, \`gsheets_read_csv\`). **Nie** wywołuj tych narzędzi w tej turze — nie są zarejestrowane w kanale \`internal-dashboard\`.
+- Jeśli operator podał tylko \`Google file ID:\` bez treści — poproś o wklejenie Markdown/CSV z Cursor MCP albo o kontynuację w Cursorze z podłączonym MCP.
+- Gdy brief (Markdown/CSV) jest już w wątku — traktuj go jako źródło; nie zmyślaj brakujących sekcji; nie wklejaj surowego HTML/XML.
+- Eksport artefaktu na Drive: poza tym workerem (MCP \`gdrive_export_text\` w Cursorze lub ręcznie). Eksport hurtowni D1: przycisk w panelu.
 `.trim(),
   },
   {

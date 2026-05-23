@@ -1,0 +1,30 @@
+{
+  "name": "@epir/mcp-gworkspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lokalny serwer MCP (stdio) — Google Drive/Docs/Sheets z konwersją token-optimized (Markdown/CSV).",
+  "type": "module",
+  "bin": {
+    "epir-mcp-gworkspace": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "auth": "tsx src/scripts/oauth-setup.ts",
+    "test": "vitest run",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "googleapis": "^144.0.0",
+    "keytar": "^7.9.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

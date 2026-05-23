@@ -50,6 +50,13 @@ export type BigQueryBatchRpcStub = {
     | { ok: true; queryId: string; rows: Record<string, unknown>[] }
     | { ok: false; error: string; status: number }
   >;
+  getFlowHealth?(): Promise<{
+    edog_verdict: 'PASS' | 'FAIL' | 'DEGRADED';
+    reasons: string[];
+    checked_at: string;
+    pending_pixel_events?: number;
+    warehouse_q1_ok?: boolean;
+  }>;
   triggerWarehouseExport(): Promise<{
     ok: true;
     summary: {
@@ -164,6 +171,10 @@ export interface Env {
   EPIR_OPERATOR_PANEL_SECRET?: string;
   /** OpenRouter API key – wymagany dla wariantów modelu `openrouter/*`. */
   OPENROUTER_API_KEY?: string;
+  /**
+   * Bramka EDOG przed run_analytics_query (`true` domyślnie). Ustaw `false` aby wyłączyć (tylko awaryjnie).
+   */
+  EDOG_GATE_ENABLED?: string;
 }
 
 /**

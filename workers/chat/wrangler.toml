@@ -180,6 +180,8 @@ MCP_ENDPOINT = "https://epir-art-silver-jewellery.myshopify.com/api/mcp"
 WORKER_ORIGIN = "https://asystent.epirbizuteria.pl"
 # Base URL workera `epir-marketing-ingest` (GET /ops/marketing-preview). Zmień subdomain, jeśli konto CF ma inny workers.dev.
 MARKETING_INGEST_ORIGIN = "https://epir-marketing-ingest.krzysztofdzugaj.workers.dev"
+# Bramka EDOG przed run_analytics_query (RPC getFlowHealth). Awaryjnie: EDOG_GATE_ENABLED = "false"
+EDOG_GATE_ENABLED = "true"
 # --- Sekrety Storefront (ustaw ręcznie: wrangler secret put <NAZWA>; NIE commituj wartości) ---
 # Fallback dla kanału online-store / aliasów `epir` i `epirbizuteria.pl` (App Proxy, TAE data-brand=epir):
 #   wrangler secret put SHOPIFY_STOREFRONT_TOKEN

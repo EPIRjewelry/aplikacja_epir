@@ -3,6 +3,7 @@
  * Trzy jawne źródła: hurtownia EPIR (RPC), marketing-ingest (GA4+Ads preview), Shopify Admin (ShopifyQL presets).
  */
 import type { Env } from './config/bindings';
+import { checkEdogGateForWarehouse } from './edog-gate';
 import { callAdminAPI } from './graphql';
 import { chatPipelineLog } from './utils/chat-pipeline-log';
 
@@ -168,9 +169,30 @@ export function interpretShopifyqlToolPayload(
 /** `run_analytics_query` — RPC do epir-bigquery-batch (whitelist queryId). */
 export async function runWarehouseAnalyticsQuery(
   env: Env,
-  args: { queryId?: string },
+  args: { queryId?: string; skipEdogGate?: boolean },
 ): Promise<{ result?: unknown; error?: unknown }> {
   const t0 = Date.now();
+  if (!args?.skipEdogGate) {
+    const gate = await checkEdogGateForWarehouse(env);
+    if (!gate.allowed) {
+      chatPipelineLog({
+        phase: 'analytics_bigquery_tool',
+        duration_ms: Date.now() - t0,
+        ok: false,
+        reason: 'edog_gate',
+        edog_verdict: gate.verdict,
+      });
+      return {
+        error: {
+          code: -32010,
+          message: 'EdogGateBlocked',
+          edog_verdict: gate.verdict,
+          reasons: gate.reasons,
+          hint: gate.message,
+        },
+      };
+    }
+  }
   const rpc = env.BIGQUERY_BATCH_RPC;
   if (!rpc) {
     chatPipelineLog({

@@ -13,6 +13,14 @@ describe('solo-dev-agent-presets', () => {
     expect(ids).toContain('internal_analytics');
     expect(ids).toContain('creative_svg');
     expect(ids).toContain('creative_blender_flow');
+    expect(ids).toContain('creative_gdocs_brief');
+  });
+
+  it('gdocs brief addon scopes MCP to Cursor only', () => {
+    const addon = getSoloDevAgentSystemAddon('creative_gdocs_brief');
+    expect(addon).toContain('epir-gworkspace');
+    expect(addon).toContain('Nie');
+    expect(addon).not.toMatch(/Do odczytu użyj narzędzi MCP/i);
   });
 
   it('returns addon only with valid operator bearer', () => {

@@ -37,6 +37,9 @@ jobs:
       - name: Walidacja kontraktu danych analitycznych (EDCG)
         run: python3 scripts/ci/validate-data-contract.py
 
+      - name: Walidacja mapy przepływu danych (EDOG, statyczna)
+        run: python3 scripts/ci/validate-data-flow-map.py
+
       - name: Validate Cloudflare secrets
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then

@@ -16,9 +16,9 @@ command = ""
 # Production profile intentionally inherits top-level bindings/triggers/secrets.
 # Keep environment-specific overrides here only when needed.
 
-# Cron trigger: codziennie o 2:00 UTC
+# Cron: 02:00 UTC eksport D1→Pipelines; 08:00 i 20:00 UTC monitoring EDOG (koszt ~2×/dobę)
 [triggers]
-crons = ["0 2 * * *"]
+crons = ["0 2 * * *", "0 8 * * *", "0 9 * * *", "0 20 * * *"]
 
 [[d1_databases]]
 binding = "DB"
@@ -37,6 +37,10 @@ database_id = "475a1cb7-f1b5-47ba-94ed-40fd64c32451"
 #
 # R2 SQL — `run_analytics_query` (Iceberg w tym samym katalogu co CQRS w `epir-analityc-worker`):
 # wrangler secret put R2_SQL_API_TOKEN (Workers R2 SQL Read + Data Catalog + storage read)
+# EDOG flow-health: wrangler secret put DATA_GUARDIAN_OPS_KEY
+# Raport operatora 09:00 UTC: MARKETING_INGEST_ORIGIN + MARKETING_OPS_PREVIEW_KEY (jak na czacie)
+# Opcjonalny mostek Drive: wrangler secret put GWORKSPACE_REPORT_WEBHOOK_URL
+# Opcjonalnie KV raportu: wrangler kv namespace create epir-data-guardian → odkomentuj [[kv_namespaces]] poniżej
 #
 # run_analytics_query: wyłącznie Workers RPC (`BigQueryBatchS2SRpc`) z czatu (`ctx.props`, scope `bigquery.analytics_query`).
 
@@ -46,6 +50,10 @@ R2_SQL_WAREHOUSE_BUCKET = "epir-analytics-iceberg-warehouse"
 WAREHOUSE_SQL_NAMESPACE = "analytics"
 WAREHOUSE_SQL_PIXEL_TABLE = "epir_pixel_events_raw"
 WAREHOUSE_SQL_MESSAGES_TABLE = "messages_raw"
+
+# [[kv_namespaces]]
+# binding = "DATA_GUARDIAN_KV"
+# id = "<UTWÓRZ: wrangler kv namespace create epir-data-guardian>"
 
 [observability]
 enabled = true
