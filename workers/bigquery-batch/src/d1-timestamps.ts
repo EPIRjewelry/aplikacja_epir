@@ -29,7 +29,8 @@ export function pixelCreatedAtIso(createdAt: unknown): string {
 export const PIXEL_CREATED_AT_MS_SQL = `(
   CASE
     WHEN typeof(created_at) IN ('integer', 'real') THEN CAST(created_at AS INTEGER)
-    WHEN created_at GLOB '[0-9]*' THEN CAST(created_at AS INTEGER)
+    WHEN typeof(created_at) = 'text' AND created_at NOT LIKE '%-%' AND created_at GLOB '[0-9]*'
+      THEN CAST(created_at AS INTEGER)
     ELSE CAST(unixepoch(created_at) AS INTEGER) * 1000
   END
 )`;
