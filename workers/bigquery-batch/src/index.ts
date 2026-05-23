@@ -10,7 +10,7 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 // ============================================================================
 
 import { getR2AnalyticsSql, VALID_QUERY_IDS } from './analytics-queries';
-import { pixelCreatedAtIso, pixelCreatedAtMs } from './d1-timestamps';
+import { PIXEL_CREATED_AT_MS_SQL, pixelCreatedAtIso, pixelCreatedAtMs } from './d1-timestamps';
 import { buildFlowHealthReport } from './edog-flow-health-runner';
 import { runOperatorDailyReport } from './operator-daily-report';
 import { postPipelineIngestBatch } from './pipeline-ingest';
@@ -142,7 +142,7 @@ async function exportPixelEvents(
     return { exported: 0, maxTimestamp: lastExportAt };
   }
   const stmt = env.DB.prepare(
-    `SELECT * FROM pixel_events WHERE CAST(created_at AS INTEGER) > ?1 ORDER BY CAST(created_at AS INTEGER) ASC LIMIT ?2`,
+    `SELECT * FROM pixel_events WHERE ${PIXEL_CREATED_AT_MS_SQL} > ?1 ORDER BY ${PIXEL_CREATED_AT_MS_SQL} ASC LIMIT ?2`,
   ).bind(lastExportAt, MAX_PIXEL_ROWS_PER_RUN);
   const result = await stmt.all<Record<string, unknown>>();
   const rows = result.results ?? [];
@@ -291,7 +291,7 @@ async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null>
   let pendingPixel = 0;
   try {
     const pendingRow = await env.DB.prepare(
-      'SELECT COUNT(*) AS cnt FROM pixel_events WHERE CAST(created_at AS INTEGER) > ?1',
+      `SELECT COUNT(*) AS cnt FROM pixel_events WHERE ${PIXEL_CREATED_AT_MS_SQL} > ?1`,
     )
       .bind(lastPixel)
       .first<{ cnt: number }>();
@@ -366,7 +366,7 @@ async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null>
   let pendingAfter = 0;
   try {
     const pendingRow = await env.DB.prepare(
-      'SELECT COUNT(*) AS cnt FROM pixel_events WHERE CAST(created_at AS INTEGER) > ?1',
+      `SELECT COUNT(*) AS cnt FROM pixel_events WHERE ${PIXEL_CREATED_AT_MS_SQL} > ?1`,
     )
       .bind(newPixelTs)
       .first<{ cnt: number }>();
@@ -509,7 +509,7 @@ export default {
         null;
       try {
         const pending = await env.DB.prepare(
-          'SELECT COUNT(*) AS cnt FROM pixel_events WHERE CAST(created_at AS INTEGER) > COALESCE((SELECT last_pixel_export_at FROM batch_exports WHERE id = 1), 0)',
+          `SELECT COUNT(*) AS cnt FROM pixel_events WHERE ${PIXEL_CREATED_AT_MS_SQL} > COALESCE((SELECT last_pixel_export_at FROM batch_exports WHERE id = 1), 0)`,
         ).first<{ cnt: number }>();
         pendingPixel = pending?.cnt ?? -1;
         batchRow = await env.DB.prepare(

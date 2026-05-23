@@ -8,6 +8,7 @@ export interface EdogFlowHealthEnv {
   PIPELINE_PIXEL_INGEST_URL?: string;
   PIPELINE_MESSAGES_INGEST_URL?: string;
 }
+import { PIXEL_CREATED_AT_MS_SQL } from './d1-timestamps';
 import {
   computeEdogVerdict,
   shouldProbeWarehouseQ1,
@@ -29,7 +30,7 @@ type Q1Probe = {
 async function countPixel24h(env: EdogFlowHealthEnv, sinceMs: number): Promise<number> {
   try {
     const row = await env.DB.prepare(
-      'SELECT COUNT(*) AS cnt FROM pixel_events WHERE CAST(created_at AS INTEGER) >= ?1',
+      `SELECT COUNT(*) AS cnt FROM pixel_events WHERE ${PIXEL_CREATED_AT_MS_SQL} >= ?1`,
     )
       .bind(sinceMs)
       .first<{ cnt: number }>();
@@ -62,7 +63,7 @@ async function loadExportStatus(env: EdogFlowHealthEnv): Promise<{
   let batchRow: FlowHealthSnapshot['batch_exports'] = null;
   try {
     const pending = await env.DB.prepare(
-      'SELECT COUNT(*) AS cnt FROM pixel_events WHERE CAST(created_at AS INTEGER) > COALESCE((SELECT last_pixel_export_at FROM batch_exports WHERE id = 1), 0)',
+      `SELECT COUNT(*) AS cnt FROM pixel_events WHERE ${PIXEL_CREATED_AT_MS_SQL} > COALESCE((SELECT last_pixel_export_at FROM batch_exports WHERE id = 1), 0)`,
     ).first<{ cnt: number }>();
     pendingPixel = pending?.cnt ?? -1;
     batchRow = await env.DB.prepare(

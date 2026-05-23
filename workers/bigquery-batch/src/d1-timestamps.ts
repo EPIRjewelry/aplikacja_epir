@@ -21,3 +21,15 @@ export function pixelCreatedAtIso(createdAt: unknown): string {
   const ms = pixelCreatedAtMs(createdAt);
   return ms > 0 ? new Date(ms).toISOString() : new Date().toISOString();
 }
+
+/**
+ * Wyrażenie SQLite (D1) — `created_at` w ms, tak jak `pixelCreatedAtMs` w TS.
+ * D1 ma mieszane typy: starsze wiersze (INTEGER ms), nowe (ISO TEXT).
+ */
+export const PIXEL_CREATED_AT_MS_SQL = `(
+  CASE
+    WHEN typeof(created_at) IN ('integer', 'real') THEN CAST(created_at AS INTEGER)
+    WHEN created_at GLOB '[0-9]*' THEN CAST(created_at AS INTEGER)
+    ELSE CAST(unixepoch(created_at) AS INTEGER) * 1000
+  END
+)`;
