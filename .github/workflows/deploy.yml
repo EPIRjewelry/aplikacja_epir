@@ -31,6 +31,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install monorepo dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
       - name: Walidacja polityki produkcyjnej Wrangler
         run: python3 scripts/ci/validate-wrangler-prod-policy.py
 
