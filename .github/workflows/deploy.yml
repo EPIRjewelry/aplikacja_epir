@@ -49,31 +49,38 @@ jobs:
 
       - name: Deploy analytics worker
         working-directory: workers/analytics
-        run: npx wrangler deploy
+        run: npx wrangler deploy --env=""
 
       - name: Deploy bigquery-batch worker
         working-directory: workers/bigquery-batch
-        run: npx wrangler deploy
-
-      - name: Deploy analyst-worker worker
-        working-directory: workers/analyst-worker
-        run: npx wrangler deploy
-
-      - name: Deploy marketing-ingest worker
-        working-directory: workers/marketing-ingest
-        run: npx wrangler deploy
+        run: npx wrangler deploy --env=""
 
       - name: Deploy store-steward worker
         working-directory: workers/store-steward
-        run: npx wrangler deploy
+        run: npx wrangler deploy --env=""
+
+      - name: Apply store-steward D1 migrations
+        working-directory: workers/store-steward
+        run: |
+          npx wrangler d1 execute jewelry-analytics-db --remote --file=./migrations/001_store_signals.sql
+          npx wrangler d1 execute jewelry-analytics-db --remote --file=./migrations/002_steward_insights.sql
+          npx wrangler d1 execute jewelry-analytics-db --remote --file=./migrations/003_steward_reports.sql
+
+      - name: Deploy analyst-worker worker
+        working-directory: workers/analyst-worker
+        run: npx wrangler deploy --env=""
+
+      - name: Deploy marketing-ingest worker
+        working-directory: workers/marketing-ingest
+        run: npx wrangler deploy --env=""
 
       - name: Deploy chat worker
         working-directory: workers/chat
-        run: npx wrangler deploy
+        run: npx wrangler deploy --env=""
 
       - name: Deploy rag worker
         working-directory: workers/rag-worker
-        run: npx wrangler deploy
+        run: npx wrangler deploy --env=""
 
   post-deploy-smoke:
     name: post-deploy-smoke

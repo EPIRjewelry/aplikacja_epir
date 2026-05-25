@@ -1,6 +1,6 @@
 # deploy-workers.ps1 — tylko Cloudflare Workers (bez npm ci, bez Shopify).
 # Uruchom z katalogu repo: .\deploy-workers.ps1
-# Kolejność: rag → analytics → bigquery-batch → analyst → marketing-ingest → store-steward → chat.
+# Kolejność: rag → analytics → bigquery-batch → store-steward → analyst → marketing-ingest → chat.
 # Każdy deploy: npx wrangler deploy --env="" (jawny top-level przy [env.*] w wrangler.toml).
 
 $ErrorActionPreference = "Stop"
@@ -23,9 +23,9 @@ function Deploy-Worker {
 Deploy-Worker "workers\rag-worker"         "[1/7] epir-rag-worker"
 Deploy-Worker "workers\analytics"          "[2/7] epir-analityc-worker"
 Deploy-Worker "workers\bigquery-batch"     "[3/7] epir-bigquery-batch"
-Deploy-Worker "workers\analyst-worker"     "[4/7] epir-analyst-worker"
-Deploy-Worker "workers\marketing-ingest"   "[5/7] epir-marketing-ingest"
-Deploy-Worker "workers\store-steward"      "[6/7] epir-store-steward"
+Deploy-Worker "workers\store-steward"      "[4/7] epir-store-steward"
+Deploy-Worker "workers\analyst-worker"     "[5/7] epir-analyst-worker"
+Deploy-Worker "workers\marketing-ingest"   "[6/7] epir-marketing-ingest"
 Deploy-Worker "workers\chat"               "[7/7] epir-art-jewellery-worker (chat)"
 
 Set-Location $root
