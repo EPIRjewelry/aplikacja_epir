@@ -1,20 +1,30 @@
-import { describe, it, expect } from 'vitest';
-import { AVAILABLE_MODELS } from './openrouter-config';
+import { describe, expect, it } from 'vitest';
+import { resolveActiveModel } from './openrouter-config';
 
-describe('openrouter-config', () => {
-  it('exports at least 3 models', () => {
-    expect(AVAILABLE_MODELS.length).toBeGreaterThanOrEqual(3);
+describe('resolveActiveModel', () => {
+  it('prefers modelOverride over state and env', () => {
+    expect(
+      resolveActiveModel('openai/gpt-4o', 'google/gemini-pro', 'anthropic/claude-3-opus'),
+    ).toBe('openai/gpt-4o');
   });
 
-  it('each model has id and label', () => {
-    for (const m of AVAILABLE_MODELS) {
-      expect(m.id).toBeTruthy();
-      expect(m.label).toBeTruthy();
-    }
+  it('uses state when no override', () => {
+    expect(resolveActiveModel(undefined, 'google/gemini-pro', 'openai/gpt-4o')).toBe(
+      'google/gemini-pro',
+    );
   });
 
-  it('ModelId matches the first item id', () => {
-    const first: string = AVAILABLE_MODELS[0].id;
-    expect(first).toBe('meta-llama/llama-2-70b-chat');
+  it('uses env when state is null', () => {
+    expect(resolveActiveModel(undefined, null, 'openai/gpt-4o-mini')).toBe('openai/gpt-4o-mini');
+  });
+
+  it('falls back to first catalog model', () => {
+    expect(resolveActiveModel(undefined, null, undefined)).toBe('meta-llama/llama-2-70b-chat');
+  });
+
+  it('ignores invalid override and env', () => {
+    expect(resolveActiveModel('not-a-model' as never, null, 'also-invalid')).toBe(
+      'meta-llama/llama-2-70b-chat',
+    );
   });
 });

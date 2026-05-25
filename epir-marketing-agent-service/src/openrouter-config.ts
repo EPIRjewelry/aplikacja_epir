@@ -11,3 +11,22 @@ export const AVAILABLE_MODELS = [
 ] as const;
 
 export type ModelId = typeof AVAILABLE_MODELS[number]['id'];
+
+const MODEL_IDS = new Set<string>(AVAILABLE_MODELS.map(m => m.id));
+
+export function isModelId(value: string | undefined | null): value is ModelId {
+  return !!value && MODEL_IDS.has(value);
+}
+
+/** Per-request override → DO state → env default → first catalog entry. */
+export function resolveActiveModel(
+  modelOverride: ModelId | undefined,
+  stateModel: ModelId | null,
+  envDefault: string | undefined,
+): ModelId {
+  if (modelOverride && isModelId(modelOverride)) return modelOverride;
+  if (stateModel && isModelId(stateModel)) return stateModel;
+  const fromEnv = envDefault?.trim();
+  if (fromEnv && isModelId(fromEnv)) return fromEnv;
+  return AVAILABLE_MODELS[0].id;
+}

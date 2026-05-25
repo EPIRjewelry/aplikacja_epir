@@ -1,4 +1,6 @@
 node_modules
+agents/data_guardian/audit_report.json
+agents/data_guardian/node_modules
 .kilo/
 .env
 .wrangler

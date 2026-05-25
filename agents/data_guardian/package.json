@@ -1,0 +1,19 @@
+{
+  "name": "@epir/data-guardian-orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EDOG fleet orchestrator — Cursor SDK local runtime + epir-data-ops MCP",
+  "type": "module",
+  "scripts": {
+    "audit": "tsx orchestrator.ts",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cursor/sdk": "^1.0.13"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3"
+  }
+}

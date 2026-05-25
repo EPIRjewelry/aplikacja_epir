@@ -9,6 +9,7 @@ Ten katalog zawiera **implementację uruchomieniową** (skrypty, Azure Framework
 | `epir_esog_agent/` | `python agents/epir_esog_agent/agent.py` | `.cursor/skills/epir-esog-agent/` |
 | `epir_fix_agent/` | `python agents/epir_fix_agent/agent.py` | `.cursor/skills/epir-fix-agent/` |
 | `indexer_agent/` | `python agents/indexer_agent/run_agent.py` | `.cursor/skills/epir-indexer-agent/` |
+| `data_guardian/` | `cd agents/data_guardian && npm run audit` | `.cursor/skills/epir-edog-agent/` + `.cursor/rules/epir-edog-guardian.mdc` |
 
 ## Start (terminal, lokalnie)
 
@@ -18,6 +19,7 @@ Z roota repo:
 python agents/epir_esog_agent/agent.py "Check: workers/chat/src/index.ts"
 python agents/epir_fix_agent/agent.py "Opis poprawki z werdyktu ESOG"
 python agents/indexer_agent/run_agent.py
+cd agents/data_guardian && npm install && npm run audit
 ```
 
 ## Tryby (`EPIR_AGENT_MODE`)
