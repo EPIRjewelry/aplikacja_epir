@@ -75,7 +75,16 @@ WORKERS: dict[str, dict[str, object]] = {
     },
     "workers/analyst-worker/wrangler.toml": {
         "label": "analyst-worker (epir-analyst-worker)",
-        "required_bindings": frozenset({"BIGQUERY_BATCH_RPC"}),
+        "required_bindings": frozenset({"BIGQUERY_BATCH_RPC", "STORE_STEWARD_RPC"}),
+        "allow_workers_dev_at_root": True,
+        "rpc_props_scopes": {
+            "BIGQUERY_BATCH_RPC": frozenset({"bigquery.analytics_query"}),
+            "STORE_STEWARD_RPC": frozenset({"steward.read", "steward.write", "steward.ops"}),
+        },
+    },
+    "workers/store-steward/wrangler.toml": {
+        "label": "store-steward (epir-store-steward)",
+        "required_bindings": frozenset({"DB", "BIGQUERY_BATCH_RPC"}),
         "allow_workers_dev_at_root": True,
         "rpc_props_scopes": {
             "BIGQUERY_BATCH_RPC": frozenset({"bigquery.analytics_query"}),

@@ -138,11 +138,21 @@ Integracje **poza repo** (włączasz w Cursor): Shopify Admin MCP, Shopify Dev M
 
 **Nie commituj** `.cursor/mcp.json` ani tokenów.
 
+### `workers/store-steward` (`epir-store-steward`)
+
+Faza 0 Store Steward — agregacja `pixel_events` + wnioski w D1 (`jewelry-analytics-db`). **Brak sekretów HTTP** na tym workerze; odczyt/zapis przez **RPC** `StoreStewardS2SRpc` (`steward.read` / `steward.write` / `steward.ops`).
+
+- Cron: `0 4 * * *` UTC
+- Wołający zewnętrzny (Cursor): **`epir-analyst-worker`** — `GET|POST /v1/steward/*` + Bearer **`ANALYST_HTTP_BEARER`** (proxy RPC, bez `EPIR_CHAT_SHARED_SECRET` na store-steward)
+- Kanon: [`EPIR_STORE_STEWARD.md`](EPIR_STORE_STEWARD.md)
+
 ### `workers/analyst-worker` (`epir-analyst-worker`)
 
 Cienki worker **HTTP + Bearer** (np. narzędzia w Cursorze): `POST /v1/warehouse/query` z JSON `{ "queryId": "…" }` — **bez surowego SQL**; whitelist `queryId` jest współdzielona z batch workerem (`workers/bigquery-batch/src/analytics-query-ids.ts`). Wywołanie idzie przez binding **`BIGQUERY_BATCH_RPC`** → `runAnalyticsQuery` (ten sam kontrakt co czat).
 
-**Sekrety:** `ANALYST_HTTP_BEARER` — `wrangler secret put ANALYST_HTTP_BEARER --env=""` z katalogu `workers/analyst-worker` (wartość tylko w vault).
+**Sekrety:** `ANALYST_HTTP_BEARER` — `wrangler secret put ANALYST_HTTP_BEARER --env=""` z katalogu `workers/analyst-worker` (wartość tylko w vault). Ten sam Bearer obsługuje `POST /v1/warehouse/query` oraz **Store Steward** (`/v1/steward/aggregate`, `/v1/steward/insights`, `/v1/steward/reports`) przez RPC do `epir-store-steward`.
+
+**Bindingi RPC:** `BIGQUERY_BATCH_RPC`, `STORE_STEWARD_RPC` — każdy z `[services.props] scopes` jak w `workers/analyst-worker/wrangler.toml`; deploy **po** `store-steward` i `bigquery-batch`.
 
 **Vars (nie-sekret)** — `[vars]` w `wrangler.toml` lub Dashboard:
 

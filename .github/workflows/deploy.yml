@@ -63,6 +63,10 @@ jobs:
         working-directory: workers/marketing-ingest
         run: npx wrangler deploy
 
+      - name: Deploy store-steward worker
+        working-directory: workers/store-steward
+        run: npx wrangler deploy
+
       - name: Deploy chat worker
         working-directory: workers/chat
         run: npx wrangler deploy

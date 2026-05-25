@@ -4,12 +4,15 @@
   "workspaces": [
     "apps/*",
     "workers/*",
+    "agents/*",
     "extensions/*",
     "packages/*",
     "mcp-servers/*"
   ],
   "scripts": {
     "deps": "npm install --legacy-peer-deps --no-audit --no-fund",
+    "steward:report": "npm run report -w @epir/agent-store-steward",
+    "steward:test": "npm run test -w epir-store-steward",
     "cf:deploy:chat": "wrangler deploy",
     "shopify:version": "shopify version",
     "shopify:app:build": "shopify app build",

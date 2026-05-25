@@ -31,6 +31,7 @@ Ten katalog jest częścią jedynego kanonicznego pakietu dokumentacji EPIR. Ten
 - [`EPIR_WORKSPACE_MAP.md`](EPIR_WORKSPACE_MAP.md) — wiele repo + Cursor workspace + MCP
 - [`CURSOR_CLOUD_AGENT_SETUP.md`](CURSOR_CLOUD_AGENT_SETUP.md) — agent w chmurze (MCP, bez SDK)
 - [`EPIR_GWORKSPACE_REPORT_BRIDGE.md`](EPIR_GWORKSPACE_REPORT_BRIDGE.md) — raport dzienny → Drive (webhook)
+- [`EPIR_STORE_STEWARD.md`](EPIR_STORE_STEWARD.md) — Store Steward (Kustosz): Faza 0 obserwacja analityki, worker `epir-store-steward`, agent Cursor SDK; izolacja od Gemmy
 - [`EPIR_DEPLOYMENT_AND_OPERATIONS.md`](EPIR_DEPLOYMENT_AND_OPERATIONS.md) — sekrety, migracje, deploy, runbook operacyjny i **formalna bramka go/no-go** (jedyna kanoniczna checklista release: CI, sekrety, fail-closed ingress, kolejność deployu, smoke)
 - [`EPIR_BLUEPRINTS_AND_EXCEPTIONS.md`](EPIR_BLUEPRINTS_AND_EXCEPTIONS.md) — Project B, automatyzacje, limity API i zasady agentowe
 - `merge-gates/` — karty merge gate per zakres PR (go/no-go dla pojedynczych pakietów zmian, zgodne z kanoniczną bramką release)

@@ -1,0 +1,43 @@
+name = "epir-store-steward"
+main = "src/index.ts"
+compatibility_date = "2025-09-30"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[build]
+command = ""
+
+[env.staging]
+
+[env.production]
+workers_dev = false
+
+# Po analytics CQRS (03:30 UTC) i batch export (02:00 UTC)
+[triggers]
+crons = ["0 4 * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jewelry-analytics-db"
+database_id = "6a4f7cbb-3c1c-42c7-9d79-4ef74d421f23"
+
+[[services]]
+binding = "BIGQUERY_BATCH_RPC"
+service = "epir-bigquery-batch"
+entrypoint = "BigQueryBatchS2SRpc"
+
+  [services.props]
+  scopes = ["bigquery.analytics_query"]
+
+[vars]
+STEWARD_LOOKBACK_DAYS = "7"
+
+# Brak sekretów HTTP — odczyt/zapis przez StoreStewardS2SRpc (service binding + ctx.props.scopes).
+# Cursor / lokalnie: epir-analyst-worker POST|GET /v1/steward/* + ANALYST_HTTP_BEARER.
+
+[observability]
+enabled = true
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
