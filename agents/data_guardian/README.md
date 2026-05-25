@@ -1,122 +1,86 @@
-# EDOG Data Guardian — Cursor SDK orchestrator (Local Runtime)
+# EDOG Data Guardian — orchestrator v2
 
-Programistyczny orkiestrator audytu przepływu danych EPIR (NB-01 / Opcja C): dwa subagenty **lokalne** w `Promise.all`, MCP `epir-data-ops`, deterministyczna bramka z `GET /internal/flow-health`.
+Programistyczny orkiestrator audytu przepływu danych EPIR: **auto-naprawa** (`trigger-export`), **rdzeń deterministyczny** (flow-health + MCP stdio + `tsc` — zawsze w lokalnym `npm run audit`), opcjonalna warstwa LLM (Cursor cloud/local lub OpenRouter).
 
-## Wymagane zmienne środowiskowe
+## Przełącznik LLM
+
+| `EDOG_LLM_PROVIDER` | `EDOG_CURSOR_TARGET` | Wymaga |
+|---------------------|----------------------|--------|
+| `cursor` (domyślnie) | `cloud` (domyślnie) | `CURSOR_API_KEY` — subagent **dataFlowAuditor** w chmurze |
+| `cursor` | `local` | `CURSOR_API_KEY` — subagent lokalnie + MCP |
+| `openrouter` | — | `OPENROUTER_API_KEY`, `EDOG_OPENROUTER_MODEL` |
+| `off` | — | tylko rdzeń (bez LLM) |
+
+**Gotcha Cloud Runtime:** `EDOG_CURSOR_TARGET=cloud` uruchamia agenta w podstawowym VM — **nie** uruchamia `tsc` ani stdio MCP w subagencie (`UnsupportedRunOperationError`). Orkiestrator v2 uruchamia **`tsc` i MCP zawsze lokalnie** w procesie `npm run audit`; chmura służy wyłącznie opcjonalnemu audytowi jakościowemu (async API).
+
+CLI nadpisuje env:
+
+```powershell
+npm run audit -- --provider=off
+npm run audit -- --provider=openrouter --cursor-target=local
+```
+
+## Wymagane zmienne (wszystkie tryby)
 
 | Zmienna | Opis |
 |---------|------|
-| `CURSOR_API_KEY` | Klucz API Cursor ([Integrations](https://cursor.com/dashboard/integrations)) |
-| `CLOUDFLARE_ACCOUNT_ID` | Konto Cloudflare (D1 read) |
-| `CLOUDFLARE_API_TOKEN` | Token z uprawnieniem D1 Read |
-| `EPIR_BATCH_WORKER_ORIGIN` | URL workera batch — **Twoje konto:** `https://epir-bigquery-batch.krzysztofdzugaj.workers.dev` (wzorzec: `https://epir-bigquery-batch.<subdomena-workers>.workers.dev`; subdomena ≠ ta sama co `chat.epir-art-silver-jewellery…`) |
-| `DATA_GUARDIAN_OPS_KEY` | Bearer — ten sam secret co na workerze |
+| `EPIR_BATCH_WORKER_ORIGIN` | URL workera batch |
+| `DATA_GUARDIAN_OPS_KEY` | Bearer — ten sam secret co na workerze (`flow-health` + `trigger-export`) |
+| `CLOUDFLARE_ACCOUNT_ID` | D1 read (MCP) |
+| `CLOUDFLARE_API_TOKEN` | Token D1 Read |
 
-Opcjonalnie:
-
-| Zmienna | Opis |
-|---------|------|
-| `EPIR_REPO_ROOT` | Root monorepo (domyślnie: dwa poziomy nad tym katalogiem) |
-| `EDOG_AUDITOR_MODEL_ID` | Pin modelu (domyślnie: auto z `Cursor.models.list()`, fallback `claude-4-sonnet`) |
-| `EPIR_ANALYST_WORKER_ORIGIN` | Dla `warehouse_probe` w MCP |
-| `ANALYST_HTTP_BEARER` | Bearer analyst-worker |
+Dodatkowo przy `EDOG_LLM_PROVIDER=cursor`: `CURSOR_API_KEY`. Przy `openrouter`: `OPENROUTER_API_KEY`, `EDOG_OPENROUTER_MODEL`.
 
 ## Instalacja i uruchomienie
 
-1. Skopiuj [`.env.example`](.env.example) → `.env` i uzupełnij `CURSOR_API_KEY`, `CLOUDFLARE_API_TOKEN`, `DATA_GUARDIAN_OPS_KEY`.
-2. Smoke origin (bez klucza → 401 `unauthorized` = URL OK):
-
-   ```powershell
-   curl https://epir-bigquery-batch.krzysztofdzugaj.workers.dev/internal/flow-health
-   ```
-
-Z roota repozytorium (lub z tego katalogu):
+1. Skopiuj [`.env.example`](.env.example) → `.env`.
+2. Z katalogu `agents/data_guardian`:
 
 ```powershell
-cd agents/data_guardian
 npm install --no-audit --no-fund
 npm run audit
 ```
 
-Wynik: [`audit_report.json`](audit_report.json) z polem `gate_signature`: `EDOG: PASS` lub `EDOG: FAIL`.
+Wynik: [`audit_report.json`](audit_report.json) — pola m.in. `remediation`, `deterministic`, `llm_provider`, `gate_signature`.
 
-Exit code: `0` = PASS, `1` = FAIL lub błąd startu.
+Exit code: `0` = PASS, `1` = FAIL.
 
-## Po audycie (pętla remediacji)
+## Auto-naprawa
 
-EDOG **nie naprawia sam** — przy `EDOG: FAIL` identyfikuje `reasons[]`, zleca naprawę (EFA / deploy / operator), odbiera `remediation_report`, ponawia `npm run audit` aż `gate_signature` i `edog_verdict` = **PASS** → wtedy **END**. Szczegóły: [`.cursor/rules/epir-edog-guardian.mdc`](../../.cursor/rules/epir-edog-guardian.mdc).
+Gdy `pending_pixel_events >= 1000` i pipeline skonfigurowany, orkiestrator wywołuje `POST /internal/trigger-export` (max 30 runów, ~2500 wierszy/run) **przed** bramką. Raport: `remediation.runs[]`, `remediation.stopped_reason`.
 
-## Model (Claude Sonnet)
+## Bramka
 
-Przed pierwszym cronem ustaw pin po liście modeli:
+`gate_signature: EDOG: PASS` tylko gdy `flow_health.edog_verdict === PASS` **oraz** `deterministic.tsc_ok` (i MCP połączony). `DEGRADED` → FAIL.
 
-```typescript
-import { Cursor } from "@cursor/sdk";
-const models = await Cursor.models.list({ apiKey: process.env.CURSOR_API_KEY! });
-console.log(models.filter(m => /sonnet/i.test(m.displayName)));
-```
-
-Ustaw `EDOG_AUDITOR_MODEL_ID` na `id` zwrócony przez API.
-
-## Cursor Automations (No-repo, cron co 1 h)
-
-1. **Cursor → Automations → New automation**
-2. **Trigger:** Cron `0 * * * *` (co godzinę, UTC)
-3. **Action:** Run shell command (host musi być włączony — Local Runtime):
-
-   ```powershell
-   cd D:\aplikacja_epir\agents\data_guardian
-   npm run audit
-   ```
-
-4. Ustaw zmienne env w profilu użytkownika / sekretach automatyzacji (te same co w tabeli powyżej).
-5. **MCP Tool Protection:** jednorazowo zatwierdź narzędzia `epir-data-ops` w Cursor IDE; automatyzacja dziedziczy zapisane logowanie MCP tam, gdzie platforma to wspiera.
-
-### `DATA_GUARDIAN_OPS_KEY` — skąd wziąć?
-
-To **losowy Bearer**, który **Ty** zapisałeś przy:
+## Przykłady trybów
 
 ```powershell
-cd workers/bigquery-batch
-npx wrangler secret put DATA_GUARDIAN_OPS_KEY
+# Domyślnie: auto-naprawa + tsc/MCP lokalnie + Cursor cloud (data flow)
+npm run audit
+
+# Bez LLM (najszybszy smoke remediacji)
+$env:EDOG_LLM_PROVIDER='off'
+npm run audit
+
+# OpenRouter lokalnie
+$env:EDOG_LLM_PROVIDER='openrouter'
+$env:EDOG_OPENROUTER_MODEL='anthropic/claude-3.5-sonnet'
+npm run audit
 ```
-
-Cloudflare **nie pozwala odczytać** wartości sekretu z powrotem. Jeśli nie pamiętasz klucza:
-
-```powershell
-# wygeneruj nowy (PowerShell)
-$k = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 48 | ForEach-Object { [char]$_ })
-$k
-npx wrangler secret put DATA_GUARDIAN_OPS_KEY
-# wklej ten sam $k w .env jako DATA_GUARDIAN_OPS_KEY
-```
-
-Ten sam klucz musi być w `.env` / MCP i w nagłówku `Authorization: Bearer …` przy `flow-health`.
-
-### `CURSOR_API_KEY` — skąd wziąć?
-
-1. Zaloguj się na [cursor.com](https://cursor.com).
-2. **Dashboard → Integrations** (lub **Settings → API**).
-3. **Create API key** / **User API key** — skopiuj wartość zaczynającą się od `cursor_…`.
-4. Wklej do `.env` jako `CURSOR_API_KEY` (nie commituj).
-
-Team: alternatywnie **Service account** w Team Settings — tylko jeśli używasz konta zespołowego.
-
-Ten skrypt **uzupełnia** cron EDOG na workerze (2×/dobę, krok 5 w [`docs/merge-gates/EDOG_IMPLEMENTATION_STEPS.md`](../../docs/merge-gates/EDOG_IMPLEMENTATION_STEPS.md)) — nie zastępuje go.
 
 ## Reguły i skill
 
-- Reguła Cursor: [`.cursor/rules/epir-edog-guardian.mdc`](../../.cursor/rules/epir-edog-guardian.mdc)
-- Skill: [`.cursor/skills/epir-edog-agent/SKILL.md`](../../.cursor/skills/epir-edog-agent/SKILL.md)
+- [`.cursor/rules/epir-edog-guardian.mdc`](../../.cursor/rules/epir-edog-guardian.mdc)
+- [`.cursor/skills/epir-edog-agent/SKILL.md`](../../.cursor/skills/epir-edog-agent/SKILL.md)
 
-## DAG
+## DAG v2
 
 ```text
-dataFlowAuditor (MCP epir-data-ops)  ─┐
-                                      ├─► aggregate → audit_report.json
-typeValidator (tsc + CQRS types)     ─┘
-         +
-fetchFlowHealth (HTTP, deterministyczna bramka)
+flow-health (before)
+    → auto trigger-export (HTTP)
+    → flow-health (after)
+    → MCP stdio + tsc (lokalnie, deterministyczne)
+    → [opcjonalnie] LLM: Cursor dataFlowAuditor | OpenRouter | off
+    → audit_report.json + gate_signature
 ```
-
-`DEGRADED` z API → `EDOG: FAIL` w `gate_signature`.

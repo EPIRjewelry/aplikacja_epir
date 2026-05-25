@@ -48,7 +48,7 @@ EDOG: FAIL
 
 ## Orkiestrator
 
-[`agents/data_guardian/orchestrator.ts`](../../agents/data_guardian/orchestrator.ts) — Local Runtime, MCP + `audit_report.json` z `gate_signature`.
+[`agents/data_guardian/orchestrator.ts`](../../agents/data_guardian/orchestrator.ts) — v2: **auto** `trigger-export` (gdy `pending >= 1000`), **tsc + MCP stdio zawsze lokalnie** w `npm run audit`, przełącznik `EDOG_LLM_PROVIDER` (`cursor` \| `openrouter` \| `off`) i `EDOG_CURSOR_TARGET` (`cloud` \| `local`). Cloud Runtime **nie** uruchamia `tsc` w subagencie — tylko opcjonalny audyt data flow.
 
 ## Po audycie (pętla do PASS — obowiązkowa przy `EDOG: FAIL`)
 
@@ -66,7 +66,7 @@ Z `audit_report.json` / `flow_health_summary` wypisz:
 
 | Typ problemu | Zlecenie dla | Akceptacja (test) |
 |--------------|--------------|-------------------|
-| `pending_pixel_*`, lag eksportu, cron batch | Operator / **shell** + [`epir-deployment`](../skills/epir-deployment/SKILL.md): trigger export, sekrety Pipelines, logi `epir-bigquery-batch` | `flow-health` → `edog_verdict: PASS`; `pending` < 1000 |
+| `pending_pixel_*`, lag eksportu, cron batch | Orkiestrator v2: **auto** `trigger-export` w `npm run audit`; dalej operator / **shell** / Pipelines jeśli auto nie wystarczy | `flow-health` → `edog_verdict: PASS`; `pending` < 1000 |
 | Konfiguracja / kod workerów, watermark | **EFA** (`.cursor/skills/epir-fix-agent/`) po werdyktach ESOG+EDCG jeśli dotyczy kodu | `npm run audit` → `gate_signature: EDOG: PASS` |
 | Schema / SQL / kontrakt | **EDCG** — nie EFA bez PASS EDCG | CI `validate-data-contract.py` + ponowny audyt |
 

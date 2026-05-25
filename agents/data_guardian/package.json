@@ -1,15 +1,17 @@
 {
   "name": "@epir/data-guardian-orchestrator",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "EDOG fleet orchestrator — Cursor SDK local runtime + epir-data-ops MCP",
+  "description": "EDOG orchestrator — auto-remediation, deterministic gate, LLM switch (Cursor | OpenRouter)",
   "type": "module",
   "scripts": {
     "audit": "tsx orchestrator.ts",
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "@cursor/sdk": "^1.0.13"
+    "@cursor/sdk": "^1.0.13",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "openai": "^6.38.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

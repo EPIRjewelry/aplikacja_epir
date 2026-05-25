@@ -63,7 +63,7 @@ WORKERS: dict[str, dict[str, object]] = {
     "workers/bigquery-batch/wrangler.toml": {
         "label": "bigquery-batch (epir-bigquery-batch)",
         "required_bindings": frozenset({"DB", "DB_CHATBOT"}),
-        # `POST /internal/trigger-export` (X-Admin-Key) — smoke eksportu D1→Pipelines bez czekania na cron.
+        # `POST /internal/trigger-export` (Bearer DATA_GUARDIAN_OPS_KEY) — smoke eksportu D1→Pipelines bez czekania na cron.
         "allow_workers_dev_at_root": True,
     },
     "workers/marketing-ingest/wrangler.toml": {

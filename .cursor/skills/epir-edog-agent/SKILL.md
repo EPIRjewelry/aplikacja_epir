@@ -21,7 +21,7 @@ Gdy werdykt to **`EDOG: FAIL`** (lub `gate_signature` w [`agents/data_guardian/a
    - kod workerów / watermark → **EFA** (po ESOG+EDCG gdy dotyczy kodu);
    - kontrakt schema/SQL → **EDCG**.
 3. Wymagaj **`remediation_report`** od wykonawcy (kroki, dowód, ryzyka resztkowe).
-4. **Test sprawności:** `npm run audit` w `agents/data_guardian` lub `GET /internal/flow-health` — tylko świeży wynik liczy się jako PASS.
+4. **Test sprawności:** `npm run audit` w `agents/data_guardian` (v2: auto `trigger-export`, przełącznik `EDOG_LLM_PROVIDER` / `EDOG_CURSOR_TARGET`) lub `GET /internal/flow-health` — tylko świeży wynik liczy się jako PASS.
 5. **`EDOG: PASS` + test PASS** → **`EDOG: END`**. W przeciwnym razie powtórz 1–4 (max **5** iteracji, potem eskalacja).
 
 Reguła Cursor (szczegóły tabeli delegacji): [`.cursor/rules/epir-edog-guardian.mdc`](../../.cursor/rules/epir-edog-guardian.mdc).

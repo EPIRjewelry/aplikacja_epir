@@ -32,9 +32,7 @@ interface Env {
   WAREHOUSE_SQL_NAMESPACE?: string;
   WAREHOUSE_SQL_PIXEL_TABLE?: string;
   WAREHOUSE_SQL_MESSAGES_TABLE?: string;
-  /** Opcjonalnie: POST /internal/trigger-export z nagłówkiem X-Admin-Key (ręczny eksport / smoke). */
-  ADMIN_KEY?: string;
-  /** Bearer dla GET /internal/flow-health i crona EDOG. */
+  /** Bearer dla GET /internal/flow-health, POST /internal/trigger-export i crona EDOG. */
   DATA_GUARDIAN_OPS_KEY?: string;
   /** Opcjonalny KV — ostatni raport crona (klucz `edog:latest`). */
   DATA_GUARDIAN_KV?: KVNamespace;
@@ -526,14 +524,8 @@ export default {
       });
     }
     if (request.method === 'POST' && url.pathname === '/internal/trigger-export') {
-      const admin = (env.ADMIN_KEY ?? '').trim();
-      const got = (request.headers.get('X-Admin-Key') ?? '').trim();
-      if (!admin || got !== admin) {
-        return new Response(JSON.stringify({ error: 'unauthorized' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
+      const denied = requireDataGuardianAuth(request, env);
+      if (denied) return denied;
       const summary = await handleScheduled(env);
       return new Response(JSON.stringify({ ok: true, summary }), {
         status: 200,
