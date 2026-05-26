@@ -1,7 +1,7 @@
 import {useLoaderData} from '@remix-run/react';
 import type {MetaFunction} from '@remix-run/react';
 import {json, type LoaderFunctionArgs} from '@remix-run/cloudflare';
-import {ChatWidget} from '~/components/ChatWidget';
+import {ChatWidget} from '@epir/ui';
 import {resolveChatApiUrl} from '~/lib/resolve-chat-api-url';
 import {KAZKA_CHANNEL, KAZKA_STOREFRONT_ID} from '~/lib/chat-widget-context';
 import {loadKazkaPersonaUi} from '~/lib/persona-ui.server';

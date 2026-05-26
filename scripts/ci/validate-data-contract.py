@@ -4,6 +4,7 @@ Walidacja kontraktu danych analitycznych (EDCG / D-02, D-03).
 
 - analytics-queries.ts: zakaz SELECT DISTINCT, COUNT(DISTINCT), kolumn url/payload jako Iceberg read
 - wymóg approx_distinct w presetach używających unikalnych sesji (Q1, Q2, Q7)
+- specs/schemas/*.schema.json: obecność kanonicznych schematów streamów Pipelines
 """
 
 from __future__ import annotations
@@ -14,6 +15,11 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 QUERIES_PATH = REPO_ROOT / "workers/bigquery-batch/src/analytics-queries.ts"
+SCHEMA_DIR = REPO_ROOT / "specs" / "schemas"
+REQUIRED_SCHEMAS = (
+    "pixel-events-stream.schema.json",
+    "messages-stream.schema.json",
+)
 
 FORBIDDEN_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"SELECT\s+DISTINCT", re.I), "D-03: SELECT DISTINCT not supported in R2 SQL"),
@@ -59,7 +65,17 @@ def main() -> None:
     if "page_url" not in text:
         fail("D-02: analytics-queries should reference page_url for pixel Iceberg reads")
 
-    print("[data-contract] OK — analytics-queries.ts matches EPIR analytics data contract (D-02, D-03).")
+    if not SCHEMA_DIR.is_dir():
+        fail(f"Missing schema directory {SCHEMA_DIR.relative_to(REPO_ROOT)}")
+    for name in REQUIRED_SCHEMAS:
+        path = SCHEMA_DIR / name
+        if not path.is_file():
+            fail(f"Missing Pipelines stream schema {path.relative_to(REPO_ROOT)}")
+
+    print(
+        "[data-contract] OK — analytics-queries.ts (D-02, D-03) "
+        f"and specs/schemas ({', '.join(REQUIRED_SCHEMAS)}) present."
+    )
 
 
 if __name__ == "__main__":

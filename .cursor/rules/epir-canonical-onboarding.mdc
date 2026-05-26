@@ -1,9 +1,11 @@
 ---
-description: EPIR — jedno repo, kolejność czytania, skills jako definicje agentów (zawsze)
-alwaysApply: true
+description: EPIR — kolejność czytania, skills, zakaz kanonu z agents/ i Copilot
+alwaysApply: false
 ---
 
 # EPIR — kanoniczny onboarding (Cursor)
+
+Mapa architektury: `@.cursor/rules/index.mdc` (always-on).
 
 ## Jedno źródło prawdy
 
@@ -12,7 +14,9 @@ alwaysApply: true
 - **Dokumentacja wiążąca:** wyłącznie sekcja *Kanoniczny zestaw dokumentów* w `docs/README.md` (+ `AGENTS.md`, `EPIR_AI_ECOSYSTEM_MASTER.md`, `EPIR_AI_BIBLE.md`)
 - **Definicje agentów AI (role, werdykty, granice):** wyłącznie `.cursor/skills/` — indeks: `.cursor/skills/README.md`
 
-Nie traktuj `agents/*/prompt.md` ani `.github/agents/*.agent.md` jako równoległego kanonu dla Cursor. Folder `agents/` to opcjonalne **CLI Python** (lokalny/Azure); `.github/agents/` to **GitHub Copilot**, nie Cursor.
+Nie traktuj `agents/*/prompt.md` ani `.github/agents/*.agent.md` jako równoległego kanonu dla Cursor. **Nie modyfikuj** `agents/` ani `.github/agents/` bez wyraźnej prośby — to CLI / Copilot (read-only dla Cursor).
+
+Kontrakt analityki — `@docs/EPIR_ANALYTICS_DATA_CONTRACT.md`; schematy JSON ingest — `@specs/schemas/` (nie `@codebase`).
 
 ## Kolejność czytania (przed większą zmianą)
 
@@ -21,16 +25,6 @@ Nie traktuj `agents/*/prompt.md` ani `.github/agents/*.agent.md` jako równoleg�
 3. `EPIR_AI_BIBLE.md`
 4. `docs/README.md`
 5. Dokument techniczny z kanonu pasujący do obszaru (ingress, deploy, kontrakt danych)
-
-## Architektura sklepu (skrót)
-
-| Warstwa | Gdzie | Nie mieszaj z |
-|---------|--------|----------------|
-| Buyer-facing czat (Gemma) | App Proxy, kanały sklepowe | Project B / Dev-asystent |
-| Internal analityk (Project B) | `internal-dashboard`, `run_analytics_query`, marketing preview | Buyer-facing UI |
-| Ingress headless | BFF `/api/chat` → S2S `/chat` + `X-EPIR-*` | Bezpośredni browser → worker z sekretami |
-| Analityka zdarzeń | Web Pixel → D1 → batch → Iceberg → R2 SQL | Odczyt surowego D1 w agencie |
-| Storefronty | `apps/kazka`, `apps/zareczyny` — **dwa brandy**, wspólny backend | Drugi backend / drugi kanon docs |
 
 Zawsze podawaj **`storefrontId`** i **`channel`** przy routingu i danych.
 

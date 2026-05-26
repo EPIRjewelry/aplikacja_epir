@@ -57,8 +57,8 @@ Możesz dodać pola CTA przez skrypt Admin API zamiast ręcznie:
 # 1. Dodaj token do .dev.vars (lub ustaw zmienną środowiskową):
 #    SHOPIFY_ADMIN_ACCESS_TOKEN=shpat_xxx
 
-# 2. Uruchom skrypt:
-node scripts/add-cta-fields-section-hero.mjs
+# 2. Z katalogu głównego repo:
+node scripts/add-cta-fields-section-hero.mjs --app=kazka
 ```
 
 Token: Shopify Admin → Settings → Apps → Develop apps → Create app → Configure Admin API → scope `write_metaobject_definitions`.

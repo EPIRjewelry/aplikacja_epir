@@ -2,6 +2,8 @@
 
 Pliki JSON są **1:1** z rekordami wysyłanymi przez `workers/bigquery-batch/src/index.ts` (`exportPixelEvents`, `exportMessages`).
 
+**Kanoniczna lokalizacja schematów JSON:** [`specs/schemas/`](../../specs/schemas/) (`pixel-events-stream.schema.json`, `messages-stream.schema.json`). W Cursorze: `@specs/schemas/<plik>`.
+
 - `pixel-events-stream.schema.json` — pola: `event_type`, `session_id`, `customer_id`, `storefront_id`, `channel`, `url`, `payload`, `created_at`
 - `messages-stream.schema.json` — pola: `id`, `session_id`, `role`, `content`, `timestamp` (ms epoch), `tool_calls`, `tool_call_id`, `name`, `storefront_id`, `channel`
 
@@ -13,12 +15,12 @@ Z katalogu `workers/bigquery-batch` (zaloguj `wrangler login`):
 
 ```bash
 npx wrangler pipelines streams create epir_pixel_events_stream ^
-  --schema-file pipelines-schemas/pixel-events-stream.schema.json ^
+  --schema-file ../../specs/schemas/pixel-events-stream.schema.json ^
   --http-enabled true ^
   --http-auth true
 
 npx wrangler pipelines streams create epir_messages_stream ^
-  --schema-file pipelines-schemas/messages-stream.schema.json ^
+  --schema-file ../../specs/schemas/messages-stream.schema.json ^
   --http-enabled true ^
   --http-auth true
 ```

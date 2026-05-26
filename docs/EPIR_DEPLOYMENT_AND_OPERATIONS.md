@@ -100,7 +100,7 @@ Dodatkowe wymaganie bezpieczeństwa:
 - `PIPELINE_MESSAGES_INGEST_URL` — HTTP ingest dla strumienia wiadomości czatu
 - `PIPELINE_INGEST_TOKEN` — opcjonalny Bearer, jeśli ingest wymaga autoryzacji
 
-**Schematy streamów Pipelines** (zgodne z kształtem JSON z batcha): [`workers/bigquery-batch/pipelines-schemas/`](../workers/bigquery-batch/pipelines-schemas/) — pliki `*.schema.json` + `README.md` z komendą `wrangler pipelines streams create`.
+**Schematy streamów Pipelines** (zgodne z kształtem JSON z batcha): [`specs/schemas/`](../specs/schemas/) — pliki `*.schema.json`; komendy Wrangler: [`workers/bigquery-batch/pipelines-schemas/README.md`](../workers/bigquery-batch/pipelines-schemas/README.md).
 
 **`run_analytics_query` (Workers RPC)** — **R2 SQL** nad Iceberg:
 
@@ -229,7 +229,7 @@ Postura ingress dla produkcji:
 
 **Troubleshooting: R2 SQL — brak kolumny `payload` / `url` w `analytics.epir_pixel_events_raw`**
 
-- Batch HTTP ingest nadal wysyła `url` + `payload` (zob. [`workers/bigquery-batch/src/index.ts`](../workers/bigquery-batch/src/index.ts) i [`pipelines-schemas/pixel-events-stream.schema.json`](../workers/bigquery-batch/pipelines-schemas/pixel-events-stream.schema.json)), ale **produkcyjna** tabela Iceberg ma układ **spłaszczony** (np. `page_url`, `referrer_url`, `id`, `__ingest_ts`) — mapowanie robi **SQL pipeline’u** w Cloudflare (Dashboard / `wrangler pipelines get`), nie repo.
+- Batch HTTP ingest nadal wysyła `url` + `payload` (zob. [`workers/bigquery-batch/src/index.ts`](../workers/bigquery-batch/src/index.ts) i [`specs/schemas/pixel-events-stream.schema.json`](../specs/schemas/pixel-events-stream.schema.json)), ale **produkcyjna** tabela Iceberg ma układ **spłaszczony** (np. `page_url`, `referrer_url`, `id`, `__ingest_ts`) — mapowanie robi **SQL pipeline’u** w Cloudflare (Dashboard / `wrangler pipelines get`), nie repo.
 - Whitelist `run_analytics_query` w [`workers/bigquery-batch/src/analytics-queries.ts`](../workers/bigquery-batch/src/analytics-queries.ts) musi odwoływać się do kolumn Iceberg (`page_url`, nie `url`; bez `json_get_str(payload, …)`). Po zmianie presetów: `wrangler deploy` z `workers/bigquery-batch`, potem `workers/chat`.
 - Weryfikacja operatorska: `wrangler r2 sql query … --command "DESCRIBE analytics.epir_pixel_events_raw"` (dostosuj katalog/bucket) i porównaj z presetami Q1–Q10. **Q1** nie używa `payload`; typowe błędy dotyczą **Q4** (`page_url`) i **Q5** (agregacja po `page_url`).
 

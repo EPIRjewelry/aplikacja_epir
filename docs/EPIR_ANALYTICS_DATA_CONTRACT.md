@@ -8,6 +8,7 @@ Ten dokument jest **wiążącym, szczegółowym kontraktem** warstwy danych anal
 - **Bramka kroków:** [`docs/merge-gates/WAREHOUSE_DATA_CONTRACT.md`](merge-gates/WAREHOUSE_DATA_CONTRACT.md) — każdy krok wymaga **`ESOG: PASS`** i **`EDCG: PASS`** przed kolejnym krokiem.
 - **Ramy ogólne:** [`EPIR_DATA_SCHEMA_CONTRACT.md`](EPIR_DATA_SCHEMA_CONTRACT.md) (Shopify, D1 ogólnie, marketing namespace).
 - **Implementacja SQL:** [`workers/bigquery-batch/src/analytics-queries.ts`](../workers/bigquery-batch/src/analytics-queries.ts).
+- **Schematy JSON streamów Pipelines:** [`specs/schemas/`](../specs/schemas/) — w Cursorze jawny `@file` (katalog `specs/` poza indeksem domyślnym).
 
 Jeden sklep Shopify (`SHOP_DOMAIN`), wiele storefrontów (`storefront_id`, `channel`, URL) — **nie** oznacza to jednej fizycznej bazy; oznacza **jeden opisany przepływ** i **jeden read model Iceberg**.
 
@@ -113,7 +114,7 @@ Pozostałe kolumny (heatmap, scroll, cart, order, …) istnieją w D1 i trafiaj�
 
 ### Pixel stream (`epir_pixel_events_stream`)
 
-Schemat: [`pixel-events-stream.schema.json`](../workers/bigquery-batch/pipelines-schemas/pixel-events-stream.schema.json).
+Schemat: [`pixel-events-stream.schema.json`](../specs/schemas/pixel-events-stream.schema.json).
 
 | Pole ingest JSON | Źródło D1 | Typ stream |
 |------------------|-----------|------------|
@@ -128,7 +129,7 @@ Schemat: [`pixel-events-stream.schema.json`](../workers/bigquery-batch/pipelines
 
 ### Messages stream (`epir_messages_stream`)
 
-Schemat: [`messages-stream.schema.json`](../workers/bigquery-batch/pipelines-schemas/messages-stream.schema.json).
+Schemat: [`messages-stream.schema.json`](../specs/schemas/messages-stream.schema.json).
 
 | Pole ingest | Źródło D1 `messages` | Typ stream |
 |-------------|----------------------|------------|

@@ -23,7 +23,7 @@ Jesteś **EDCG (EPIR Data Contract Guardian)** – strażnikiem **kontraktu dany
 1. [`docs/EPIR_ANALYTICS_DATA_CONTRACT.md`](../../../docs/EPIR_ANALYTICS_DATA_CONTRACT.md) – **główny, szczegółowy** kontrakt warstw danych (D1 → ingest → Iceberg → R2 SQL)
 2. [`docs/EPIR_DATA_SCHEMA_CONTRACT.md`](../../../docs/EPIR_DATA_SCHEMA_CONTRACT.md) – ramy Shopify / D1 / Vectorize / marketing Iceberg
 3. [`workers/bigquery-batch/src/analytics-queries.ts`](../../../workers/bigquery-batch/src/analytics-queries.ts) – implementacja whitelisty SQL
-4. [`workers/bigquery-batch/pipelines-schemas/`](../../../workers/bigquery-batch/pipelines-schemas/) – schematy streamów i example pipeline SQL
+4. [`specs/schemas/`](../../../specs/schemas/) – schematy JSON streamów Pipelines (`@file` w Cursorze); operacje Wrangler: [`workers/bigquery-batch/pipelines-schemas/README.md`](../../../workers/bigquery-batch/pipelines-schemas/README.md)
 5. [`workers/analytics/src/index.ts`](../../../workers/analytics/src/index.ts) – `ensurePixelTable` (D1 runtime)
 6. [`docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md`](../../../docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md) – troubleshooting R2 SQL / deploy
 
@@ -92,7 +92,7 @@ Dla każdego naruszenia podaj:
 
 ## Kiedy Cię wywołać
 
-- PR dotykający `workers/analytics`, `workers/bigquery-batch`, `analytics-queries`, `pipelines-schemas`
+- PR dotykający `workers/analytics`, `workers/bigquery-batch`, `analytics-queries`, `specs/schemas`
 - „Czy Q1 jest zgodne z Iceberg?”
 - „Recenzja kroku N bramki warehouse”
 - Rozjazd `payload` / `page_url` / `SELECT DISTINCT`
