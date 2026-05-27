@@ -12,6 +12,7 @@
 | [epir-deployment](epir-deployment/SKILL.md) | Deploy Cloudflare + Shopify | `deploy.ps1`, wrangler, sekrety |
 | [epir-oqag-agent](epir-oqag-agent/SKILL.md) | **OQAG** — bramka jakości OpenRouter | Integracja Project B / OpenRouter |
 | [epir-indexer-agent](epir-indexer-agent/SKILL.md) | Indeks dokumentacji lokalny | `tools/index_docs.py`, embeddings |
+| [epir-curator-agent](epir-curator-agent/SKILL.md) | **Curator** — meta-narrator sklepu / Gemma / roadmap | Po PASS HAM/EDOG; synteza biznesowa |
 
 ## Nie są skillami Cursor (cross-link)
 

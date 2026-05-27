@@ -11,6 +11,18 @@ type PixelBrowser = {
   };
 };
 
+type AttributionPayload = {
+  traffic_source?: string;
+  traffic_medium?: string;
+  traffic_campaign?: string;
+  traffic_content?: string;
+  traffic_term?: string;
+  gclid?: string;
+  fbclid?: string;
+  ttclid?: string;
+  msclkid?: string;
+};
+
 /** Fragment Customer Privacy na obiekcie zdarzenia Web Pixel (event / event.context). */
 type PixelEventPrivacy = {
   analyticsProcessingAllowed: boolean;
@@ -126,6 +138,67 @@ register(async (api) => {
       } catch (_) {}
       return fromEvent;
     }
+
+    function parseAttributionFromUrl(rawUrl: string | null | undefined): AttributionPayload {
+      if (!rawUrl) return {};
+      try {
+        const u = new URL(rawUrl);
+        const pick = (name: string) => (u.searchParams.get(name)?.trim().toLowerCase() || undefined);
+        return {
+          traffic_source: pick('utm_source'),
+          traffic_medium: pick('utm_medium'),
+          traffic_campaign: pick('utm_campaign'),
+          traffic_content: pick('utm_content'),
+          traffic_term: pick('utm_term'),
+          gclid: pick('gclid'),
+          fbclid: pick('fbclid'),
+          ttclid: pick('ttclid'),
+          msclkid: pick('msclkid'),
+        };
+      } catch {
+        return {};
+      }
+    }
+
+    function inferFromReferrer(referrer: string | undefined): AttributionPayload {
+      const r = (referrer || '').toLowerCase();
+      if (!r) return { traffic_source: 'direct', traffic_medium: 'none' };
+      if (r.includes('google.')) return { traffic_source: 'google', traffic_medium: 'organic' };
+      if (r.includes('bing.')) return { traffic_source: 'bing', traffic_medium: 'organic' };
+      if (r.includes('facebook.') || r.includes('fb.com')) return { traffic_source: 'facebook', traffic_medium: 'social' };
+      if (r.includes('instagram.')) return { traffic_source: 'instagram', traffic_medium: 'social' };
+      return { traffic_source: 'referral', traffic_medium: 'referral' };
+    }
+
+    async function getAttributionForEvent(event: unknown): Promise<AttributionPayload> {
+      let pageUrl: string | undefined;
+      let referrer: string | undefined;
+      if (event && typeof event === 'object' && 'context' in event) {
+        const ctx = (event as any).context;
+        pageUrl = ctx?.document?.location?.href;
+        referrer = ctx?.document?.referrer;
+      }
+      if (!pageUrl) pageUrl = init?.context?.document?.location?.href;
+      const fromUrl = parseAttributionFromUrl(pageUrl);
+      const hasCampaignSignal = Boolean(
+        fromUrl.traffic_source ||
+        fromUrl.gclid ||
+        fromUrl.fbclid ||
+        fromUrl.ttclid ||
+        fromUrl.msclkid,
+      );
+      if (hasCampaignSignal) {
+        try {
+          await browser.sessionStorage.setItem('_epir_last_attribution', JSON.stringify(fromUrl));
+        } catch (_) {}
+        return fromUrl;
+      }
+      try {
+        const cached = await browser.sessionStorage.getItem('_epir_last_attribution');
+        if (cached) return JSON.parse(cached) as AttributionPayload;
+      } catch (_) {}
+      return inferFromReferrer(referrer);
+    }
     /**
      * Przed sendPixelEvent: odczyt zgód wyłącznie z obiektu zdarzenia Web Pixel (context.customerPrivacy / customerPrivacy).
      */
@@ -159,6 +232,7 @@ register(async (api) => {
         const sourceForIdentity = pixelEvent;
         const resolvedSessionId = await resolveEpirSessionId(browserApi, sourceForIdentity);
         const storefront = await getStorefrontForEvent(pixelEvent);
+        const attribution = await getAttributionForEvent(pixelEvent);
         // Enrich event data with customer_id, session_id (cookie lub clientId), storefront_id, channel
         const enrichedData = {
           ...(typeof eventData === 'object' && eventData !== null ? eventData : {}),
@@ -166,7 +240,8 @@ register(async (api) => {
           sessionId: resolvedSessionId,
           session_id: resolvedSessionId,
           storefront_id: storefront.storefront_id,
-          channel: storefront.channel
+          channel: storefront.channel,
+          ...attribution,
         };
         
         // Endpoint z extension settings (pixelEndpoint) lub stała – chat worker proxy do analytics

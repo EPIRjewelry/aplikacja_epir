@@ -11,22 +11,9 @@ import {
 import { ensureStewardTables } from './db';
 import { newId, resolveAnalysisPeriod } from './period';
 
-export type StoreStewardS2SProps = { scopes?: string[] };
-
-function requireStewardScopes(props: StoreStewardS2SProps | undefined, scope: string): void {
-  const got = Array.isArray(props?.scopes) ? props.scopes : [];
-  if (!got.includes(scope)) {
-    const hint =
-      got.length === 0
-        ? ' (ctx.props.scopes puste — dodaj `[services.props] scopes` na bindingu wołającym workera i zrób deploy)'
-        : '';
-    throw new Error(`rpc:forbidden missing scope ${scope}${hint}`);
-  }
-}
-
-export class StoreStewardS2SRpc extends WorkerEntrypoint<StewardEnv, StoreStewardS2SProps> {
+/** S2S RPC — dostęp tylko przez service binding (brak publicznego HTTP na store-steward). */
+export class StoreStewardS2SRpc extends WorkerEntrypoint<StewardEnv> {
   async runAggregation(): Promise<StewardInsightsResponse> {
-    requireStewardScopes(this.ctx.props, 'steward.ops');
     return runStewardAggregation(this.env);
   }
 
@@ -34,7 +21,6 @@ export class StoreStewardS2SRpc extends WorkerEntrypoint<StewardEnv, StoreStewar
     period_start?: string;
     period_end?: string;
   }): Promise<StewardInsightsResponse | { ok: false; error: string; status: number }> {
-    requireStewardScopes(this.ctx.props, 'steward.read');
     const periodStart = args?.period_start?.trim();
     const periodEnd = args?.period_end?.trim();
     if (periodStart && periodEnd) {
@@ -54,7 +40,6 @@ export class StoreStewardS2SRpc extends WorkerEntrypoint<StewardEnv, StoreStewar
     run_id?: string;
     agent_id?: string;
   }): Promise<{ ok: true; id: string; period_start: string; period_end: string }> {
-    requireStewardScopes(this.ctx.props, 'steward.write');
     const markdown = (args.report_markdown ?? '').trim();
     if (!markdown) {
       throw new Error('report_markdown required');

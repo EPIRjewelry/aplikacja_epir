@@ -1,6 +1,7 @@
 import type { StewardBarrier, StewardInsight, StoreSignal } from '@epir/steward-contract';
 import type { AnalysisPeriod } from './period';
 import { newId } from './period';
+import { PAID_UNKNOWN_THRESHOLD } from './aggregate-ham';
 
 type InsightDraft = {
   barrier: StewardBarrier | null;
@@ -76,6 +77,25 @@ export function deriveInsights(period: AnalysisPeriod, signals: StoreSignal[]): 
         evidence: { top_channel: top.channel, top_sessions: top.metric_value, second_channel: second.channel },
       });
     }
+  }
+
+  const hamPaid = findSignal(signals, 'paid_unknown_share', 'ham_paid_unknown_share');
+  if (hamPaid && hamPaid.metric_value >= PAID_UNKNOWN_THRESHOLD) {
+    drafts.push({
+      barrier: 'TRUST',
+      metric: 'paid_unknown_share',
+      baseline: PAID_UNKNOWN_THRESHOLD,
+      delta: hamPaid.metric_value - PAID_UNKNOWN_THRESHOLD,
+      confidence: 0.75,
+      summary: `Ruch płatny w dużej części bez źródła (${(hamPaid.metric_value * 100).toFixed(0)}% sesji paid = unknown/direct) — sprawdź UTM/gclid i HAM Etap A.`,
+      evidence: (() => {
+        try {
+          return hamPaid.evidence_json ? JSON.parse(hamPaid.evidence_json) : {};
+        } catch {
+          return {};
+        }
+      })(),
+    });
   }
 
   const warehouseQ7 = signals.find((s) => s.signal_key === 'warehouse_Q7_PRODUCT_TO_PURCHASE');

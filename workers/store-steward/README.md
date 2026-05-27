@@ -7,27 +7,18 @@ Cloudflare Worker — Store Steward Faza 0 (agregacja analityki, wnioski).
 | Kto woła | Jak |
 |----------|-----|
 | Cron (04:00 UTC) | lokalnie w workerze |
-| Inny worker | **RPC** `StoreStewardS2SRpc` + `ctx.props.scopes` |
+| Inny worker | **RPC** `StoreStewardS2SRpc` (service binding) |
 | Cursor / laptop | **HTTP** na `epir-analyst-worker`: `/v1/steward/*` + `ANALYST_HTTP_BEARER` |
 
 **Nie ustawiaj** `EPIR_CHAT_SHARED_SECRET` na tym workerze.
 
-### Scopes RPC
-
-- `steward.ops` — `runAggregation()`
-- `steward.read` — `getInsights()`
-- `steward.write` — `saveReport()`
-
-Binding (przykład na `epir-analyst-worker`):
+Binding na `epir-analyst-worker`:
 
 ```toml
 [[services]]
 binding = "STORE_STEWARD_RPC"
 service = "epir-store-steward"
 entrypoint = "StoreStewardS2SRpc"
-
-  [services.props]
-  scopes = ["steward.read", "steward.write", "steward.ops"]
 ```
 
 ## Migracje D1

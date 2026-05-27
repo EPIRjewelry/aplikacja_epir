@@ -79,7 +79,6 @@ WORKERS: dict[str, dict[str, object]] = {
         "allow_workers_dev_at_root": True,
         "rpc_props_scopes": {
             "BIGQUERY_BATCH_RPC": frozenset({"bigquery.analytics_query"}),
-            "STORE_STEWARD_RPC": frozenset({"steward.read", "steward.write", "steward.ops"}),
         },
     },
     "workers/store-steward/wrangler.toml": {

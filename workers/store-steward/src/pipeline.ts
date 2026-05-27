@@ -1,4 +1,5 @@
 import { STEWARD_CONTRACT_VERSION, type StewardInsightsResponse } from '@epir/steward-contract';
+import { aggregateHamSignals } from './aggregate-ham';
 import { aggregatePixelSignals } from './aggregate-d1';
 import { ensureStewardTables } from './db';
 import { deriveInsights, persistInsights } from './insights';
@@ -9,6 +10,8 @@ export interface StewardEnv {
   DB: D1Database;
   BIGQUERY_BATCH_RPC?: BigQueryBatchRpcStub;
   STEWARD_LOOKBACK_DAYS?: string;
+  MARKETING_INGEST_ORIGIN?: string;
+  MARKETING_OPS_PREVIEW_KEY?: string;
 }
 
 function parseLookbackDays(v: string | undefined): number {
@@ -27,8 +30,9 @@ export async function runStewardAggregation(env: StewardEnv): Promise<StewardIns
   await clearPeriodSlice(env.DB, period.period_start, period.period_end);
 
   const d1Signals = await aggregatePixelSignals(env.DB, period);
+  const hamSignals = await aggregateHamSignals(env.DB, period, env);
   const { signals: whSignals, queries } = await fetchWarehouseSignals(env.BIGQUERY_BATCH_RPC, env.DB, period);
-  const allSignals = [...d1Signals, ...whSignals];
+  const allSignals = [...d1Signals, ...hamSignals, ...whSignals];
 
   const drafts = deriveInsights(period, allSignals);
   const insights = await persistInsights(env.DB, period, drafts);

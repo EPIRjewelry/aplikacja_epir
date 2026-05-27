@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "report": "tsx src/index.ts",
-    "report:dry": "tsx src/index.ts --dry-run"
+    "report:dry": "tsx src/index.ts --dry-run",
+    "check": "tsc --noEmit"
   },
   "dependencies": {
     "@cursor/sdk": "^1.0.13",

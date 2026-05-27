@@ -32,9 +32,6 @@ binding = "STORE_STEWARD_RPC"
 service = "epir-store-steward"
 entrypoint = "StoreStewardS2SRpc"
 
-  [services.props]
-  scopes = ["steward.read", "steward.write", "steward.ops"]
-
 # wrangler secret put ANALYST_HTTP_BEARER --env=""
 # (Bearer do POST /v1/warehouse/query — dodawany w kroku implement-fetch)
 

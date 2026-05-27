@@ -624,6 +624,46 @@ describe('Analytics Worker - /pixel/events endpoint', () => {
         expect(row?.c ?? 0).toBeGreaterThan(0);
     });
 
+    it('persists UTM attribution and last_non_direct within session', async () => {
+        const sessionId = 'ham-utm-session';
+        await SELF.fetch('https://example.com/pixel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'page_viewed',
+                data: {
+                    customerId: 'ham-cust',
+                    sessionId,
+                    pageUrl: 'https://shop.example/?utm_source=google&utm_medium=cpc&utm_campaign=spring&gclid=abc',
+                },
+            }),
+        });
+        await SELF.fetch('https://example.com/pixel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'page_viewed',
+                data: {
+                    customerId: 'ham-cust',
+                    sessionId,
+                    pageUrl: 'https://shop.example/cart',
+                    traffic_source: 'direct',
+                    traffic_medium: 'none',
+                },
+            }),
+        });
+        const row = await env.DB.prepare(
+            `SELECT traffic_source, traffic_medium, traffic_campaign, click_id_type
+             FROM pixel_events WHERE session_id = ? ORDER BY CAST(id AS INTEGER) DESC LIMIT 1`,
+        )
+            .bind(sessionId)
+            .first<{ traffic_source: string; traffic_medium: string; traffic_campaign: string; click_id_type: string }>();
+        expect(row?.traffic_source).toBe('google');
+        expect(row?.traffic_medium).toBe('cpc');
+        expect(row?.traffic_campaign).toBe('spring');
+        expect(row?.click_id_type).toBe('gclid');
+    });
+
     it('POST /pixel/events aliases POST /pixel', async () => {
         const response = await SELF.fetch('https://example.com/pixel/events', {
             method: 'POST',

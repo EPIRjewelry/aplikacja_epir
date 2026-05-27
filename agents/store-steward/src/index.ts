@@ -4,7 +4,7 @@
  *
  * Env:
  *   CURSOR_API_KEY — wymagany
- *   EPIR_ANALYST_ORIGIN — URL epir-analyst-worker (proxy RPC do store-steward)
+ *   EPIR_ANALYST_ORIGIN lub EPIR_ANALYST_WORKER_ORIGIN — URL epir-analyst-worker
  *   ANALYST_HTTP_BEARER — ten sam Bearer co /v1/warehouse/query (jeden sekret zewnętrzny)
  *   STEWARD_GITHUB_REPO — opcjonalnie dla cloud (default EPIRjewelry/aplikacja_epir)
  */
@@ -12,12 +12,9 @@
 import { Agent, CursorAgentError } from '@cursor/sdk';
 import type { StewardInsightsResponse } from '@epir/steward-contract';
 import { fetchStewardInsights, saveStewardReport } from './fetch-insights.js';
+import { formatMissingEnvHelp, loadDotEnv, requireEnv, resolveAnalystOrigin } from './env.js';
 
-function requireEnv(name: string): string {
-  const v = process.env[name]?.trim();
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
-}
+loadDotEnv();
 
 function formatInsightsPayload(data: StewardInsightsResponse): string {
   const lines: string[] = [
@@ -47,7 +44,7 @@ function formatInsightsPayload(data: StewardInsightsResponse): string {
 async function main(): Promise<void> {
   const dryRun = process.argv.includes('--dry-run');
   const apiKey = requireEnv('CURSOR_API_KEY');
-  const analystOrigin = requireEnv('EPIR_ANALYST_ORIGIN');
+  const analystOrigin = resolveAnalystOrigin();
   const bearer = requireEnv('ANALYST_HTTP_BEARER');
 
   const insights = await fetchStewardInsights({
@@ -135,6 +132,11 @@ ${contextBlock}
 }
 
 main().catch((err) => {
-  console.error(err);
+  if (err instanceof Error && /Missing env|Missing analyst/i.test(err.message)) {
+    console.error(err.message);
+    console.error('\n' + formatMissingEnvHelp());
+  } else {
+    console.error(err);
+  }
   process.exit(1);
 });

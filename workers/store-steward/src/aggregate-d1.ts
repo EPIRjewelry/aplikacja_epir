@@ -1,6 +1,11 @@
 import type { AnalysisPeriod } from './period';
 import { newId } from './period';
 import type { StoreSignal } from '@epir/steward-contract';
+import {
+  RESOLVED_SOURCE_EXPR,
+  SESSION_LATEST_SUBQUERY,
+  TIME_FILTER_PLACEHOLDER,
+} from './ham-sql';
 
 /** Filtr czasu — runtime pixel_events używa INTEGER ms lub TEXT ISO. */
 const TIME_FILTER = `(typeof(created_at) = 'integer' AND created_at >= ?1)
@@ -147,13 +152,18 @@ export async function aggregatePixelSignals(db: D1Database, period: AnalysisPeri
     );
   }
 
-  // Per channel / storefront
+  // Per resolved_source / storefront (HAM Etap D — sesja = ostatni event)
   const byChannel = await db
     .prepare(
-      `SELECT COALESCE(channel, 'unknown') AS ch, COALESCE(storefront_id, 'unknown') AS sf,
-              COUNT(*) AS events, COUNT(DISTINCT session_id) AS sessions
-       FROM pixel_events
-       WHERE ${TIME_FILTER}
+      `SELECT
+              ${RESOLVED_SOURCE_EXPR} AS ch,
+              COALESCE(pe.storefront_id, 'unknown') AS sf,
+              COUNT(*) AS events,
+              COUNT(DISTINCT pe.session_id) AS sessions
+       FROM pixel_events pe
+       INNER JOIN (${SESSION_LATEST_SUBQUERY}) latest
+         ON pe.session_id = latest.session_id AND CAST(pe.id AS INTEGER) = latest.max_id
+       WHERE ${TIME_FILTER_PLACEHOLDER}
        GROUP BY ch, sf`,
     )
     .bind(cutoff)

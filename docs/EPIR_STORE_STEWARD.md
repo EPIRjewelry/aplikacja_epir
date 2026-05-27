@@ -14,11 +14,7 @@ Store Steward to **proaktywny mózg sklepu** — obserwuje zachowanie klientów 
 
 **Nie** kopiuj `EPIR_CHAT_SHARED_SECRET` na store-steward — to sekret ingressu czatu/BFF, nie analityki wewnętrznej.
 
-### Scopes (`ctx.props` na service binding)
-
-- `steward.ops` — agregacja
-- `steward.read` — odczyt insights
-- `steward.write` — zapis raportu
+Ochrona zewnętrzna: tylko **`ANALYST_HTTP_BEARER`** na `epir-analyst-worker`; RPC store-steward nie jest publiczne.
 
 ## Architektura (Faza 0)
 
@@ -30,6 +26,8 @@ Store Steward to **proaktywny mózg sklepu** — obserwuje zachowanie klientów 
 | Orkiestracja | `agents/store-steward` (Cursor SDK) |
 
 Źródła: D1 `pixel_events`, R2 SQL Q2/Q4/Q5/Q7/Q8 przez RPC do `epir-bigquery-batch`.
+
+**Atrybucja (HAM):** agregacja `resolved_*`, bramka paid-unknown i opcjonalna rekonsyliacja Ads — [`EPIR_HAM_ATTRIBUTION.md`](EPIR_HAM_ATTRIBUTION.md). Sekrety marketingu (opcjonalnie): `MARKETING_INGEST_ORIGIN`, `MARKETING_OPS_PREVIEW_KEY` na workerze store-steward (te same co preview w czacie wewnętrznym).
 
 ## API (przez analyst-worker)
 

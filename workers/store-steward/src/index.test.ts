@@ -36,6 +36,29 @@ describe('deriveInsights', () => {
     expect(drafts.some((d) => d.barrier === 'ROZMIAR' || d.barrier === 'BRAK_INFO')).toBe(true);
   });
 
+  it('flags high paid unknown attribution share', () => {
+    const period = resolveAnalysisPeriod(7);
+    const signals: StoreSignal[] = [
+      {
+        id: 'ham1',
+        period_start: period.period_start,
+        period_end: period.period_end,
+        signal_key: 'ham_paid_unknown_share',
+        storefront_id: null,
+        channel: null,
+        product_handle: null,
+        product_id: null,
+        metric_name: 'paid_unknown_share',
+        metric_value: 0.35,
+        metric_unit: 'ratio',
+        evidence_json: JSON.stringify({ gate_pass: false }),
+        source: 'd1_pixel',
+      },
+    ];
+    const drafts = deriveInsights(period, signals);
+    expect(drafts.some((d) => d.barrier === 'TRUST' && d.metric === 'paid_unknown_share')).toBe(true);
+  });
+
   it('flags high checkout abandon', () => {
     const period = resolveAnalysisPeriod(7);
     const signals: StoreSignal[] = [

@@ -140,7 +140,7 @@ Integracje **poza repo** (włączasz w Cursor): Shopify Admin MCP, Shopify Dev M
 
 ### `workers/store-steward` (`epir-store-steward`)
 
-Faza 0 Store Steward — agregacja `pixel_events` + wnioski w D1 (`jewelry-analytics-db`). **Brak sekretów HTTP** na tym workerze; odczyt/zapis przez **RPC** `StoreStewardS2SRpc` (`steward.read` / `steward.write` / `steward.ops`).
+Faza 0 Store Steward — agregacja `pixel_events` + wnioski w D1 (`jewelry-analytics-db`). **Brak sekretów HTTP** na tym workerze; odczyt/zapis przez **RPC** `StoreStewardS2SRpc` (tylko service binding); zewnątrz — `epir-analyst-worker` + `ANALYST_HTTP_BEARER`.
 
 - Cron: `0 4 * * *` UTC
 - Wołający zewnętrzny (Cursor): **`epir-analyst-worker`** — `GET|POST /v1/steward/*` + Bearer **`ANALYST_HTTP_BEARER`** (proxy RPC, bez `EPIR_CHAT_SHARED_SECRET` na store-steward)

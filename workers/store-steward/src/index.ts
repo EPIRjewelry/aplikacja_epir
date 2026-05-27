@@ -3,11 +3,10 @@
 import { runStewardAggregation, type StewardEnv } from './pipeline';
 
 export { StoreStewardS2SRpc } from './rpc';
-export type { StoreStewardS2SProps } from './rpc';
 
 /**
  * epir-store-steward — agregacja analityki sklepu (Faza 0).
- * Odczyt/zapis dla agentów: wyłącznie Workers RPC (`StoreStewardS2SRpc`) z `ctx.props.scopes`.
+ * Odczyt/zapis: wyłącznie Workers RPC (`StoreStewardS2SRpc`) przez service binding.
  * Zewnątrz (Cursor): HTTP na `epir-analyst-worker` + `ANALYST_HTTP_BEARER` (proxy RPC).
  */
 export default {

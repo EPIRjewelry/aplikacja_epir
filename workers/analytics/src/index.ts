@@ -4,6 +4,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import type { WarehouseCqrsEnv } from './cqrs/types';
 import { handleWarehouseChartsGet } from './cqrs/serving-charts';
+import { isDirectLikeSource, parseAttribution } from '@epir/ham-core';
 
 // ============================================================================
 // ANALYTICS WORKER - Shopify Web Pixel Event Tracking
@@ -158,7 +159,14 @@ async function ensurePixelTable(db: D1Database): Promise<void> {
           error_message TEXT,
           extension_id TEXT,
           mouse_x INTEGER,
-          mouse_y INTEGER
+          mouse_y INTEGER,
+          traffic_source TEXT,
+          traffic_medium TEXT,
+          traffic_campaign TEXT,
+          traffic_content TEXT,
+          traffic_term TEXT,
+          click_id TEXT,
+          click_id_type TEXT
         )`
       )
       .run();
@@ -177,6 +185,27 @@ async function ensurePixelTable(db: D1Database): Promise<void> {
     await db.prepare('ALTER TABLE pixel_events ADD COLUMN channel TEXT').run();
     console.log('[ANALYTICS_WORKER] ✅ Added channel column');
   } catch (_) { /* column may already exist */ }
+  try {
+    await db.prepare('ALTER TABLE pixel_events ADD COLUMN traffic_source TEXT').run();
+  } catch (_) { /* column may already exist */ }
+  try {
+    await db.prepare('ALTER TABLE pixel_events ADD COLUMN traffic_medium TEXT').run();
+  } catch (_) { /* column may already exist */ }
+  try {
+    await db.prepare('ALTER TABLE pixel_events ADD COLUMN traffic_campaign TEXT').run();
+  } catch (_) { /* column may already exist */ }
+  try {
+    await db.prepare('ALTER TABLE pixel_events ADD COLUMN traffic_content TEXT').run();
+  } catch (_) { /* column may already exist */ }
+  try {
+    await db.prepare('ALTER TABLE pixel_events ADD COLUMN traffic_term TEXT').run();
+  } catch (_) { /* column may already exist */ }
+  try {
+    await db.prepare('ALTER TABLE pixel_events ADD COLUMN click_id TEXT').run();
+  } catch (_) { /* column may already exist */ }
+  try {
+    await db.prepare('ALTER TABLE pixel_events ADD COLUMN click_id_type TEXT').run();
+  } catch (_) { /* column may already exist */ }
   
   // Create indexes exactly as defined in SQL files (idempotent)
   console.log('[ANALYTICS_WORKER] 🔧 Creating indexes...');
@@ -193,6 +222,8 @@ async function ensurePixelTable(db: D1Database): Promise<void> {
     await db.prepare(`CREATE INDEX IF NOT EXISTS idx_pixel_time_on_page ON pixel_events(page_url, time_on_page_seconds) WHERE time_on_page_seconds IS NOT NULL`).run();
     await db.prepare(`CREATE INDEX IF NOT EXISTS idx_pixel_search ON pixel_events(search_query, created_at) WHERE search_query IS NOT NULL`).run();
     await db.prepare(`CREATE INDEX IF NOT EXISTS idx_pixel_collection ON pixel_events(collection_id, created_at) WHERE collection_id IS NOT NULL`).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_pixel_traffic_source ON pixel_events(traffic_source, traffic_medium, created_at)`).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_pixel_click_id ON pixel_events(click_id, created_at) WHERE click_id IS NOT NULL`).run();
     console.log('[ANALYTICS_WORKER] ✅ Indexes created successfully');
   } catch (err) {
     console.warn('[ANALYTICS_WORKER] ⚠️ Failed to create some indexes (may already exist):', err);
@@ -818,6 +849,13 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
     let referrer: string | null = headerReferrer;
     let storefrontId: string | null = null;
     let channel: string | null = null;
+    let trafficSource: string | null = null;
+    let trafficMedium: string | null = null;
+    let trafficCampaign: string | null = null;
+    let trafficContent: string | null = null;
+    let trafficTerm: string | null = null;
+    let clickId: string | null = null;
+    let clickIdType: string | null = null;
     
     // Parse event data (Shopify structure varies by event type)
     if (typeof eventData === 'object' && eventData !== null) {
@@ -982,6 +1020,14 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
       if (typeof data.channel === 'string') {
         channel = data.channel;
       }
+      const attribution = parseAttribution(data, pageUrl, referrer);
+      trafficSource = attribution.source;
+      trafficMedium = attribution.medium;
+      trafficCampaign = attribution.campaign;
+      trafficContent = attribution.content;
+      trafficTerm = attribution.term;
+      clickId = attribution.clickId;
+      clickIdType = attribution.clickIdType;
     }
     
     // ============================================================================
@@ -1133,6 +1179,46 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
     // Normalize identifiers (avoid NULLs in D1 schemas)
     const normalizedCustomerId = customerId ?? 'anonymous';
     const normalizedSessionId = sessionId ?? `session_${timestamp}_${Math.random().toString(36).slice(2, 8)}`;
+
+    const isDirectLike = isDirectLikeSource(trafficSource);
+    if (normalizedSessionId && isDirectLike) {
+      const lastKnown = await pixelDb
+        .prepare(
+          `SELECT
+             traffic_source,
+             traffic_medium,
+             traffic_campaign,
+             traffic_content,
+             traffic_term,
+             click_id,
+             click_id_type
+           FROM pixel_events
+           WHERE session_id = ?1
+             AND traffic_source IS NOT NULL
+             AND lower(traffic_source) NOT IN ('direct','unknown','(direct)','none')
+           ORDER BY id DESC
+           LIMIT 1`,
+        )
+        .bind(normalizedSessionId)
+        .first<{
+          traffic_source: string | null;
+          traffic_medium: string | null;
+          traffic_campaign: string | null;
+          traffic_content: string | null;
+          traffic_term: string | null;
+          click_id: string | null;
+          click_id_type: string | null;
+        }>();
+      if (lastKnown) {
+        trafficSource = lastKnown.traffic_source ?? trafficSource;
+        trafficMedium = lastKnown.traffic_medium ?? trafficMedium;
+        trafficCampaign = lastKnown.traffic_campaign ?? trafficCampaign;
+        trafficContent = lastKnown.traffic_content ?? trafficContent;
+        trafficTerm = lastKnown.traffic_term ?? trafficTerm;
+        clickId = lastKnown.click_id ?? clickId;
+        clickIdType = lastKnown.click_id_type ?? clickIdType;
+      }
+    }
     // Kompatybilność legacy: część środowisk ma `id INTEGER PRIMARY KEY` zamiast `TEXT`.
     // Używamy liczby, która działa dla obu schematów.
     const eventId = timestamp * 1000 + Math.floor(Math.random() * 1000);
@@ -1165,7 +1251,9 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
         checkout_token, order_id, order_value,
         alert_type, alert_message,
         error_message, extension_id,
-        mouse_x, mouse_y
+        mouse_x, mouse_y,
+        traffic_source, traffic_medium, traffic_campaign, traffic_content, traffic_term,
+        click_id, click_id_type
       ) VALUES (
         ?1, ?2, ?3, ?4,
         ?5, ?6, ?7, ?8,
@@ -1182,7 +1270,9 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
         ?35, ?36, ?37,
         ?38, ?39,
         ?40, ?41,
-        ?42, ?43
+        ?42, ?43,
+        ?44, ?45, ?46, ?47, ?48,
+        ?49, ?50
       )`
     )
     .bind(
@@ -1201,7 +1291,9 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
       checkoutToken, orderId, orderValue,
       alertType, alertMessage,
       errorMessage, extensionId,
-      mouseX, mouseY
+      mouseX, mouseY,
+      trafficSource, trafficMedium, trafficCampaign, trafficContent, trafficTerm,
+      clickId, clickIdType
     )
     .run();
     
