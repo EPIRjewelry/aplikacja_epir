@@ -1,8 +1,10 @@
 /* Shared tokens from @epir/ui - base styles in packages/ui/styles/base.css */
 :root {
-  --color-primary: 20 20 20;
-  --color-contrast: 250 250 249;
-  --color-accent: 191 72 0;
+  /* Kazka Jewelry - Cartier-inspired palette */
+  --color-primary: 10 22 40;        /* #0A1628 - głęboki granat */
+  --color-contrast: 245 240 230;    /* #F5F0E6 - kremowa kość */
+  --color-accent: 201 169 110;      /* #C9A96E - złoto Cartier */
+  --font-family-brand: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
   --font-size-fine: 0.75rem;
   --font-size-copy: 1rem;
   --font-size-lead: 1.125rem;
@@ -32,6 +34,11 @@
 
 html {
   scroll-padding-top: 10rem;
+}
+
+html,
+body {
+  font-family: var(--font-family-brand);
 }
 
 a.active {
