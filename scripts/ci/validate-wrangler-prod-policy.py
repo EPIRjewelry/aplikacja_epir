@@ -35,6 +35,8 @@ WORKERS: dict[str, dict[str, object]] = {
                 "ANALYTICS_WORKER",
                 "ANALYTICS_S2S_RPC",
                 "BIGQUERY_BATCH_RPC",
+                "STORE_STEWARD_RPC",
+                "MARKETING_INGEST_RPC",
                 "AI",
             }
         ),

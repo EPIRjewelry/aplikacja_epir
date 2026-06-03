@@ -32,13 +32,14 @@ interface Env {
   WAREHOUSE_SQL_NAMESPACE?: string;
   WAREHOUSE_SQL_PIXEL_TABLE?: string;
   WAREHOUSE_SQL_MESSAGES_TABLE?: string;
-  /** Bearer dla GET /internal/flow-health, POST /internal/trigger-export i crona EDOG. */
+  /** @deprecated — HTTP /internal/* wyłączone; użyj RPC z czatu. */
   DATA_GUARDIAN_OPS_KEY?: string;
   /** Opcjonalny KV — ostatni raport crona (klucz `edog:latest`). */
   DATA_GUARDIAN_KV?: KVNamespace;
-  /** Raport dzienny operatora — podgląd marketingu. */
-  MARKETING_INGEST_ORIGIN?: string;
-  MARKETING_OPS_PREVIEW_KEY?: string;
+  /** Podgląd marketingu w raporcie operatora (RPC). */
+  MARKETING_INGEST_RPC?: {
+    getMarketingPreview(args?: { date?: string }): Promise<Record<string, unknown>>;
+  };
   /** Opcjonalny webhook (np. Google Apps Script) — zapis raportu na Drive. */
   GWORKSPACE_REPORT_WEBHOOK_URL?: string;
 }
@@ -49,17 +50,15 @@ const CRON_EDOG_08 = '0 8 * * *';
 const CRON_EDOG_20 = '0 20 * * *';
 const CRON_OPERATOR_REPORT = '0 9 * * *';
 
-function requireDataGuardianAuth(request: Request, env: Env): Response | null {
-  const secret = (env.DATA_GUARDIAN_OPS_KEY ?? '').trim();
-  const auth = (request.headers.get('Authorization') ?? '').trim();
-  const bearer = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
-  if (!secret || bearer !== secret) {
-    return new Response(JSON.stringify({ error: 'unauthorized' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-  return null;
+/** HTTP operator endpoints usunięte — wyłącznie RPC (`BigQueryBatchS2SRpc`) lub cron. */
+function deprecatedInternalHttp(): Response {
+  return new Response(
+    JSON.stringify({
+      error: 'deprecated_use_rpc',
+      hint: 'flow-health i trigger-export: BIGQUERY_BATCH_RPC z workera czatu (/internal/solo-dev-chat/api/*).',
+    }),
+    { status: 404, headers: { 'Content-Type': 'application/json' } },
+  );
 }
 
 async function probeQ1ForEdog(env: Env): Promise<{
@@ -103,29 +102,6 @@ export type WarehouseExportSummary = {
   pipeline_error?: string;
 };
 
-function agentDebugLog(
-  location: string,
-  message: string,
-  data: Record<string, unknown>,
-  hypothesisId: string,
-): void {
-  const payload = {
-    sessionId: 'acf280',
-    location,
-    message,
-    data,
-    timestamp: Date.now(),
-    hypothesisId,
-  };
-  console.log('[DEBUG-acf280]', JSON.stringify(payload));
-  // #region agent log
-  fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'acf280' },
-    body: JSON.stringify(payload),
-  }).catch(() => {});
-  // #endregion
-}
 
 // ============================================================================
 // Eksport pixel_events → Pipelines
@@ -434,34 +410,9 @@ async function executeRunAnalyticsQuery(
   }
   const { rows, error } = await runR2SqlJob(env, sql);
   if (error) {
-    agentDebugLog(
-      'bigquery-batch/index.ts:executeRunAnalyticsQuery',
-      'r2_sql_error',
-      { queryId, error: error.slice(0, 300) },
-      'H6',
-    );
     return { ok: false, error, status: 500 };
   }
   const rowList = rows ?? [];
-  const todayUtc = new Date().toISOString().slice(0, 10);
-  let todayEventCount: number | null = null;
-  if (queryId === 'Q8_DAILY_EVENTS') {
-    todayEventCount = rowList
-      .filter((r) => String(r.event_date ?? '').startsWith(todayUtc))
-      .reduce((sum, r) => sum + (Number(r.event_count) || 0), 0);
-  }
-  agentDebugLog(
-    'bigquery-batch/index.ts:executeRunAnalyticsQuery',
-    'r2_sql_ok',
-    {
-      queryId,
-      rowCount: rowList.length,
-      todayUtc,
-      todayEventCount,
-      pixelTable: env.WAREHOUSE_SQL_PIXEL_TABLE ?? 'epir_pixel_events_raw',
-    },
-    'H1',
-  );
   return { ok: true, queryId, rows: rowList };
 }
 
@@ -496,10 +447,7 @@ export default {
       return new Response('ok', { status: 200 });
     }
     if (request.method === 'GET' && url.pathname === '/internal/flow-health') {
-      const denied = requireDataGuardianAuth(request, env);
-      if (denied) return denied;
-      const report = await buildFlowHealthReport(env, probeQ1ForEdog);
-      return Response.json(report);
+      return deprecatedInternalHttp();
     }
     if (request.method === 'GET' && url.pathname === '/internal/export-status') {
       let pendingPixel = -1;
@@ -524,13 +472,7 @@ export default {
       });
     }
     if (request.method === 'POST' && url.pathname === '/internal/trigger-export') {
-      const denied = requireDataGuardianAuth(request, env);
-      if (denied) return denied;
-      const summary = await handleScheduled(env);
-      return new Response(JSON.stringify({ ok: true, summary }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return deprecatedInternalHttp();
     }
     if (request.method === 'POST' && url.pathname === '/internal/analytics/query') {
       return new Response(JSON.stringify({ error: 'analytics_query_deprecated_use_rpc' }), {

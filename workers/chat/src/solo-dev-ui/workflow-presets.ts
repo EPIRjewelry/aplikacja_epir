@@ -5,7 +5,7 @@
 import type { ModelVariantKey } from '../config/model-params';
 import type { SoloDevAgentId } from '../solo-dev-agent-presets';
 
-export type OperatorWorkflowGroup = 'data' | 'creative' | 'production';
+export type OperatorWorkflowGroup = 'data' | 'creative' | 'production' | 'storefront';
 
 export type OperatorWorkflowId =
   | 'data_flow_audit'
@@ -18,7 +18,16 @@ export type OperatorWorkflowId =
   | 'creative_svg_code'
   | 'creative_copy'
   | 'creative_gdocs_brief'
-  | 'production_blender';
+  | 'production_blender'
+  | 'storefront_hero'
+  | 'storefront_landing_copy'
+  | 'storefront_banner';
+
+const KAZKA_BRAND_SUFFIX =
+  ' Marka Kazka: granat #0A1628, beż #F5F0E6, złoto #C9A96E. Typografia: Cormorant Garamond. Luksusowa biżuteria — bez clipartu, bez tekstu w obrazie (chyba że prosisz o mockup z copy).';
+
+const ZARECZYNY_BRAND_SUFFIX =
+  ' Marka Zaręczyny: elegancki minimalizm, ciepłe tło, subtelne złoto. Bez clipartu; tekst w obrazie tylko na wyraźną prośbę.';
 
 export type OperatorWorkflowPreset = {
   readonly id: OperatorWorkflowId;
@@ -156,12 +165,51 @@ export const OPERATOR_WORKFLOW_PRESETS: readonly OperatorWorkflowPreset[] = [
     id: 'production_blender',
     group: 'production',
     label: 'Produkcja — Blender workflow',
-    description: 'Instrukcje curve→mesh; wykonanie w Cursor + Blender MCP.',
+    description: 'curve→mesh / packshot przez blender_bridge_invoke (most HTTP na PC).',
     agentId: 'creative_blender_flow',
     modelVariant: 'or_gpt4o',
     promptSuffix: '',
     outcomeBanner: 'Wynik: kroki Blender + ewentualny krótki bpy (bez destrukcji).',
-    sourcesHint: 'Wykonanie mesh: Blender MCP w Cursorze (osobne narzędzie).',
+    sourcesHint: 'Mesh/render: narzędzie blender_bridge_invoke (relay 9876 + addon 8765). Fallback: Cursor MCP.',
+  },
+  {
+    id: 'storefront_hero',
+    group: 'storefront',
+    label: 'Sklep — hero / landing (obraz)',
+    description: 'Szeroki kadr pod section_hero; Recraft lub model image z katalogu OR.',
+    agentId: 'creative_storefront',
+    modelVariant: 'or_recraft_v41_pro',
+    promptSuffix:
+      'Format: szeroki hero 16:9, luksusowa biżuteria, dużo negatywu, bez tekstu w kadrze.' +
+      KAZKA_BRAND_SUFFIX,
+    outcomeBanner: 'Wynik: obraz hero — pobierz i wgraj do Shopify/metaobject lub Hydrogen.',
+    sourcesHint: 'Preset Recraft lub Katalog OpenRouter (filtr: generacja obrazu).',
+  },
+  {
+    id: 'storefront_landing_copy',
+    group: 'storefront',
+    label: 'Sklep — copy landing',
+    description: 'Nagłówek, lead, CTA, sekcje — dowolny model tekstowy z katalogu OR.',
+    agentId: 'creative_storefront',
+    modelVariant: 'or_claude_sonnet_4',
+    promptSuffix:
+      'Zwróć: H1, podtytuł, 2× CTA (tekst+rola), krótki opis sekcji hero i 3 bulletów wartości.' +
+      KAZKA_BRAND_SUFFIX,
+    outcomeBanner: 'Wynik: copy do landing / section_hero (tekst).',
+    sourcesHint: 'Katalog OpenRouter — modele tekstowe; bez Recraft.',
+  },
+  {
+    id: 'storefront_banner',
+    group: 'storefront',
+    label: 'Sklep — baner promo',
+    description: 'Baner poziomy pod kampanię lub kolekcję.',
+    agentId: 'creative_storefront',
+    modelVariant: 'or_recraft_v41_utility_vector',
+    promptSuffix:
+      'Format: baner poziomy 3:1, prosty znak lub produkt, dużo tła, bez drobnego tekstu.' +
+      KAZKA_BRAND_SUFFIX,
+    outcomeBanner: 'Wynik: baner — pobierz i opublikuj ręcznie w theme/Hydrogen.',
+    sourcesHint: 'Recraft utility_vector lub image model z katalogu.',
   },
 ] as const;
 
@@ -184,6 +232,7 @@ const GROUP_LABELS: Record<OperatorWorkflowGroup, string> = {
   data: 'Dane',
   creative: 'Kreacja',
   production: 'Produkcja',
+  storefront: 'Sklep / landing',
 };
 
 export function buildOperatorWorkflowSelectHtml(): string {
@@ -194,7 +243,7 @@ export function buildOperatorWorkflowSelectHtml(): string {
     byGroup.set(p.group, list);
   }
   const parts: string[] = [];
-  for (const group of ['data', 'creative', 'production'] as const) {
+  for (const group of ['data', 'creative', 'storefront', 'production'] as const) {
     const presets = byGroup.get(group);
     if (!presets?.length) continue;
     parts.push(`<optgroup label="${escapeHtml(GROUP_LABELS[group])}">`);

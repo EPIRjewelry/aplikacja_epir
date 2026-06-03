@@ -29,6 +29,11 @@ entrypoint = "BigQueryBatchS2SRpc"
   [services.props]
   scopes = ["bigquery.analytics_query"]
 
+[[services]]
+binding = "MARKETING_INGEST_RPC"
+service = "epir-marketing-ingest"
+entrypoint = "MarketingIngestS2SRpc"
+
 [vars]
 STEWARD_LOOKBACK_DAYS = "7"
 

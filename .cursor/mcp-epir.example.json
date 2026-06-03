@@ -9,6 +9,11 @@
         "GWORKSPACE_MAX_CHARS": "32000"
       }
     },
+    "blender-assist": {
+      "command": "D:\\Blender_Assist\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "mcp_server"],
+      "cwd": "D:\\Blender_Assist"
+    },
     "epir-data-ops": {
       "command": "npx",
       "args": ["tsx", "mcp-servers/epir-data-ops/src/index.ts"],

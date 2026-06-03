@@ -1,13 +1,28 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { __test } from '../src/ai-client';
 import { MODEL_VARIANTS, resolveModelVariant } from '../src/config/model-params';
+import { __resetOpenRouterCatalogCacheForTests } from '../src/openrouter-catalog';
 
-const { resolveAdminModelVariantFromHeaders } = __test as unknown as {
+const {
+  resolveAdminModelVariantFromHeaders,
+  resolveDynamicOpenRouterModelFromHeaders,
+  resolveOperatorModelOverride,
+} = __test as unknown as {
   resolveAdminModelVariantFromHeaders: (
     headers: { get(name: string): string | null },
     env: { EPIR_OPERATOR_PANEL_SECRET?: string },
     context?: { hasImage?: boolean },
   ) => typeof MODEL_VARIANTS.default | null;
+  resolveDynamicOpenRouterModelFromHeaders: (
+    headers: { get(name: string): string | null },
+    env: { EPIR_OPERATOR_PANEL_SECRET?: string; OPENROUTER_API_KEY?: string },
+    context?: { hasImage?: boolean },
+  ) => Promise<typeof MODEL_VARIANTS.default | null>;
+  resolveOperatorModelOverride: (
+    headers: { get(name: string): string | null },
+    env: { EPIR_OPERATOR_PANEL_SECRET?: string; OPENROUTER_API_KEY?: string },
+    context?: { hasImage?: boolean },
+  ) => Promise<typeof MODEL_VARIANTS.default | null>;
 };
 
 function fakeHeaders(entries: Record<string, string>) {
@@ -134,6 +149,78 @@ describe('resolveAdminModelVariantFromHeaders', () => {
       { hasImage: true },
     );
     expect(result).toBeNull();
+  });
+});
+
+describe('resolveDynamicOpenRouterModelFromHeaders', () => {
+  const panelSecret = 'test-operator-panel-secret-42chars_min_len___';
+
+  beforeEach(() => {
+    __resetOpenRouterCatalogCacheForTests();
+    vi.unstubAllGlobals();
+  });
+
+  it('returns null without X-Epir-OpenRouter-Model header', async () => {
+    const result = await resolveDynamicOpenRouterModelFromHeaders(
+      fakeHeaders({ Authorization: `Bearer ${panelSecret}` }),
+      { EPIR_OPERATOR_PANEL_SECRET: panelSecret, OPENROUTER_API_KEY: 'sk-or' },
+    );
+    expect(result).toBeNull();
+  });
+
+  it('returns capabilities for catalog slug with valid bearer', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'recraft/recraft-v4.1',
+                name: 'Recraft v4.1',
+                architecture: { output_modalities: ['image'] },
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    const result = await resolveDynamicOpenRouterModelFromHeaders(
+      fakeHeaders({
+        Authorization: `Bearer ${panelSecret}`,
+        'X-Epir-OpenRouter-Model': 'recraft/recraft-v4.1',
+      }),
+      { EPIR_OPERATOR_PANEL_SECRET: panelSecret, OPENROUTER_API_KEY: 'sk-or' },
+    );
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe('openrouter/recraft/recraft-v4.1');
+    expect(result!.imageGen).toBe(true);
+  });
+
+  it('resolveOperatorModelOverride prefers preset over dynamic slug', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: [{ id: 'openai/gpt-4o', name: 'GPT-4o', architecture: {} }],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    const result = await resolveOperatorModelOverride(
+      fakeHeaders({
+        Authorization: `Bearer ${panelSecret}`,
+        'X-Epir-Model-Variant': 'k26',
+        'X-Epir-OpenRouter-Model': 'openai/gpt-4o',
+      }),
+      { EPIR_OPERATOR_PANEL_SECRET: panelSecret, OPENROUTER_API_KEY: 'sk-or' },
+    );
+    expect(result!.id).toBe(MODEL_VARIANTS.k26.id);
   });
 });
 

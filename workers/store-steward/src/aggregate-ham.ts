@@ -14,8 +14,9 @@ import { compareDeterministicVsProbabilistic } from '@epir/ham-core';
 export const PAID_UNKNOWN_THRESHOLD = 0.2;
 
 export type MarketingReconcileEnv = {
-  MARKETING_INGEST_ORIGIN?: string;
-  MARKETING_OPS_PREVIEW_KEY?: string;
+  MARKETING_INGEST_RPC?: {
+    getMarketingPreview(args?: { date?: string }): Promise<MarketingPreviewBody>;
+  };
 };
 
 type MarketingPreviewBody = {
@@ -26,15 +27,11 @@ async function fetchMarketingPreview(
   env: MarketingReconcileEnv,
   date: string,
 ): Promise<MarketingPreviewBody | null> {
-  const origin = (env.MARKETING_INGEST_ORIGIN ?? '').replace(/\/$/, '');
-  const key = env.MARKETING_OPS_PREVIEW_KEY ?? '';
-  if (!origin || !key) return null;
+  const rpc = env.MARKETING_INGEST_RPC;
+  if (!rpc?.getMarketingPreview) return null;
   try {
-    const res = await fetch(`${origin}/ops/marketing-preview?date=${encodeURIComponent(date)}`, {
-      headers: { Authorization: `Bearer ${key}` },
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as MarketingPreviewBody;
+    const body = await rpc.getMarketingPreview({ date });
+    return body as MarketingPreviewBody;
   } catch {
     return null;
   }

@@ -12,6 +12,12 @@ import {
   type ModelCapabilities,
   type ModelVariantKey,
 } from './config/model-params';
+import {
+  catalogEntryToCapabilities,
+  fetchOpenRouterCatalog,
+  findCatalogEntry,
+  isValidOpenRouterModelId,
+} from './openrouter-catalog';
 import { sanitizeHarmonyHistory } from './utils/sanitizeHarmonyHistory';
 
 export type GroqToolCall = {
@@ -884,6 +890,8 @@ export type StreamGroqEventsOptions = {
    * i samemu zastosować guardy (np. fallback dla multimodal).
    */
   modelId?: string;
+  /** Capabilities z resolveOperatorModelOverride (dynamiczny katalog OR). */
+  modelCapabilities?: ModelCapabilities;
   /** Override `max_tokens` dla tej tury streamu. */
   maxTokens?: number;
   /** Anulowanie żądania (np. ścieżka AI Gateway); Workers AI `runModelStream` na razie tego nie używa. */
@@ -996,11 +1004,16 @@ function resolveOpenRouterVariantByModelName(modelName: string): ModelCapabiliti
 }
 
 /** OpenRouter: modele imageGen (Recraft V4.1 itd.) — tylko `modalities: ["image"]` (nie image+text). */
-function openRouterImageGenModalities(modelId: string): string[] | undefined {
+function openRouterImageGenModalities(
+  modelId: string,
+  activeCap?: ModelCapabilities | null,
+): string[] | undefined {
+  if (activeCap?.imageGen) return ['image'];
   const modelName = modelId.replace(/^openrouter\//, '');
   const cap = resolveOpenRouterVariantByModelName(modelName);
   if (cap?.imageGen) return ['image'];
   if (modelName.startsWith('recraft/')) return ['image'];
+  if (/\/flux|stable-diffusion|dall-e/i.test(modelName)) return ['image'];
   return undefined;
 }
 
@@ -1046,7 +1059,7 @@ async function streamGroqEventsOpenRouter(
   const modelId = options?.modelId ?? CHAT_MODEL_ID;
   const modelName = modelId.replace('openrouter/', '');
 
-  const modalities = openRouterImageGenModalities(modelId);
+  const modalities = openRouterImageGenModalities(modelId, options?.modelCapabilities);
   const body: Record<string, unknown> = {
     model: modelName,
     messages: sanitizedMessages,
@@ -1225,10 +1238,67 @@ export function resolveAdminModelVariantFromHeaders(
   return variant;
 }
 
+function operatorBearerMatchesPanelSecret(
+  headers: { get(name: string): string | null },
+  env: { EPIR_OPERATOR_PANEL_SECRET?: string },
+): boolean {
+  const configured = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
+  if (!configured) return false;
+  const rawAuth = headers.get('Authorization') ?? headers.get('authorization');
+  const m = /^Bearer\s+(.+)$/i.exec((rawAuth ?? '').trim());
+  const bearer = m?.[1]?.trim();
+  return Boolean(bearer && timingSafeEqualStrings(bearer, configured));
+}
+
+/**
+ * Dowolny slug z katalogu OpenRouter (po walidacji cache) — tylko z Bearer panelu operatora.
+ */
+export async function resolveDynamicOpenRouterModelFromHeaders(
+  headers: { get(name: string): string | null },
+  env: { EPIR_OPERATOR_PANEL_SECRET?: string; OPENROUTER_API_KEY?: string },
+  context: { hasImage?: boolean } = {},
+): Promise<ModelCapabilities | null> {
+  const raw =
+    headers.get('x-epir-openrouter-model') ?? headers.get('X-Epir-OpenRouter-Model');
+  if (!raw?.trim()) return null;
+  const slug = raw.trim();
+  if (!isValidOpenRouterModelId(slug)) return null;
+  if (!operatorBearerMatchesPanelSecret(headers, env)) return null;
+
+  const apiKey = env.OPENROUTER_API_KEY?.trim();
+  if (!apiKey) return null;
+
+  const catalog = await fetchOpenRouterCatalog(apiKey);
+  const entry = findCatalogEntry(catalog, slug);
+  if (!entry) return null;
+
+  const cap = catalogEntryToCapabilities(entry);
+  if (context.hasImage && !cap.multimodal) {
+    console.warn(
+      `[resolveDynamicOpenRouterModelFromHeaders] model=${slug} is not multimodal; ignoring override`,
+    );
+    return null;
+  }
+  return cap;
+}
+
+/** Preset `or_*` ma pierwszeństwo; potem dynamiczny slug z katalogu OR. */
+export async function resolveOperatorModelOverride(
+  headers: { get(name: string): string | null },
+  env: { EPIR_OPERATOR_PANEL_SECRET?: string; OPENROUTER_API_KEY?: string },
+  context: { hasImage?: boolean } = {},
+): Promise<ModelCapabilities | null> {
+  const variant = resolveAdminModelVariantFromHeaders(headers, env, context);
+  if (variant) return variant;
+  return resolveDynamicOpenRouterModelFromHeaders(headers, env, context);
+}
+
 export const __test = {
   createGroqStreamTransform,
   normalizeWorkersAiSessionId,
   resolveAdminModelVariantFromHeaders,
+  resolveDynamicOpenRouterModelFromHeaders,
+  resolveOperatorModelOverride,
 };
 
 /** Opcje `getGroqResponse` (nie-streaming, `env.AI.run`). */

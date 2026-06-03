@@ -45,35 +45,11 @@ export async function action({request, context}: ActionFunctionArgs) {
   const env = getEnvFromActionContext(context);
   const secret = getEpirChatSharedSecret(env);
   if (!secret) {
-    const hasMainKey = Object.prototype.hasOwnProperty.call(
-      env,
-      'EPIR_CHAT_SHARED_SECRET',
-    );
-    const hasLegacyKey = Object.prototype.hasOwnProperty.call(
-      env,
-      'CHAT_SHARED_SECRET',
-    );
-    const hasHeaderNamedKey = Object.prototype.hasOwnProperty.call(
-      env,
-      'X-EPIR-SHARED-SECRET',
-    );
-    console.error('[api.chat] Missing shared secret in Pages runtime', {
-      hasMainKey,
-      hasLegacyKey,
-      hasHeaderNamedKey,
-      envKeysCount: Object.keys(env).length,
-    });
     return json(
       {
         error: MISSING_SECRET_ERROR,
         hint:
-          'Ustaw sekret EPIR_CHAT_SHARED_SECRET (albo X-EPIR-SHARED-SECRET) w Cloudflare Pages -> kazka-hydrogen-pages -> Variables and Secrets -> Production i Preview, a potem wykonaj redeploy.',
-        debug: {
-          hasEpirChatSharedSecretKey: hasMainKey,
-          hasChatSharedSecretKey: hasLegacyKey,
-          hasXEpirSharedSecretKey: hasHeaderNamedKey,
-          envKeysCount: Object.keys(env).length,
-        },
+          'Ustaw sekret EPIR_CHAT_SHARED_SECRET w Cloudflare Pages -> kazka-hydrogen-pages -> Variables and Secrets.',
       },
       {status: 503},
     );

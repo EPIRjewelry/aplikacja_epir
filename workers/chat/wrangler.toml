@@ -99,8 +99,7 @@ binding = "AI"
 # wrangler secret put SHOPIFY_ADMIN_TOKEN
 # Shopify Admin (m.in. shopifyqlQuery): wersja URL = `SHOPIFY_ADMIN_API_VERSION` w src/config/shopify-api-version.ts (spięte z shopify.app.toml [webhooks] api_version).
 # Storefront GraphQL (metaobject / AI profile): osobny pin w tym samym pliku — nie mylić z Admin.
-# Project B — fetch_marketing_preview: origin workera epir-marketing-ingest (bez `/`) — NIE mylić z MARKETING_PIPELINE_INGEST_URL (Pipelines).
-# Ten sam sekret MARKETING_OPS_PREVIEW_KEY musi być na `epir-art-jewellery-worker` i `epir-marketing-ingest`: wrangler secret put (oba katalogi).
+# Project B — fetch_marketing_preview: binding MARKETING_INGEST_RPC (bez MARKETING_OPS_PREVIEW_KEY między workerami).
 
 # Service binding to RAG worker (reusable RAG orchestrator)
 [[services]]
@@ -134,6 +133,16 @@ entrypoint = "BigQueryBatchS2SRpc"
 
   [services.props]
   scopes = ["bigquery.analytics_query"]
+
+[[services]]
+binding = "STORE_STEWARD_RPC"
+service = "epir-store-steward"
+entrypoint = "StoreStewardS2SRpc"
+
+[[services]]
+binding = "MARKETING_INGEST_RPC"
+service = "epir-marketing-ingest"
+entrypoint = "MarketingIngestS2SRpc"
 
 [observability]
 enabled = true
@@ -178,10 +187,12 @@ MCP_ENDPOINT = "https://epir-art-silver-jewellery.myshopify.com/api/mcp"
 # W produkcji: https://asystent.epirbizuteria.pl
 # W dev: https://asystent-epir.YOUR-NAME.workers.dev
 WORKER_ORIGIN = "https://asystent.epirbizuteria.pl"
-# Base URL workera `epir-marketing-ingest` (GET /ops/marketing-preview). Zmień subdomain, jeśli konto CF ma inny workers.dev.
-MARKETING_INGEST_ORIGIN = "https://epir-marketing-ingest.krzysztofdzugaj.workers.dev"
+# Operator Studio: wrangler secret put EPIR_OPERATOR_PANEL_SECRET
+# Hydrogen BFF → /chat: wrangler secret put EPIR_CHAT_SHARED_SECRET (ten sam co na Pages)
 # Opcjonalna twarda bramka przed run_analytics_query (domyślnie wyłączona — EDOG to monitoring/audyt).
 EDOG_GATE_ENABLED = "false"
+# Operator Studio → Blender_assist HTTP relay (named tunnel). Nie jest secret.
+BLENDER_BRIDGE_ORIGIN = "https://blender-bridge.epirbizuteria.pl"
 # --- Sekrety Storefront (ustaw ręcznie: wrangler secret put <NAZWA>; NIE commituj wartości) ---
 # Fallback dla kanału online-store / aliasów `epir` i `epirbizuteria.pl` (App Proxy, TAE data-brand=epir):
 #   wrangler secret put SHOPIFY_STOREFRONT_TOKEN

@@ -274,9 +274,8 @@ export async function fetchMarketingPreviewTool(
   args: { date?: string },
 ): Promise<{ result?: unknown; error?: unknown }> {
   const t0 = Date.now();
-  const origin = (env.MARKETING_INGEST_ORIGIN ?? '').trim().replace(/\/$/, '');
-  const bearer = (env.MARKETING_OPS_PREVIEW_KEY ?? '').trim();
-  if (!origin || !bearer) {
+  const rpc = env.MARKETING_INGEST_RPC;
+  if (!rpc?.getMarketingPreview) {
     chatPipelineLog({
       phase: 'marketing_preview_tool',
       duration_ms: Date.now() - t0,
@@ -286,8 +285,7 @@ export async function fetchMarketingPreviewTool(
     return {
       error: {
         code: -32603,
-        message:
-          'fetch_marketing_preview not configured (set var MARKETING_INGEST_ORIGIN and secret MARKETING_OPS_PREVIEW_KEY on chat worker)',
+        message: 'fetch_marketing_preview not configured (MARKETING_INGEST_RPC binding missing)',
       },
     };
   }
@@ -295,74 +293,28 @@ export async function fetchMarketingPreviewTool(
   const date =
     typeof dateRaw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateRaw.trim()) ? dateRaw.trim() : undefined;
   try {
-    const u = new URL('/ops/marketing-preview', `${origin}/`);
-    if (date) u.searchParams.set('date', date);
-    const r = await fetch(u.toString(), {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${bearer}`,
-        Accept: 'application/json',
-      },
-      signal: AbortSignal.timeout(25_000),
-    });
-    if (!r.ok) {
-      const body = await r.text().catch(() => '');
-      chatPipelineLog({
-        phase: 'marketing_preview_tool',
-        duration_ms: Date.now() - t0,
-        ok: false,
-        http_status: r.status,
-      });
-      return {
-        error: {
-          code: r.status,
-          message: `marketing-preview HTTP ${r.status}`,
-          details: body.slice(0, 800),
-        },
-      };
-    }
-    const json = (await r.json()) as Record<string, unknown>;
-    const ga = json.google_analytics as { rowCount?: number } | undefined;
-    const ads = json.google_ads as { rowCount?: number } | undefined;
+    const json = await rpc.getMarketingPreview(date ? { date } : undefined);
     chatPipelineLog({
       phase: 'marketing_preview_tool',
       duration_ms: Date.now() - t0,
       ok: true,
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b07ff0' },
-      body: JSON.stringify({
-        sessionId: 'b07ff0',
-        location: 'chat/internal-analytics-tools.ts:fetchMarketingPreviewTool',
-        message: 'marketing_preview_ok',
-        data: {
-          dateParam: date ?? 'default_yesterday_utc',
-          previewDate: json.date,
-          gaRowCount: ga?.rowCount ?? null,
-          adsRowCount: ads?.rowCount ?? null,
-        },
-        timestamp: Date.now(),
-        hypothesisId: 'H2',
-      }),
-    }).catch(() => {});
-    // #endregion
     return {
       result: {
         source: 'marketing_preview',
-        endpoint: 'GET /ops/marketing-preview',
+        endpoint: 'MarketingIngestS2SRpc.getMarketingPreview',
         payload: json,
       },
     };
-  } catch (e: any) {
+  } catch (e: unknown) {
     chatPipelineLog({
       phase: 'marketing_preview_tool',
       duration_ms: Date.now() - t0,
       ok: false,
       exception: true,
     });
-    return { error: { code: -32000, message: e?.message ?? 'fetch_marketing_preview failed' } };
+    const message = e instanceof Error ? e.message : String(e);
+    return { error: { code: -32000, message: message || 'fetch_marketing_preview failed' } };
   }
 }
 

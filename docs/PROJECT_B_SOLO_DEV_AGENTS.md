@@ -14,6 +14,7 @@ Kod UI: [`workers/chat/src/solo-dev-ui/`](../workers/chat/src/solo-dev-ui/) (`bu
 | `X-Admin-Key` | `EPIR_OPERATOR_PANEL_SECRET` — auth operatora |
 | `X-EPIR-AGENT-PRESET` | Rola agenta (patrz tabela poniżej) |
 | `X-Epir-Model-Variant` | Klucz wariantu z `workers/chat/src/config/model-params.ts` (`or_*` = OpenRouter) |
+| `X-Epir-OpenRouter-Model` | Dowolny slug z katalogu OR (`provider/model`), tylko z Bearer panelu; **niższy priorytet** niż `X-Epir-Model-Variant` |
 
 Presety agenta: kod źródłowy [`workers/chat/src/solo-dev-agent-presets.ts`](../workers/chat/src/solo-dev-agent-presets.ts).
 
@@ -27,6 +28,7 @@ Presety agenta: kod źródłowy [`workers/chat/src/solo-dev-agent-presets.ts`](.
 | `creative_image` | Projektowanie | `or_recraft_v41_utility_vector` |
 | `creative_blender_flow` | Projektowanie | `or_gpt4o` |
 | `creative_gdocs_brief` | Projektowanie | `or_claude_sonnet_4` |
+| `creative_storefront` | Storefront | (katalog OR lub preset) |
 
 **Google Workspace (lokalny MCP):** pakiet [`mcp-servers/gworkspace`](../mcp-servers/gworkspace/README.md) — odczyt briefu po **ID pliku** (`gdocs_read_markdown`, `gsheets_read_csv`). Konfiguracja Cursor: [`.cursor/mcp-gworkspace.example.json`](../.cursor/mcp-gworkspace.example.json). Sekrety OAuth tylko lokalnie (keychain).
 
@@ -45,6 +47,13 @@ Pod listami **Agent** i **Model** panel pokazuje krótkie opisy (`uiHint` w pres
 ## Modele OpenRouter
 
 Warianty `or_*` mapują na `openrouter/<slug>` w [`model-params.ts`](../workers/chat/src/config/model-params.ts).
+
+### Pełny katalog (proxy worker)
+
+- **Endpoint:** `GET /internal/solo-dev-chat/api/openrouter-models` + `X-Admin-Key`
+- **Implementacja:** [`workers/chat/src/openrouter-catalog.ts`](../workers/chat/src/openrouter-catalog.ts) — `fetch https://openrouter.ai/api/v1/models` z `OPENROUTER_API_KEY`, cache **30 min** w pamięci workera
+- **UI:** w Operator Studio wybór **Źródło modelu** → *Katalog OpenRouter* (wyszukiwarka + lista) lub *Preset (or_*)*
+- **Czat:** przy katalogu panel wysyła `X-Epir-OpenRouter-Model: <slug>` (Bearer = klucz operatora); worker waliduje slug w cache katalogu i ustawia `modelCapabilities` (multimodal / `imageGen`)
 
 ### Recraft V4.1 (generacja obrazu / SVG)
 
@@ -83,6 +92,9 @@ Lista **Tryb pracy** mapuje intencję na agent + model + sufiks promptu ([`workf
 | `creative_copy` | `creative_copy` | `or_gpt4o_mini` | Copy reklamowe |
 | `production_blender` | `creative_blender_flow` | `or_gpt4o` | Kroki Blender (wykonanie: Blender MCP w Cursor) |
 | `creative_gdocs_brief` | `creative_gdocs_brief` | `or_claude_sonnet_4` | Brief z Docs/Sheets (MCP `epir-gworkspace` w Cursor) |
+| `storefront_hero` | `creative_storefront` | katalog OR (obraz) | Hero / baner sklepu |
+| `storefront_landing_copy` | `creative_storefront` | katalog OR (tekst) | Copy landing page |
+| `storefront_banner` | `creative_storefront` | katalog OR (obraz) | Baner promocyjny |
 
 **Storefront MCP** (`/api/mcp` — katalog, koszyk, polityki dla Gemmy) **nie** jest panelem Recraft; Project B używa **Admin GraphQL / hurtowni / OpenRouter**.
 
@@ -100,4 +112,12 @@ Lista **Tryb pracy** mapuje intencję na agent + model + sufiks promptu ([`workf
 
 1. **SVG / Flow** — agent `creative_svg` → eksport SVG → import w Blenderze (curve).
 2. **Reklama** — `creative_copy` + `creative_image` (multimodal przy załączniku).
-3. **Mesh** — `creative_blender_flow` + Blender MCP (osobne narzędzie), nie zastępuje DTP.
+3. **Mesh** — `creative_blender_flow` + narzędzie `blender_bridge_invoke` (most HTTP, allowlist v1) lub fallback Blender MCP w Cursorze.
+
+## Most Blender (Operator Studio ↔ Blender_assist)
+
+- Materiał roboczy: [`EPIR_BLENDER_OPERATOR_STUDIO_BRIDGE.md`](EPIR_BLENDER_OPERATOR_STUDIO_BRIDGE.md)
+- SSOT HTTP: [Blender_assist `docs/BLENDER_BRIDGE_HTTP.md`](https://github.com/EPIRjewelry/Blender_assist/blob/main/docs/BLENDER_BRIDGE_HTTP.md)
+- **Sekrety:** brak nowych nazw — `EPIR_OPERATOR_PANEL_SECRET` + var `BLENDER_BRIDGE_ORIGIN`
+- **Narzędzie czatu:** `blender_bridge_invoke` (tylko `internal-dashboard`)
+- **UI:** panel „Most Blender” + `GET /internal/solo-dev-chat/api/blender-bridge-health`

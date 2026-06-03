@@ -2,7 +2,7 @@ name = "epir-bigquery-batch"
 main = "src/index.ts"
 compatibility_date = "2025-09-30"
 compatibility_flags = ["nodejs_compat"]
-# Operator: POST /internal/trigger-export (Bearer DATA_GUARDIAN_OPS_KEY — ten sam co flow-health). Cron bez zmian.
+# Operator HTTP /internal/* wyłączone — flow-health i trigger-export przez RPC z workera czatu. Cron bez zmian.
 workers_dev = true
 
 [build]
@@ -37,12 +37,16 @@ database_id = "475a1cb7-f1b5-47ba-94ed-40fd64c32451"
 #
 # R2 SQL — `run_analytics_query` (Iceberg w tym samym katalogu co CQRS w `epir-analityc-worker`):
 # wrangler secret put R2_SQL_API_TOKEN (Workers R2 SQL Read + Data Catalog + storage read)
-# EDOG flow-health: wrangler secret put DATA_GUARDIAN_OPS_KEY
-# Raport operatora 09:00 UTC: MARKETING_INGEST_ORIGIN + MARKETING_OPS_PREVIEW_KEY (jak na czacie)
+# Raport operatora 09:00 UTC: binding MARKETING_INGEST_RPC (bez MARKETING_OPS_PREVIEW_KEY między workerami)
 # Opcjonalny mostek Drive: wrangler secret put GWORKSPACE_REPORT_WEBHOOK_URL
 # Opcjonalnie KV raportu: wrangler kv namespace create epir-data-guardian → odkomentuj [[kv_namespaces]] poniżej
 #
 # run_analytics_query: wyłącznie Workers RPC (`BigQueryBatchS2SRpc`) z czatu (`ctx.props`, scope `bigquery.analytics_query`).
+
+[[services]]
+binding = "MARKETING_INGEST_RPC"
+service = "epir-marketing-ingest"
+entrypoint = "MarketingIngestS2SRpc"
 
 [vars]
 R2_SQL_ACCOUNT_ID = "73283c24dc79f92edef30dcdbc98f230"

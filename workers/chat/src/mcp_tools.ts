@@ -194,6 +194,39 @@ export const TOOL_SCHEMAS = {
     },
   },
 
+  blender_bridge_invoke: {
+    name: 'blender_bridge_invoke',
+    description:
+      'Wywołuje narzędzie Blender na PC operatora przez most HTTP (allowlist v1: ping, mesh, STL, packshot, materiały). Wymaga uruchomionego relay + addon Blender. internal-dashboard only. Wynik: source=blender_bridge.',
+    parameters: {
+      type: 'object',
+      properties: {
+        tool_name: {
+          type: 'string',
+          description: 'Nazwa narzędzia MCP Blender_assist z allowlisty v1.',
+          enum: [
+            'blender_ping',
+            'scene_list_objects',
+            'object_get_info',
+            'object_convert_to_mesh',
+            'mesh_get_bbox_mm',
+            'mesh_check_manifold',
+            'jewelry_mass_report',
+            'export_stl',
+            'render_packshot',
+            'apply_material_preset',
+          ],
+        },
+        arguments: {
+          type: 'object',
+          description:
+            'Argumenty narzędzia (np. object_name, output_path, preset_name, host, port, timeout_s). Zgodnie z dokumentacją Blender_assist.',
+        },
+      },
+      required: ['tool_name', 'arguments'],
+    },
+  },
+
   update_cart: {
     name: 'update_cart',
     description: 'Perform updates to a cart including add/update/remove line items and buyer identity.',
@@ -425,6 +458,34 @@ export const TOOL_SCHEMAS_SLIM = {
         },
       },
       required: ['presetId'],
+    },
+  },
+
+  blender_bridge_invoke: {
+    name: 'blender_bridge_invoke',
+    description:
+      'Blender most HTTP (allowlist v1). Relay+addon na PC. Zwraca metrics/logs z Blender_assist.',
+    parameters: {
+      type: 'object',
+      properties: {
+        tool_name: {
+          type: 'string',
+          enum: [
+            'blender_ping',
+            'scene_list_objects',
+            'object_get_info',
+            'object_convert_to_mesh',
+            'mesh_get_bbox_mm',
+            'mesh_check_manifold',
+            'jewelry_mass_report',
+            'export_stl',
+            'render_packshot',
+            'apply_material_preset',
+          ],
+        },
+        arguments: { type: 'object' },
+      },
+      required: ['tool_name', 'arguments'],
     },
   },
 

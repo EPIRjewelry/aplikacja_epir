@@ -17,6 +17,13 @@ function Deploy-Worker {
     Set-Location (Join-Path $root $RelativePath)
     # Jawny top-level (root) — zgodnie z ostrzeżeniem Wranglera przy [env.staging]/[env.production].
     npx wrangler deploy --env=""
+    if ($LASTEXITCODE -ne 0 -and $env:CLOUDFLARE_API_TOKEN) {
+        Write-Host "  Retry bez CLOUDFLARE_API_TOKEN (OAuth; token bez KV Write blokuje deploy)..." -ForegroundColor DarkYellow
+        $savedToken = $env:CLOUDFLARE_API_TOKEN
+        $env:CLOUDFLARE_API_TOKEN = $null
+        npx wrangler deploy --env=""
+        $env:CLOUDFLARE_API_TOKEN = $savedToken
+    }
     if ($LASTEXITCODE -ne 0) { throw "Deploy failed: $RelativePath" }
 }
 

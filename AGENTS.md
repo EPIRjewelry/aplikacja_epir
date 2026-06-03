@@ -63,6 +63,10 @@ W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md
 5. Jeżeli jakaś lokalna wiedza nie została zapisana w repo, nie istnieje jako źródło prawdy.
 6. **Research i NotebookLM** nie zastępują kanonu: kompas i hipotezy — decyzje po weryfikacji z README (kanon) i kodem (`docs/README.md`, sekcje *Kanoniczny zestaw* i *Research i NotebookLM*).
 
+## Sekrety (governance)
+
+**Zakaz nowych nazw sekretów bez wyraźnej zgody operatora** — reguła Cursor: [`.cursor/rules/epir-secrets-governance.mdc`](.cursor/rules/epir-secrets-governance.mdc). Nie proponuj `wrangler secret put` ani nowych kluczy w UI/MCP bez zgody. Wewnętrznie: RPC między workerami; operator: `EPIR_OPERATOR_PANEL_SECRET`; sklep→czat: `EPIR_CHAT_SHARED_SECRET` (lub legacy `X-EPIR-SHARED-SECRET` w vault). Audyt nazw: `node scripts/debug/cf-missing-secrets.mjs`.
+
 ## Środowisko deweloperskie (Node, monorepo)
 
 - **Instalacja zależności z katalogu głównego repo** (root), nie z pojedynczego `workers/*` ani `apps/*` jako substytut całego drzewa workspaces.

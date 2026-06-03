@@ -1,6 +1,4 @@
-# Kopiuj do .dev.vars (nie commituj). Lokalny dev — opcjonalnie nadpisz origin marketing-ingest.
+# Kopiuj do .dev.vars (nie commituj). Lokalny dev.
 #
-# MARKETING_INGEST_ORIGIN=https://epir-marketing-ingest.krzysztofdzugaj.workers.dev
-# MARKETING_OPS_PREVIEW_KEY=<ten sam Bearer co na workerze epir-marketing-ingest>
-#
-# Ustawienie sekretu (interaktywnie): z workers/chat → npx wrangler secret put MARKETING_OPS_PREVIEW_KEY
+# EPIR_OPERATOR_PANEL_SECRET=<klucz Operator Studio (X-Admin-Key)>
+# EPIR_CHAT_SHARED_SECRET=<ten sam co na Hydrogen Pages, jeśli testujesz S2S /chat>

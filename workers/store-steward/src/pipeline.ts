@@ -10,8 +10,9 @@ export interface StewardEnv {
   DB: D1Database;
   BIGQUERY_BATCH_RPC?: BigQueryBatchRpcStub;
   STEWARD_LOOKBACK_DAYS?: string;
-  MARKETING_INGEST_ORIGIN?: string;
-  MARKETING_OPS_PREVIEW_KEY?: string;
+  MARKETING_INGEST_RPC?: {
+    getMarketingPreview(args?: { date?: string }): Promise<Record<string, unknown>>;
+  };
 }
 
 function parseLookbackDays(v: string | undefined): number {

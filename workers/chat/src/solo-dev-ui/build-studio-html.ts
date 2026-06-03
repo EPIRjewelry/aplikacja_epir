@@ -89,7 +89,7 @@ function buildStudioHtml(opts: StudioHtmlOptions): string {
     </header>
     <aside class="side-left">
       <div class="field">
-        <label for="key">X-Admin-Key</label>
+        <label for="key">EPIR_OPERATOR_PANEL_SECRET</label>
         <input id="key" type="password" autocomplete="off" placeholder="sekret operatora" />
         <div class="row-btns">
           <button type="button" id="saveKey" class="ghost">Zapisz</button>
@@ -101,14 +101,40 @@ function buildStudioHtml(opts: StudioHtmlOptions): string {
         <select id="workflow">${workflowOptions}</select>
       </div>
       <div class="field">
+        <label for="storefront">Storefront</label>
+        <select id="storefront">
+          <option value="kazka" selected>Kazka (Hydrogen)</option>
+          <option value="zareczyny">Zaręczyny (Hydrogen)</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="agent">Agent</label>
         <select id="agent">${agentOptions}</select>
         <p id="agentHint" class="pick-hint" aria-live="polite"></p>
       </div>
       <div class="field">
-        <label for="model">Model</label>
+        <label for="modelSource">Źródło modelu</label>
+        <select id="modelSource">
+          <option value="preset" selected>Presety EPIR (or_*)</option>
+          <option value="catalog">Katalog OpenRouter (wszystkie)</option>
+        </select>
+      </div>
+      <div class="field" id="presetModelField">
+        <label for="model">Model (preset)</label>
         <select id="model">${modelOptions}</select>
         <p id="modelHint" class="pick-hint" aria-live="polite"></p>
+      </div>
+      <div class="field" id="catalogModelField" hidden>
+        <label for="catalogSearch">Model (katalog OR)</label>
+        <input id="catalogSearch" type="search" list="orModelList" placeholder="Szukaj np. claude, recraft, flux…" autocomplete="off" />
+        <datalist id="orModelList"></datalist>
+        <select id="catalogFilter" style="margin-top:6px;">
+          <option value="all">Wszystkie</option>
+          <option value="text">Tekst</option>
+          <option value="image">Generacja obrazu</option>
+          <option value="vision">Vision (załącznik)</option>
+        </select>
+        <p id="catalogHint" class="pick-hint">Załaduj katalog po zapisaniu klucza (przycisk Zapisz).</p>
       </div>
       <div class="field" id="gworkspaceField" hidden>
         <label for="gfileId">ID pliku Google</label>
@@ -123,6 +149,10 @@ function buildStudioHtml(opts: StudioHtmlOptions): string {
     <aside class="side-right">
       <p><strong>Źródła</strong></p>
       <p id="sourcesHint">—</p>
+      <p style="margin-top:14px;"><strong>Most Blender</strong></p>
+      <p id="blenderBridgeStatus" class="hint">—</p>
+      <button type="button" id="refreshBlenderBridge" class="ghost" style="width:100%;margin-top:4px;">Sprawdź most</button>
+      <p class="hint" style="margin-top:4px;font-size:11px;">PC: addon :8765 + <code>python -m relay</code> :9876. CF var <code>BLENDER_BRIDGE_ORIGIN</code>.</p>
       <p style="margin-top:14px;"><strong>Eksport D1</strong></p>
       <button type="button" id="exportWarehouse" class="ghost" style="width:100%;">Eksport (~2500)</button>
       <p id="exportStatus" class="hint" style="margin-top:6px;"></p>
@@ -155,8 +185,13 @@ function buildStudioHtml(opts: StudioHtmlOptions): string {
   var KA='epir_solo_dev_chat_agent';
   var KM='epir_solo_dev_chat_model';
   var KW='epir_operator_studio_workflow';
+  var KSF='epir_operator_studio_storefront';
+  var KMS='epir_operator_studio_model_source';
+  var KOR='epir_operator_studio_or_model';
   var KGF='epir_operator_studio_gfile_id';
   var KPROF='epir_operator_studio_profile';
+  var KAZKA_BRAND=' Marka Kazka: granat #0A1628, beż #F5F0E6, złoto #C9A96E. Font: Cormorant Garamond.';
+  var ZARECZYNY_BRAND=' Marka Zaręczyny: elegancki minimalizm, ciepłe tło, subtelne złoto.';
   var MAX_BYTES=4*1024*1024;
   var IMG_PLACEHOLDER='(załącznik obrazu)';
   var AGENT_MODELS=${agentModelMapJson};
@@ -168,8 +203,17 @@ function buildStudioHtml(opts: StudioHtmlOptions): string {
   var RECRAFT_HINT='Recraft: obraz w czacie (nie plik .svg). *_vector = pod trace.';
   var keyEl=document.getElementById('key');
   var workflowEl=document.getElementById('workflow');
+  var storefrontEl=document.getElementById('storefront');
+  var modelSourceEl=document.getElementById('modelSource');
+  var presetModelFieldEl=document.getElementById('presetModelField');
+  var catalogModelFieldEl=document.getElementById('catalogModelField');
+  var catalogSearchEl=document.getElementById('catalogSearch');
+  var catalogFilterEl=document.getElementById('catalogFilter');
+  var orModelListEl=document.getElementById('orModelList');
+  var catalogHintEl=document.getElementById('catalogHint');
   var agentEl=document.getElementById('agent');
   var modelEl=document.getElementById('model');
+  var catalogModels=[];
   var agentHintEl=document.getElementById('agentHint');
   var modelHintEl=document.getElementById('modelHint');
   var modeBannerEl=document.getElementById('modeBanner');
@@ -188,6 +232,8 @@ function buildStudioHtml(opts: StudioHtmlOptions): string {
   var profileNotesEl=document.getElementById('profileNotes');
   var saveProfileBtn=document.getElementById('saveProfile');
   var latestReportEl=document.getElementById('latestReport');
+  var blenderBridgeStatusEl=document.getElementById('blenderBridgeStatus');
+  var refreshBlenderBridgeBtn=document.getElementById('refreshBlenderBridge');
   var gworkspaceFieldEl=document.getElementById('gworkspaceField');
   var gfileIdEl=document.getElementById('gfileId');
   var pendingImageDataUri=null;
@@ -265,7 +311,13 @@ function buildStudioHtml(opts: StudioHtmlOptions): string {
     if(!w) return;
     if(w.agentId) agentEl.value=w.agentId;
     filterModelsForAgent(agentEl.value);
-    if(w.modelVariant!==undefined){
+    if(wid && wid.indexOf('storefront_')===0 && modelSourceEl){
+      if(wid==='storefront_landing_copy' || wid==='storefront_hero' || wid==='storefront_banner'){
+        modelSourceEl.value='catalog';
+      }
+      syncModelSourceUi();
+    }
+    if(w.modelVariant!==undefined && !isCatalogMode()){
       for(var m=0;m<modelEl.options.length;m++){
         if(modelEl.options[m].value===w.modelVariant && !modelEl.options[m].hidden){
           modelEl.selectedIndex=m; break;
@@ -347,14 +399,74 @@ function buildStudioHtml(opts: StudioHtmlOptions): string {
     if(gworkspaceFieldEl) gworkspaceFieldEl.hidden=!show;
   }
 
+  function isCatalogMode(){ return modelSourceEl&&modelSourceEl.value==='catalog'; }
+
+  function syncModelSourceUi(){
+    var cat=isCatalogMode();
+    if(presetModelFieldEl) presetModelFieldEl.hidden=cat;
+    if(catalogModelFieldEl) catalogModelFieldEl.hidden=!cat;
+    if(cat && !catalogModels.length) loadOpenRouterCatalog();
+  }
+
+  function filteredCatalog(){
+    var q=(catalogSearchEl&&catalogSearchEl.value||'').toLowerCase().trim();
+    var f=catalogFilterEl?catalogFilterEl.value:'all';
+    return catalogModels.filter(function(m){
+      if(f==='image' && !m.imageGen) return false;
+      if(f==='vision' && !m.multimodal) return false;
+      if(f==='text' && (m.imageGen || !m.multimodal && m.id.indexOf('recraft')>=0)) return false;
+      if(f==='text' && m.imageGen) return false;
+      if(q && m.id.toLowerCase().indexOf(q)<0 && m.name.toLowerCase().indexOf(q)<0) return false;
+      return true;
+    });
+  }
+
+  function renderCatalogDatalist(){
+    if(!orModelListEl) return;
+    var list=filteredCatalog().slice(0,200);
+    var h='';
+    for(var i=0;i<list.length;i++){
+      h+='<option value="'+escapeAttr(list[i].id)+'">'+escapeHtml(list[i].name)+'</option>';
+    }
+    orModelListEl.innerHTML=h;
+    if(catalogHintEl){
+      catalogHintEl.textContent=list.length?('Dopasowano '+list.length+' modeli (max 200 w liście).'):'Brak dopasowań — zmień filtr.';
+    }
+  }
+
+  function loadOpenRouterCatalog(){
+    var secret=keyEl.value.trim();
+    if(!secret){ if(catalogHintEl) catalogHintEl.textContent='Najpierw EPIR_OPERATOR_PANEL_SECRET.'; return Promise.resolve(); }
+    if(catalogHintEl) catalogHintEl.textContent='Ładuję katalog OpenRouter…';
+    return fetch('/internal/solo-dev-chat/api/openrouter-models',{headers:{'X-Admin-Key':secret},credentials:'same-origin'})
+      .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||('HTTP '+r.status)); return j; }); })
+      .then(function(j){
+        catalogModels=j.models||[];
+        renderCatalogDatalist();
+        if(catalogHintEl) catalogHintEl.textContent='Katalog: '+catalogModels.length+' modeli (cache ~30 min).';
+      })
+      .catch(function(e){ if(catalogHintEl) catalogHintEl.textContent='Błąd: '+String(e.message||e); });
+  }
+
+  function storefrontSuffix(){
+    var sf=(storefrontEl&&storefrontEl.value)||'kazka';
+    return '\\n\\n[storefront='+sf+']'+(sf==='zareczyny'?ZARECZYNY_BRAND:KAZKA_BRAND);
+  }
+
   function updatePickHints(){
     var hint=AGENT_HINTS[agentEl.value]||'';
     agentHintEl.textContent=hint ? 'Agent: '+hint : '';
-    var mv=modelEl.value;
-    var mh=MODEL_HINTS[mv];
-    if(!mh && mv.indexOf('or_recraft')===0) mh=RECRAFT_HINT;
-    if(!mh && mv.indexOf('or_')===0) mh='OpenRouter tekst/multimodal.';
-    modelHintEl.textContent=mh ? 'Model: '+mh : '';
+    if(isCatalogMode()){
+      modelHintEl.textContent='';
+      var slug=(catalogSearchEl&&catalogSearchEl.value||'').trim();
+      if(slug && catalogHintEl) catalogHintEl.textContent='Wybrany: '+slug;
+    } else {
+      var mv=modelEl.value;
+      var mh=MODEL_HINTS[mv];
+      if(!mh && mv.indexOf('or_recraft')===0) mh=RECRAFT_HINT;
+      if(!mh && mv.indexOf('or_')===0) mh='OpenRouter tekst/multimodal.';
+      modelHintEl.textContent=mh ? 'Model: '+mh : '';
+    }
     updateGworkspaceField();
   }
 
@@ -386,6 +498,14 @@ function buildStudioHtml(opts: StudioHtmlOptions): string {
     updatePickHints();
     try{ sessionStorage.setItem(KM,modelEl.value); }catch(e){}
   };
+  if(modelSourceEl) modelSourceEl.onchange=function(){
+    syncModelSourceUi();
+    updatePickHints();
+    try{ sessionStorage.setItem(KMS,modelSourceEl.value); }catch(e){}
+  };
+  if(catalogSearchEl) catalogSearchEl.oninput=renderCatalogDatalist;
+  if(catalogFilterEl) catalogFilterEl.onchange=renderCatalogDatalist;
+  if(storefrontEl) storefrontEl.onchange=function(){ try{ sessionStorage.setItem(KSF,storefrontEl.value); }catch(e){} };
 
   function apiHeaders(){
     return { 'Content-Type':'application/json', 'X-Admin-Key': keyEl.value.trim() };
@@ -402,6 +522,19 @@ function buildStudioHtml(opts: StudioHtmlOptions): string {
           try{ sessionStorage.setItem(KPROF, JSON.stringify(j.profile)); }catch(e){}
         }
       }).catch(function(){});
+  }
+  function loadBlenderBridgeHealth(){
+    var k=keyEl.value.trim();
+    if(!k || !blenderBridgeStatusEl) return;
+    blenderBridgeStatusEl.textContent='Sprawdzam…';
+    fetch('/internal/solo-dev-chat/api/blender-bridge-health',{ headers: apiHeaders() })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(!j.configured){ blenderBridgeStatusEl.textContent='Nie skonfigurowano: ustaw BLENDER_BRIDGE_ORIGIN (var) na workerze.'; return; }
+        if(j.online){ blenderBridgeStatusEl.textContent='OK — Blender most odpowiada.'; return; }
+        blenderBridgeStatusEl.textContent='Most skonfigurowany, offline: '+(j.detail||'brak odpowiedzi');
+      })
+      .catch(function(){ blenderBridgeStatusEl.textContent='Błąd sprawdzenia mostu.'; });
   }
   function loadLatestReport(){
     var k=keyEl.value.trim();
@@ -446,20 +579,28 @@ function buildStudioHtml(opts: StudioHtmlOptions): string {
     if(sa && AGENT_MODELS[sa]){ agentEl.value=sa; filterModelsForAgent(sa); }
     var sm=sessionStorage.getItem(KM);
     if(sm){ for(var x=0;x<modelEl.options.length;x++){ if(modelEl.options[x].value===sm){ modelEl.selectedIndex=x; break; } } }
+    var ssf=sessionStorage.getItem(KSF);
+    if(ssf && storefrontEl) storefrontEl.value=ssf;
+    var sms=sessionStorage.getItem(KMS);
+    if(sms && modelSourceEl) modelSourceEl.value=sms;
+    var sor=sessionStorage.getItem(KOR);
+    if(sor && catalogSearchEl) catalogSearchEl.value=sor;
     var sg=sessionStorage.getItem(KGF);
     if(sg && gfileIdEl) gfileIdEl.value=sg;
   }catch(e){}
+  syncModelSourceUi();
   applyWorkflow(workflowEl.value, true);
   updatePickHints();
-  if(keyEl.value.trim()) loadHistory();
+  if(keyEl.value.trim()){ loadHistory(); loadOpenRouterCatalog(); }
 
+  if(refreshBlenderBridgeBtn) refreshBlenderBridgeBtn.onclick=loadBlenderBridgeHealth;
   document.getElementById('saveKey').onclick=function(){
-    try{ sessionStorage.setItem(K,keyEl.value.trim()); stEl.textContent='Klucz zapisany.'; loadHistory(); loadOperatorProfile(); loadLatestReport(); }catch(e){ stEl.textContent='Brak sessionStorage.'; }
+    try{ sessionStorage.setItem(K,keyEl.value.trim()); stEl.textContent='Klucz zapisany.'; loadHistory(); loadOperatorProfile(); loadLatestReport(); loadOpenRouterCatalog(); loadBlenderBridgeHealth(); }catch(e){ stEl.textContent='Brak sessionStorage.'; }
   };
 
   exportBtn.onclick=function(){
     var secret=keyEl.value.trim();
-    if(!secret){ appendBubble('err','Brak X-Admin-Key.'); return; }
+    if(!secret){ appendBubble('err','Brak EPIR_OPERATOR_PANEL_SECRET.'); return; }
     exportBtn.disabled=true;
     exportStatusEl.textContent='Eksportuję…';
     fetch('/internal/solo-dev-chat/api/trigger-warehouse-export',{method:'POST',headers:{'X-Admin-Key':secret},credentials:'same-origin'})
@@ -474,13 +615,14 @@ function buildStudioHtml(opts: StudioHtmlOptions): string {
 
   function sendMessage(){
     var secret=keyEl.value.trim();
-    if(!secret){ appendBubble('err','Brak X-Admin-Key.'); return; }
+    if(!secret){ appendBubble('err','Brak EPIR_OPERATOR_PANEL_SECRET.'); return; }
     var text=(msgEl.value||'').trim();
     var img=pendingImageDataUri;
     if(!text && !img){ appendBubble('err','Pusta wiadomość.'); return; }
 
     var w=WORKFLOWS[workflowEl.value];
     var suffix=(w&&w.promptSuffix)?('\\n\\n'+w.promptSuffix):'';
+    suffix+=storefrontSuffix();
     var gfile=(gfileIdEl&&gfileIdEl.value||'').trim();
     if(gfile){
       try{ sessionStorage.setItem(KGF,gfile); }catch(e){}
@@ -504,9 +646,17 @@ function buildStudioHtml(opts: StudioHtmlOptions): string {
     var headers={ 'Content-Type':'application/json', 'Accept':'text/event-stream, application/json', 'X-Admin-Key':secret };
     var agentId=(agentEl.value||'').trim();
     if(agentId) headers['X-EPIR-AGENT-PRESET']=agentId;
-    var mv=(modelEl.value||'').trim();
-    if(mv) headers['X-Epir-Model-Variant']=mv;
-    try{ sessionStorage.setItem(KA,agentId); sessionStorage.setItem(KM,mv); sessionStorage.setItem(KW,workflowEl.value); }catch(e){}
+    if(isCatalogMode()){
+      var orSlug=(catalogSearchEl&&catalogSearchEl.value||'').trim();
+      if(!orSlug){ appendBubble('err','Wybierz model z katalogu OpenRouter.'); sendBtn.disabled=false; stEl.textContent=''; return; }
+      headers['X-Epir-OpenRouter-Model']=orSlug;
+      try{ sessionStorage.setItem(KOR,orSlug); }catch(e){}
+    } else {
+      var mv=(modelEl.value||'').trim();
+      if(mv) headers['X-Epir-Model-Variant']=mv;
+      try{ sessionStorage.setItem(KM,mv); }catch(e){}
+    }
+    try{ sessionStorage.setItem(KA,agentId); sessionStorage.setItem(KW,workflowEl.value); sessionStorage.setItem(KMS,modelSourceEl.value); sessionStorage.setItem(KSF,storefrontEl.value); }catch(e){}
 
     var sid=null;
     try{ sid=sessionStorage.getItem(KS); }catch(e){}

@@ -71,6 +71,33 @@ export type BigQueryBatchRpcStub = {
   }>;
 };
 
+/** Stub `StoreStewardS2SRpc` (`workers/store-steward`). */
+export type StoreStewardRpcStub = {
+  runAggregation(): Promise<Record<string, unknown>>;
+  getInsights(args?: {
+    period_start?: string;
+    period_end?: string;
+  }): Promise<Record<string, unknown> | { ok: false; error: string; status: number }>;
+  saveReport(args: {
+    period_start?: string;
+    period_end?: string;
+    report_markdown: string;
+    run_id?: string;
+    agent_id?: string;
+  }): Promise<{ ok: true; id: string; period_start: string; period_end: string }>;
+};
+
+export type MarketingPreviewBody = {
+  date: string;
+  google_ads: { rowCount: number; topCampaigns: unknown[] };
+  google_analytics: { rowCount: number; topRows: unknown[] };
+};
+
+/** Stub `MarketingIngestS2SRpc` (`workers/marketing-ingest`). */
+export type MarketingIngestRpcStub = {
+  getMarketingPreview(args?: { date?: string }): Promise<MarketingPreviewBody>;
+};
+
 export interface Env {
   // Durable Objects
   SESSION_DO: DurableObjectNamespace;
@@ -123,12 +150,9 @@ export interface Env {
 
   SHOPIFY_STOREFRONT_TOKEN?: string;
   SHOPIFY_ADMIN_TOKEN?: string;
-  /**
-   * Origin workera `epir-marketing-ingest` (bez końcowego `/`), np. `https://epir-marketing-ingest.<subdomain>.workers.dev`.
-   * Razem z {@link MARKETING_OPS_PREVIEW_KEY} zasila narzędzie `fetch_marketing_preview` w `internal-dashboard`.
-   */
+  /** @deprecated HTTP preview — użyj {@link MARKETING_INGEST_RPC}. */
   MARKETING_INGEST_ORIGIN?: string;
-  /** Ten sam sekret co `MARKETING_OPS_PREVIEW_KEY` na workerze marketing-ingest (Bearer do GET /ops/marketing-preview). */
+  /** @deprecated — podgląd marketingu przez `MARKETING_INGEST_RPC`. */
   MARKETING_OPS_PREVIEW_KEY?: string;
   GROQ_API_KEY?: string;
   SHOP_DOMAIN?: string;
@@ -163,10 +187,10 @@ export interface Env {
   ANALYTICS_WORKER?: Fetcher;
   ANALYTICS_S2S_RPC?: AnalyticsS2SRpcStub;
   BIGQUERY_BATCH_RPC?: BigQueryBatchRpcStub;
+  STORE_STEWARD_RPC?: StoreStewardRpcStub;
+  MARKETING_INGEST_RPC?: MarketingIngestRpcStub;
   /**
-   * Sekret panelu operatorskiego dla powierzchni HTTP: `X-Admin-Key`, `Authorization: Bearer`
-   * (m.in. `X-Epir-Model-Variant`). Odczyty whitelist `run_analytics_query` (R2 SQL) idą przez Workers RPC (`BIGQUERY_BATCH_RPC`) z `ctx.props.scopes`,
-   * nie przez ten sekret.
+   * Panel operatorski: `X-Admin-Key` / Bearer. Odczyty R2 SQL: `BIGQUERY_BATCH_RPC`, nie ten sekret.
    */
   EPIR_OPERATOR_PANEL_SECRET?: string;
   /** OpenRouter API key – wymagany dla wariantów modelu `openrouter/*`. */
@@ -175,6 +199,8 @@ export interface Env {
    * Bramka EDOG przed run_analytics_query (`true` domyślnie). Ustaw `false` aby wyłączyć (tylko awaryjnie).
    */
   EDOG_GATE_ENABLED?: string;
+  /** Publiczny URL lokalnego mosta Blender (Cloudflare Tunnel). Var — nie secret. */
+  BLENDER_BRIDGE_ORIGIN?: string;
 }
 
 /**
@@ -196,7 +222,6 @@ export const OPTIONAL_SECRETS = [
   'PRIVATE_STOREFRONT_API_TOKEN',
   'PRIVATE_STOREFRONT_API_TOKEN_ZARECZYNY',
   'SHOPIFY_ADMIN_TOKEN',
-  'MARKETING_OPS_PREVIEW_KEY',
   'EPIR_CHAT_SHARED_SECRET',
   'X-EPIR-SHARED-SECRET',
   'GCP_SERVICE_ACCOUNT_KEY',

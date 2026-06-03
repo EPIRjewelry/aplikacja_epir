@@ -7,6 +7,7 @@ import { handleMarketingPreview } from './ops-preview';
 import { postPipelineIngestBatch } from './pipeline-post';
 
 export { MarketingAnalystAgent } from './marketing-analyst-agent';
+export { MarketingIngestS2SRpc } from './rpc';
 export type { Env } from './env';
 
 const BATCH = 200;

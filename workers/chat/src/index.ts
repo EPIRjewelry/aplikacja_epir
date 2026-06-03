@@ -35,8 +35,9 @@ import {
   KimiContentPart,
   shouldUseWorkersAi,
   injectKimiMultimodalUserContent,
-  resolveAdminModelVariantFromHeaders,
+  resolveOperatorModelOverride,
 } from './ai-client';
+import { fetchOpenRouterCatalog } from './openrouter-catalog';
 import {
   CHAT_MODEL_ID,
   CHAT_MAX_TOKENS_AFTER_TOOL,
@@ -62,6 +63,11 @@ import {
   fetchMarketingPreviewTool,
   runShopifyShopifyqlTool,
 } from './internal-analytics-tools';
+import {
+  blenderBridgeHealth,
+  callBlenderBridgeTool,
+  isBlenderBridgeConfigured,
+} from './internal-blender-tools';
 import { ProfileService } from './profile';
 import { AnalyticsService } from './analytics-service';
 import { DASHBOARD_HTML } from './dashboard-html';
@@ -150,6 +156,7 @@ const INTERNAL_DASHBOARD_ONLY_TOOL_NAMES = new Set([
   'run_analytics_query',
   'fetch_marketing_preview',
   'run_shopify_shopifyql',
+  'blender_bridge_invoke',
 ]);
 
 type ChatContextOverride = {
@@ -3481,12 +3488,11 @@ async function streamAssistantResponse(
       });
 
       // Admin A/B przed logami startowymi — żeby pokazać realny model (activeChatModelId).
-      const adminVariant: ModelCapabilities | null = resolveAdminModelVariantFromHeaders(
+      const activeModelVariant: ModelCapabilities | null = await resolveOperatorModelOverride(
         request.headers,
         env,
         { hasImage: Boolean(imageBase64) },
       );
-      const activeModelVariant = adminVariant ?? null;
       if (activeModelVariant) {
         console.log(
           JSON.stringify({
@@ -3657,10 +3663,14 @@ async function streamAssistantResponse(
           const streamOptions: {
             toolChoice?: typeof toolChoiceResolved;
             modelId?: string;
+            modelCapabilities?: ModelCapabilities;
             maxTokens?: number;
           } = {};
           if (toolChoiceResolved !== undefined) streamOptions.toolChoice = toolChoiceResolved;
-          if (activeModelVariant) streamOptions.modelId = activeModelVariant.id;
+          if (activeModelVariant) {
+            streamOptions.modelId = activeModelVariant.id;
+            streamOptions.modelCapabilities = activeModelVariant;
+          }
 
           const lastMessage = currentMessages[currentMessages.length - 1];
           const lastRole = lastMessage?.role;
@@ -3875,6 +3885,14 @@ async function streamAssistantResponse(
                 }
                 if (call.name === 'run_shopify_shopifyql') {
                   return runShopifyShopifyqlTool(env, safeArgs as { presetId?: string });
+                }
+                if (call.name === 'blender_bridge_invoke') {
+                  const ba = safeArgs as { tool_name?: string; arguments?: Record<string, unknown> };
+                  return callBlenderBridgeTool(
+                    env,
+                    typeof ba.tool_name === 'string' ? ba.tool_name : '',
+                    ba.arguments && typeof ba.arguments === 'object' ? ba.arguments : {},
+                  );
                 }
                 const brandForMcp = (storefrontContext?.storefrontId === 'kazka' || storefrontContext?.storefrontId === 'zareczyny')
                   ? storefrontContext.storefrontId
@@ -4175,9 +4193,29 @@ function configuredChatSharedSecretForSoloProxy(env: Env): string {
   return '';
 }
 
+function verifyOperatorPanelKey(request: Request, env: Env): boolean {
+  const provided = request.headers.get('X-Admin-Key')?.trim() ?? '';
+  const expected = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
+  return Boolean(expected && provided && timingSafeEqualText(expected, provided));
+}
+
+function operatorStudioGateSnapshot(env: Env): Record<string, boolean> {
+  return {
+    operatorPanelSecret: Boolean(env.EPIR_OPERATOR_PANEL_SECRET?.trim()),
+    chatSharedSecret: Boolean(configuredChatSharedSecretForSoloProxy(env)),
+    openrouterKey: Boolean(env.OPENROUTER_API_KEY?.trim()),
+    aiGatewayToken: Boolean(env.AI_GATEWAY_TOKEN?.trim()),
+    bigqueryBatchRpc: Boolean(env.BIGQUERY_BATCH_RPC),
+    storeStewardRpc: Boolean(env.STORE_STEWARD_RPC),
+    marketingIngestRpc: Boolean(env.MARKETING_INGEST_RPC),
+    blenderBridgeOrigin: Boolean(env.BLENDER_BRIDGE_ORIGIN?.trim()),
+    blenderBridgeReady: isBlenderBridgeConfigured(env),
+  };
+}
+
 /**
- * UI + proxy HTTP dla jednego operatora: przeglądarka zna tylko `EPIR_OPERATOR_PANEL_SECRET`;
- * worker dokleja S2S do `/chat` i Bearer dla `X-Epir-Model-Variant` (Groq / Workers AI).
+ * UI + proxy HTTP dla operatora: `EPIR_OPERATOR_PANEL_SECRET` (`X-Admin-Key`);
+ * woła `handleChat` wewnętrznie (bez `EPIR_CHAT_SHARED_SECRET` — S2S dotyczy BFF/headless `/chat`).
  */
 async function handleSoloDevChatIngress(
   request: Request,
@@ -4200,22 +4238,135 @@ async function handleSoloDevChatIngress(
     });
   }
 
-  if (path === '/internal/solo-dev-chat/api/chat' && method === 'POST') {
-    const provided = request.headers.get('X-Admin-Key')?.trim() ?? '';
-    const expected = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
-    if (!expected || !provided || !timingSafeEqualText(expected, provided)) {
+  if (path === '/internal/solo-dev-chat/api/ready' && method === 'GET') {
+    if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { 'Content-Type': 'application/json', ...cors(env, request) },
       });
     }
-    const shared = configuredChatSharedSecretForSoloProxy(env);
-    if (!shared) {
-      return new Response(JSON.stringify({ error: 'EPIR_CHAT_SHARED_SECRET not configured' }), {
+    const gates = operatorStudioGateSnapshot(env);
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        gates,
+        note: 'Operator Studio: EPIR_OPERATOR_PANEL_SECRET w UI. EPIR_CHAT_SHARED_SECRET tylko dla BFF Hydrogen.',
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json', ...cors(env, request) } },
+    );
+  }
+
+  if (path === '/internal/solo-dev-chat/api/flow-health' && method === 'GET') {
+    if (!verifyOperatorPanelKey(request, env)) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    const rpc = env.BIGQUERY_BATCH_RPC;
+    if (!rpc?.getFlowHealth) {
+      return new Response(JSON.stringify({ error: 'BIGQUERY_BATCH_RPC missing getFlowHealth' }), {
         status: 503,
         headers: { 'Content-Type': 'application/json', ...cors(env, request) },
       });
     }
+    try {
+      const report = await rpc.getFlowHealth();
+      return new Response(JSON.stringify(report), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return new Response(JSON.stringify({ error: msg }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+  }
+
+  if (path === '/internal/solo-dev-chat/api/steward/aggregate' && method === 'POST') {
+    if (!verifyOperatorPanelKey(request, env)) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    if (!env.STORE_STEWARD_RPC) {
+      return new Response(JSON.stringify({ error: 'STORE_STEWARD_RPC binding missing' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    try {
+      const body = await env.STORE_STEWARD_RPC.runAggregation();
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return new Response(JSON.stringify({ error: 'aggregate_failed', message: msg }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+  }
+
+  if (path === '/internal/solo-dev-chat/api/steward/insights' && method === 'GET') {
+    if (!verifyOperatorPanelKey(request, env)) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    if (!env.STORE_STEWARD_RPC) {
+      return new Response(JSON.stringify({ error: 'STORE_STEWARD_RPC binding missing' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    try {
+      const body = await env.STORE_STEWARD_RPC.getInsights({
+        period_start: url.searchParams.get('period_start') ?? undefined,
+        period_end: url.searchParams.get('period_end') ?? undefined,
+      });
+      const status = typeof body === 'object' && body && 'ok' in body && body.ok === false ? body.status : 200;
+      return new Response(JSON.stringify(body), {
+        status: typeof status === 'number' ? status : 200,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return new Response(JSON.stringify({ error: 'insights_read_failed', message: msg }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+  }
+
+  if (path === '/internal/solo-dev-chat/api/blender-bridge-health' && method === 'GET') {
+    if (!verifyOperatorPanelKey(request, env)) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    const health = await blenderBridgeHealth(env);
+    return new Response(JSON.stringify({ ok: true, ...health }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+    });
+  }
+
+  if (path === '/internal/solo-dev-chat/api/chat' && method === 'POST') {
+    if (!verifyOperatorPanelKey(request, env)) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    const expected = env.EPIR_OPERATOR_PANEL_SECRET!.trim();
     const bodyText = await request.text();
     const variant =
       request.headers.get('X-Epir-Model-Variant')?.trim() ?? request.headers.get('x-epir-model-variant')?.trim() ?? '';
@@ -4223,12 +4374,14 @@ async function handleSoloDevChatIngress(
       request.headers.get('X-EPIR-AGENT-PRESET')?.trim() ?? request.headers.get('x-epir-agent-preset')?.trim() ?? '';
     const innerHeaders = new Headers({
       'Content-Type': 'application/json',
-      'X-EPIR-SHARED-SECRET': shared,
-      'X-EPIR-STOREFRONT-ID': 'online-store',
-      'X-EPIR-CHANNEL': 'internal-dashboard',
       Authorization: `Bearer ${expected}`,
     });
     if (variant) innerHeaders.set('X-Epir-Model-Variant', variant);
+    const orModel =
+      request.headers.get('X-Epir-OpenRouter-Model')?.trim() ??
+      request.headers.get('x-epir-openrouter-model')?.trim() ??
+      '';
+    if (orModel) innerHeaders.set('X-Epir-OpenRouter-Model', orModel);
     if (agentPreset) innerHeaders.set('X-EPIR-AGENT-PRESET', agentPreset);
 
     const innerRequest = new Request('https://worker.internal/chat', {
@@ -4240,9 +4393,7 @@ async function handleSoloDevChatIngress(
   }
 
   if (path === '/internal/solo-dev-chat/api/trigger-warehouse-export' && method === 'POST') {
-    const provided = request.headers.get('X-Admin-Key')?.trim() ?? '';
-    const expected = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
-    if (!expected || !provided || !timingSafeEqualText(expected, provided)) {
+    if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { 'Content-Type': 'application/json', ...cors(env, request) },
@@ -4271,9 +4422,7 @@ async function handleSoloDevChatIngress(
   }
 
   if (path === '/internal/solo-dev-chat/api/operator-profile' && (method === 'GET' || method === 'PUT')) {
-    const provided = request.headers.get('X-Admin-Key')?.trim() ?? '';
-    const expected = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
-    if (!expected || !provided || !timingSafeEqualText(expected, provided)) {
+    if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { 'Content-Type': 'application/json', ...cors(env, request) },
@@ -4302,10 +4451,37 @@ async function handleSoloDevChatIngress(
     });
   }
 
+  if (path === '/internal/solo-dev-chat/api/openrouter-models' && method === 'GET') {
+    if (!verifyOperatorPanelKey(request, env)) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    const apiKey = env.OPENROUTER_API_KEY?.trim();
+    if (!apiKey) {
+      return new Response(JSON.stringify({ ok: false, error: 'openrouter_not_configured' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    try {
+      const models = await fetchOpenRouterCatalog(apiKey);
+      return new Response(JSON.stringify({ ok: true, models, cached_ttl_sec: 1800 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return new Response(JSON.stringify({ ok: false, error: msg }), {
+        status: 502,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+  }
+
   if (path === '/internal/solo-dev-chat/api/operator-report/latest' && method === 'GET') {
-    const provided = request.headers.get('X-Admin-Key')?.trim() ?? '';
-    const expected = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
-    if (!expected || !provided || !timingSafeEqualText(expected, provided)) {
+    if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { 'Content-Type': 'application/json', ...cors(env, request) },
@@ -4319,30 +4495,16 @@ async function handleSoloDevChatIngress(
   }
 
   if (path === '/internal/solo-dev-chat/api/history' && method === 'POST') {
-    const provided = request.headers.get('X-Admin-Key')?.trim() ?? '';
-    const expected = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
-    if (!expected || !provided || !timingSafeEqualText(expected, provided)) {
+    if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
-        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
-      });
-    }
-    const shared = configuredChatSharedSecretForSoloProxy(env);
-    if (!shared) {
-      return new Response(JSON.stringify({ error: 'EPIR_CHAT_SHARED_SECRET not configured' }), {
-        status: 503,
         headers: { 'Content-Type': 'application/json', ...cors(env, request) },
       });
     }
     const bodyText = await request.text();
     const innerRequest = new Request('https://worker.internal/history', {
       method: 'POST',
-      headers: new Headers({
-        'Content-Type': 'application/json',
-        'X-EPIR-SHARED-SECRET': shared,
-        'X-EPIR-STOREFRONT-ID': 'online-store',
-        'X-EPIR-CHANNEL': 'internal-dashboard',
-      }),
+      headers: new Headers({ 'Content-Type': 'application/json' }),
       body: bodyText,
     });
     return handleHistoryRequest(innerRequest, env);

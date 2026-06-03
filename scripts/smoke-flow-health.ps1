@@ -1,17 +1,18 @@
-# Smoke GET /internal/flow-health (EDOG) na epir-bigquery-batch.
+# Smoke EDOG flow-health przez proxy workera czatu (RPC → bigquery-batch).
 # Użycie:
-#   $env:DATA_GUARDIAN_OPS_KEY = '...'
-#   $env:EPIR_BATCH_WORKER_ORIGIN = 'https://epir-bigquery-batch.<account>.workers.dev'
+#   $env:EPIR_CHAT_WORKER_ORIGIN = 'https://asystent.epirbizuteria.pl'
+#   # Opcjonalnie legacy (gdy brak Cloudflare Access w curl):
+#   $env:EPIR_OPERATOR_PANEL_SECRET = '...'
 #   .\scripts\smoke-flow-health.ps1
 
 $ErrorActionPreference = 'Stop'
-$key = $env:DATA_GUARDIAN_OPS_KEY
-$origin = $env:EPIR_BATCH_WORKER_ORIGIN
-if (-not $key -or -not $origin) {
-  Write-Error 'Ustaw DATA_GUARDIAN_OPS_KEY i EPIR_BATCH_WORKER_ORIGIN'
+$origin = $env:EPIR_CHAT_WORKER_ORIGIN
+if (-not $origin) { $origin = 'https://asystent.epirbizuteria.pl' }
+$uri = ($origin.TrimEnd('/')) + '/internal/solo-dev-chat/api/flow-health'
+$headers = @{ Accept = 'application/json' }
+if ($env:EPIR_OPERATOR_PANEL_SECRET) {
+  $headers['X-Admin-Key'] = $env:EPIR_OPERATOR_PANEL_SECRET
 }
-$uri = ($origin.TrimEnd('/')) + '/internal/flow-health'
-$headers = @{ Authorization = "Bearer $key" }
 $res = Invoke-RestMethod -Uri $uri -Headers $headers -Method Get
 Write-Host ($res | ConvertTo-Json -Depth 6)
 if ($res.edog_verdict -ne 'PASS') {

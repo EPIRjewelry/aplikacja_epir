@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
-# Smoke GET /internal/flow-health (EDOG) na epir-bigquery-batch.
+# Smoke EDOG flow-health przez proxy workera czatu.
 set -euo pipefail
-: "${DATA_GUARDIAN_OPS_KEY:?set DATA_GUARDIAN_OPS_KEY}"
-: "${EPIR_BATCH_WORKER_ORIGIN:?set EPIR_BATCH_WORKER_ORIGIN}"
-ORIGIN="${EPIR_BATCH_WORKER_ORIGIN%/}"
-RES=$(curl -sf -H "Authorization: Bearer ${DATA_GUARDIAN_OPS_KEY}" "${ORIGIN}/internal/flow-health")
+: "${EPIR_CHAT_WORKER_ORIGIN:=https://asystent.epirbizuteria.pl}"
+ORIGIN="${EPIR_CHAT_WORKER_ORIGIN%/}"
+HDR=(-H "Accept: application/json")
+if [[ -n "${EPIR_OPERATOR_PANEL_SECRET:-}" ]]; then
+  HDR+=(-H "X-Admin-Key: ${EPIR_OPERATOR_PANEL_SECRET}")
+fi
+RES=$(curl -sf "${HDR[@]}" "${ORIGIN}/internal/solo-dev-chat/api/flow-health")
 echo "$RES"
-echo "$RES" | grep -q '"edog_verdict":"PASS"' || { echo "EDOG smoke FAIL" >&2; exit 1; }
+VERDICT=$(echo "$RES" | sed -n 's/.*"edog_verdict"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+if [[ "$VERDICT" != "PASS" ]]; then
+  echo "EDOG smoke FAIL: $VERDICT" >&2
+  exit 1
+fi
 echo "EDOG smoke PASS"

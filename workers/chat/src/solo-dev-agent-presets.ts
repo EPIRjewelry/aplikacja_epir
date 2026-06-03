@@ -12,6 +12,7 @@ export type SoloDevAgentId =
   | 'creative_svg'
   | 'creative_copy'
   | 'creative_image'
+  | 'creative_storefront'
   | 'creative_blender_flow'
   | 'creative_gdocs_brief';
 
@@ -165,6 +166,23 @@ TRYB: Dyrektor artystyczny — moodboard i kierunek wizualny (reklama, packshot)
 `.trim(),
   },
   {
+    id: 'creative_storefront',
+    optgroup: 'Project B — sklep / landing',
+    label: 'Grafika sklepu i landing',
+    description: 'Hero, banery, copy — pełny katalog OpenRouter.',
+    uiHint:
+      'Kreacja pod Hydrogen/Shopify: wybierz tryb „Sklep / landing”, storefront Kazka lub Zaręczyny. Model: preset lub **Katalog OpenRouter** (wszystkie modele z konta). Obrazy: filtr image w katalogu.',
+    defaultModelVariant: 'or_recraft_v41_pro',
+    modelVariants: ALL_VARIANTS,
+    systemAddon: `
+TRYB: Grafika i landing page storefrontów EPIR (kazka, zareczyny).
+- Respektuj paletę i font marki z wiadomości operatora ([storefront=…]).
+- Obrazy: opisuj kompozycję, proporcje (hero 16:9, baner 3:1); bez tekstu w kadrze, chyba że operator prosi o mockup.
+- Copy: nagłówki, CTA, sekcje pod section_hero / landing — zwięźle, luksusowo.
+- Nie publikuj automatycznie do Shopify — dostarcz assety i copy do ręcznego wdrożenia.
+`.trim(),
+  },
+  {
     id: 'creative_gdocs_brief',
     optgroup: 'Project B — projektowanie',
     label: 'Brief z Google Docs/Sheets',
@@ -195,14 +213,15 @@ TRYB: Brief z Google Workspace (Project B — ten worker **nie** ma tokenów Goo
     label: 'Blender: curve → mesh',
     description: 'Instrukcje bpy / workflow (bez zastępowania Blender MCP).',
     uiHint:
-      'Instrukcje workflow Blender (mm, curve→mesh, solidify/bevel, krótki bpy). Masz już SVG/curve — nie generuje nowego obrazu. Blender MCP w Cursorze to osobne narzędzie.',
+      'Instrukcje workflow Blender (mm, curve→mesh, solidify/bevel). Użyj narzędzia blender_bridge_invoke (allowlist v1) gdy most HTTP jest skonfigurowany — nie zmyślaj wyników mesh/render. Bez mostu: kroki tekstowe + bpy.',
     defaultModelVariant: 'or_gpt4o',
     modelVariants: ['', 'or_gpt4o', 'or_gpt4o_mini', 'or_claude3_opus', 'or_gemini2_flash', 'glm_flash'],
     systemAddon: `
 TRYB: Asystent workflow Blender (metryczne mm, biżuteria).
+- Gdy most HTTP działa: wołaj **blender_bridge_invoke** (blender_ping, object_get_info, render_packshot, …) — cytuj metrics/logs.
 - Priorytet: **curve z SVG** → **Convert to Mesh** → modyfikatory (solidify/bevel) z uzasadnieniem.
-- Podawaj kroki kompatybilne z Blender 4.x; gdy potrzebny skrypt — krótki snippet bpy, bez destrukcyjnych operacji bez potwierdzenia.
-- Odniesienia do kolekcji Shop_Studio / packshot tylko jeśli operator o to prosi.
+- Podawaj kroki kompatybilne z Blender 5.1+; bpy tylko krótkie snippety, bez destrukcji bez potwierdzenia.
+- Odniesienia do Shop_Studio / packshot przez narzędzia mostu, nie zmyślone ścieżki plików.
 `.trim(),
   },
 ] as const;

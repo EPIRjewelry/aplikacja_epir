@@ -24,16 +24,18 @@ export function createDataOpsMcpServer(): McpServer {
 
   server.tool(
     'flow_health_summary',
-    'GET /internal/flow-health z epir-bigquery-batch (Bearer DATA_GUARDIAN_OPS_KEY).',
+    'GET /internal/solo-dev-chat/api/flow-health (proxy RPC; Access cookie lub legacy X-Admin-Key).',
     {},
     async () => {
-      const origin = resolveEnv('EPIR_BATCH_WORKER_ORIGIN');
-      const key = resolveEnv('DATA_GUARDIAN_OPS_KEY');
-      if (!origin || !key) {
-        return textResult('Ustaw EPIR_BATCH_WORKER_ORIGIN i DATA_GUARDIAN_OPS_KEY w env MCP.');
-      }
-      const res = await fetch(`${origin.replace(/\/$/, '')}/internal/flow-health`, {
-        headers: { Authorization: `Bearer ${key}` },
+      const origin =
+        resolveEnv('EPIR_CHAT_WORKER_ORIGIN') ||
+        resolveEnv('WORKER_ORIGIN') ||
+        'https://asystent.epirbizuteria.pl';
+      const legacyKey = resolveEnv('EPIR_OPERATOR_PANEL_SECRET');
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (legacyKey) headers['X-Admin-Key'] = legacyKey;
+      const res = await fetch(`${origin.replace(/\/$/, '')}/internal/solo-dev-chat/api/flow-health`, {
+        headers,
       });
       const text = await res.text();
       return textResult(`HTTP ${res.status}\n${text}`);

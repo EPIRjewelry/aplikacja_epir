@@ -74,4 +74,53 @@ describe('solo dev chat ingress', () => {
     );
     expect(res.status).toBe(401);
   });
+
+  it('returns 401 for GET openrouter-models without X-Admin-Key', async () => {
+    const env = { EPIR_OPERATOR_PANEL_SECRET: 'good' } as unknown as Env;
+    const res = await worker.fetch(
+      new Request('https://asystent.test/internal/solo-dev-chat/api/openrouter-models', {
+        method: 'GET',
+      }),
+      env,
+      noopCtx,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('GET /api/ready does not require EPIR_CHAT_SHARED_SECRET (operator key only)', async () => {
+    const env = { EPIR_OPERATOR_PANEL_SECRET: 'good' } as unknown as Env;
+    const res = await worker.fetch(
+      new Request('https://asystent.test/internal/solo-dev-chat/api/ready', {
+        method: 'GET',
+        headers: { 'X-Admin-Key': 'good' },
+      }),
+      env,
+      noopCtx,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok?: boolean;
+      gates?: { operatorPanelSecret?: boolean; chatSharedSecret?: boolean };
+      note?: string;
+    };
+    expect(body.ok).toBe(true);
+    expect(body.gates?.operatorPanelSecret).toBe(true);
+    expect(body.gates?.chatSharedSecret).toBe(false);
+    expect(body.note).toContain('EPIR_OPERATOR_PANEL_SECRET');
+  });
+
+  it('returns 503 for openrouter-models when OPENROUTER_API_KEY missing', async () => {
+    const env = { EPIR_OPERATOR_PANEL_SECRET: 'good' } as unknown as Env;
+    const res = await worker.fetch(
+      new Request('https://asystent.test/internal/solo-dev-chat/api/openrouter-models', {
+        method: 'GET',
+        headers: { 'X-Admin-Key': 'good' },
+      }),
+      env,
+      noopCtx,
+    );
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe('openrouter_not_configured');
+  });
 });

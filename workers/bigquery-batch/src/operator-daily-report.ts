@@ -6,8 +6,9 @@ import { buildFlowHealthReport } from './edog-flow-health-runner';
 
 export type OperatorReportEnv = {
   DB_CHATBOT: D1Database;
-  MARKETING_INGEST_ORIGIN?: string;
-  MARKETING_OPS_PREVIEW_KEY?: string;
+  MARKETING_INGEST_RPC?: {
+    getMarketingPreview(args?: { date?: string }): Promise<Record<string, unknown>>;
+  };
   GWORKSPACE_REPORT_WEBHOOK_URL?: string;
 };
 
@@ -21,17 +22,13 @@ type AnalyticsEnv = Parameters<typeof buildFlowHealthReport>[0];
 type AnalyticsProbe = Parameters<typeof buildFlowHealthReport>[1];
 
 export async function fetchMarketingPreviewSnippet(env: OperatorReportEnv): Promise<string> {
-  const origin = (env.MARKETING_INGEST_ORIGIN ?? '').trim().replace(/\/$/, '');
-  const key = (env.MARKETING_OPS_PREVIEW_KEY ?? '').trim();
-  if (!origin || !key) {
-    return '_Marketing preview: nie skonfigurowano MARKETING_INGEST_ORIGIN / MARKETING_OPS_PREVIEW_KEY na batch workerze._';
+  const rpc = env.MARKETING_INGEST_RPC;
+  if (!rpc?.getMarketingPreview) {
+    return '_Marketing preview: brak bindingu MARKETING_INGEST_RPC na batch workerze._';
   }
   try {
-    const res = await fetch(`${origin}/ops/marketing-preview`, {
-      headers: { Authorization: `Bearer ${key}` },
-    });
-    const text = await res.text();
-    return `_Marketing preview (HTTP ${res.status}):_\n\`\`\`json\n${text.slice(0, 6000)}\n\`\`\``;
+    const json = await rpc.getMarketingPreview();
+    return `_Marketing preview (RPC):_\n\`\`\`json\n${JSON.stringify(json).slice(0, 6000)}\n\`\`\``;
   } catch (e) {
     return `_Marketing preview error: ${e instanceof Error ? e.message : String(e)}_`;
   }
