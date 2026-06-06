@@ -180,6 +180,26 @@ type S2SChatAuthorizationResult =
 const EPIR_SHARED_SECRET_HEADER = 'X-EPIR-SHARED-SECRET';
 const EPIR_STOREFRONT_HEADER = 'X-EPIR-STOREFRONT-ID';
 const EPIR_CHANNEL_HEADER = 'X-EPIR-CHANNEL';
+
+// #region agent log
+function debugIngressLog(
+  hypothesisId: string,
+  location: string,
+  data: Record<string, unknown>,
+): void {
+  console.log(
+    JSON.stringify({
+      tag: 'debug.c882f5',
+      sessionId: 'c882f5',
+      hypothesisId,
+      location,
+      data,
+      timestamp: Date.now(),
+      runId: 'pre-fix',
+    }),
+  );
+}
+// #endregion
 const REPLAY_PROTECTION_SHARD_NAME = 'replay-protection:v1:global';
 const SESSION_DO_FALLBACK_SHARD_NAME = 'session:v1:fallback';
 const APP_PROXY_CHAT_CONTEXT_OVERRIDE: Required<ChatContextOverride> = {
@@ -4698,6 +4718,12 @@ export default {
 
     // Endpoint czatu (zabezpieczony przez App Proxy)
     if (url.pathname === '/apps/assistant/chat' && request.method === 'POST') {
+      // #region agent log
+      debugIngressLog('E', 'index.ts:/apps/assistant/chat', {
+        ingress: 'app_proxy_direct',
+        hasQuerySignature: Boolean(url.searchParams.get('signature')),
+      });
+      // #endregion
       return handleChat(request, env, APP_PROXY_CHAT_CONTEXT_OVERRIDE, ctx, { appProxyVerified: true });
     }
 
@@ -4715,18 +4741,41 @@ export default {
     // Uwaga: Shopify App Proxy przekazuje /apps/assistant/chat jako /chat do backendu
     // i dodaje podpis HMAC w query/headerach.
     if (url.pathname === '/chat' && request.method === 'POST') {
-      if (hasAppProxySignature(request, url)) {
+      const viaAppProxy = hasAppProxySignature(request, url);
+      if (viaAppProxy) {
         const appProxyAuthError = await authorizeAppProxyRequest(request, env);
         if (appProxyAuthError) {
+          // #region agent log
+          debugIngressLog('E', 'index.ts:/chat:app_proxy_auth', {
+            status: appProxyAuthError.status,
+          });
+          // #endregion
           return appProxyAuthError;
         }
+        // #region agent log
+        debugIngressLog('E', 'index.ts:/chat:app_proxy', { ingress: 'app_proxy_rewritten' });
+        // #endregion
         return handleChat(request, env, APP_PROXY_CHAT_CONTEXT_OVERRIDE, ctx, { appProxyVerified: true });
       }
 
       const s2sResult = verifyS2SChatRequest(request, env);
       if (!s2sResult.ok) {
+        // #region agent log
+        debugIngressLog('A', 'index.ts:/chat:s2s_reject', {
+          status: s2sResult.response.status,
+          hasSharedSecretHeader: Boolean(getTrimmedHeader(request, EPIR_SHARED_SECRET_HEADER)),
+          hasStorefrontHeader: Boolean(getTrimmedHeader(request, EPIR_STOREFRONT_HEADER)),
+          hasChannelHeader: Boolean(getTrimmedHeader(request, EPIR_CHANNEL_HEADER)),
+        });
+        // #endregion
         return s2sResult.response;
       }
+      // #region agent log
+      debugIngressLog('B', 'index.ts:/chat:s2s_ok', {
+        storefrontId: s2sResult.contextOverride.storefrontId,
+        channel: s2sResult.contextOverride.channel,
+      });
+      // #endregion
       return handleChat(request, env, s2sResult.contextOverride, ctx);
     }
 

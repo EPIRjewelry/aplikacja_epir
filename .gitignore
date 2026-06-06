@@ -49,3 +49,5 @@ apps/*/app/styles/tailwind-build.css
 
 # Playwright / lokalne artefakty testów E2E (nie commitować)
 test-results/
+
+!.cursor/index.mdc

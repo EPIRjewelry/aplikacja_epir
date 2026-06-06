@@ -44,4 +44,4 @@ npx wrangler deploy
 
 ## Meta-narrator (Curator)
 
-Osobny skill Cursor: [`.cursor/skills/epir-curator-agent/SKILL.md`](../.cursor/skills/epir-curator-agent/SKILL.md) — interpretacja całości (Gemma, landingi, sprzedaż), bez zastępowania Kustosza ani ESOG.
+Curator (meta-narrator): [`docs/kb/UI_UX_AND_FRONTEND.md`](kb/UI_UX_AND_FRONTEND.md) § Curator — interpretacja całości (Gemma, landingi, sprzedaż), bez zastępowania Kustosza ani ESOG.

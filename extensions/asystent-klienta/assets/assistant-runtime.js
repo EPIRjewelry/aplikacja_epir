@@ -237,6 +237,25 @@ function resolveLoggedInCustomerId(section) {
 }
 
 /* ===== CONSENT GATE (App Proxy POST /apps/assistant/consent) ===== */
+// #region agent log
+function epirAgentDebugLog(location, message, data, hypothesisId) {
+  try {
+    fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c882f5' },
+      body: JSON.stringify({
+        sessionId: 'c882f5',
+        location: location,
+        message: message,
+        data: data || {},
+        hypothesisId: hypothesisId,
+        timestamp: Date.now(),
+        runId: 'pre-fix',
+      }),
+    }).catch(function () {});
+  } catch (e) {}
+}
+// #endregion
 var EPIR_CONSENT_ANONYMOUS_KEY = 'epir-chat-anonymous-id';
 
 function getEpirAnonymousIdForConsent() {
@@ -1598,9 +1617,32 @@ async function sendMessageToWorker(
       signal: controller.signal,
     });
 
+    // #region agent log
+    epirAgentDebugLog(
+      'assistant-runtime.js:chat:response',
+      'theme chat fetch response',
+      {
+        ok: res.ok,
+        status: res.status,
+        contentType: res.headers.get('content-type') || '',
+        endpoint: endpoint,
+        consentLocked: !!(sectionEl && sectionEl.classList.contains('epir-assistant--consent-locked')),
+      },
+      res.ok ? 'B' : 'E',
+    );
+    // #endregion
+
     if (!res.ok) {
       const errText = await (async () => { try { return await res.text(); } catch { return ''; } })();
       console.error('Server error:', res.status, errText);
+      // #region agent log
+      epirAgentDebugLog(
+        'assistant-runtime.js:chat:error',
+        'theme chat upstream error',
+        { status: res.status, errSnippet: String(errText).slice(0, 200) },
+        'E',
+      );
+      // #endregion
       throw new Error(`Serwer zwrócił błąd (${res.status}).`);
     }
 
@@ -1767,6 +1809,14 @@ function initAssistantSubmitHandler() {
 function doSendFromForm(form, input) {
   const sectionEl = form.closest('#epir-assistant-embed') || form.closest('#epir-assistant-section') || getAssistantSection();
   if (sectionEl && sectionEl.classList.contains('epir-assistant--consent-locked')) {
+    // #region agent log
+    epirAgentDebugLog(
+      'assistant-runtime.js:doSendFromForm',
+      'blocked by consent lock',
+      { consentLocked: true },
+      'D',
+    );
+    // #endregion
     return;
   }
   const messagesEl = sectionEl && (sectionEl.querySelector('#assistant-messages') || sectionEl.querySelector('#assistant-messages-embed'));

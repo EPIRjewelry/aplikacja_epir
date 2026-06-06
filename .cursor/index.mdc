@@ -1,0 +1,11 @@
+---
+description: EPIR — obowiązkowy entry point agenta Cursor
+alwaysApply: true
+---
+
+# EPIR Cursor Entry Point
+
+1. **Zacznij od:** `EPIR_AI_BIBLE.md` (router SSOT) oraz `REVIEW.md` (UI/PR/marka).
+2. **Moduły domenowe:** czytaj wyłącznie te wskazane w Biblii (`docs/kb/*.md`).
+3. **Zakaz:** nie czytaj, nie indeksuj, nie cytuj `.kilo/` ani `kilo.jsonc`.
+4. **agents/ i .github/agents/:** read-only bez wyraźnej prośby użytkownika.

@@ -62,5 +62,15 @@ Pliki startowe dla narzędzi AI:
 
 - [`../AGENTS.md`](../AGENTS.md)
 - [`../.github/copilot-instructions.md`](../.github/copilot-instructions.md)
+- [`../EPIR_AI_BIBLE.md`](../EPIR_AI_BIBLE.md) — router SSOT
+- [`../REVIEW.md`](../REVIEW.md) — wytyczne UI/PR marki (Kilo Code)
+
+### Warstwa wiedzy agentowej (`docs/kb/`)
+
+Moduły domenowe (nie zastępują kontraktów technicznych powyżej — uzupełniają routing z Biblii):
+
+- [`kb/UI_UX_AND_FRONTEND.md`](kb/UI_UX_AND_FRONTEND.md) — Hydrogen, Theme, widget, Gemma, Liquid
+- [`kb/DATA_AND_ANALYTICS.md`](kb/DATA_AND_ANALYTICS.md) — pixel, hurtownia, EDCG/EDOG/EAA
+- [`kb/WORKERS_AND_EDGE.md`](kb/WORKERS_AND_EDGE.md) — workers, deploy, ingress, ESOG/EFA/OQAG
 
 Jeżeli jakikolwiek inny plik lub odpowiedź AI jest sprzeczna z pakietem powyżej, pakiet kanoniczny wygrywa.

@@ -1,140 +1,73 @@
-# EPIR AI BIBLE
+# EPIR AI BIBLE — Router SSOT
 
 ## Rola tego dokumentu
 
-To jest dokument reguł nienegocjowalnych. Odpowiada na pytanie **czego nie wolno łamać** przy projektowaniu, review, implementacji, deployu i utrzymaniu dokumentacji.
+Nadrzędny punkt wejścia wiedzy agentowej. Odpowiada na: **czego nie wolno łamać** oraz **który moduł KB przeczytać** przed implementacją.
 
-Jeżeli propozycja kodu lub dokumentacji jest sprzeczna z tym plikiem, propozycja jest błędna.
+Jeżeli propozycja jest sprzeczna z tym plikiem lub wskazanym modułem `docs/kb/`, propozycja jest błędna.
 
-## Zasady podstawowe
+`EPIR_AI_ECOSYSTEM_MASTER.md` mówi **jak system działa**. Ten dokument mówi **jakich granic nie przekraczać** i **dokąd routować**.
+
+## Niezmienne fakty
 
 1. **Jedna aplikacja Shopify:** `epir_ai`
 2. **Jedna gałąź kanoniczna:** `main`
-3. **Jedno repo źródłowe:** `d:\aplikacja_epir`
-4. **Jedna dokumentacja kanoniczna:** tylko zestaw wskazany w `docs/README.md`
-5. **Jeden mirror NotebookLM:** identyczna kopia 1:1 dokumentów z repo, bez dodatkowych plików
+3. **Jedno repo źródłowe:** `EPIRjewelry/aplikacja_epir`
+4. **Jedna dokumentacja kanoniczna:** sekcja *Kanoniczny zestaw dokumentów* w `docs/README.md`
+5. **Jeden mirror NotebookLM:** kopia 1:1 dokumentów z repo
 
-## Guardrails architektury
+## Guardrails (skrót nienegocjowalny)
 
-### 1. Frontend vs backend
+| # | MUST | MUST NOT |
+|---|------|----------|
+| 1 Frontend vs backend | AI, sekrety, stan w workerach | Admin API / sekrety / logika AI w kliencie |
+| 2 Ingress | App Proxy (OS); BFF→S2S (headless) | Bezpośredni `/chat` z przeglądarki; omijanie HMAC |
+| 3 Sekrety | Tylko backend i secret storage | Commit / dokumentacja z wartościami sekretów |
+| 4 Kontekst | `storefrontId` + `channel` w routingu | Traktowanie jako opcjonalne |
+| 5 Project A vs B | A = buyer-facing pełne guardrails | Rozszerzanie wyjątków B na A |
+| 6 Dane | Shopify = commerce truth; stan w CF | Obietnice danych bez pokrycia w systemie |
+| 7 Dokumentacja | Jeden pakiet kanoniczny | Drugi zestaw docs / „historyczne” duplikaty |
+| 8 Review | Zgodność z guardrails = bramka wdrożenia | „Działa lokalnie” łamiąc orthodoksję |
 
-MUST:
+Szczegóły techniczne → moduły `docs/kb/` poniżej.
 
-- frontend pozostaje warstwą UI i klienta API,
-- AI, integracje, sekrety, stan i logika workflow pozostają w backendzie / workerach.
+## Router modułów (czytaj przed implementacją)
 
-MUST NOT:
+| Jeśli pracujesz nad… | Przeczytaj |
+|----------------------|------------|
+| Hydrogen, Theme, widget, Gemma, Liquid, UI marki | [`docs/kb/UI_UX_AND_FRONTEND.md`](docs/kb/UI_UX_AND_FRONTEND.md) + [`REVIEW.md`](REVIEW.md) |
+| D1, pixel, batch, Iceberg, R2 SQL, EDCG/EDOG, lejek | [`docs/kb/DATA_AND_ANALYTICS.md`](docs/kb/DATA_AND_ANALYTICS.md) |
+| Workers, deploy, ingress, sekrety, EFA, ESOG review | [`docs/kb/WORKERS_AND_EDGE.md`](docs/kb/WORKERS_AND_EDGE.md) |
+| Model systemu, role agentów, runtime | [`EPIR_AI_ECOSYSTEM_MASTER.md`](EPIR_AI_ECOSYSTEM_MASTER.md) |
+| PR review UI (Kilo) | [`REVIEW.md`](REVIEW.md) |
+| Kontrakt ingressu / deploy runbook | [`docs/EPIR_INGRESS_AND_RUNTIME.md`](docs/EPIR_INGRESS_AND_RUNTIME.md), [`docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md`](docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md) |
+| Kontrakt danych hurtowni | [`docs/EPIR_ANALYTICS_DATA_CONTRACT.md`](docs/EPIR_ANALYTICS_DATA_CONTRACT.md) |
 
-- wkładać Admin API do klienta,
-- wkładać sekretów do przeglądarki,
-- przenosić logiki AI do bundle frontendu.
+## Router ról agentowych
 
-### 2. Ingress i zaufanie do ruchu
+| Rola | Moduł KB | Werdykt |
+|------|----------|---------|
+| **ESOG** | WORKERS_AND_EDGE § ESOG | `ESOG: PASS` / `ESOG: FAIL` |
+| **EDCG** | DATA § EDCG | `EDCG: PASS` / `EDCG: FAIL` |
+| **EDOG** | DATA § EDOG | `EDOG: PASS` / `EDOG: FAIL` |
+| **EAA** | DATA § EAA | — |
+| **EFA** | WORKERS § EFA | po ESOG |
+| **Deploy** | WORKERS § Deploy | — |
+| **OQAG** | WORKERS § OQAG | `OQAG: PASS` / `OQAG: FAIL` |
+| **Curator** | UI § Curator | `CURATOR: PASS` / `CURATOR: FAIL` |
+| **Indexer** | WORKERS § Indexer | — |
 
-MUST:
+## Kolejność czytania (onboarding)
 
-- dla Online Store używać Shopify App Proxy,
-- dla headless używać BFF `/api/chat` i serwerowego S2S `/chat`,
-- traktować ingress jako osobne źródło prawdy o tożsamości żądania.
+1. [`AGENTS.md`](AGENTS.md)
+2. [`EPIR_AI_ECOSYSTEM_MASTER.md`](EPIR_AI_ECOSYSTEM_MASTER.md)
+3. **Ten plik** (`EPIR_AI_BIBLE.md`) — router
+4. [`docs/README.md`](docs/README.md)
+5. Moduł(y) KB wskazane w tabeli routera powyżej
+6. [`REVIEW.md`](REVIEW.md) — gdy dotyczy UI/Liquid/PR marki
 
-MUST NOT:
+## Izolacja środowisk
 
-- wołać `https://asystent.epirbizuteria.pl/chat` bezpośrednio z przeglądarki,
-- omijać HMAC App Proxy,
-- wstrzykiwać `X-EPIR-*` do kodu klienta.
-
-### 3. Sekrety i klucze
-
-MUST:
-
-- trzymać sekrety wyłącznie w backendzie i secret storage,
-- traktować `SHOPIFY_APP_SECRET`, `EPIR_CHAT_SHARED_SECRET`, klucze GCP, klucze AI i tokeny prywatne jako backend-only.
-
-MUST NOT:
-
-- commitować realnych sekretów do repo,
-- powielać ich w dokumentacji jako wartości,
-- prosić użytkowników o wklejanie sekretów do czatu.
-
-### 4. `storefrontId` i `channel`
-
-MUST:
-
-- utrzymywać `storefrontId` i `channel` jako podstawowy kontekst routingu,
-- dobierać na ich podstawie profil wiedzy, rolę i zachowanie agenta.
-
-MUST NOT:
-
-- traktować tych pól jako opcjonalnej kosmetyki,
-- mieszać buyer-facing i internal kontekstu bez świadomego przełączenia.
-
-### 5. Project A vs Project B
-
-#### Project A
-
-Ruch produkcyjny kupującego:
-
-- Theme App Extension,
-- storefronty headless,
-- buyer-facing chat,
-- polityki ingressu i bezpieczeństwa w pełnej mocy.
-
-#### Project B
-
-Narzędzia wewnętrzne i analityczne:
-
-- BigQuery,
-- workflow developerskie,
-- wewnętrzne dashboardy,
-- serwerowe bypassy operacyjne, ale wyłącznie poza frontendem buyer-facing.
-
-MUST NOT:
-
-- rozszerzać wyjątków Project B na Project A,
-- usprawiedliwiać obejść frontowych potrzebami analityki lub debugowania.
-
-### 6. Dane i pamięć
-
-MUST:
-
-- traktować Shopify jako źródło prawdy dla danych commerce,
-- trzymać stan rozmów po stronie Cloudflare,
-- wyraźnie rozdzielać historię sesji od historii zamówień.
-
-MUST NOT:
-
-- obiecywać buyer-facing użytkownikowi dostępu do danych, których system realnie nie dostarcza,
-- zgadywać polityk sklepu zamiast pobierać je z kanonicznego źródła.
-
-### 7. Dokumentacja
-
-MUST:
-
-- utrzymywać tylko aktualny pakiet dokumentów,
-- aktualizować instrukcje AI i onboarding przy zmianie nazw lub struktury,
-- usuwać stare helpery, quizy, checkpointy i duplikaty, gdy ich treść została przejęta przez pakiet kanoniczny.
-
-MUST NOT:
-
-- utrzymywać drugiego zestawu dokumentów dla NotebookLM,
-- oznaczać starych plików jako „historyczne” zamiast je usuwać,
-- zostawiać równoległych opisów tej samej reguły.
-
-### 8. Review i implementacja
-
-MUST:
-
-- recenzować zmiany architektoniczne względem `EPIR_AI_ECOSYSTEM_MASTER.md`, tego dokumentu i aktualnego kodu,
-- traktować testy ingressu, bezpieczeństwa i routing context jako bramkę jakości,
-- utrzymywać zasadę: brak zgodności z guardrails = brak wdrożenia.
-
-MUST NOT:
-
-- przepychać zmian „bo działa lokalnie”, jeśli łamią orthodoksję,
-- osłabiać testów P0 tylko po to, żeby przejść pipeline.
-
-## Jak używać tej Biblii
-
-- `EPIR_AI_ECOSYSTEM_MASTER.md` mówi **jak system działa**.
-- `EPIR_AI_BIBLE.md` mówi **jakich granic nie przekraczać**.
-- dokumenty w `docs/` doprecyzowują runtime, dane, operacje i wyjątki, ale nie mogą nadpisywać tej Biblii.
+- **Cursor:** entry point [`.cursor/index.mdc`](.cursor/index.mdc); **nie** czytaj `.kilo/` ani `kilo.jsonc`.
+- **Kilo Code:** `instructions` → `REVIEW.md`, `EPIR_AI_BIBLE.md` (reszta przez router KB).
+- **`agents/`**, **`.github/agents/`** — read-only dla Cursor bez wyraźnej prośby użytkownika.

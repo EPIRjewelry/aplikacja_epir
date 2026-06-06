@@ -21,6 +21,7 @@
     "pages:deploy:zareczyny": "npm run build -w zareczyny && npm exec -w zareczyny -- wrangler pages deploy public --project-name=zareczyny-hydrogen-pages --branch=main"
   },
   "dependencies": {
+    "@remix-run/serve": "^2.17.4",
     "lodash": "^4.17.23"
   },
   "devDependencies": {

@@ -26,7 +26,7 @@ Dodatkowo włącz w Cursor (jeśli dostępne): **Shopify Admin MCP**, **Cloudfla
 
 ## 3. Reguły i skille
 
-Repo zawiera [`.cursor/rules/`](../.cursor/rules/) i [`.cursor/skills/`](../.cursor/skills/).
+Repo zawiera [`.cursor/index.mdc`](../.cursor/index.mdc), [`.cursor/rules/`](../.cursor/rules/) (thin pointers) oraz moduły wiedzy [`docs/kb/`](kb/).
 
 Przykładowe zadania dla Cloud Agent:
 

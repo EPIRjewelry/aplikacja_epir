@@ -1,0 +1,51 @@
+{
+
+  "mcpServers": {
+
+    "epir-gworkspace": {
+
+      "command": "npx",
+
+      "args": ["tsx", "mcp-servers/gworkspace/src/index.ts"],
+
+      "env": {
+
+        "GWORKSPACE_OAUTH_CLIENT_ID": "${env:GWORKSPACE_OAUTH_CLIENT_ID}",
+
+        "GWORKSPACE_OAUTH_CLIENT_SECRET": "${env:GWORKSPACE_OAUTH_CLIENT_SECRET}",
+
+        "GWORKSPACE_MAX_CHARS": "32000"
+
+      }
+
+    },
+
+    "epir-data-ops": {
+
+      "command": "npx",
+
+      "args": ["tsx", "mcp-servers/epir-data-ops/src/index.ts"],
+
+      "env": {
+
+        "CLOUDFLARE_ACCOUNT_ID": "${env:CLOUDFLARE_ACCOUNT_ID}",
+
+        "CLOUDFLARE_API_TOKEN": "${env:CLOUDFLARE_API_TOKEN}",
+
+        "EPIR_BATCH_WORKER_ORIGIN": "${env:EPIR_BATCH_WORKER_ORIGIN}",
+
+        "DATA_GUARDIAN_OPS_KEY": "${env:DATA_GUARDIAN_OPS_KEY}",
+
+        "EPIR_ANALYST_WORKER_ORIGIN": "${env:EPIR_ANALYST_WORKER_ORIGIN}",
+
+        "ANALYST_HTTP_BEARER": "${env:ANALYST_HTTP_BEARER}"
+
+      }
+
+    }
+
+  }
+
+}
+
+

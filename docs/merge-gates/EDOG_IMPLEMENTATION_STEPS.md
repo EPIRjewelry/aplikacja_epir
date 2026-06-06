@@ -1,6 +1,6 @@
 # Merge gate: EDOG — wdrożenie strażnika przepływu danych
 
-**Strażnik:** **EDOG** (EPIR Data Operations Guardian) — skill [`.cursor/skills/epir-edog-agent/SKILL.md`](../../.cursor/skills/epir-edog-agent/SKILL.md)
+**Strażnik:** **EDOG** (EPIR Data Operations Guardian) — [`docs/kb/DATA_AND_ANALYTICS.md`](../kb/DATA_AND_ANALYTICS.md) § EDOG
 
 **Uzupełnia (nie zastępuje):** **EDCG** — kontrakt w repo ([`WAREHOUSE_DATA_CONTRACT.md`](WAREHOUSE_DATA_CONTRACT.md))
 
@@ -24,7 +24,7 @@ Werdykt operacyjny produkcji: `GET /internal/flow-health` na `epir-bigquery-batc
 | Krok | Zakres | Artefakty | Warunek wejścia |
 |------|--------|-----------|-----------------|
 | **1** | Mapa przepływu | [`docs/EPIR_DATA_FLOW_MAP.md`](../EPIR_DATA_FLOW_MAP.md) | — |
-| **2** | Definicja agenta | `epir-edog-agent/SKILL.md`, `.github/agents/data-operations-guardian.agent.md`, rejestracja w README/AGENTS | **Krok 1:** `EDOG: PASS` |
+| **2** | Definicja agenta | `docs/kb/DATA_AND_ANALYTICS.md` § EDOG, `.github/agents/data-operations-guardian.agent.md`, rejestracja w README/AGENTS | **Krok 1:** `EDOG: PASS` |
 | **3** | Runtime health | `workers/bigquery-batch/src/edog-flow-health.ts`, `GET /internal/flow-health` | **Krok 2:** `EDOG: PASS` |
 | **4** | MCP read-only | `mcp-servers/epir-data-ops/`, `.cursor/mcp-data-ops.example.json` | **Krok 3:** `EDOG: PASS` (+ smoke `flow-health` lokalnie/staging jeśli dostępne) |
 | **5** | Cron + KV (koszt 2×/dobę) | `wrangler.toml` crony `0 8,20 * * *`, opcjonalny `DATA_GUARDIAN_KV`, secret `DATA_GUARDIAN_OPS_KEY` | **Krok 4:** `EDOG: PASS` |

@@ -12,8 +12,9 @@ Obowiązkowa kolejność:
 
 1. `AGENTS.md`
 2. `EPIR_AI_ECOSYSTEM_MASTER.md`
-3. `EPIR_AI_BIBLE.md`
+3. `EPIR_AI_BIBLE.md` (router SSOT → moduły `docs/kb/`)
 4. `docs/README.md`
+5. `REVIEW.md` — gdy praca dotyczy UI/Liquid/PR marki (Kilo + Cursor)
 
 ## Niezmienne fakty
 
@@ -38,21 +39,24 @@ Opisuje:
 
 ### `EPIR_AI_BIBLE.md`
 
-Definiuje:
+Router SSOT — definiuje:
 
-- zasady nienegocjowalne,
-- orthodoksję ESOG,
-- guardrails bezpieczeństwa i architektury,
-- reguły pracy dla ludzi, agentów i recenzji.
+- zasady nienegocjowalne (skrót),
+- routing do modułów `docs/kb/` i ról agentowych (ESOG, EDCG, EDOG, EFA, …),
+- guardrails bezpieczeństwa i architektury.
+
+Moduły wiedzy domenowej: `docs/kb/UI_UX_AND_FRONTEND.md`, `docs/kb/DATA_AND_ANALYTICS.md`, `docs/kb/WORKERS_AND_EDGE.md`.
 
 W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md`, a następnie `EPIR_AI_BIBLE.md`.
 
-## Cursor — skills i rules (jedno źródło definicji agentów)
+## Cursor — router SSOT i reguły
 
-- **Definicje agentów** (ESOG, EFA, EDCG, EDOG, EAA, deploy, OQAG, indexer): wyłącznie **`.cursor/skills/`** — indeks: [`.cursor/skills/README.md`](.cursor/skills/README.md).
-- **Reguły sesji Cursor:** [`.cursor/rules/`](.cursor/rules/) (`epir-canonical-onboarding.mdc` — zawsze; pozostałe wg globów).
-- Folder **`agents/`** — opcjonalne **Python CLI** (nie edytuj tam pełnych zasad; synchronizuj z SKILL).
-- **`.github/agents/`** — definicje pod **GitHub Copilot**, nie zastępują `.cursor/skills/`.
+- **Entry point:** [`.cursor/index.mdc`](.cursor/index.mdc) (`alwaysApply`) → `EPIR_AI_BIBLE.md` + `REVIEW.md`.
+- **Moduły wiedzy agentowej:** [`docs/kb/`](docs/kb/) — indeks: [`.cursor/skills/README.md`](.cursor/skills/README.md).
+- **Reguły sesji Cursor:** [`.cursor/rules/`](.cursor/rules/) — thin pointers do Biblii (globy wg pliku).
+- Folder **`agents/`** — opcjonalne **Python CLI** (read-only dla Cursor).
+- **`.github/agents/`** — definicje pod **GitHub Copilot**.
+- **`.kilo/`** — Kilo Code (izolowane od Cursor przez `.cursorignore`).
 
 ## Zasady pracy
 
@@ -90,9 +94,9 @@ W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md
 
 ## Strażnicy i kontrakt danych (warehouse)
 
-- **ESOG** — ortodoksia Shopify/app: `.cursor/skills/epir-esog-agent/SKILL.md`
-- **EDCG** — kontrakt danych analitycznych (D1 → Pipelines → Iceberg → R2 SQL): `.cursor/skills/epir-edcg-agent/SKILL.md`
-- **EDOG** — operacyjny przepływ danych (flow-health, batch, sonda Q1): `.cursor/skills/epir-edog-agent/SKILL.md`
+- **ESOG** — ortodoksia Shopify/app: `docs/kb/WORKERS_AND_EDGE.md` § ESOG
+- **EDCG** — kontrakt danych analitycznych: `docs/kb/DATA_AND_ANALYTICS.md` § EDCG
+- **EDOG** — operacyjny przepływ danych: `docs/kb/DATA_AND_ANALYTICS.md` § EDOG
 - **Kanon szczegółowy:** `docs/EPIR_ANALYTICS_DATA_CONTRACT.md`
 - **Bramka kroków** (każdy krok wymaga `ESOG: PASS` **oraz** `EDCG: PASS` przed kolejnym): `docs/merge-gates/WAREHOUSE_DATA_CONTRACT.md`
 - **Bramka wdrożenia EDOG** (`EDOG: PASS` przed kolejnym krokiem): `docs/merge-gates/EDOG_IMPLEMENTATION_STEPS.md`

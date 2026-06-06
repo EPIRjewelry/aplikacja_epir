@@ -16,3 +16,7 @@ apps/zareczyny/public/build/
 .env
 .env.*
 .dev.vars
+
+# --- Kilo Code Encapsulation ---
+.kilo/
+kilo.jsonc

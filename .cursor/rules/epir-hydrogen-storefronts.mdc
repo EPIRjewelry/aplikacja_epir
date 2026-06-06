@@ -4,22 +4,4 @@ globs: apps/kazka/**/*,apps/zareczyny/**/*
 alwaysApply: false
 ---
 
-# Storefronty Hydrogen (kazka, zareczyny)
-
-## Dwa brandy, jeden backend
-
-- **kazka** i **zareczyny** to osobne storefronty (`storefrontId`, env, persona).
-- Wspólna logika czatu: preferuj **`packages/utils`** (np. `hydrogen.ts`, docelowo `chat-*` z ETAP 6 planu) — nie duplikuj `app/lib/*.ts` bez potrzeby.
-
-## Ingress czatu (obowiązkowy wzorzec)
-
-- Przeglądarka → **same-origin** `POST /api/chat` (Remix)
-- BFF → `POST https://asystent.epirbizuteria.pl/chat` z nagłówkami S2S (`X-EPIR-SHARED-SECRET`, `X-EPIR-STOREFRONT-ID`, `X-EPIR-CHANNEL`)
-- Nigdy sekretów operatora ani shared secret w bundle klienta
-
-## Co zostaje w aplikacji (nie w `packages/ui`)
-
-- **Header / Footer / Hero** — kolory, `NAV_HANDLE_ORDER`, `INFO_LINKS`, copy marki
-- **Env** per app (`BRAND`, tokeny storefrontu)
-
-Default `BRAND` w kazka to **`kazka`**, nie `zareczyny`.
+⚠️ SSOT ROUTING: Nie parsuj własnych założeń. Twoim jedynym punktem wejścia do wiedzy jest /EPIR_AI_BIBLE.md. Sprawdź w nim, z jakich modułów domenowych masz skorzystać.

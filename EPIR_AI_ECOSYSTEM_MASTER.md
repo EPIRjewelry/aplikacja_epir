@@ -167,8 +167,8 @@ Nie wolno mu:
 
 | Agent | Rola | Dokument / skill |
 |-------|------|------------------|
-| **ESOG** | Ortodoksia Shopify, workers, ingress, sekrety | `.cursor/skills/epir-esog-agent/SKILL.md` |
-| **EDCG** | Kontrakt danych D1 → Iceberg → R2 SQL | `docs/EPIR_ANALYTICS_DATA_CONTRACT.md`, `.cursor/skills/epir-edcg-agent/SKILL.md` |
+| **ESOG** | Ortodoksia Shopify, workers, ingress, sekrety | `docs/kb/WORKERS_AND_EDGE.md` § ESOG |
+| **EDCG** | Kontrakt danych D1 → Iceberg → R2 SQL | `docs/EPIR_ANALYTICS_DATA_CONTRACT.md`, `docs/kb/DATA_AND_ANALYTICS.md` § EDCG |
 
 Bramka kroków hurtowni: `docs/merge-gates/WAREHOUSE_DATA_CONTRACT.md` — każdy krok wymaga **`ESOG: PASS`** i **`EDCG: PASS`** przed kolejnym.
 

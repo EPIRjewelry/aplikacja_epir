@@ -54,6 +54,33 @@ export async function resolveShopifySessionTokenForChat(
 const IN_STORE_HOSTS = new Set<string>(['epirbizuteria.pl', 'www.epirbizuteria.pl']);
 const UI_OPEN_KEY = 'epir-assistant-ui-open';
 
+// #region agent log
+function agentDebugLog(
+  location: string,
+  message: string,
+  data: Record<string, unknown>,
+  hypothesisId: string,
+): void {
+  if (typeof window === 'undefined') return;
+  fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Debug-Session-Id': 'c882f5',
+    },
+    body: JSON.stringify({
+      sessionId: 'c882f5',
+      location,
+      message,
+      data,
+      hypothesisId,
+      timestamp: Date.now(),
+      runId: 'pre-fix',
+    }),
+  }).catch(() => {});
+}
+// #endregion
+
 function isInStoreHref(href: string | undefined): boolean {
   if (!href) return false;
   try {
@@ -498,6 +525,20 @@ function ChatWidgetFallback({
 
   const sendMessage = useCallback(
     async (text: string) => {
+      // #region agent log
+      agentDebugLog(
+        'ChatWidget.tsx:sendMessage:entry',
+        'sendMessage called',
+        {
+          messagingAllowed,
+          chatApiUrl,
+          storefrontId,
+          channel,
+          hasAttachment: Boolean(pendingImage),
+        },
+        'D',
+      );
+      // #endregion
       if (!messagingAllowed) return;
       const trimmed = text.trim();
       const attachment = pendingImage;
@@ -561,6 +602,20 @@ function ChatWidgetFallback({
           credentials: 'include',
           body: JSON.stringify(body),
         });
+
+        // #region agent log
+        agentDebugLog(
+          'ChatWidget.tsx:sendMessage:response',
+          'chat fetch response',
+          {
+            ok: res.ok,
+            status: res.status,
+            contentType: res.headers.get('content-type') ?? '',
+            hasSessionToken: Boolean(sessionTok),
+          },
+          res.ok ? 'B' : 'A',
+        );
+        // #endregion
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
@@ -666,6 +721,14 @@ function ChatWidgetFallback({
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Wystąpił błąd';
+        // #region agent log
+        agentDebugLog(
+          'ChatWidget.tsx:sendMessage:error',
+          'sendMessage failed',
+          {errorMessage: msg},
+          'C',
+        );
+        // #endregion
         setErrorMessage(msg);
         syncPersistedChatMessages(storefrontId, channel, messagesRef.current);
       } finally {

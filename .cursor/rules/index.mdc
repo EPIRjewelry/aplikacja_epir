@@ -1,38 +1,8 @@
 ---
 description: Nadrzędny przewodnik orientacyjny i mapa architektury systemu EPIR AI
-alwaysApply: true
+alwaysApply: false
 ---
 
-# EPIR AI — Główny Indeks i Mapa Architektury
+⚠️ SSOT ROUTING: Nie parsuj własnych założeń. Twoim jedynym punktem wejścia do wiedzy jest /EPIR_AI_BIBLE.md. Sprawdź w nim, z jakich modułów domenowych masz skorzystać.
 
-Jesteś asystentem w repozytorium `EPIRjewelry/aplikacja_epir`. Niniejszy plik stanowi punkt wyjścia dla każdej analizy.
-
-## 1. Architektura Systemu (High-Level)
-Sklep opiera się na jednej aplikacji Shopify (`epir_ai`) obsługującej dwa typy storefrontów:
-- **Project A (Produkcja Buyer-Facing):** Online Store (Theme App Extension) oraz dwa storefronty headless w Remix/Hydrogen (`apps/kazka`, `apps/zareczyny`).
-- **Project B (Narzędzia Wewnętrzne):** Hurtownia danych, analityka, operacje deweloperskie i `internal-dashboard`.
-
-## 2. Przepływ Ruchu i Ingress
-- **Online Store:** Ingress przez Shopify App Proxy (`/apps/assistant/chat`) z weryfikacją HMAC.
-- **Headless Storefronts:** Browser -> Same-origin BFF (`/api/chat`) -> Serwerowe S2S (`/chat`) z nagłówkami `X-EPIR-SHARED-SECRET`, `X-EPIR-STOREFRONT-ID`, `X-EPIR-CHANNEL`.
-
-## 3. Osie Źródeł Prawdy
-- **Commerce:** Shopify (produkty, ceny, zamówienia).
-- **State:** Cloudflare Workers / Durable Objects (`SessionDO`, `RateLimiterDO`, `TokenVaultDO`) oraz D1.
-- **Analytics:** Hurtownia analityczna operacyjna: D1 -> Batch Export (`workers/bigquery-batch`) -> R2 Data Catalog (Iceberg) + R2 SQL.
-- **Schematy ingest Pipelines:** `@specs/schemas/` (nie `@codebase` — katalog w `.cursorignore`).
-
-## 4. Role Asystentów AI
-- **Gemma:** Interfejs dla kupujących (język luksusowy, doradztwo, koszyk). Blokada tematów technicznych.
-- **Dev-asystent:** Interfejs wewnętrzny (analityka, zapytania SQL, architektura, wsparcie operacji).
-
-## 5. Indeks Reguł Szczegółowych (.cursor/rules/)
-Przed modyfikacją konkretnego komponentu wczytaj dedykowaną regułę za pomocą `@file`:
-- `epir-canonical-onboarding.mdc` -> Onboarding, prawda o repo i kolejność czytania.
-- `epir-workers-and-ingress.mdc` -> Architektura workerów, zabezpieczenia, reguły routingu.
-- `epir-hydrogen-storefronts.mdc` -> Logika Remix/Hydrogen dla Kazka i Zaręczyny.
-- `epir-edog-guardian.mdc` -> Audyt operacyjny przepływu danych i walidacja bramki EDOG.
-
-**Zamrożone wykonawczo (read-only bez prośby użytkownika):** `agents/`, `.github/agents/` — kanon Cursor tylko w `.cursor/skills/` i `.cursor/rules/`.
-
-Zabrania się łamania guardrails zdefiniowanych w `EPIR_AI_BIBLE.md`.
+Szczegóły entry point Cursor: `.cursor/index.mdc` (`alwaysApply: true`).

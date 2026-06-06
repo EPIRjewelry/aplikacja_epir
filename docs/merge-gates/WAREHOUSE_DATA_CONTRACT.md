@@ -8,8 +8,8 @@ Bramka dla zmian dotyczących **hurtowni pixel/czat** (D1 → Pipelines → Iceb
 
 | Agent | Skill / plik | Zakres |
 |-------|----------------|--------|
-| **EDCG** | [`.cursor/skills/epir-edcg-agent/SKILL.md`](../../.cursor/skills/epir-edcg-agent/SKILL.md) | Kontrakt danych, kolumny, R2 SQL |
-| **ESOG** | [`.cursor/skills/epir-esog-agent/SKILL.md`](../../.cursor/skills/epir-esog-agent/SKILL.md) | Ortodoksia workerów, sekrety, storefrontId/channel |
+| **EDCG** | [`docs/kb/DATA_AND_ANALYTICS.md`](../kb/DATA_AND_ANALYTICS.md) § EDCG | Kontrakt danych, kolumny, R2 SQL |
+| **ESOG** | [`docs/kb/WORKERS_AND_EDGE.md`](../kb/WORKERS_AND_EDGE.md) § ESOG | Ortodoksia workerów, sekrety, storefrontId/channel |
 
 ## Zasada PASS
 
@@ -30,7 +30,7 @@ Przy `FAIL` — poprawka i ponowna recenzja **tego samego** kroku.
 
 | Krok | Zakres | Artefakty | CI |
 |------|--------|-----------|-----|
-| **1** | Agent EDCG + rejestracja kanonu | `epir-edcg-agent/SKILL.md`, `data-contract-guardian.agent.md`, `docs/README.md`, `AGENTS.md` | — |
+| **1** | Agent EDCG + rejestracja kanonu | `docs/kb/DATA_AND_ANALYTICS.md` § EDCG, `data-contract-guardian.agent.md`, `docs/README.md`, `AGENTS.md` | — |
 | **2** | Dokument kontraktu (ten pakiet) | `EPIR_ANALYTICS_DATA_CONTRACT.md`, link w `EPIR_DATA_SCHEMA_CONTRACT.md` | — |
 | **3** | Example pipeline SQL + README | `pixel-pipeline-production.example.sql`, `pipelines-schemas/README.md` | — |
 | **4** | Walidator CI kontraktu danych | `scripts/ci/validate-data-contract.py`, workflow / deploy-policy | `validate-data-contract.py` |

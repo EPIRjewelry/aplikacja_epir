@@ -4,7 +4,7 @@
 
 Ten dokument jest **wiążącym, szczegółowym kontraktem** warstwy danych analitycznych EPIR: od zapisu w D1, przez HTTP ingest Pipelines, po tabele Iceberg i odczyty **R2 SQL** (`run_analytics_query`, `Q1`–`Q10`).
 
-- **Strażnik:** agent **EDCG** (EPIR Data Contract Guardian) — skill [`.cursor/skills/epir-edcg-agent/SKILL.md`](../.cursor/skills/epir-edcg-agent/SKILL.md), GitHub [`.github/agents/data-contract-guardian.agent.md`](../.github/agents/data-contract-guardian.agent.md).
+- **Strażnik:** agent **EDCG** (EPIR Data Contract Guardian) — [`docs/kb/DATA_AND_ANALYTICS.md`](kb/DATA_AND_ANALYTICS.md) § EDCG, GitHub [`.github/agents/data-contract-guardian.agent.md`](../.github/agents/data-contract-guardian.agent.md).
 - **Bramka kroków:** [`docs/merge-gates/WAREHOUSE_DATA_CONTRACT.md`](merge-gates/WAREHOUSE_DATA_CONTRACT.md) — każdy krok wymaga **`ESOG: PASS`** i **`EDCG: PASS`** przed kolejnym krokiem.
 - **Ramy ogólne:** [`EPIR_DATA_SCHEMA_CONTRACT.md`](EPIR_DATA_SCHEMA_CONTRACT.md) (Shopify, D1 ogólnie, marketing namespace).
 - **Implementacja SQL:** [`workers/bigquery-batch/src/analytics-queries.ts`](../workers/bigquery-batch/src/analytics-queries.ts).
