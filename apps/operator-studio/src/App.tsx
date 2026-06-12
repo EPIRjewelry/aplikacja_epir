@@ -42,7 +42,7 @@ type CatalogStatus = 'idle' | 'loading' | 'ok' | 'error';
 
 export default function App() {
   const [key, setKey] = useState(getAdminKey);
-  const [keySaved, setKeySaved] = useState(false);
+  const [keySaved, setKeySaved] = useState(() => Boolean(getAdminKey().trim()));
   const [role, setRoleState] = useState<OperatorRoleId>(getRole);
   const [modelSource, setModelSourceState] = useState<ModelSource>(getModelSource);
   const [groqVariant, setGroqVariantState] = useState<GroqModelVariantKey>(getGroqVariant);
@@ -56,6 +56,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<'reports' | 'blender' | 'profile'>('reports');
   const [reports, setReports] = useState<ReportItem[]>([]);
+  const [reportsError, setReportsError] = useState('');
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
   const [reportBody, setReportBody] = useState('');
   const [blenderStatus, setBlenderStatus] = useState('—');
@@ -95,11 +96,42 @@ export default function App() {
 
   const loadReports = useCallback(async () => {
     if (!getAdminKey()) return;
+    setReportsError('');
     try {
       const j = await fetchReports();
+      // #region agent log
+      fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '34c45b' },
+        body: JSON.stringify({
+          sessionId: '34c45b',
+          hypothesisId: 'H3',
+          location: 'App.tsx:loadReports',
+          message: 'fetchReports result',
+          data: { ok: j.ok, count: j.reports?.length ?? -1 },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
       if (j.ok) setReports(j.reports);
-    } catch {
-      /* ignore */
+      else setReportsError('Nie udało się załadować listy raportów.');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setReportsError(msg);
+      // #region agent log
+      fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '34c45b' },
+        body: JSON.stringify({
+          sessionId: '34c45b',
+          hypothesisId: 'H2',
+          location: 'App.tsx:loadReports',
+          message: 'fetchReports error',
+          data: { error: msg },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
     }
   }, []);
 
@@ -117,6 +149,25 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '34c45b' },
+      body: JSON.stringify({
+        sessionId: '34c45b',
+        hypothesisId: 'H1',
+        location: 'App.tsx:initEffect',
+        message: 'reports load gate',
+        data: {
+          keySaved,
+          keyLen: key.trim().length,
+          sessionKeyLen: getAdminKey().trim().length,
+          willLoad: Boolean(keySaved && key),
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     if (keySaved && key) {
       void loadCatalog();
       void loadReports();
@@ -474,6 +525,12 @@ export default function App() {
 
         {tab === 'reports' && (
           <div className="mt-2 space-y-2">
+            {reportsError && <p className="text-xs text-red-400">{reportsError}</p>}
+            {!reportsError && reports.length === 0 && (
+              <p className="text-xs text-slate-500">
+                {keySaved ? 'Brak raportów w D1.' : 'Zapisz klucz operatora, aby załadować raporty.'}
+              </p>
+            )}
             <ul className="max-h-48 space-y-1 overflow-y-auto text-xs">
               {reports.map((r) => (
                 <li key={r.report_date}>
