@@ -406,6 +406,7 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
     'run_analytics_query',
     'fetch_marketing_preview',
     'run_shopify_shopifyql',
+    'operator_shopify_admin_read',
   ]);
   if (internalDashboardOnly.has(toolName)) {
     return {

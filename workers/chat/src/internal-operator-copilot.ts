@@ -75,6 +75,59 @@ export async function getLatestOperatorReport(env: Env): Promise<{
   }
 }
 
+export type OperatorReportListItem = {
+  report_date: string;
+  edog_verdict: string;
+  created_at: number;
+  excerpt: string;
+};
+
+export async function listOperatorReports(env: Env, limit = 30): Promise<OperatorReportListItem[]> {
+  const cap = Math.min(Math.max(limit, 1), 100);
+  try {
+    const rows = await env.DB_CHATBOT.prepare(
+      `SELECT report_date, markdown_body, edog_verdict, created_at
+       FROM operator_daily_reports ORDER BY created_at DESC LIMIT ?1`,
+    )
+      .bind(cap)
+      .all<{
+        report_date: string;
+        markdown_body: string;
+        edog_verdict: string;
+        created_at: number;
+      }>();
+    return (rows.results ?? []).map((r) => ({
+      report_date: r.report_date,
+      edog_verdict: r.edog_verdict,
+      created_at: r.created_at,
+      excerpt: (r.markdown_body ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function getOperatorReportByDate(
+  env: Env,
+  reportDate: string,
+): Promise<{
+  report_date: string;
+  markdown_body: string;
+  edog_verdict: string;
+  created_at: number;
+} | null> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) return null;
+  try {
+    return await env.DB_CHATBOT.prepare(
+      `SELECT report_date, markdown_body, edog_verdict, created_at FROM operator_daily_reports WHERE report_date = ?1`,
+    )
+      .bind(reportDate)
+      .first();
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveInternalDashboardPromptAddons(
   env: Env,
   headers: { get(name: string): string | null },

@@ -140,6 +140,9 @@ export interface Env {
    */
   POLICIES_CACHE?: KVNamespace;
 
+  /** Statyczne assety Operator Studio v2 (`operator-studio-dist`). Opcjonalne lokalnie bez buildu. */
+  OPERATOR_ASSETS?: Fetcher;
+
   SHOPIFY_APP_SECRET: string;
   /** Client ID aplikacji (Partners) — walidacja claimu `aud` w Shopify Session Token (JWT). */
   SHOPIFY_CLIENT_ID?: string;

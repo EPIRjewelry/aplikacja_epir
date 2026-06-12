@@ -18,7 +18,8 @@
     "shopify:version": "shopify version",
     "shopify:app:build": "shopify app build",
     "shopify:app:deploy": "shopify app deploy --allow-updates --force",
-    "pages:deploy:zareczyny": "npm run build -w zareczyny && npm exec -w zareczyny -- wrangler pages deploy public --project-name=zareczyny-hydrogen-pages --branch=main"
+    "pages:deploy:zareczyny": "npm run build -w zareczyny && npm exec -w zareczyny -- wrangler pages deploy public --project-name=zareczyny-hydrogen-pages --branch=main",
+    "build:operator-studio": "npm run build -w operator-studio"
   },
   "dependencies": {
     "@remix-run/serve": "^2.17.4",

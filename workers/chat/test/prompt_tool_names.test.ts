@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { TOOL_SCHEMAS } from '../src/mcp_tools';
+import { OPERATOR_INTERNAL_TOOL_NAMES } from '../src/operator/operator-tool-allowlist';
 import fs from 'fs';
 import path from 'path';
 
@@ -12,6 +13,7 @@ describe('MCP system prompt tool names', () => {
     const missing: string[] = [];
 
     for (const key of keys) {
+      if (OPERATOR_INTERNAL_TOOL_NAMES.has(TOOL_SCHEMAS[key].name)) continue;
       // TOOL_SCHEMAS keys are the canonical tool identifiers
       if (!prompt.includes(key) && !prompt.includes(TOOL_SCHEMAS[key].name)) {
         missing.push(key);

@@ -193,6 +193,11 @@ WORKER_ORIGIN = "https://asystent.epirbizuteria.pl"
 EDOG_GATE_ENABLED = "false"
 # Operator Studio → Blender_assist HTTP relay (named tunnel). Nie jest secret.
 BLENDER_BRIDGE_ORIGIN = "https://blender-bridge.epirbizuteria.pl"
+
+# Operator Studio v2 — statyczny build z apps/operator-studio (npm run build:operator-studio)
+[assets]
+directory = "./operator-studio-dist"
+binding = "OPERATOR_ASSETS"
 # --- Sekrety Storefront (ustaw ręcznie: wrangler secret put <NAZWA>; NIE commituj wartości) ---
 # Fallback dla kanału online-store / aliasów `epir` i `epirbizuteria.pl` (App Proxy, TAE data-brand=epir):
 #   wrangler secret put SHOPIFY_STOREFRONT_TOKEN

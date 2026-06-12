@@ -74,10 +74,28 @@ import { DASHBOARD_HTML } from './dashboard-html';
 import {
   getLatestOperatorReport,
   getOperatorProfile,
+  getOperatorReportByDate,
+  listOperatorReports,
   maybeRefreshSessionDigest,
   putOperatorProfile,
   resolveInternalDashboardPromptAddons,
 } from './internal-operator-copilot';
+import {
+  isOperatorChannel,
+  isProjectBChatChannel,
+  LEGACY_OPERATOR_CHAT_CONTEXT,
+  OPERATOR_CHAT_CONTEXT,
+} from './operator/operator-channel';
+import { filterToolSchemasForOperator } from './operator/operator-tool-allowlist';
+import { resolveOperatorPromptAddons } from './operator/operator-prompt-addons';
+import { OPERATOR_SYSTEM_PROMPT } from './operator/operator-system-prompt';
+import { runOperatorShopifyAdminRead } from './operator/operator-shopify-admin-tools';
+import {
+  isOperatorStudioAssetPath,
+  normalizeOperatorIngressPath,
+  operatorAssetSubpath,
+  STUDIO_PREFIX,
+} from './operator/operator-ingress-paths';
 import { SOLO_DEV_CHAT_HTML, SOLO_DEV_OPERATOR_STUDIO_HTML } from './solo-dev-chat-html';
 import { buildAIProfilePrompt, fetchAIProfile } from './ai-profile';
 import {
@@ -157,6 +175,7 @@ const INTERNAL_DASHBOARD_ONLY_TOOL_NAMES = new Set([
   'fetch_marketing_preview',
   'run_shopify_shopifyql',
   'blender_bridge_invoke',
+  'operator_shopify_admin_read',
 ]);
 
 type ChatContextOverride = {
@@ -237,9 +256,9 @@ async function fetchSessionDO(
 }
 
 function getSystemPromptForChannel(channel?: string): string {
-  return channel === 'internal-dashboard'
-    ? INTERNAL_DASHBOARD_SYSTEM_PROMPT
-    : LUXURY_SYSTEM_PROMPT;
+  if (isOperatorChannel(channel)) return OPERATOR_SYSTEM_PROMPT;
+  if (channel === 'internal-dashboard') return INTERNAL_DASHBOARD_SYSTEM_PROMPT;
+  return LUXURY_SYSTEM_PROMPT;
 }
 
 function hasAppProxySignature(request: Request, url: URL): boolean {
@@ -2871,7 +2890,7 @@ async function handleChat(
   const isShortGreeting = !payload.image_base64 && greetingCheck.length < 15 && greetingPattern.test(greetingCheck);
 
   if (isShortGreeting) {
-    const greetingReply = payload.channel === 'internal-dashboard'
+    const greetingReply = isProjectBChatChannel(payload.channel)
       ? 'Witaj! Jestem wewnętrznym agentem analityczno-doradczym EPIR (dane sklepu, pixel, kampanie). W czym pomóc?'
       : (payload.storefrontId === 'kazka' || payload.brand === 'kazka')
         ? 'Witaj! Jestem Gemma, doradca marki Kazka Jewelry. Jak mogę Ci dzisiaj pomóc? ✨'
@@ -2973,6 +2992,8 @@ async function streamAssistantResponse(
     }
 
     try {
+      const operatorMode = isOperatorChannel(storefrontContext?.channel);
+
       // 🔴 KROK 1: POPRAWKA SESJI
       // Natychmiast wyślij klientowi ID sesji, aby mógł je zapisać.
       console.log(`[streamAssistant] Inicjalizacja strumienia dla sesji: ${sessionId}`);
@@ -2983,9 +3004,14 @@ async function streamAssistantResponse(
       const historyData = await historyResp.json().catch(() => []);
       history = ensureHistoryArray(historyData); // Pełna historia (z rolami 'tool')
 
-      const cartIdResp = await stub.fetch('https://session/cart-id');
-      const cartIdData = (await cartIdResp.json().catch(() => ({ cart_id: null }))) as { cart_id?: string | null };
-      const cartId = cartIdData.cart_id;
+      let cartId: string | null | undefined = null;
+      if (!operatorMode) {
+        const cartIdResp = await stub.fetch('https://session/cart-id');
+        const cartIdData = (await cartIdResp.json().catch(() => ({ cart_id: null }))) as {
+          cart_id?: string | null;
+        };
+        cartId = cartIdData.cart_id;
+      }
 
       // Pobierz profil klienta z SessionDO
       let customerFirstName: string | null = null;
@@ -3014,16 +3040,17 @@ async function streamAssistantResponse(
       const effectiveShopifyCustomerId = effectiveCustomerContext.customerId;
       const verifiedUrlCustomerId = normalizeOptionalString(loggedInCustomerIdFromUrl ?? null);
       const handlerCanonicalCustomerId = normalizeOptionalString(shopifyCustomerId ?? null);
-      const memoryShopifyCustomerId =
+      let memoryShopifyCustomerId =
         identityLevel === 'anonymous'
           ? null
           : identityLevel === 'customer'
             ? verifiedUrlCustomerId ?? handlerCanonicalCustomerId
             : effectiveShopifyCustomerId;
+      if (operatorMode) memoryShopifyCustomerId = null;
       const shopId = normalizeOptionalString(new URL(request.url).searchParams.get('shop')) ?? normalizeOptionalString(env.SHOP_DOMAIN);
 
       let effectiveCustomerToken = anonymousAppProxySession ? undefined : customerToken;
-      if (!effectiveCustomerToken && effectiveShopifyCustomerId && shopId) {
+      if (!operatorMode && !effectiveCustomerToken && effectiveShopifyCustomerId && shopId) {
         try {
           const tokenVaultStub = getTokenVaultStub(env.TOKEN_VAULT_DO, env, {
             kind: 'customer',
@@ -3063,7 +3090,7 @@ async function streamAssistantResponse(
       );
 
       let crossSessionSummary: string | null = null;
-      if (memoryShopifyCustomerId && env.DB_CHATBOT) {
+      if (!operatorMode && memoryShopifyCustomerId && env.DB_CHATBOT) {
         try {
           crossSessionSummary = await loadPersonMemory(env.DB_CHATBOT, memoryShopifyCustomerId);
         } catch (e) {
@@ -3265,9 +3292,11 @@ async function streamAssistantResponse(
       // run_analytics_query tylko gdy channel === "internal-dashboard" (MUST z planu)
       // Wariant schematów (full vs slim) kontrolowany przez env.SLIM_TOOL_SCHEMAS.
       const activeSchemas = resolveToolSchemas(env as { SLIM_TOOL_SCHEMAS?: string | boolean });
-      const schemasToUse = storefrontContext?.channel === 'internal-dashboard'
-        ? Object.values(activeSchemas)
-        : Object.values(activeSchemas).filter((s) => !INTERNAL_DASHBOARD_ONLY_TOOL_NAMES.has(s.name));
+      const schemasToUse = operatorMode
+        ? filterToolSchemasForOperator(activeSchemas)
+        : storefrontContext?.channel === 'internal-dashboard'
+          ? Object.values(activeSchemas)
+          : Object.values(activeSchemas).filter((s) => !INTERNAL_DASHBOARD_ONLY_TOOL_NAMES.has(s.name));
       const toolDefinitions = schemasToUse.map((schema) => ({
         type: 'function' as const,
         function: {
@@ -3277,28 +3306,29 @@ async function streamAssistantResponse(
         },
       }));
 
-      const activeStorefrontConfig = resolveStorefrontConfig(env, storefrontContext?.storefrontId);
+      const activeStorefrontConfig = operatorMode
+        ? null
+        : resolveStorefrontConfig(env, storefrontContext?.storefrontId);
       const aiProfileToken = activeStorefrontConfig?.privateToken ?? activeStorefrontConfig?.apiToken;
-      if (activeStorefrontConfig?.aiProfileGid && !aiProfileToken) {
+      if (!operatorMode && activeStorefrontConfig?.aiProfileGid && !aiProfileToken) {
         console.warn('[streamAssistant] AI profile skipped: no Storefront token in env for this storefront alias', {
           storefrontId: storefrontContext?.storefrontId ?? null,
         });
       }
-      const aiProfile = await fetchAIProfile(
-        activeStorefrontConfig?.aiProfileGid,
-        aiProfileToken,
-        env.SHOP_DOMAIN
-      );
+      const aiProfile = operatorMode
+        ? null
+        : await fetchAIProfile(activeStorefrontConfig?.aiProfileGid, aiProfileToken, env.SHOP_DOMAIN);
       const aiProfilePrompt = aiProfile ? buildAIProfilePrompt(aiProfile) : null;
 
-      if (activeStorefrontConfig?.aiProfileGid && !aiProfile) {
+      if (!operatorMode && activeStorefrontConfig?.aiProfileGid && !aiProfile) {
         console.warn(
           `[streamAssistant] AI profile unavailable for storefront ${storefrontContext?.storefrontId ?? 'unknown'}; fallback to base prompt (check pre-flight logs, metaobject publish, token scope)`
         );
       }
 
-      const agentAddon =
-        storefrontContext?.channel === 'internal-dashboard'
+      const agentAddon = operatorMode
+        ? await resolveOperatorPromptAddons(env, request.headers, sessionId)
+        : storefrontContext?.channel === 'internal-dashboard'
           ? await resolveInternalDashboardPromptAddons(env, request.headers, sessionId)
           : '';
       const baseSystemPrompt =
@@ -3308,11 +3338,11 @@ async function streamAssistantResponse(
       // Zbudowanie dynamicznych linii (koszyk, sklep, cross-session); trafią do ostatniego usera, nie do systemu.
       const dynamicContext: string[] = [];
 
-      if (cartId) {
+      if (!operatorMode && cartId) {
         dynamicContext.push(`Aktualny cart_id sesji to: ${cartId}`);
       }
 
-      if (anonymousAppProxySession) {
+      if (!operatorMode && anonymousAppProxySession) {
         dynamicContext.push('Żądanie z podpisanego App Proxy Shopify, brak ID klienta (traktuj jak gościa).');
         const softName = normalizeOptionalString(softCustomerFirstName ?? null);
         if (softName) {
@@ -3320,7 +3350,7 @@ async function streamAssistantResponse(
             `Miękkie imię z kontekstu klienta (wyłącznie ton powitania, nie tożsamość): ${softName}.`,
           );
         }
-      } else if (effectiveCustomerToken || effectiveShopifyCustomerId) {
+      } else if (!operatorMode && (effectiveCustomerToken || effectiveShopifyCustomerId)) {
         const loginCtx = ['Klient jest zalogowany.'];
         if (customerFirstName) {
           loginCtx.push(`Imię klienta: ${customerFirstName}.`);
@@ -3329,7 +3359,9 @@ async function streamAssistantResponse(
         dynamicContext.push(loginCtx.join(' '));
       }
 
-      if (storefrontContext?.storefrontId || storefrontContext?.channel) {
+      if (operatorMode) {
+        dynamicContext.push('Kontekst: Operator Studio EPIR (Project B, nie Gemma).');
+      } else if (storefrontContext?.storefrontId || storefrontContext?.channel) {
         const sfKey = storefrontContext.storefrontId;
         const sfConfig = resolveStorefrontConfig(env, sfKey);
         const ctxParts: string[] = [
@@ -3347,7 +3379,7 @@ async function streamAssistantResponse(
         dynamicContext.push(`Kontekst storefrontu: ${ctxParts.join(', ')}`);
       }
 
-      if (crossSessionSummary) {
+      if (!operatorMode && crossSessionSummary) {
         dynamicContext.push(`Zapamiętane z wcześniejszych wizyt: ${crossSessionSummary}`);
       }
 
@@ -3376,7 +3408,7 @@ async function streamAssistantResponse(
       // KB-clamp: retriever filtruje po `customerId` i `kind='fact'|'turn'`.
       let memoryRetrievalFailed = false;
       let memoryRetrieveResult: RetrieveMemoryOutput | null = null;
-      if (memoryShopifyCustomerId) {
+      if (!operatorMode && memoryShopifyCustomerId) {
         try {
           memoryRetrieveResult = await retrieveCustomerMemory(env, {
             shopifyCustomerId: memoryShopifyCustomerId,
@@ -3575,7 +3607,7 @@ async function streamAssistantResponse(
       /** Wyniki search_catalog w tej turze — walidacja cen po wygenerowaniu odpowiedzi. */
       const catalogSnapshotsForPricing: unknown[] = [];
       const applyPricingSanitizer = (txt: string): string => {
-        if (storefrontContext?.channel === 'internal-dashboard') return txt;
+        if (isProjectBChatChannel(storefrontContext?.channel)) return txt;
         const outcome = guardAssistantPricingAgainstCatalog(txt, catalogSnapshotsForPricing, {
           sessionId,
         });
@@ -3914,6 +3946,10 @@ async function streamAssistantResponse(
                     ba.arguments && typeof ba.arguments === 'object' ? ba.arguments : {},
                   );
                 }
+                if (call.name === 'operator_shopify_admin_read') {
+                  const oa = safeArgs as { presetId?: string };
+                  return runOperatorShopifyAdminRead(env, typeof oa.presetId === 'string' ? oa.presetId : '');
+                }
                 const brandForMcp = (storefrontContext?.storefrontId === 'kazka' || storefrontContext?.storefrontId === 'zareczyny')
                   ? storefrontContext.storefrontId
                   : brand;
@@ -4160,7 +4196,7 @@ async function streamAssistantResponse(
         });
       }
 
-      if (storefrontContext?.channel === 'internal-dashboard' && executionCtx && sessionId) {
+      if (isProjectBChatChannel(storefrontContext?.channel) && executionCtx && sessionId) {
         executionCtx.waitUntil(maybeRefreshSessionDigest(env, sessionId));
       }
 
@@ -4197,12 +4233,8 @@ async function streamAssistantResponse(
   });
 }
 
-/** Kontekst S2S zgodny z testem `internal-dashboard` (Dev-asystent). */
-const SOLO_DEV_CHAT_CONTEXT: ChatContextOverride = {
-  storefrontId: 'online-store',
-  channel: 'internal-dashboard',
-  brand: 'epir',
-};
+/** @deprecated Stary solo-dev HTML — używa internal-dashboard. */
+const SOLO_DEV_CHAT_CONTEXT: ChatContextOverride = LEGACY_OPERATOR_CHAT_CONTEXT;
 
 function configuredChatSharedSecretForSoloProxy(env: Env): string {
   if (typeof env.EPIR_CHAT_SHARED_SECRET === 'string' && env.EPIR_CHAT_SHARED_SECRET.trim().length > 0) {
@@ -4244,11 +4276,43 @@ async function handleSoloDevChatIngress(
   url: URL,
   method: string,
 ): Promise<Response | null> {
-  const path = url.pathname;
-  const studioHtmlPaths = new Set(['/internal/solo-dev-chat', '/internal/operator-studio']);
-  if (studioHtmlPaths.has(path) && method === 'GET') {
-    const html = path === '/internal/operator-studio' ? SOLO_DEV_OPERATOR_STUDIO_HTML : SOLO_DEV_CHAT_HTML;
-    return new Response(html, {
+  const rawPath = url.pathname;
+  const isV2StudioRequest = rawPath === STUDIO_PREFIX || rawPath.startsWith(`${STUDIO_PREFIX}/`);
+
+  if (method === 'GET' && isOperatorStudioAssetPath(rawPath) && env.OPERATOR_ASSETS) {
+    const assetPath = operatorAssetSubpath(rawPath);
+    const assetUrl = new URL(assetPath, url.origin).toString();
+    const assetRes = await env.OPERATOR_ASSETS.fetch(new Request(assetUrl, request));
+    return new Response(assetRes.body, {
+      status: assetRes.status,
+      headers: { ...Object.fromEntries(assetRes.headers), ...cors(env, request) },
+    });
+  }
+
+  if (method === 'GET' && (rawPath === STUDIO_PREFIX || rawPath === `${STUDIO_PREFIX}/`)) {
+    if (env.OPERATOR_ASSETS) {
+      const indexRes = await env.OPERATOR_ASSETS.fetch(new Request(new URL('/index.html', url.origin).toString()));
+      if (indexRes.ok) {
+        return new Response(indexRes.body, {
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            ...cors(env, request),
+          },
+        });
+      }
+    }
+    return new Response(
+      '<!DOCTYPE html><html><body><p>Operator Studio v2: zbuduj UI (<code>npm run build -w operator-studio</code>).</p></body></html>',
+      {
+        status: 503,
+        headers: { 'Content-Type': 'text/html; charset=utf-8', ...cors(env, request) },
+      },
+    );
+  }
+
+  const path = normalizeOperatorIngressPath(rawPath);
+  if (path === '/internal/solo-dev-chat' && method === 'GET') {
+    return new Response(SOLO_DEV_CHAT_HTML, {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
         'Content-Security-Policy':
@@ -4392,6 +4456,10 @@ async function handleSoloDevChatIngress(
       request.headers.get('X-Epir-Model-Variant')?.trim() ?? request.headers.get('x-epir-model-variant')?.trim() ?? '';
     const agentPreset =
       request.headers.get('X-EPIR-AGENT-PRESET')?.trim() ?? request.headers.get('x-epir-agent-preset')?.trim() ?? '';
+    const operatorRole =
+      request.headers.get('X-EPIR-OPERATOR-ROLE')?.trim() ??
+      request.headers.get('x-epir-operator-role')?.trim() ??
+      '';
     const innerHeaders = new Headers({
       'Content-Type': 'application/json',
       Authorization: `Bearer ${expected}`,
@@ -4402,14 +4470,17 @@ async function handleSoloDevChatIngress(
       request.headers.get('x-epir-openrouter-model')?.trim() ??
       '';
     if (orModel) innerHeaders.set('X-Epir-OpenRouter-Model', orModel);
+    if (operatorRole) innerHeaders.set('X-EPIR-OPERATOR-ROLE', operatorRole);
     if (agentPreset) innerHeaders.set('X-EPIR-AGENT-PRESET', agentPreset);
+
+    const chatContext = isV2StudioRequest ? OPERATOR_CHAT_CONTEXT : SOLO_DEV_CHAT_CONTEXT;
 
     const innerRequest = new Request('https://worker.internal/chat', {
       method: 'POST',
       headers: innerHeaders,
       body: bodyText,
     });
-    return handleChat(innerRequest, env, SOLO_DEV_CHAT_CONTEXT, ctx);
+    return handleChat(innerRequest, env, chatContext, ctx);
   }
 
   if (path === '/internal/solo-dev-chat/api/trigger-warehouse-export' && method === 'POST') {
@@ -4508,6 +4579,42 @@ async function handleSoloDevChatIngress(
       });
     }
     const report = await getLatestOperatorReport(env);
+    return new Response(JSON.stringify({ ok: true, report }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+    });
+  }
+
+  if (path === '/internal/solo-dev-chat/api/reports' && method === 'GET') {
+    if (!verifyOperatorPanelKey(request, env)) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    const limit = Number.parseInt(url.searchParams.get('limit') ?? '30', 10);
+    const reports = await listOperatorReports(env, Number.isFinite(limit) ? limit : 30);
+    return new Response(JSON.stringify({ ok: true, reports }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+    });
+  }
+
+  const reportDateMatch = path.match(/^\/internal\/solo-dev-chat\/api\/reports\/(\d{4}-\d{2}-\d{2})$/);
+  if (reportDateMatch && method === 'GET') {
+    if (!verifyOperatorPanelKey(request, env)) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    const report = await getOperatorReportByDate(env, reportDateMatch[1]!);
+    if (!report) {
+      return new Response(JSON.stringify({ ok: false, error: 'not_found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
     return new Response(JSON.stringify({ ok: true, report }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', ...cors(env, request) },

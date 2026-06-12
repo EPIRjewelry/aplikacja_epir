@@ -1,11 +1,17 @@
 # Project B — agenci i modele (solo-dev-chat / Operator Studio)
 
-Panele (ten sam UI):
+## Operator Studio v2 (2026-06)
 
-- `GET /internal/solo-dev-chat` — kanoniczna ścieżka (wsteczna kompatybilność)
-- `GET /internal/operator-studio` — alias Operator Studio (Faza 3)
+- **UI:** `GET /internal/operator-studio` — React ([`apps/operator-studio`](../apps/operator-studio/)), build: `npm run build:operator-studio`
+- **API:** `/internal/operator-studio/api/*` (alias do `/internal/solo-dev-chat/api/*`)
+- **Kanał czatu:** `operator` (nie Gemma) — moduł [`workers/chat/src/operator/`](../workers/chat/src/operator/)
+- **Role:** `X-EPIR-OPERATOR-ROLE` → `analyst` | `store_ops` | `design_blender` | `creative`
+- **Raporty:** `GET …/api/reports`, `GET …/api/reports/:date`
+- **Bramka:** [`docs/merge-gates/OPERATOR_STUDIO_V2_ESOG.md`](merge-gates/OPERATOR_STUDIO_V2_ESOG.md)
 
-Kod UI: [`workers/chat/src/solo-dev-ui/`](../workers/chat/src/solo-dev-ui/) (`build-studio-html.ts`, `workflow-presets.ts`).
+Legacy (deprecated UI):
+
+- `GET /internal/solo-dev-chat` — stary HTML ([`solo-dev-ui/`](../workers/chat/src/solo-dev-ui/)), kanał `internal-dashboard`
 
 ## Nagłówki
 

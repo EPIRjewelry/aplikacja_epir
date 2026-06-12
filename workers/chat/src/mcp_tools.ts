@@ -227,6 +227,28 @@ export const TOOL_SCHEMAS = {
     },
   },
 
+  operator_shopify_admin_read: {
+    name: 'operator_shopify_admin_read',
+    description:
+      'Odczyt Admin GraphQL Shopify (whitelist presetów): produkty, kolekcje, artykuły bloga, strony. Tylko kanał operator. Wynik: source=shopify_admin_read.',
+    parameters: {
+      type: 'object',
+      properties: {
+        presetId: {
+          type: 'string',
+          description: 'Whitelist preset Admin read.',
+          enum: [
+            'A1_PRODUCTS_RECENT',
+            'A2_COLLECTIONS_LIST',
+            'A3_BLOG_ARTICLES_RECENT',
+            'A4_PAGES_LIST',
+          ],
+        },
+      },
+      required: ['presetId'],
+    },
+  },
+
   update_cart: {
     name: 'update_cart',
     description: 'Perform updates to a cart including add/update/remove line items and buyer identity.',
@@ -486,6 +508,26 @@ export const TOOL_SCHEMAS_SLIM = {
         arguments: { type: 'object' },
       },
       required: ['tool_name', 'arguments'],
+    },
+  },
+
+  operator_shopify_admin_read: {
+    name: 'operator_shopify_admin_read',
+    description: 'Admin GraphQL read (whitelist presetów). operator channel only.',
+    parameters: {
+      type: 'object',
+      properties: {
+        presetId: {
+          type: 'string',
+          enum: [
+            'A1_PRODUCTS_RECENT',
+            'A2_COLLECTIONS_LIST',
+            'A3_BLOG_ARTICLES_RECENT',
+            'A4_PAGES_LIST',
+          ],
+        },
+      },
+      required: ['presetId'],
     },
   },
 
