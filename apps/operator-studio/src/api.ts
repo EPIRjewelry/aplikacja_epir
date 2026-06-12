@@ -103,11 +103,21 @@ function headers(adminKey?: string): HeadersInit {
 
 export async function fetchReports(limit = 30, adminKey?: string) {
   const res = await fetch(`${API}/reports?limit=${limit}`, { headers: headers(adminKey) });
-  if (!res.ok) throw new Error(`reports ${res.status}`);
-  return res.json() as Promise<{
-    ok: boolean;
-    reports: { report_date: string; edog_verdict: string; excerpt: string; created_at: number }[];
-  }>;
+  const body = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    error?: string;
+    detail?: string;
+    reports?: { report_date: string; edog_verdict: string; excerpt: string; created_at: number }[];
+  };
+  if (!res.ok) {
+    throw new Error(body.detail || body.error || `reports ${res.status}`);
+  }
+  return {
+    ok: Boolean(body.ok),
+    reports: body.reports ?? [],
+    error: body.error,
+    detail: body.detail,
+  };
 }
 
 export async function fetchReport(date: string) {

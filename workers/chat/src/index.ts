@@ -4592,12 +4592,27 @@ async function handleSoloDevChatIngress(
         headers: { 'Content-Type': 'application/json', ...cors(env, request) },
       });
     }
+    if (!env.DB_CHATBOT) {
+      return new Response(JSON.stringify({ ok: false, error: 'db_not_configured' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
     const limit = Number.parseInt(url.searchParams.get('limit') ?? '30', 10);
-    const reports = await listOperatorReports(env, Number.isFinite(limit) ? limit : 30);
-    return new Response(JSON.stringify({ ok: true, reports }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json', ...cors(env, request) },
-    });
+    try {
+      const reports = await listOperatorReports(env, Number.isFinite(limit) ? limit : 30);
+      return new Response(JSON.stringify({ ok: true, reports }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('[operator] listOperatorReports failed:', msg);
+      return new Response(JSON.stringify({ ok: false, error: 'db_query_failed', detail: msg }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
   }
 
   const reportDateMatch = path.match(/^\/internal\/solo-dev-chat\/api\/reports\/(\d{4}-\d{2}-\d{2})$/);

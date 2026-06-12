@@ -84,27 +84,26 @@ export type OperatorReportListItem = {
 
 export async function listOperatorReports(env: Env, limit = 30): Promise<OperatorReportListItem[]> {
   const cap = Math.min(Math.max(limit, 1), 100);
-  try {
-    const rows = await env.DB_CHATBOT.prepare(
-      `SELECT report_date, markdown_body, edog_verdict, created_at
-       FROM operator_daily_reports ORDER BY created_at DESC LIMIT ?1`,
-    )
-      .bind(cap)
-      .all<{
-        report_date: string;
-        markdown_body: string;
-        edog_verdict: string;
-        created_at: number;
-      }>();
-    return (rows.results ?? []).map((r) => ({
-      report_date: r.report_date,
-      edog_verdict: r.edog_verdict,
-      created_at: r.created_at,
-      excerpt: (r.markdown_body ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
-    }));
-  } catch {
-    return [];
+  if (!env.DB_CHATBOT) {
+    throw new Error('DB_CHATBOT not configured');
   }
+  const rows = await env.DB_CHATBOT.prepare(
+    `SELECT report_date, markdown_body, edog_verdict, created_at
+     FROM operator_daily_reports ORDER BY created_at DESC LIMIT ?1`,
+  )
+    .bind(cap)
+    .all<{
+      report_date: string;
+      markdown_body: string;
+      edog_verdict: string;
+      created_at: number;
+    }>();
+  return (rows.results ?? []).map((r) => ({
+    report_date: r.report_date,
+    edog_verdict: r.edog_verdict,
+    created_at: r.created_at,
+    excerpt: (r.markdown_body ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
+  }));
 }
 
 export async function getOperatorReportByDate(

@@ -108,6 +108,22 @@ describe('solo dev chat ingress', () => {
     expect(body.note).toContain('EPIR_OPERATOR_PANEL_SECRET');
   });
 
+  it('GET reports returns 503 when DB_CHATBOT missing', async () => {
+    const env = { EPIR_OPERATOR_PANEL_SECRET: 'good' } as unknown as Env;
+    const res = await worker.fetch(
+      new Request('https://asystent.test/internal/operator-studio/api/reports?limit=5', {
+        method: 'GET',
+        headers: { 'X-Admin-Key': 'good' },
+      }),
+      env,
+      noopCtx,
+    );
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { ok?: boolean; error?: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toBe('db_not_configured');
+  });
+
   it('GET /internal/operator-studio/api/reports lists operator_daily_reports', async () => {
     const db = {
       prepare(_sql: string) {

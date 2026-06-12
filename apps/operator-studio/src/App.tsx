@@ -58,6 +58,9 @@ export default function App() {
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [reportsError, setReportsError] = useState('');
   const [reportsDebug, setReportsDebug] = useState('');
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const reportsBootstrapped = useRef(false);
+  const reportsLoadGen = useRef(0);
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
   const [reportBody, setReportBody] = useState('');
   const [blenderStatus, setBlenderStatus] = useState('—');
@@ -104,17 +107,32 @@ export default function App() {
     }
   }, []);
 
+  const persistReportsDebug = (line: string, extra?: Record<string, unknown>) => {
+    setReportsDebug(line);
+    try {
+      sessionStorage.setItem(
+        'epir_debug_reports',
+        JSON.stringify({ line, extra, at: new Date().toISOString() }),
+      );
+    } catch {
+      /* ignore */
+    }
+  };
+
   const loadReports = useCallback(async () => {
     const adminKey = resolveAdminKey();
     if (!adminKey) {
-      setReportsDebug('skip: brak klucza (session/pole)');
+      persistReportsDebug('skip: brak klucza (session/pole)');
       return;
     }
     if (!getAdminKey().trim()) setAdminKey(adminKey);
+    const gen = ++reportsLoadGen.current;
     setReportsError('');
-    setReportsDebug('loading…');
+    setReportsLoading(true);
+    persistReportsDebug('loading…');
     try {
       const j = await fetchReports(30, adminKey);
+      if (gen !== reportsLoadGen.current) return;
       // #region agent log
       fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
         method: 'POST',
@@ -131,15 +149,17 @@ export default function App() {
       // #endregion
       if (j.ok) {
         setReports(j.reports ?? []);
-        setReportsDebug(`ok: ${j.reports?.length ?? 0} raportów`);
+        persistReportsDebug(`ok: ${j.reports?.length ?? 0} raportów`, { count: j.reports?.length ?? 0 });
       } else {
-        setReportsError('Nie udało się załadować listy raportów.');
-        setReportsDebug('response ok=false');
+        const detail = j.detail || j.error || 'unknown';
+        setReportsError(`Nie udało się załadować listy raportów (${detail}).`);
+        persistReportsDebug(`response ok=false: ${detail}`);
       }
     } catch (e) {
+      if (gen !== reportsLoadGen.current) return;
       const msg = e instanceof Error ? e.message : String(e);
       setReportsError(msg);
-      setReportsDebug(`error: ${msg}`);
+      persistReportsDebug(`error: ${msg}`);
       // #region agent log
       fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
         method: 'POST',
@@ -154,6 +174,8 @@ export default function App() {
         }),
       }).catch(() => {});
       // #endregion
+    } finally {
+      if (gen === reportsLoadGen.current) setReportsLoading(false);
     }
   }, [resolveAdminKey]);
 
@@ -171,6 +193,8 @@ export default function App() {
   }, []);
 
   useLayoutEffect(() => {
+    if (reportsBootstrapped.current) return;
+    reportsBootstrapped.current = true;
     const sessionKey = getAdminKey().trim();
     const domKey = keyInputRef.current?.value.trim() ?? '';
     const adminKey = sessionKey || domKey;
@@ -401,6 +425,11 @@ export default function App() {
           onBlur={() => {
             const v = keyInputRef.current?.value.trim() ?? '';
             if (v && v !== key) setKey(v);
+            if (v) {
+              if (!getAdminKey().trim()) setAdminKey(v);
+              setKeySaved(true);
+              void loadReports();
+            }
           }}
         />
         <button
@@ -562,9 +591,20 @@ export default function App() {
 
         {tab === 'reports' && (
           <div className="mt-2 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-slate-400">Biblioteka raportów</span>
+              <button
+                type="button"
+                className="rounded border border-slate-700 px-2 py-0.5 text-xs disabled:opacity-50"
+                disabled={reportsLoading || !resolveAdminKey()}
+                onClick={() => void loadReports()}
+              >
+                {reportsLoading ? 'Ładuję…' : 'Odśwież'}
+              </button>
+            </div>
             {reportsError && <p className="text-xs text-red-400">{reportsError}</p>}
-            {reportsDebug && <p className="text-xs text-slate-600">{reportsDebug}</p>}
-            {!reportsError && reports.length === 0 && (
+            {reportsDebug && <p className="text-xs text-amber-200/80">{reportsDebug}</p>}
+            {!reportsError && !reportsLoading && reports.length === 0 && (
               <p className="text-xs text-slate-500">
                 {resolveAdminKey()
                   ? 'Brak raportów w D1 (API zwróciło pustą listę).'
