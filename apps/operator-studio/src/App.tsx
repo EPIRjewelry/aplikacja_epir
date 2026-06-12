@@ -1,8 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import {
+  FILE_ACCEPT,
+  MAX_ATTACHMENT_BYTES,
+  MAX_TOTAL_ATTACHMENT_BYTES,
+  buildMessageWithAttachments,
+  fileToAttachment,
+  formatBytes,
+  totalAttachmentBytes,
+  type PendingAttachment,
+} from './attachments';
 import {
   ROLES,
   type ChatMessage,
+  type ModelSource,
   type OpenRouterCatalogModel,
   type OperatorRoleId,
   clearSession,
@@ -12,14 +23,19 @@ import {
   fetchReport,
   fetchReports,
   getAdminKey,
+  getGroqVariant,
+  getModelSource,
   getOrModel,
   getRole,
   saveOperatorProfile,
   setAdminKey,
+  setGroqVariant,
+  setModelSource,
   setOrModel,
   setRole,
   streamChat,
 } from './api';
+import { GROQ_MODEL_OPTIONS, isGroqVariantMultimodal, type GroqModelVariantKey } from './groq-models';
 
 type ReportItem = { report_date: string; edog_verdict: string; excerpt: string };
 type CatalogStatus = 'idle' | 'loading' | 'ok' | 'error';
@@ -28,10 +44,13 @@ export default function App() {
   const [key, setKey] = useState(getAdminKey);
   const [keySaved, setKeySaved] = useState(false);
   const [role, setRoleState] = useState<OperatorRoleId>(getRole);
+  const [modelSource, setModelSourceState] = useState<ModelSource>(getModelSource);
+  const [groqVariant, setGroqVariantState] = useState<GroqModelVariantKey>(getGroqVariant);
   const [orModel, setOrModelState] = useState(getOrModel);
   const [models, setModels] = useState<OpenRouterCatalogModel[]>([]);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>('idle');
   const [catalogError, setCatalogError] = useState('');
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -42,8 +61,10 @@ export default function App() {
   const [blenderStatus, setBlenderStatus] = useState('—');
   const [profileNotes, setProfileNotes] = useState('');
   const [profileCampaign, setProfileCampaign] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const modelById = useMemo(() => new Map(models.map((m) => [m.id, m])), [models]);
+  const hasImageAttachment = attachments.some((a) => a.kind === 'image');
 
   const catalogHint = useMemo(() => {
     if (catalogStatus === 'loading') return 'Ładuję katalog…';
@@ -103,14 +124,55 @@ export default function App() {
     }
   }, [keySaved, key, loadCatalog, loadReports, loadProfile]);
 
+  useEffect(() => {
+    if (modelSource === 'openrouter' && keySaved && catalogStatus === 'idle') {
+      void loadCatalog();
+    }
+  }, [modelSource, keySaved, catalogStatus, loadCatalog]);
+
   const saveKey = () => {
     setAdminKey(key);
     setKeySaved(true);
   };
 
+  const onModelSourceChange = (s: ModelSource) => {
+    setModelSourceState(s);
+    setModelSource(s);
+  };
+
+  const onGroqVariantChange = (v: GroqModelVariantKey) => {
+    setGroqVariantState(v);
+    setGroqVariant(v);
+  };
+
   const onOrModelChange = (value: string) => {
     setOrModelState(value);
     setOrModel(value);
+  };
+
+  const onFilesSelected = async (files: FileList | null) => {
+    if (!files?.length) return;
+    try {
+      const added: PendingAttachment[] = [];
+      for (const file of Array.from(files)) {
+        added.push(await fileToAttachment(file));
+      }
+      const nextTotal = totalAttachmentBytes([...attachments, ...added]);
+      if (nextTotal > MAX_TOTAL_ATTACHMENT_BYTES) {
+        throw new Error(
+          `Suma załączników przekracza ${formatBytes(MAX_TOTAL_ATTACHMENT_BYTES)} (łącznie ${formatBytes(nextTotal)}).`,
+        );
+      }
+      setAttachments((prev) => [...prev, ...added]);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setMessages((m) => [...m, { role: 'error', content: msg }]);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
   };
 
   const openReport = async (date: string) => {
@@ -137,40 +199,73 @@ export default function App() {
 
   const send = async () => {
     const text = input.trim();
-    if (!text || busy) return;
+    if (busy) return;
     if (!getAdminKey()) return;
+    if (!text && attachments.length === 0) return;
 
-    const slug = orModel.trim();
-    if (slug && catalogStatus === 'ok' && !modelById.has(slug)) {
+    if (modelSource === 'openrouter') {
+      const slug = orModel.trim();
+      if (!slug) {
+        setMessages((m) => [
+          ...m,
+          { role: 'error', content: 'Wybierz model z katalogu OpenRouter lub przełącz na Groq / Workers AI.' },
+        ]);
+        return;
+      }
+      if (slug && catalogStatus === 'ok' && !modelById.has(slug)) {
+        setMessages((m) => [
+          ...m,
+          { role: 'error', content: `Nieznany model OpenRouter: „${slug}”. Wybierz slug z katalogu.` },
+        ]);
+        return;
+      }
+      if (slug && catalogStatus !== 'ok') {
+        setMessages((m) => [
+          ...m,
+          { role: 'error', content: 'Katalog OpenRouter nie jest załadowany — odśwież katalog.' },
+        ]);
+        return;
+      }
+      if (hasImageAttachment && slug) {
+        const m = modelById.get(slug);
+        if (m && !m.multimodal && !m.imageGen) {
+          setMessages((m) => [
+            ...m,
+            { role: 'error', content: 'Ten model OpenRouter nie obsługuje obrazu wejściowego — wybierz multimodal.' },
+          ]);
+          return;
+        }
+      }
+    }
+
+    if (modelSource === 'groq' && hasImageAttachment && !isGroqVariantMultimodal(groqVariant)) {
       setMessages((m) => [
         ...m,
         {
           role: 'error',
-          content: `Nieznany model OpenRouter: „${slug}”. Wybierz slug z katalogu lub zostaw puste pole (default Groq).`,
+          content:
+            'Załącznik obrazu wymaga modelu multimodal (kimi_k25, k26, gemma4_26b) lub przełącz na OpenRouter z modelem vision.',
         },
       ]);
       return;
     }
-    if (slug && catalogStatus !== 'ok') {
-      setMessages((m) => [
-        ...m,
-        {
-          role: 'error',
-          content: 'Katalog OpenRouter nie jest załadowany — odśwież katalog lub zostaw puste pole (default Groq).',
-        },
-      ]);
-      return;
-    }
+
+    const built = buildMessageWithAttachments(text, attachments);
+    const displayUser =
+      text ||
+      attachments.map((a) => `[${a.kind}: ${a.name}]`).join(' ') ||
+      built.message;
 
     setInput('');
-    setMessages((m) => [...m, { role: 'user', content: text }]);
+    setAttachments([]);
+    setMessages((m) => [...m, { role: 'user', content: displayUser }]);
     setBusy(true);
     let assistant = '';
     setMessages((m) => [...m, { role: 'assistant', content: '' }]);
     try {
       await streamChat(
-        text,
-        { role, orModel: slug },
+        built,
+        { role, modelSource, orModel: orModel.trim(), groqVariant },
         (delta) => {
           assistant = delta;
           setMessages((m) => {
@@ -179,7 +274,16 @@ export default function App() {
             return copy;
           });
         },
-        () => {},
+        (urls) => {
+          if (!urls.length) return;
+          const block = urls.map((u) => `![wygenerowany obraz](${u})`).join('\n\n');
+          assistant = assistant ? `${assistant}\n\n${block}` : block;
+          setMessages((m) => {
+            const copy = [...m];
+            copy[copy.length - 1] = { role: 'assistant', content: assistant };
+            return copy;
+          });
+        },
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -194,13 +298,13 @@ export default function App() {
   };
 
   const slug = orModel.trim();
-  const selectedModel = slug ? modelById.get(slug) : undefined;
+  const selectedOrModel = slug ? modelById.get(slug) : undefined;
 
   return (
     <div className="grid min-h-screen grid-cols-[280px_1fr_300px] grid-rows-[auto_1fr_auto]">
       <header className="col-span-3 border-b border-slate-800 bg-slate-900 px-4 py-3">
         <h1 className="text-lg font-semibold">EPIR — Operator Studio (Project B)</h1>
-        <p className="text-sm text-slate-400">Twoi agenci wewnętrzni — bez Gemmy. OpenRouter + raporty + Blender.</p>
+        <p className="text-sm text-slate-400">Groq / Workers AI lub OpenRouter · załączniki · raporty · Blender</p>
       </header>
 
       <aside className="row-span-2 border-r border-slate-800 bg-slate-900 p-4">
@@ -224,6 +328,7 @@ export default function App() {
           onClick={() => {
             clearSession();
             setMessages([]);
+            setAttachments([]);
           }}
         >
           Nowa rozmowa
@@ -250,63 +355,91 @@ export default function App() {
         </div>
 
         <div className="mt-4">
-          <label className="text-xs text-slate-400" htmlFor="or-model-input">
-            Model (OpenRouter)
-          </label>
-          <input
-            id="or-model-input"
-            type="text"
-            list="or-catalog"
-            autoComplete="off"
-            spellCheck={false}
-            placeholder="puste = default (Groq)"
+          <label className="text-xs text-slate-400">Źródło modelu</label>
+          <select
             className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
-            value={orModel}
-            onChange={(e) => onOrModelChange(e.target.value)}
-          />
-          <datalist id="or-catalog">
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-                {m.imageGen ? ' 🖼' : ''}
-              </option>
-            ))}
-          </datalist>
-          <p
-            className={`mt-1 text-xs ${catalogStatus === 'error' ? 'text-red-400' : 'text-slate-500'}`}
+            value={modelSource}
+            onChange={(e) => onModelSourceChange(e.target.value as ModelSource)}
           >
-            {catalogHint}
-          </p>
-          {selectedModel && (
+            <option value="groq">Groq / Workers AI</option>
+            <option value="openrouter">Katalog OpenRouter</option>
+          </select>
+        </div>
+
+        {modelSource === 'groq' ? (
+          <div className="mt-3">
+            <label className="text-xs text-slate-400" htmlFor="groq-model">
+              Model (preset)
+            </label>
+            <select
+              id="groq-model"
+              className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
+              value={groqVariant}
+              onChange={(e) => onGroqVariantChange(e.target.value as GroqModelVariantKey)}
+            >
+              {GROQ_MODEL_OPTIONS.map((o) => (
+                <option key={o.key || 'default'} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
             <p className="mt-1 text-xs text-slate-500">
-              Wybrany: {selectedModel.name}
-              {selectedModel.imageGen ? ' (generacja obrazu)' : ''}
+              Nagłówek <code className="text-slate-400">X-Epir-Model-Variant</code>
+              {groqVariant ? ` = ${groqVariant}` : ' (domyślny Groq)'}
             </p>
-          )}
-          <button
-            type="button"
-            className="mt-2 w-full rounded border border-slate-700 px-3 py-1 text-xs"
-            disabled={catalogStatus === 'loading' || !keySaved}
-            onClick={() => void loadCatalog()}
-          >
-            Odśwież katalog
-          </button>
-          {orModel && (
+          </div>
+        ) : (
+          <div className="mt-3">
+            <label className="text-xs text-slate-400" htmlFor="or-model-input">
+              Model (OpenRouter)
+            </label>
+            <input
+              id="or-model-input"
+              type="text"
+              list="or-catalog"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="np. anthropic/claude-sonnet-4"
+              className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
+              value={orModel}
+              onChange={(e) => onOrModelChange(e.target.value)}
+            />
+            <datalist id="or-catalog">
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                  {m.imageGen ? ' 🖼' : ''}
+                </option>
+              ))}
+            </datalist>
+            <p
+              className={`mt-1 text-xs ${catalogStatus === 'error' ? 'text-red-400' : 'text-slate-500'}`}
+            >
+              {catalogHint}
+            </p>
+            {selectedOrModel && (
+              <p className="mt-1 text-xs text-slate-500">
+                Wybrany: {selectedOrModel.name}
+                {selectedOrModel.imageGen ? ' (generacja obrazu)' : ''}
+                {selectedOrModel.multimodal ? ' · multimodal' : ''}
+              </p>
+            )}
             <button
               type="button"
-              className="mt-1 w-full rounded border border-slate-700 px-3 py-1 text-xs text-slate-400"
-              onClick={() => onOrModelChange('')}
+              className="mt-2 w-full rounded border border-slate-700 px-3 py-1 text-xs"
+              disabled={catalogStatus === 'loading' || !keySaved}
+              onClick={() => void loadCatalog()}
             >
-              Wyczyść → default (Groq)
+              Odśwież katalog
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </aside>
 
       <main className="flex min-h-0 flex-col p-4">
         <div className="flex-1 space-y-3 overflow-y-auto rounded-lg border border-slate-800 bg-slate-900/50 p-4">
           {messages.length === 0 && (
-            <p className="text-sm text-slate-500">Wybierz rolę i zadaj pytanie. Raporty dzienne po prawej.</p>
+            <p className="text-sm text-slate-500">Wybierz rolę i model. Załączniki: obraz, audio, wideo, CSV (max 4 MB).</p>
           )}
           {messages.map((m, i) => (
             <div
@@ -402,6 +535,31 @@ export default function App() {
       </aside>
 
       <footer className="col-span-3 border-t border-slate-800 bg-slate-900 p-4">
+        {attachments.length > 0 && (
+          <ul className="mb-2 flex flex-wrap gap-2">
+            {attachments.map((a) => (
+              <li
+                key={a.id}
+                className="flex items-center gap-2 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs"
+              >
+                {a.kind === 'image' && a.previewUrl && (
+                  <img src={a.previewUrl} alt="" className="h-8 w-8 rounded object-cover" />
+                )}
+                <span>
+                  {a.name} ({formatBytes(a.size)})
+                </span>
+                <button
+                  type="button"
+                  className="text-red-400 hover:text-red-300"
+                  onClick={() => removeAttachment(a.id)}
+                  aria-label={`Usuń ${a.name}`}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <textarea
           className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
           rows={2}
@@ -415,14 +573,28 @@ export default function App() {
             }
           }}
         />
-        <button
-          type="button"
-          disabled={busy}
-          className="mt-2 rounded bg-sky-600 px-4 py-2 text-sm font-medium disabled:opacity-50"
-          onClick={() => void send()}
-        >
-          {busy ? 'Wysyłam…' : 'Wyślij'}
-        </button>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-400">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept={FILE_ACCEPT}
+              className="max-w-[12rem] text-xs"
+              onChange={(e) => void onFilesSelected(e.target.files)}
+            />
+            Załącznik
+          </label>
+          <span className="text-xs text-slate-500">max {formatBytes(MAX_ATTACHMENT_BYTES)} / plik</span>
+          <button
+            type="button"
+            disabled={busy}
+            className="rounded bg-sky-600 px-4 py-2 text-sm font-medium disabled:opacity-50"
+            onClick={() => void send()}
+          >
+            {busy ? 'Wysyłam…' : 'Wyślij'}
+          </button>
+        </div>
       </footer>
     </div>
   );

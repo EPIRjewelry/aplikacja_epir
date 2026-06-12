@@ -1,9 +1,16 @@
+import type { BuiltMessagePayload } from './attachments';
+import type { GroqModelVariantKey } from './groq-models';
+
 const API = '/internal/operator-studio/api';
 
 const KEY = 'epir_operator_admin_key';
 const SESSION = 'epir_operator_session_id';
 const ROLE = 'epir_operator_role';
 const OR_MODEL = 'epir_operator_or_model';
+const MODEL_SOURCE = 'epir_operator_model_source';
+const GROQ_VARIANT = 'epir_operator_groq_variant';
+
+export type ModelSource = 'groq' | 'openrouter';
 
 export type OperatorRoleId = 'analyst' | 'store_ops' | 'design_blender' | 'creative';
 
@@ -57,6 +64,25 @@ export function getOrModel(): string {
 
 export function setOrModel(m: string): void {
   sessionStorage.setItem(OR_MODEL, m);
+}
+
+export function getModelSource(): ModelSource {
+  const v = sessionStorage.getItem(MODEL_SOURCE);
+  return v === 'openrouter' ? 'openrouter' : 'groq';
+}
+
+export function setModelSource(s: ModelSource): void {
+  sessionStorage.setItem(MODEL_SOURCE, s);
+}
+
+export function getGroqVariant(): GroqModelVariantKey {
+  const v = sessionStorage.getItem(GROQ_VARIANT) as GroqModelVariantKey | null;
+  const allowed = ['', 'kimi_k25', 'k26', 'glm_flash', 'qwen3_30b_a3b', 'gemma4_26b', 'scout_17b'] as const;
+  return v && (allowed as readonly string[]).includes(v) ? v : '';
+}
+
+export function setGroqVariant(k: GroqModelVariantKey): void {
+  sessionStorage.setItem(GROQ_VARIANT, k);
 }
 
 function headers(): HeadersInit {
@@ -130,8 +156,13 @@ export async function saveOperatorProfile(body: { brandNotes: string; campaignPr
 export type ChatMessage = { role: 'user' | 'assistant' | 'error'; content: string };
 
 export async function streamChat(
-  message: string,
-  opts: { role: OperatorRoleId; orModel: string; imageBase64?: string },
+  built: BuiltMessagePayload,
+  opts: {
+    role: OperatorRoleId;
+    modelSource: ModelSource;
+    orModel: string;
+    groqVariant: GroqModelVariantKey;
+  },
   onDelta: (text: string) => void,
   onImages: (urls: string[]) => void,
 ): Promise<void> {
@@ -144,12 +175,18 @@ export async function streamChat(
     'X-Admin-Key': k,
     'X-EPIR-OPERATOR-ROLE': opts.role,
   };
-  if (opts.orModel) h['X-Epir-OpenRouter-Model'] = opts.orModel;
+  if (opts.modelSource === 'openrouter' && opts.orModel.trim()) {
+    h['X-Epir-OpenRouter-Model'] = opts.orModel.trim();
+  }
+  if (opts.modelSource === 'groq' && opts.groqVariant) {
+    h['X-Epir-Model-Variant'] = opts.groqVariant;
+  }
 
   const sid = getSessionId();
-  const payload: Record<string, unknown> = { message, stream: true };
+  const payload: Record<string, unknown> = { message: built.message, stream: true };
   if (sid) payload.session_id = sid;
-  if (opts.imageBase64) payload.image_base64 = opts.imageBase64;
+  if (built.imageBase64) payload.image_base64 = built.imageBase64;
+  if (built.parts?.length) payload.parts = built.parts;
 
   const res = await fetch(`${API}/chat`, {
     method: 'POST',
