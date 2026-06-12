@@ -99,39 +99,11 @@ export default function App() {
     setReportsError('');
     try {
       const j = await fetchReports();
-      // #region agent log
-      fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '34c45b' },
-        body: JSON.stringify({
-          sessionId: '34c45b',
-          hypothesisId: 'H3',
-          location: 'App.tsx:loadReports',
-          message: 'fetchReports result',
-          data: { ok: j.ok, count: j.reports?.length ?? -1 },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       if (j.ok) setReports(j.reports);
       else setReportsError('Nie udało się załadować listy raportów.');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setReportsError(msg);
-      // #region agent log
-      fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '34c45b' },
-        body: JSON.stringify({
-          sessionId: '34c45b',
-          hypothesisId: 'H2',
-          location: 'App.tsx:loadReports',
-          message: 'fetchReports error',
-          data: { error: msg },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
     }
   }, []);
 
@@ -149,41 +121,24 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '34c45b' },
-      body: JSON.stringify({
-        sessionId: '34c45b',
-        hypothesisId: 'H1',
-        location: 'App.tsx:initEffect',
-        message: 'reports load gate',
-        data: {
-          keySaved,
-          keyLen: key.trim().length,
-          sessionKeyLen: getAdminKey().trim().length,
-          willLoad: Boolean(keySaved && key),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-    if (keySaved && key) {
-      void loadCatalog();
-      void loadReports();
-      void loadProfile();
-    }
-  }, [keySaved, key, loadCatalog, loadReports, loadProfile]);
+    if (!getAdminKey().trim()) return;
+    void loadReports();
+    void loadProfile();
+  }, [loadReports, loadProfile]);
 
   useEffect(() => {
-    if (modelSource === 'openrouter' && keySaved && catalogStatus === 'idle') {
+    if (modelSource !== 'openrouter' || !getAdminKey().trim()) return;
+    if (catalogStatus === 'idle' || catalogStatus === 'error') {
       void loadCatalog();
     }
-  }, [modelSource, keySaved, catalogStatus, loadCatalog]);
+  }, [modelSource, catalogStatus, loadCatalog]);
 
   const saveKey = () => {
     setAdminKey(key);
     setKeySaved(true);
+    void loadReports();
+    void loadProfile();
+    if (modelSource === 'openrouter') void loadCatalog();
   };
 
   const onModelSourceChange = (s: ModelSource) => {
