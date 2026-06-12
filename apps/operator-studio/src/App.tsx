@@ -58,9 +58,11 @@ export default function App() {
   const [tab, setTab] = useState<'reports' | 'blender' | 'profile'>('reports');
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [reportsError, setReportsError] = useState('');
-  const [reportsDebug, setReportsDebug] = useState('');
+  const [reportsStatus, setReportsStatus] = useState('');
   const [reportsLoading, setReportsLoading] = useState(false);
   const reportsLoadGen = useRef(0);
+  const loadReportsRef = useRef<() => void>(() => {});
+  const loadProfileRef = useRef<() => void>(() => {});
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
   const [reportBody, setReportBody] = useState('');
   const [blenderStatus, setBlenderStatus] = useState('—');
@@ -118,51 +120,25 @@ export default function App() {
     }
   }, []);
 
-  const persistReportsDebug = (line: string, extra?: Record<string, unknown>) => {
-    setReportsDebug(line);
-    try {
-      sessionStorage.setItem(
-        'epir_debug_reports',
-        JSON.stringify({ line, extra, at: new Date().toISOString() }),
-      );
-    } catch {
-      /* ignore */
-    }
-  };
-
   const loadReports = useCallback(async () => {
     const adminKey = resolveAdminKey();
     if (!adminKey) {
-      persistReportsDebug('skip: brak klucza (session/pole)');
+      setReportsStatus('Zapisz klucz operatora.');
       return;
     }
     if (!getAdminKey().trim()) setAdminKey(adminKey);
     const gen = ++reportsLoadGen.current;
     setReportsError('');
     setReportsLoading(true);
-    persistReportsDebug('loading…');
+    setReportsStatus('Ładuję raporty…');
     try {
       const j = await fetchReports(30, adminKey);
       if (gen !== reportsLoadGen.current) return;
-      // #region agent log
-      fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '34c45b' },
-        body: JSON.stringify({
-          sessionId: '34c45b',
-          hypothesisId: 'H3',
-          location: 'App.tsx:loadReports',
-          message: 'fetchReports result',
-          data: { ok: j.ok, count: j.reports?.length ?? -1, hadSessionKey: Boolean(getAdminKey().trim()) },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       if (j.ok) {
         const list = j.reports ?? [];
         if (list.length > 0) {
           setReports(list);
-          persistReportsDebug(`ok: ${list.length} raportów`, { count: list.length, source: 'list' });
+          setReportsStatus(`${list.length} raportów`);
           void previewReport(list[0]!.report_date);
         } else {
           try {
@@ -177,46 +153,35 @@ export default function App() {
                   excerpt: (r.markdown_body ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
                 },
               ]);
-              persistReportsDebug('ok: 1 raport (fallback latest)', { source: 'latest' });
+              setReportsStatus('1 raport (ostatni)');
               void previewReport(r.report_date);
             } else {
               setReports([]);
-              persistReportsDebug('ok: 0 raportów (lista i latest puste)', { count: 0 });
+              setReportsStatus('Brak raportów w D1');
             }
-          } catch (fallbackErr) {
+          } catch {
             setReports([]);
-            const fb = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-            persistReportsDebug(`ok: 0 raportów (latest: ${fb})`, { count: 0 });
+            setReportsStatus('Brak raportów w D1');
           }
         }
       } else {
         const detail = j.detail || j.error || 'unknown';
         setReportsError(`Nie udało się załadować listy raportów (${detail}).`);
-        persistReportsDebug(`response ok=false: ${detail}`);
+        setReportsStatus('');
       }
     } catch (e) {
       if (gen !== reportsLoadGen.current) return;
       const msg = e instanceof Error ? e.message : String(e);
       setReportsError(msg);
-      persistReportsDebug(`error: ${msg}`);
-      // #region agent log
-      fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '34c45b' },
-        body: JSON.stringify({
-          sessionId: '34c45b',
-          hypothesisId: 'H2',
-          location: 'App.tsx:loadReports',
-          message: 'fetchReports error',
-          data: { error: msg },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
+      setReportsStatus('');
     } finally {
       if (gen === reportsLoadGen.current) setReportsLoading(false);
     }
   }, [resolveAdminKey, previewReport]);
+
+  loadReportsRef.current = () => {
+    void loadReports();
+  };
 
   const loadProfile = useCallback(async () => {
     if (!getAdminKey()) return;
@@ -231,31 +196,20 @@ export default function App() {
     }
   }, []);
 
+  loadProfileRef.current = () => {
+    void loadProfile();
+  };
+
   useLayoutEffect(() => {
     const sessionKey = getAdminKey().trim();
     const domKey = keyInputRef.current?.value.trim() ?? '';
     const adminKey = sessionKey || domKey;
-    // #region agent log
-    fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '34c45b' },
-      body: JSON.stringify({
-        sessionId: '34c45b',
-        hypothesisId: 'H14',
-        location: 'App.tsx:mountEffect',
-        message: 'reports bootstrap once',
-        data: { sessionKeyLen: sessionKey.length, domKeyLen: domKey.length, resolvedLen: adminKey.length },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     if (!adminKey) return;
     if (!sessionKey) setAdminKey(adminKey);
     setKey((prev) => prev.trim() || adminKey);
     setKeySaved(true);
-    void loadReports();
-    void loadProfile();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount bootstrap only
+    loadReportsRef.current();
+    loadProfileRef.current();
   }, []);
 
   useEffect(() => {
@@ -439,11 +393,8 @@ export default function App() {
       <header className="col-span-3 row-start-1 border-b border-slate-800 bg-slate-900 px-4 py-3">
         <h1 className="text-lg font-semibold">EPIR — Operator Studio (Project B)</h1>
         <p className="text-sm text-slate-400">Groq / Workers AI lub OpenRouter · załączniki · raporty · Blender</p>
-        {(reportsDebug || reports.length > 0) && (
-          <p className="mt-1 text-xs text-amber-200">
-            Raporty: {reports.length}
-            {reportsDebug ? ` · ${reportsDebug}` : ''}
-          </p>
+        {reportsStatus && (
+          <p className="mt-1 text-xs text-amber-200">Raporty: {reportsStatus}</p>
         )}
       </header>
 
@@ -640,7 +591,7 @@ export default function App() {
               </button>
             </div>
             {reportsError && <p className="text-xs text-red-400">{reportsError}</p>}
-            {reportsDebug && <p className="text-xs text-amber-200/80">{reportsDebug}</p>}
+            {reportsStatus && !reportsError && <p className="text-xs text-slate-400">{reportsStatus}</p>}
             {!reportsError && !reportsLoading && reports.length === 0 && (
               <p className="text-xs text-slate-500">
                 {resolveAdminKey()
