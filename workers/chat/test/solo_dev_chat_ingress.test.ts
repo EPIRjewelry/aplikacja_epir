@@ -108,6 +108,50 @@ describe('solo dev chat ingress', () => {
     expect(body.note).toContain('EPIR_OPERATOR_PANEL_SECRET');
   });
 
+  it('GET /internal/operator-studio/api/reports lists operator_daily_reports', async () => {
+    const db = {
+      prepare(_sql: string) {
+        return {
+          bind() {
+            return this;
+          },
+          async all() {
+            return {
+              results: [
+                {
+                  report_date: '2026-06-07',
+                  markdown_body: '# Daily report',
+                  edog_verdict: 'PASS',
+                  created_at: 1,
+                },
+              ],
+            };
+          },
+        };
+      },
+    };
+    const env = {
+      EPIR_OPERATOR_PANEL_SECRET: 'good',
+      DB_CHATBOT: db,
+    } as unknown as Env;
+    const res = await worker.fetch(
+      new Request('https://asystent.test/internal/operator-studio/api/reports?limit=5', {
+        method: 'GET',
+        headers: { 'X-Admin-Key': 'good' },
+      }),
+      env,
+      noopCtx,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok?: boolean;
+      reports?: { report_date: string; edog_verdict: string }[];
+    };
+    expect(body.ok).toBe(true);
+    expect(body.reports).toHaveLength(1);
+    expect(body.reports?.[0]?.report_date).toBe('2026-06-07');
+  });
+
   it('returns 503 for openrouter-models when OPENROUTER_API_KEY missing', async () => {
     const env = { EPIR_OPERATOR_PANEL_SECRET: 'good' } as unknown as Env;
     const res = await worker.fetch(

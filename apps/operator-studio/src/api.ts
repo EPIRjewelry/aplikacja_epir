@@ -4,6 +4,8 @@ import type { GroqModelVariantKey } from './groq-models';
 const API = '/internal/operator-studio/api';
 
 const KEY = 'epir_operator_admin_key';
+/** Legacy solo-dev-chat v1 — migrated once into KEY on read */
+const LEGACY_KEY = 'epir_solo_dev_chat_admin_key';
 const SESSION = 'epir_operator_session_id';
 const ROLE = 'epir_operator_role';
 const OR_MODEL = 'epir_operator_or_model';
@@ -23,7 +25,14 @@ export const ROLES: { id: OperatorRoleId; label: string; hint: string }[] = [
 
 export function getAdminKey(): string {
   try {
-    return sessionStorage.getItem(KEY) ?? '';
+    const current = sessionStorage.getItem(KEY)?.trim() ?? '';
+    if (current) return current;
+    const legacy = sessionStorage.getItem(LEGACY_KEY)?.trim() ?? '';
+    if (legacy) {
+      sessionStorage.setItem(KEY, legacy);
+      return legacy;
+    }
+    return '';
   } catch {
     return '';
   }
@@ -85,15 +94,15 @@ export function setGroqVariant(k: GroqModelVariantKey): void {
   sessionStorage.setItem(GROQ_VARIANT, k);
 }
 
-function headers(): HeadersInit {
+function headers(adminKey?: string): HeadersInit {
   const h: Record<string, string> = { 'Content-Type': 'application/json' };
-  const k = getAdminKey();
+  const k = (adminKey ?? getAdminKey()).trim();
   if (k) h['X-Admin-Key'] = k;
   return h;
 }
 
-export async function fetchReports(limit = 30) {
-  const res = await fetch(`${API}/reports?limit=${limit}`, { headers: headers() });
+export async function fetchReports(limit = 30, adminKey?: string) {
+  const res = await fetch(`${API}/reports?limit=${limit}`, { headers: headers(adminKey) });
   if (!res.ok) throw new Error(`reports ${res.status}`);
   return res.json() as Promise<{
     ok: boolean;

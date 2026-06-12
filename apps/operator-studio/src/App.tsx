@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import {
   FILE_ACCEPT,
@@ -57,12 +57,22 @@ export default function App() {
   const [tab, setTab] = useState<'reports' | 'blender' | 'profile'>('reports');
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [reportsError, setReportsError] = useState('');
+  const [reportsDebug, setReportsDebug] = useState('');
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
   const [reportBody, setReportBody] = useState('');
   const [blenderStatus, setBlenderStatus] = useState('—');
   const [profileNotes, setProfileNotes] = useState('');
   const [profileCampaign, setProfileCampaign] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const keyInputRef = useRef<HTMLInputElement>(null);
+
+  const resolveAdminKey = useCallback((): string => {
+    const fromSession = getAdminKey().trim();
+    if (fromSession) return fromSession;
+    const fromState = key.trim();
+    if (fromState) return fromState;
+    return keyInputRef.current?.value.trim() ?? '';
+  }, [key]);
 
   const modelById = useMemo(() => new Map(models.map((m) => [m.id, m])), [models]);
   const hasImageAttachment = attachments.some((a) => a.kind === 'image');
@@ -95,17 +105,57 @@ export default function App() {
   }, []);
 
   const loadReports = useCallback(async () => {
-    if (!getAdminKey()) return;
+    const adminKey = resolveAdminKey();
+    if (!adminKey) {
+      setReportsDebug('skip: brak klucza (session/pole)');
+      return;
+    }
+    if (!getAdminKey().trim()) setAdminKey(adminKey);
     setReportsError('');
+    setReportsDebug('loading…');
     try {
-      const j = await fetchReports();
-      if (j.ok) setReports(j.reports);
-      else setReportsError('Nie udało się załadować listy raportów.');
+      const j = await fetchReports(30, adminKey);
+      // #region agent log
+      fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '34c45b' },
+        body: JSON.stringify({
+          sessionId: '34c45b',
+          hypothesisId: 'H3',
+          location: 'App.tsx:loadReports',
+          message: 'fetchReports result',
+          data: { ok: j.ok, count: j.reports?.length ?? -1, hadSessionKey: Boolean(getAdminKey().trim()) },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
+      if (j.ok) {
+        setReports(j.reports ?? []);
+        setReportsDebug(`ok: ${j.reports?.length ?? 0} raportów`);
+      } else {
+        setReportsError('Nie udało się załadować listy raportów.');
+        setReportsDebug('response ok=false');
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setReportsError(msg);
+      setReportsDebug(`error: ${msg}`);
+      // #region agent log
+      fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '34c45b' },
+        body: JSON.stringify({
+          sessionId: '34c45b',
+          hypothesisId: 'H2',
+          location: 'App.tsx:loadReports',
+          message: 'fetchReports error',
+          data: { error: msg },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
     }
-  }, []);
+  }, [resolveAdminKey]);
 
   const loadProfile = useCallback(async () => {
     if (!getAdminKey()) return;
@@ -120,8 +170,32 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!getAdminKey().trim()) return;
+  useLayoutEffect(() => {
+    const sessionKey = getAdminKey().trim();
+    const domKey = keyInputRef.current?.value.trim() ?? '';
+    const adminKey = sessionKey || domKey;
+    // #region agent log
+    fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '34c45b' },
+      body: JSON.stringify({
+        sessionId: '34c45b',
+        hypothesisId: 'H4',
+        location: 'App.tsx:mountEffect',
+        message: 'reports bootstrap',
+        data: {
+          sessionKeyLen: sessionKey.length,
+          domKeyLen: domKey.length,
+          resolvedLen: adminKey.length,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+    if (!adminKey) return;
+    if (!sessionKey) setAdminKey(adminKey);
+    setKey((prev) => prev.trim() || adminKey);
+    setKeySaved(true);
     void loadReports();
     void loadProfile();
   }, [loadReports, loadProfile]);
@@ -134,7 +208,9 @@ export default function App() {
   }, [modelSource, catalogStatus, loadCatalog]);
 
   const saveKey = () => {
-    setAdminKey(key);
+    const v = (keyInputRef.current?.value ?? key).trim();
+    setKey(v);
+    setAdminKey(v);
     setKeySaved(true);
     void loadReports();
     void loadProfile();
@@ -316,10 +392,16 @@ export default function App() {
       <aside className="row-span-2 border-r border-slate-800 bg-slate-900 p-4">
         <label className="text-xs text-slate-400">EPIR_OPERATOR_PANEL_SECRET</label>
         <input
+          ref={keyInputRef}
           type="password"
+          autoComplete="current-password"
           className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
           value={key}
           onChange={(e) => setKey(e.target.value)}
+          onBlur={() => {
+            const v = keyInputRef.current?.value.trim() ?? '';
+            if (v && v !== key) setKey(v);
+          }}
         />
         <button
           type="button"
@@ -481,9 +563,12 @@ export default function App() {
         {tab === 'reports' && (
           <div className="mt-2 space-y-2">
             {reportsError && <p className="text-xs text-red-400">{reportsError}</p>}
+            {reportsDebug && <p className="text-xs text-slate-600">{reportsDebug}</p>}
             {!reportsError && reports.length === 0 && (
               <p className="text-xs text-slate-500">
-                {keySaved ? 'Brak raportów w D1.' : 'Zapisz klucz operatora, aby załadować raporty.'}
+                {resolveAdminKey()
+                  ? 'Brak raportów w D1 (API zwróciło pustą listę).'
+                  : 'Zapisz klucz operatora, aby załadować raporty.'}
               </p>
             )}
             <ul className="max-h-48 space-y-1 overflow-y-auto text-xs">
