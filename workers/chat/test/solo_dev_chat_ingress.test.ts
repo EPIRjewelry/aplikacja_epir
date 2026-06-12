@@ -124,6 +124,42 @@ describe('solo dev chat ingress', () => {
     expect(body.error).toBe('db_not_configured');
   });
 
+  it('GET /internal/operator-studio/api/operator-report/latest aliases correctly', async () => {
+    const db = {
+      prepare(_sql: string) {
+        return {
+          bind() {
+            return this;
+          },
+          async first() {
+            return {
+              report_date: '2026-06-07',
+              markdown_body: '# Daily',
+              edog_verdict: 'PASS',
+              created_at: 1,
+            };
+          },
+        };
+      },
+    };
+    const env = {
+      EPIR_OPERATOR_PANEL_SECRET: 'good',
+      DB_CHATBOT: db,
+    } as unknown as Env;
+    const res = await worker.fetch(
+      new Request('https://asystent.test/internal/operator-studio/api/operator-report/latest', {
+        method: 'GET',
+        headers: { 'X-Admin-Key': 'good' },
+      }),
+      env,
+      noopCtx,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok?: boolean; report?: { report_date: string } };
+    expect(body.ok).toBe(true);
+    expect(body.report?.report_date).toBe('2026-06-07');
+  });
+
   it('GET /internal/operator-studio/api/reports lists operator_daily_reports', async () => {
     const db = {
       prepare(_sql: string) {

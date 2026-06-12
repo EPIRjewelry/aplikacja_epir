@@ -20,6 +20,7 @@ import {
   fetchBlenderHealth,
   fetchOpenRouterModels,
   fetchOperatorProfile,
+  fetchLatestOperatorReport,
   fetchReport,
   fetchReports,
   getAdminKey,
@@ -148,8 +149,34 @@ export default function App() {
       }).catch(() => {});
       // #endregion
       if (j.ok) {
-        setReports(j.reports ?? []);
-        persistReportsDebug(`ok: ${j.reports?.length ?? 0} raportów`, { count: j.reports?.length ?? 0 });
+        const list = j.reports ?? [];
+        if (list.length > 0) {
+          setReports(list);
+          persistReportsDebug(`ok: ${list.length} raportów`, { count: list.length, source: 'list' });
+        } else {
+          try {
+            const latest = await fetchLatestOperatorReport(adminKey);
+            if (gen !== reportsLoadGen.current) return;
+            if (latest.report?.report_date) {
+              const r = latest.report;
+              setReports([
+                {
+                  report_date: r.report_date,
+                  edog_verdict: r.edog_verdict,
+                  excerpt: (r.markdown_body ?? '').replace(/\s+/g, ' ').trim().slice(0, 200),
+                },
+              ]);
+              persistReportsDebug('ok: 1 raport (fallback latest)', { source: 'latest' });
+            } else {
+              setReports([]);
+              persistReportsDebug('ok: 0 raportów (lista i latest puste)', { count: 0 });
+            }
+          } catch (fallbackErr) {
+            setReports([]);
+            const fb = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+            persistReportsDebug(`ok: 0 raportów (latest: ${fb})`, { count: 0 });
+          }
+        }
       } else {
         const detail = j.detail || j.error || 'unknown';
         setReportsError(`Nie udało się załadować listy raportów (${detail}).`);
@@ -193,36 +220,33 @@ export default function App() {
   }, []);
 
   useLayoutEffect(() => {
-    if (reportsBootstrapped.current) return;
-    reportsBootstrapped.current = true;
-    const sessionKey = getAdminKey().trim();
-    const domKey = keyInputRef.current?.value.trim() ?? '';
-    const adminKey = sessionKey || domKey;
+    const adminKey = resolveAdminKey();
     // #region agent log
     fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '34c45b' },
       body: JSON.stringify({
         sessionId: '34c45b',
-        hypothesisId: 'H4',
+        hypothesisId: 'H11',
         location: 'App.tsx:mountEffect',
         message: 'reports bootstrap',
         data: {
-          sessionKeyLen: sessionKey.length,
-          domKeyLen: domKey.length,
           resolvedLen: adminKey.length,
+          bootstrapped: reportsBootstrapped.current,
         },
         timestamp: Date.now(),
       }),
     }).catch(() => {});
     // #endregion
     if (!adminKey) return;
-    if (!sessionKey) setAdminKey(adminKey);
+    if (reportsBootstrapped.current) return;
+    reportsBootstrapped.current = true;
+    if (!getAdminKey().trim()) setAdminKey(adminKey);
     setKey((prev) => prev.trim() || adminKey);
     setKeySaved(true);
     void loadReports();
     void loadProfile();
-  }, [loadReports, loadProfile]);
+  }, [loadReports, loadProfile, resolveAdminKey]);
 
   useEffect(() => {
     if (modelSource !== 'openrouter' || !getAdminKey().trim()) return;
@@ -582,7 +606,10 @@ export default function App() {
               key={t}
               type="button"
               className={`rounded px-2 py-1 text-xs ${tab === t ? 'bg-slate-700' : ''}`}
-              onClick={() => setTab(t)}
+              onClick={() => {
+                setTab(t);
+                if (t === 'reports') void loadReports();
+              }}
             >
               {t === 'reports' ? 'Raporty' : t === 'blender' ? 'Blender' : 'Profil'}
             </button>

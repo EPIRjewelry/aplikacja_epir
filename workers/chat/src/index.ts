@@ -4296,6 +4296,7 @@ async function handleSoloDevChatIngress(
         return new Response(indexRes.body, {
           headers: {
             'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
             ...cors(env, request),
           },
         });

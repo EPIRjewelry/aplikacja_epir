@@ -120,6 +120,24 @@ export async function fetchReports(limit = 30, adminKey?: string) {
   };
 }
 
+export async function fetchLatestOperatorReport(adminKey?: string) {
+  const res = await fetch(`${API}/operator-report/latest`, { headers: headers(adminKey) });
+  const body = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    report?: {
+      report_date: string;
+      markdown_body: string;
+      edog_verdict: string;
+      created_at: number;
+    } | null;
+    error?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error || `latest-report ${res.status}`);
+  }
+  return { ok: Boolean(body.ok), report: body.report ?? null };
+}
+
 export async function fetchReport(date: string) {
   const res = await fetch(`${API}/reports/${date}`, { headers: headers() });
   if (!res.ok) throw new Error(`report ${res.status}`);
