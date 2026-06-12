@@ -110,10 +110,14 @@ export async function fetchReports(limit = 30, adminKey?: string) {
     reports?: { report_date: string; edog_verdict: string; excerpt: string; created_at: number }[];
   };
   if (!res.ok) {
-    throw new Error(body.detail || body.error || `reports ${res.status}`);
+    throw new Error(body.detail || body.error || `reports HTTP ${res.status}`);
+  }
+  if (body.ok === false) {
+    throw new Error(body.detail || body.error || 'reports API returned ok=false');
   }
   return {
-    ok: Boolean(body.ok),
+    ok: true,
+    httpStatus: res.status,
     reports: body.reports ?? [],
     error: body.error,
     detail: body.detail,

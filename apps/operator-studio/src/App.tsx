@@ -138,7 +138,7 @@ export default function App() {
         const list = j.reports ?? [];
         if (list.length > 0) {
           setReports(list);
-          setReportsStatus(`${list.length} raportów`);
+          setReportsStatus(`HTTP ${j.httpStatus ?? 200} · ${list.length} raportów`);
           void previewReport(list[0]!.report_date);
         } else {
           try {
@@ -157,11 +157,12 @@ export default function App() {
               void previewReport(r.report_date);
             } else {
               setReports([]);
-              setReportsStatus('Brak raportów w D1');
+              setReportsStatus('HTTP 200 · 0 raportów (D1 pusta)');
             }
-          } catch {
+          } catch (latestErr) {
             setReports([]);
-            setReportsStatus('Brak raportów w D1');
+            const lm = latestErr instanceof Error ? latestErr.message : String(latestErr);
+            setReportsStatus(`Lista pusta; latest: ${lm}`);
           }
         }
       } else {
