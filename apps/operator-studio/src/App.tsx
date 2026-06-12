@@ -60,7 +60,6 @@ export default function App() {
   const [reportsError, setReportsError] = useState('');
   const [reportsDebug, setReportsDebug] = useState('');
   const [reportsLoading, setReportsLoading] = useState(false);
-  const reportsBootstrapped = useRef(false);
   const reportsLoadGen = useRef(0);
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
   const [reportBody, setReportBody] = useState('');
@@ -105,6 +104,17 @@ export default function App() {
       setModels([]);
       setCatalogStatus('error');
       setCatalogError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
+  const previewReport = useCallback(async (date: string) => {
+    setSelectedReport(date);
+    try {
+      const j = await fetchReport(date);
+      if (j.ok) setReportBody(j.report.markdown_body);
+      else setReportBody('Nie udało się odczytać raportu.');
+    } catch {
+      setReportBody('Błąd odczytu raportu.');
     }
   }, []);
 
@@ -153,6 +163,7 @@ export default function App() {
         if (list.length > 0) {
           setReports(list);
           persistReportsDebug(`ok: ${list.length} raportów`, { count: list.length, source: 'list' });
+          void previewReport(list[0]!.report_date);
         } else {
           try {
             const latest = await fetchLatestOperatorReport(adminKey);
@@ -167,6 +178,7 @@ export default function App() {
                 },
               ]);
               persistReportsDebug('ok: 1 raport (fallback latest)', { source: 'latest' });
+              void previewReport(r.report_date);
             } else {
               setReports([]);
               persistReportsDebug('ok: 0 raportów (lista i latest puste)', { count: 0 });
@@ -204,7 +216,7 @@ export default function App() {
     } finally {
       if (gen === reportsLoadGen.current) setReportsLoading(false);
     }
-  }, [resolveAdminKey]);
+  }, [resolveAdminKey, previewReport]);
 
   const loadProfile = useCallback(async () => {
     if (!getAdminKey()) return;
@@ -220,33 +232,31 @@ export default function App() {
   }, []);
 
   useLayoutEffect(() => {
-    const adminKey = resolveAdminKey();
+    const sessionKey = getAdminKey().trim();
+    const domKey = keyInputRef.current?.value.trim() ?? '';
+    const adminKey = sessionKey || domKey;
     // #region agent log
     fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '34c45b' },
       body: JSON.stringify({
         sessionId: '34c45b',
-        hypothesisId: 'H11',
+        hypothesisId: 'H14',
         location: 'App.tsx:mountEffect',
-        message: 'reports bootstrap',
-        data: {
-          resolvedLen: adminKey.length,
-          bootstrapped: reportsBootstrapped.current,
-        },
+        message: 'reports bootstrap once',
+        data: { sessionKeyLen: sessionKey.length, domKeyLen: domKey.length, resolvedLen: adminKey.length },
         timestamp: Date.now(),
       }),
     }).catch(() => {});
     // #endregion
     if (!adminKey) return;
-    if (reportsBootstrapped.current) return;
-    reportsBootstrapped.current = true;
-    if (!getAdminKey().trim()) setAdminKey(adminKey);
+    if (!sessionKey) setAdminKey(adminKey);
     setKey((prev) => prev.trim() || adminKey);
     setKeySaved(true);
     void loadReports();
     void loadProfile();
-  }, [loadReports, loadProfile, resolveAdminKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount bootstrap only
+  }, []);
 
   useEffect(() => {
     if (modelSource !== 'openrouter' || !getAdminKey().trim()) return;
@@ -306,13 +316,7 @@ export default function App() {
   };
 
   const openReport = async (date: string) => {
-    setSelectedReport(date);
-    try {
-      const j = await fetchReport(date);
-      if (j.ok) setReportBody(j.report.markdown_body);
-    } catch {
-      setReportBody('Błąd odczytu raportu.');
-    }
+    await previewReport(date);
   };
 
   const checkBlender = async () => {
@@ -431,13 +435,19 @@ export default function App() {
   const selectedOrModel = slug ? modelById.get(slug) : undefined;
 
   return (
-    <div className="grid min-h-screen grid-cols-[280px_1fr_300px] grid-rows-[auto_1fr_auto]">
-      <header className="col-span-3 border-b border-slate-800 bg-slate-900 px-4 py-3">
+    <div className="grid h-screen grid-cols-[280px_minmax(0,1fr)_minmax(260px,300px)] grid-rows-[auto_minmax(0,1fr)_auto]">
+      <header className="col-span-3 row-start-1 border-b border-slate-800 bg-slate-900 px-4 py-3">
         <h1 className="text-lg font-semibold">EPIR — Operator Studio (Project B)</h1>
         <p className="text-sm text-slate-400">Groq / Workers AI lub OpenRouter · załączniki · raporty · Blender</p>
+        {(reportsDebug || reports.length > 0) && (
+          <p className="mt-1 text-xs text-amber-200">
+            Raporty: {reports.length}
+            {reportsDebug ? ` · ${reportsDebug}` : ''}
+          </p>
+        )}
       </header>
 
-      <aside className="row-span-2 border-r border-slate-800 bg-slate-900 p-4">
+      <aside className="col-start-1 row-start-2 min-h-0 overflow-y-auto border-r border-slate-800 bg-slate-900 p-4">
         <label className="text-xs text-slate-400">EPIR_OPERATOR_PANEL_SECRET</label>
         <input
           ref={keyInputRef}
@@ -577,7 +587,7 @@ export default function App() {
         )}
       </aside>
 
-      <main className="flex min-h-0 flex-col p-4">
+      <main className="col-start-2 row-start-2 flex min-h-0 flex-col p-4">
         <div className="flex-1 space-y-3 overflow-y-auto rounded-lg border border-slate-800 bg-slate-900/50 p-4">
           {messages.length === 0 && (
             <p className="text-sm text-slate-500">Wybierz rolę i model. Załączniki: obraz, audio, wideo, CSV (max 4 MB).</p>
@@ -599,7 +609,7 @@ export default function App() {
         </div>
       </main>
 
-      <aside className="row-span-2 border-l border-slate-800 bg-slate-900 p-3 text-sm">
+      <aside className="col-start-3 row-start-2 flex min-h-0 flex-col border-l border-slate-800 bg-slate-900 p-3 text-sm">
         <div className="flex gap-2 border-b border-slate-800 pb-2">
           {(['reports', 'blender', 'profile'] as const).map((t) => (
             <button
@@ -617,7 +627,7 @@ export default function App() {
         </div>
 
         {tab === 'reports' && (
-          <div className="mt-2 space-y-2">
+          <div className="mt-2 flex min-h-0 flex-1 flex-col space-y-2">
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-slate-400">Biblioteka raportów</span>
               <button
@@ -638,7 +648,7 @@ export default function App() {
                   : 'Zapisz klucz operatora, aby załadować raporty.'}
               </p>
             )}
-            <ul className="max-h-48 space-y-1 overflow-y-auto text-xs">
+            <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto text-xs">
               {reports.map((r) => (
                 <li key={r.report_date}>
                   <button
@@ -698,7 +708,7 @@ export default function App() {
         )}
       </aside>
 
-      <footer className="col-span-3 border-t border-slate-800 bg-slate-900 p-4">
+      <footer className="col-span-3 row-start-3 border-t border-slate-800 bg-slate-900 p-4">
         {attachments.length > 0 && (
           <ul className="mb-2 flex flex-wrap gap-2">
             {attachments.map((a) => (
