@@ -122,5 +122,6 @@ export function isValidOpenRouterModelId(modelId: string): boolean {
   const s = modelId.trim();
   if (!s || s.length > 120) return false;
   if (s.startsWith('openrouter/')) return false;
-  return /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/i.test(s);
+  // provider/slug with optional :suffix (e.g. meta-llama/llama-3.1-8b-instruct:free)
+  return /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._:@-]+$/i.test(s);
 }

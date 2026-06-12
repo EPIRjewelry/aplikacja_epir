@@ -13,6 +13,8 @@ describe('openrouter-catalog', () => {
 
   it('isValidOpenRouterModelId accepts provider/model slugs', () => {
     expect(isValidOpenRouterModelId('anthropic/claude-sonnet-4')).toBe(true);
+    expect(isValidOpenRouterModelId('meta-llama/llama-3.1-8b-instruct:free')).toBe(true);
+    expect(isValidOpenRouterModelId('openai/gpt-4o:beta')).toBe(true);
     expect(isValidOpenRouterModelId('openrouter/foo')).toBe(false);
     expect(isValidOpenRouterModelId('')).toBe(false);
   });

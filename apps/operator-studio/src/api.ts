@@ -84,13 +84,27 @@ export async function fetchReport(date: string) {
   }>;
 }
 
-export async function fetchOpenRouterModels() {
+export type OpenRouterCatalogModel = {
+  id: string;
+  name: string;
+  multimodal: boolean;
+  imageGen: boolean;
+};
+
+export async function fetchOpenRouterModels(): Promise<{ ok: boolean; models: OpenRouterCatalogModel[] }> {
   const res = await fetch(`${API}/openrouter-models`, { headers: headers() });
-  if (!res.ok) throw new Error(`openrouter ${res.status}`);
-  return res.json() as Promise<{
-    ok: boolean;
-    models: { id: string; name: string; multimodal: boolean; imageGen: boolean }[];
-  }>;
+  const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; models?: OpenRouterCatalogModel[] };
+  if (!res.ok) {
+    const detail = body.error?.trim();
+    if (res.status === 503 && detail === 'openrouter_not_configured') {
+      throw new Error('OPENROUTER_API_KEY nie skonfigurowany na workerze');
+    }
+    throw new Error(detail || `Katalog OpenRouter: HTTP ${res.status}`);
+  }
+  if (!body.ok || !Array.isArray(body.models)) {
+    throw new Error('Nieprawidłowa odpowiedź katalogu OpenRouter');
+  }
+  return { ok: true, models: body.models };
 }
 
 export async function fetchBlenderHealth() {

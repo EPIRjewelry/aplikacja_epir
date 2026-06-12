@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import {
   ROLES,
   type ChatMessage,
+  type OpenRouterCatalogModel,
   type OperatorRoleId,
   clearSession,
   fetchBlenderHealth,
@@ -21,14 +22,16 @@ import {
 } from './api';
 
 type ReportItem = { report_date: string; edog_verdict: string; excerpt: string };
+type CatalogStatus = 'idle' | 'loading' | 'ok' | 'error';
 
 export default function App() {
   const [key, setKey] = useState(getAdminKey);
   const [keySaved, setKeySaved] = useState(false);
   const [role, setRoleState] = useState<OperatorRoleId>(getRole);
   const [orModel, setOrModelState] = useState(getOrModel);
-  const [modelFilter, setModelFilter] = useState('');
-  const [models, setModels] = useState<{ id: string; name: string; imageGen: boolean }[]>([]);
+  const [models, setModels] = useState<OpenRouterCatalogModel[]>([]);
+  const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>('idle');
+  const [catalogError, setCatalogError] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -40,19 +43,32 @@ export default function App() {
   const [profileNotes, setProfileNotes] = useState('');
   const [profileCampaign, setProfileCampaign] = useState('');
 
-  const filteredModels = useMemo(() => {
-    const q = modelFilter.trim().toLowerCase();
-    if (!q) return models.slice(0, 80);
-    return models.filter((m) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)).slice(0, 80);
-  }, [models, modelFilter]);
+  const modelById = useMemo(() => new Map(models.map((m) => [m.id, m])), [models]);
+
+  const catalogHint = useMemo(() => {
+    if (catalogStatus === 'loading') return 'Ładuję katalog…';
+    if (catalogStatus === 'error') return catalogError || 'Błąd ładowania katalogu';
+    if (catalogStatus === 'ok') return `Katalog: ${models.length} modeli (cache ~30 min)`;
+    return 'Zapisz klucz, aby załadować katalog';
+  }, [catalogStatus, catalogError, models.length]);
 
   const loadCatalog = useCallback(async () => {
-    if (!getAdminKey()) return;
+    if (!getAdminKey()) {
+      setCatalogStatus('idle');
+      setCatalogError('');
+      setModels([]);
+      return;
+    }
+    setCatalogStatus('loading');
+    setCatalogError('');
     try {
       const j = await fetchOpenRouterModels();
-      if (j.ok) setModels(j.models);
-    } catch {
-      /* ignore */
+      setModels(j.models);
+      setCatalogStatus('ok');
+    } catch (e) {
+      setModels([]);
+      setCatalogStatus('error');
+      setCatalogError(e instanceof Error ? e.message : String(e));
     }
   }, []);
 
@@ -92,6 +108,11 @@ export default function App() {
     setKeySaved(true);
   };
 
+  const onOrModelChange = (value: string) => {
+    setOrModelState(value);
+    setOrModel(value);
+  };
+
   const openReport = async (date: string) => {
     setSelectedReport(date);
     try {
@@ -118,6 +139,29 @@ export default function App() {
     const text = input.trim();
     if (!text || busy) return;
     if (!getAdminKey()) return;
+
+    const slug = orModel.trim();
+    if (slug && catalogStatus === 'ok' && !modelById.has(slug)) {
+      setMessages((m) => [
+        ...m,
+        {
+          role: 'error',
+          content: `Nieznany model OpenRouter: „${slug}”. Wybierz slug z katalogu lub zostaw puste pole (default Groq).`,
+        },
+      ]);
+      return;
+    }
+    if (slug && catalogStatus !== 'ok') {
+      setMessages((m) => [
+        ...m,
+        {
+          role: 'error',
+          content: 'Katalog OpenRouter nie jest załadowany — odśwież katalog lub zostaw puste pole (default Groq).',
+        },
+      ]);
+      return;
+    }
+
     setInput('');
     setMessages((m) => [...m, { role: 'user', content: text }]);
     setBusy(true);
@@ -126,7 +170,7 @@ export default function App() {
     try {
       await streamChat(
         text,
-        { role, orModel },
+        { role, orModel: slug },
         (delta) => {
           assistant = delta;
           setMessages((m) => {
@@ -148,6 +192,9 @@ export default function App() {
       setBusy(false);
     }
   };
+
+  const slug = orModel.trim();
+  const selectedModel = slug ? modelById.get(slug) : undefined;
 
   return (
     <div className="grid min-h-screen grid-cols-[280px_1fr_300px] grid-rows-[auto_1fr_auto]">
@@ -203,29 +250,56 @@ export default function App() {
         </div>
 
         <div className="mt-4">
-          <label className="text-xs text-slate-400">Model (OpenRouter)</label>
+          <label className="text-xs text-slate-400" htmlFor="or-model-input">
+            Model (OpenRouter)
+          </label>
           <input
-            type="search"
-            placeholder="Szukaj modelu…"
+            id="or-model-input"
+            type="text"
+            list="or-catalog"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="puste = default (Groq)"
             className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
-            value={modelFilter}
-            onChange={(e) => setModelFilter(e.target.value)}
-          />
-          <select
-            className="mt-2 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
             value={orModel}
-            onChange={(e) => {
-              setOrModelState(e.target.value);
-              setOrModel(e.target.value);
-            }}
-          >
-            <option value="">default (Groq)</option>
-            {filteredModels.map((m) => (
+            onChange={(e) => onOrModelChange(e.target.value)}
+          />
+          <datalist id="or-catalog">
+            {models.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.name} {m.imageGen ? '🖼' : ''}
+                {m.name}
+                {m.imageGen ? ' 🖼' : ''}
               </option>
             ))}
-          </select>
+          </datalist>
+          <p
+            className={`mt-1 text-xs ${catalogStatus === 'error' ? 'text-red-400' : 'text-slate-500'}`}
+          >
+            {catalogHint}
+          </p>
+          {selectedModel && (
+            <p className="mt-1 text-xs text-slate-500">
+              Wybrany: {selectedModel.name}
+              {selectedModel.imageGen ? ' (generacja obrazu)' : ''}
+            </p>
+          )}
+          <button
+            type="button"
+            className="mt-2 w-full rounded border border-slate-700 px-3 py-1 text-xs"
+            disabled={catalogStatus === 'loading' || !keySaved}
+            onClick={() => void loadCatalog()}
+          >
+            Odśwież katalog
+          </button>
+          {orModel && (
+            <button
+              type="button"
+              className="mt-1 w-full rounded border border-slate-700 px-3 py-1 text-xs text-slate-400"
+              onClick={() => onOrModelChange('')}
+            >
+              Wyczyść → default (Groq)
+            </button>
+          )}
         </div>
       </aside>
 
