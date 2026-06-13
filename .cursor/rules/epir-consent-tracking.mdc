@@ -1,0 +1,17 @@
+---
+description: Consent Gate & tracking — nie zgaduj flag ads; SSOT w consent.ts i pixelu
+globs: extensions/my-web-pixel/**/*,packages/ui/**/*,workers/analytics/**/*,workers/chat/src/consent.ts
+alwaysApply: false
+---
+
+⚠️ SSOT ROUTING: Kontrakt zgody → `packages/ui/src/consent.ts`, `workers/chat/src/consent.ts`, testy `workers/chat/test/consent_*.ts`. Analityka → `docs/kb/DATA_AND_ANALYTICS.md`.
+
+## Zasady (Growth / tracking)
+
+- **Nie wymyślaj** pól `ad_user_data`, `ad_personalization` ani „cookieless pings” w kodzie, dopóki nie są w kanonie repo i w pixelu — najpierw sprawdź istniejący Consent Gate i testy pixela.
+- **Payload zgody:** wymagane `consentId`, `granted`, `source`, `sessionId`, `timestamp` + kontekst storefront (`storefrontId`, `channel`, `shopDomain`, `route`).
+- **Ingress:** S2S `POST /consent` (shared secret) lub App Proxy HMAC — ten sam wzorzec co czat; bez obejść buyer-facing.
+- **Pixel:** zdarzenia bez ważnej zgody → drop (patrz `extensions/my-web-pixel` — testy consent).
+- **Shopify payload → GA4/Ads:** mapowanie i limity API → `workers/marketing-ingest`, `docs/EPIR_DATA_SCHEMA_CONTRACT.md`; respektuj backoff / leaky bucket (429).
+
+Zmiany śledzenia wymagają aktualizacji testów Vitest (chat consent + pixel), nie tylko frontu.

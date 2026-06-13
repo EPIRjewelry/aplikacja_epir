@@ -1,0 +1,41 @@
+---
+description: Growth Engineer workflow — NotebookLM kompas, Cursor wykonawca, MCP tylko stdio
+alwaysApply: false
+---
+
+⚠️ SSOT ROUTING: `AGENTS.md`, `EPIR_AI_BIBLE.md`, `docs/PROJECT_B_SOLO_DEV_AGENTS.md` (sekcja Growth Engineer).
+
+## Podział ról
+
+| Warstwa | Rola | Gdzie |
+|---------|------|--------|
+| Kompas | Strategia, synteza z mirroru repo | NotebookLM (human-in-the-loop) |
+| Szyna | Weryfikacja blueprintu | Operator |
+| Execution | Kod, Liquid, wrangler, lokalny odczyt Google | **Cursor** (Composer + MCP) |
+| Runtime | Czat operatora, raporty D1, cron | **Operator Studio** / workers (nie Cursor deploy na żywo) |
+
+## Przepływ pracy
+
+1. Dane / raport z D1 lub panelu → excerpt do NotebookLM.
+2. NotebookLM → blueprint (architektura, DCO, UI) — **niewiążący** do weryfikacji z kanonem i kodem.
+3. Operator wkleja zweryfikowany blueprint do Cursora → edycja repo, testy, deploy.
+
+## MCP Google Workspace
+
+- **Tylko stdio:** `epir-gworkspace` z `mcp-servers/gworkspace` — patrz `.cursor/mcp-gworkspace.example.json`.
+- **Zakaz** remote HTTP/SSE MCP dla Google (OAuth w przeglądarce w Cursorze bywa niestabilne).
+- OAuth refresh w **OS keychain** (`npm run auth -w @epir/mcp-gworkspace`); nie commituj tokenów.
+- Odczyt briefu: `gdocs_read_markdown` / `gsheets_read_csv` po **fileId** — nie skanuj całego Drive.
+- **Nie** Service Account w tym workflow bez osobnej decyzji operatora.
+
+## Governance
+
+- **Zakaz** `wrangler secret put` i nowych nazw sekretów bez zgody — `.cursor/rules/epir-secrets-governance.mdc`.
+- **Nie** duplikuj kanonu w `.cursor/skills/` — wiedza domenowa w `docs/kb/`.
+- **GAQL / Google Ads:** `docs/kb/DATA_AND_ANALYTICS.md`, `workers/marketing-ingest/README.md` — nie osobny skill w `.cursor/skills/`.
+- **SSOT analityki:** D1 → Iceberg — **nie** Google Sheets jako ledger agentów.
+
+## Operator Studio (runtime)
+
+- Pytania o metryki, raporty, marketing → panel `/internal/operator-studio`, role `analyst` / `creative`.
+- Brief Google: odczyt w Cursorze (MCP), fragment wklejony do czatu kreacji — bez Google OAuth w przeglądarce panelu.

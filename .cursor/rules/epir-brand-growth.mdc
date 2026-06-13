@@ -1,0 +1,20 @@
+---
+description: EPIR brand & storefront growth UI — thin pointer to REVIEW.md (no full spec in context)
+globs: apps/**/*,extensions/**/*,**/*.liquid
+alwaysApply: false
+---
+
+⚠️ SSOT ROUTING: Pełna specyfikacja wizualna i Liquid → `REVIEW.md` oraz `docs/kb/UI_UX_AND_FRONTEND.md`. Nie wklejaj tu całego REVIEW do odpowiedzi.
+
+## Growth Engineer — brand guardrails (skrót)
+
+- **Marka:** Art Jewellery, rzemiosło + 3D; UI eksponuje proces i Custom Made — nie masowy e-commerce.
+- **Liquid:** `image_url` + `image_tag`; zakaz `img_url` / `img_tag`. OS 2.0 JSON templates; bez surowego JS w Liquid.
+- **Paleta:** ziemiste beże, ecru, ciepłe szarości; akcent z kolekcji (np. HEX metafield). Dużo negative space; ciepłe/neutralne światło — bez zimnych, przesyconych tonów.
+- **Media 2048×2048:** produkt na gładkim tle, dłoń, makro, lifestyle (lifestyle ≠ czyste białe tło).
+- **Collection enhanced:** zaplanuj pola metafieldów — Hero Video, Texture Overlay (np. len + alpha), Process Image, Lookbook, Artist Photo, Accent Color.
+- **Karta produktu:** dedykowane ujęcie `stone_profile` (makro struktury kamienia).
+- **Tone:** merytoryczny CTA; dane gemmologiczne (Mohs, próba); doradca, nie sprzedawca.
+- **Dane produktowe:** zero lorem ipsum — weryfikuj przez Shopify Dev MCP / Admin, nie zgaduj.
+
+Przy PR UI/Liquid: przeczytaj `REVIEW.md` §2–4 przed generowaniem kodu.

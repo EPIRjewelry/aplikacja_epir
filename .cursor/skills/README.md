@@ -11,6 +11,7 @@
 | Dane, analityka, EDCG/EDOG/EAA | [`docs/kb/DATA_AND_ANALYTICS.md`](../../docs/kb/DATA_AND_ANALYTICS.md) |
 | Workers, deploy, ESOG/EFA/OQAG | [`docs/kb/WORKERS_AND_EDGE.md`](../../docs/kb/WORKERS_AND_EDGE.md) |
 | Entry point Cursor | [`.cursor/index.mdc`](../index.mdc) |
+| Growth Engineer (workflow Cursor vs Operator Studio) | [`.cursor/rules/epir-growth-workflow.mdc`](../rules/epir-growth-workflow.mdc) + [`docs/PROJECT_B_SOLO_DEV_AGENTS.md`](../../docs/PROJECT_B_SOLO_DEV_AGENTS.md) |
 
 ## Werdykty bramkowe
 

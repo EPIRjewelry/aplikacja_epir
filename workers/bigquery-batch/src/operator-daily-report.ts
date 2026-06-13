@@ -3,6 +3,7 @@
  */
 import type { FlowHealthReport } from './edog-flow-health-runner';
 import { buildFlowHealthReport } from './edog-flow-health-runner';
+import { sanitizeReportForWorkspaceExport } from './report-pii-mask';
 
 export type OperatorReportEnv = {
   DB_CHATBOT: D1Database;
@@ -86,14 +87,33 @@ export async function persistOperatorDailyReport(
     .run();
 }
 
+export type WorkspaceReportWebhookPayload = {
+  title: string;
+  body: string;
+  piiMasked: true;
+  exportedAt: string;
+  ssot: 'd1_operator_daily_reports';
+};
+
 export async function postReportToWorkspaceWebhook(env: OperatorReportEnv, markdown: string): Promise<void> {
   const url = (env.GWORKSPACE_REPORT_WEBHOOK_URL ?? '').trim();
   if (!url) return;
-  await fetch(url, {
+  const body = await sanitizeReportForWorkspaceExport(markdown);
+  const payload: WorkspaceReportWebhookPayload = {
+    title: `EPIR Raport ${new Date().toISOString().slice(0, 10)}`,
+    body,
+    piiMasked: true,
+    exportedAt: new Date().toISOString(),
+    ssot: 'd1_operator_daily_reports',
+  };
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: `EPIR Raport ${new Date().toISOString().slice(0, 10)}`, body: markdown }),
-  }).catch((e) => console.warn('[operator-report] webhook failed:', e));
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    console.warn('[operator-report] webhook failed:', res.status, await res.text().catch(() => ''));
+  }
 }
 
 export async function runOperatorDailyReport(

@@ -12,6 +12,7 @@ import {
 } from './attachments';
 import {
   ROLES,
+  GROWTH_LOOP_HINT,
   type ChatMessage,
   type ModelSource,
   type OpenRouterCatalogModel,
@@ -68,6 +69,7 @@ export default function App() {
   const [blenderStatus, setBlenderStatus] = useState('—');
   const [profileNotes, setProfileNotes] = useState('');
   const [profileCampaign, setProfileCampaign] = useState('');
+  const [briefDraft, setBriefDraft] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const keyInputRef = useRef<HTMLInputElement>(null);
 
@@ -386,6 +388,14 @@ export default function App() {
     }
   };
 
+  const appendBriefToInput = () => {
+    const brief = briefDraft.trim();
+    if (!brief) return;
+    const block = `--- Brief (Cursor / MCP) ---\n${brief}\n---\n\n`;
+    setInput((prev) => (prev.trim() ? `${block}${prev}` : block));
+    setBriefDraft('');
+  };
+
   const slug = orModel.trim();
   const selectedOrModel = slug ? modelById.get(slug) : undefined;
 
@@ -455,7 +465,36 @@ export default function App() {
             ))}
           </select>
           <p className="mt-1 text-xs text-slate-500">{ROLES.find((r) => r.id === role)?.hint}</p>
+          {(role === 'analyst' || role === 'creative') && (
+            <p className="mt-2 rounded border border-slate-800 bg-slate-950/80 p-2 text-xs text-slate-400">
+              {GROWTH_LOOP_HINT}
+            </p>
+          )}
         </div>
+
+        {role === 'creative' && (
+          <div className="mt-3">
+            <label className="text-xs text-slate-400" htmlFor="brief-draft">
+              Brief z Cursora (wklej tekst)
+            </label>
+            <textarea
+              id="brief-draft"
+              className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-xs"
+              rows={4}
+              value={briefDraft}
+              onChange={(e) => setBriefDraft(e.target.value)}
+              placeholder="Fragment z gdocs_read_markdown / gsheets_read_csv w Cursorze — nie podawaj fileId Google tutaj."
+            />
+            <button
+              type="button"
+              className="mt-1 w-full rounded border border-slate-600 px-2 py-1 text-xs disabled:opacity-50"
+              disabled={!briefDraft.trim()}
+              onClick={appendBriefToInput}
+            >
+              Dołącz brief do wiadomości
+            </button>
+          </div>
+        )}
 
         <div className="mt-4">
           <label className="text-xs text-slate-400">Źródło modelu</label>
@@ -580,6 +619,10 @@ export default function App() {
 
         {tab === 'reports' && (
           <div className="mt-2 flex min-h-0 flex-1 flex-col space-y-2">
+            <p className="rounded border border-slate-800 bg-slate-950/80 p-2 text-xs text-slate-400">
+              SSOT: D1. Eksport na Drive (opcjonalny) to tylko wizualizacja z maskowaniem PII.{' '}
+              {role === 'analyst' ? GROWTH_LOOP_HINT : 'Excerpt raportu możesz przenieść do NotebookLM.'}
+            </p>
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-slate-400">Biblioteka raportów</span>
               <button

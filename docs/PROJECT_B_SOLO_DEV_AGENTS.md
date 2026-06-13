@@ -13,6 +13,22 @@ Legacy (deprecated UI):
 
 - `GET /internal/solo-dev-chat` — stary HTML ([`solo-dev-ui/`](../workers/chat/src/solo-dev-ui/)), kanał `internal-dashboard`
 
+## Growth Engineer — podział Cursor vs Operator Studio
+
+Architektura „Full-Stack Growth Engineer”: strategia poza runtime, wykonanie w Cursorze, codzienne użycie w Operator Studio. **Nie** budujemy drugiego backendu ani Google Sheets jako SSOT.
+
+| Zadanie | Gdzie | Narzędzia / ścieżka |
+|---------|--------|---------------------|
+| Synteza strategii (DCO, kampanie, blueprint UI) | NotebookLM + operator | Mirror repo 1:1; wynik **niewiążący** do weryfikacji z kanonem |
+| Edycja Liquid, Hydrogen, workers, deploy | **Cursor** | Composer; reguły `.cursor/rules/epir-brand-growth.mdc`, `epir-consent-tracking.mdc`, `epir-growth-workflow.mdc` |
+| Odczyt briefu Google Docs/Sheets | **Cursor** (lokalnie) | MCP `epir-gworkspace` stdio — `gdocs_read_markdown` / `gsheets_read_csv` po `fileId` |
+| Metryki, raport dzienny, GA4/Ads preview | **Operator Studio** | Rola `analyst`; D1 `operator_daily_reports`; `fetch_marketing_preview` |
+| Copy / obrazy / brief w czacie | **Operator Studio** | Rola `creative`; OpenRouter; fragment briefu wklejony z Cursora (bez OAuth Google w panelu) |
+| Eksport raportu na Drive (opcjonalnie) | **Worker** `bigquery-batch` | `GWORKSPACE_REPORT_WEBHOOK_URL` → [`EPIR_GWORKSPACE_REPORT_BRIDGE.md`](EPIR_GWORKSPACE_REPORT_BRIDGE.md) |
+| Shopify Flow webhook (tylko przy timeout >5s) | **Worker** `chat` (plan PR3) | `200 OK` + `waitUntil` — nie GAS jako pierwszy hop |
+
+**Przepływ:** zdarzenie / raport → D1 → Operator Studio → excerpt do NotebookLM → blueprint → Cursor → commit/deploy.
+
 ## Nagłówki
 
 | Nagłówek | Znaczenie |

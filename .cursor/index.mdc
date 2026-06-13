@@ -9,3 +9,10 @@ alwaysApply: true
 2. **Moduły domenowe:** czytaj wyłącznie te wskazane w Biblii (`docs/kb/*.md`).
 3. **Zakaz:** nie czytaj, nie indeksuj, nie cytuj `.kilo/` ani `kilo.jsonc`.
 4. **agents/ i .github/agents/:** read-only bez wyraźnej prośby użytkownika.
+
+## Growth Engineer (Cursor execution plane)
+
+- **Workflow:** NotebookLM (kompas) → operator weryfikuje blueprint → Cursor wykonuje kod — szczegóły: `.cursor/rules/epir-growth-workflow.mdc`, `docs/PROJECT_B_SOLO_DEV_AGENTS.md`.
+- **Brand / Liquid:** cienka reguła `.cursor/rules/epir-brand-growth.mdc` → pełny kanon w `REVIEW.md`.
+- **Consent / pixel:** `.cursor/rules/epir-consent-tracking.mdc` → `packages/ui/src/consent.ts`, `workers/chat/src/consent.ts`.
+- **Google MCP:** tylko `stdio` (`epir-gworkspace`); przykład: `.cursor/mcp-gworkspace.example.json`. GAQL/Ads: `docs/kb/DATA_AND_ANALYTICS.md`.

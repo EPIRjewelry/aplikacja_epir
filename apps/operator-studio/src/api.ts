@@ -17,11 +17,23 @@ export type ModelSource = 'groq' | 'openrouter';
 export type OperatorRoleId = 'analyst' | 'store_ops' | 'design_blender' | 'creative';
 
 export const ROLES: { id: OperatorRoleId; label: string; hint: string }[] = [
-  { id: 'analyst', label: 'Analityk', hint: 'Hurtownia, GA4/Ads, raporty' },
+  {
+    id: 'analyst',
+    label: 'Analityk',
+    hint: 'Hurtownia, GA4/Ads, raporty D1. Excerpt → NotebookLM → blueprint → Cursor.',
+  },
   { id: 'store_ops', label: 'Operacje sklepu', hint: 'Katalog, Admin read, ShopifyQL' },
   { id: 'design_blender', label: 'Blender / CAD', hint: 'Most HTTP, packshot, mesh' },
-  { id: 'creative', label: 'Kreacja', hint: 'Pełny katalog OpenRouter' },
+  {
+    id: 'creative',
+    label: 'Kreacja',
+    hint: 'Brief z Cursora (MCP gworkspace) — wklej poniżej. Bez Google OAuth w panelu.',
+  },
 ];
+
+/** Instrukcja pętli Growth Engineer (UI — bez NotebookLM API). */
+export const GROWTH_LOOP_HINT =
+  'Skopiuj excerpt z raportu lub czatu → NotebookLM (strategia) → zweryfikowany blueprint → Cursor (kod). SSOT: D1, nie Sheets.';
 
 export function getAdminKey(): string {
   try {
