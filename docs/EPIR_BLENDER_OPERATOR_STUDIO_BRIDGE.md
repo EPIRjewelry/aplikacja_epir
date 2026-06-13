@@ -29,15 +29,16 @@ OpenRouter w Operator Studio nie ma dostępu do stdio MCP Blender w Cursorze. Mo
 | 3 UX Studio | Wymagany PASS |
 | Deploy | Wymagany PASS + var origin |
 
-## Uruchomienie (3 kroki — codziennie)
+## Uruchomienie (sesja grafika — jeden klik)
 
-**Setup raz:** `Blender_assist/scripts/setup-blender-bridge-once.ps1` (named tunnel → stały `https://blender-bridge.epirbizuteria.pl`; `.env` z `EPIR_OPERATOR_PANEL_SECRET` — ta sama wartość co w Operator Studio). Worker: `BLENDER_BRIDGE_ORIGIN` w [`workers/chat/wrangler.toml`](../workers/chat/wrangler.toml) — deploy **tylko przy zmianie hostname**.
+**Setup raz:** `Blender_assist/scripts/setup-blender-bridge-once.ps1` + `.env` z `EPIR_OPERATOR_PANEL_SECRET` (ta sama wartość co Operator Studio).
 
-**Sesja grafika:**
+**Codziennie:**
 
-1. Blender → addon → **Start MCP Bridge** (port 8765).
-2. `.\scripts\start-blender-bridge.ps1` — relay `:9876` + named tunnel w tle.
-3. Operator Studio → panel **Most Blender** → status online; narzędzie `blender_bridge_invoke`.
+1. Blender → sidebar **Blender MCP** → **Start MCP Bridge** — addon uruchamia TCP `:8765`, relay `:9876` i named tunnel (`bridge_orchestrator.py` w Blender_assist).
+2. Operator Studio → zakładka **Blender** → status mostu (auto-odświeżanie).
+
+**Fallback CLI:** `scripts/start-blender-bridge.ps1` — tylko diagnostyka, bez Blendera.
 
 **Nie używać** quick tunnel (`cloudflared tunnel --url`, `*.trycloudflare.com`) — losowy URL wymagałby ponownego deploy workera.
 

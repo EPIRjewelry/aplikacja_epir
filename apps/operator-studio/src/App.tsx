@@ -276,7 +276,7 @@ export default function App() {
     await previewReport(date);
   };
 
-  const checkBlender = async () => {
+  const checkBlender = useCallback(async () => {
     setBlenderStatus('Sprawdzam…');
     try {
       const j = await fetchBlenderHealth();
@@ -286,7 +286,14 @@ export default function App() {
     } catch {
       setBlenderStatus('Błąd sprawdzenia');
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (tab !== 'blender' || !keySaved) return;
+    void checkBlender();
+    const id = window.setInterval(() => void checkBlender(), 15000);
+    return () => window.clearInterval(id);
+  }, [tab, keySaved, checkBlender]);
 
   const send = async () => {
     const text = input.trim();
@@ -667,6 +674,9 @@ export default function App() {
 
         {tab === 'blender' && (
           <div className="mt-2 space-y-2 text-xs text-slate-400">
+            <p className="rounded border border-slate-800 bg-slate-950/80 p-2">
+              W Blenderze: jeden klik <strong>Start MCP Bridge</strong> (sidebar Blender MCP). Status odświeża się co 15 s.
+            </p>
             <p>{blenderStatus}</p>
             <button type="button" className="rounded border border-slate-700 px-2 py-1" onClick={() => void checkBlender()}>
               Sprawdź most

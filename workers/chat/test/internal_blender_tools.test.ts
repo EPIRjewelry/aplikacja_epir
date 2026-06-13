@@ -64,6 +64,6 @@ describe('internal-blender-tools', () => {
 
     const out = await callBlenderBridgeTool(env, 'blender_ping', {});
     expect(out.error?.code).toBe('BLENDER_OFFLINE');
-    expect(out.error?.message).toContain('tunnel Cloudflare');
+    expect(out.error?.message).toContain('Start MCP Bridge');
   });
 });

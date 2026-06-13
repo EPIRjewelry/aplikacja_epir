@@ -47,8 +47,8 @@ function timeoutForTool(toolName: string): number {
 function cloudflareOriginOfflineMessage(httpStatus: number, bodyPreview: string): string | null {
   if (httpStatus === 530 || httpStatus === 521 || httpStatus === 523) {
     return (
-      'Most Blender offline: tunnel Cloudflare nie łączy się z PC (relay :9876). ' +
-      'Uruchom Blender addon :8765, potem Blender_assist\\scripts\\start-blender-bridge.ps1 (.env z EPIR_OPERATOR_PANEL_SECRET).'
+      'Most Blender offline: w Blenderze kliknij Start MCP Bridge (addon uruchamia relay + tunel). ' +
+      'Setup raz: Blender_assist\\scripts\\setup-blender-bridge-once.ps1 + .env z tym samym kluczem co Studio.'
     );
   }
   if (httpStatus === 502 || httpStatus === 503) {
