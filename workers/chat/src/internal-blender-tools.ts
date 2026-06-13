@@ -43,6 +43,26 @@ function timeoutForTool(toolName: string): number {
   return DEFAULT_TIMEOUT_MS;
 }
 
+/** Cloudflare HTML error pages when tunnel/origin is down (not relay JSON). */
+function cloudflareOriginOfflineMessage(httpStatus: number, bodyPreview: string): string | null {
+  if (httpStatus === 530 || httpStatus === 521 || httpStatus === 523) {
+    return (
+      'Most Blender offline: tunnel Cloudflare nie łączy się z PC (relay :9876). ' +
+      'Uruchom Blender addon :8765, potem Blender_assist\\scripts\\start-blender-bridge.ps1 (.env z EPIR_OPERATOR_PANEL_SECRET).'
+    );
+  }
+  if (httpStatus === 502 || httpStatus === 503) {
+    return 'Most Blender offline: origin niedostępny (relay lub cloudflared na PC).';
+  }
+  const lower = bodyPreview.toLowerCase();
+  if (lower.includes('cloudflare') && (lower.includes('error') || lower.includes('<!doctype'))) {
+    return (
+      'Most Blender offline: odpowiedź HTML z Cloudflare zamiast JSON — tunnel/relay nie działa na PC grafika.'
+    );
+  }
+  return null;
+}
+
 export function isBlenderBridgeConfigured(env: Env): boolean {
   return Boolean(bridgeOrigin(env) && operatorBearer(env));
 }
@@ -98,18 +118,21 @@ export async function callBlenderBridgeTool(
     try {
       json = JSON.parse(text) as Record<string, unknown>;
     } catch {
+      const preview = text.slice(0, 800);
+      const tunnelMsg = cloudflareOriginOfflineMessage(r.status, preview);
       chatPipelineLog({
         phase: 'blender_bridge_tool',
         duration_ms: Date.now() - t0,
         ok: false,
         http_status: r.status,
         tool: toolName,
+        reason: tunnelMsg ? 'cloudflare_origin_offline' : 'invalid_json',
       });
       return {
         error: {
-          code: r.status,
-          message: `blender-bridge invalid JSON (HTTP ${r.status})`,
-          details: text.slice(0, 800),
+          code: tunnelMsg ? 'BLENDER_OFFLINE' : r.status,
+          message: tunnelMsg ?? `blender-bridge invalid JSON (HTTP ${r.status})`,
+          details: preview,
         },
       };
     }

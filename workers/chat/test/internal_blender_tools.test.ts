@@ -47,4 +47,23 @@ describe('internal-blender-tools', () => {
     const out = await callBlenderBridgeTool(env, 'run_script', {});
     expect(out.error?.code).toBe('tool_not_allowed');
   });
+
+  it('maps Cloudflare 530 HTML to BLENDER_OFFLINE', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('<!DOCTYPE html><html><body>cloudflare error 530</body></html>', {
+        status: 530,
+        headers: { 'Content-Type': 'text/html' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const env = {
+      EPIR_OPERATOR_PANEL_SECRET: 'op-secret',
+      BLENDER_BRIDGE_ORIGIN: 'https://bridge.example.com',
+    } as unknown as Env;
+
+    const out = await callBlenderBridgeTool(env, 'blender_ping', {});
+    expect(out.error?.code).toBe('BLENDER_OFFLINE');
+    expect(out.error?.message).toContain('tunnel Cloudflare');
+  });
 });
