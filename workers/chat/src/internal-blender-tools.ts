@@ -1,6 +1,7 @@
 /**
  * Proxy narzędzi Blender_assist HTTP relay — tylko kanał internal-dashboard.
- * Auth: Bearer = EPIR_OPERATOR_PANEL_SECRET. Origin: var BLENDER_BRIDGE_ORIGIN.
+ * Origin: var BLENDER_BRIDGE_ORIGIN (worker). Relay bez Bearer (domyślnie).
+ * Studio auth: EPIR_OPERATOR_PANEL_SECRET (tylko do API workera, nie do relay).
  */
 import type { Env } from './config/bindings';
 import { chatPipelineLog } from './utils/chat-pipeline-log';
@@ -32,10 +33,6 @@ function bridgeOrigin(env: Env): string {
   return raw.replace(/\/$/, '');
 }
 
-function operatorBearer(env: Env): string {
-  return env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
-}
-
 function timeoutForTool(toolName: string): number {
   if (toolName === 'render_packshot' || toolName === 'render_still' || toolName === 'export_stl') {
     return RENDER_TIMEOUT_MS;
@@ -48,23 +45,21 @@ function cloudflareOriginOfflineMessage(httpStatus: number, bodyPreview: string)
   if (httpStatus === 530 || httpStatus === 521 || httpStatus === 523) {
     return (
       'Most Blender offline: w Blenderze kliknij Start MCP Bridge (addon uruchamia relay + tunel). ' +
-      'Setup raz: Blender_assist\\scripts\\setup-blender-bridge-once.ps1 + .env z tym samym kluczem co Studio.'
+      'Setup raz: Blender_assist\\scripts\\setup-blender-bridge-once.ps1.'
     );
   }
   if (httpStatus === 502 || httpStatus === 503) {
-    return 'Most Blender offline: origin niedostępny (relay lub cloudflared na PC).';
+    return 'Most Blender offline: relay lub cloudflared na PC nie działa.';
   }
   const lower = bodyPreview.toLowerCase();
   if (lower.includes('cloudflare') && (lower.includes('error') || lower.includes('<!doctype'))) {
-    return (
-      'Most Blender offline: odpowiedź HTML z Cloudflare zamiast JSON — tunnel/relay nie działa na PC grafika.'
-    );
+    return 'Most Blender offline: tunnel/relay nie działa na PC — Start MCP Bridge w Blenderze.';
   }
   return null;
 }
 
 export function isBlenderBridgeConfigured(env: Env): boolean {
-  return Boolean(bridgeOrigin(env) && operatorBearer(env));
+  return Boolean(bridgeOrigin(env));
 }
 
 export async function callBlenderBridgeTool(
@@ -74,9 +69,8 @@ export async function callBlenderBridgeTool(
 ): Promise<{ result?: Record<string, unknown>; error?: { code: number | string; message: string; details?: string } }> {
   const t0 = Date.now();
   const origin = bridgeOrigin(env);
-  const bearer = operatorBearer(env);
 
-  if (!origin || !bearer) {
+  if (!origin) {
     chatPipelineLog({
       phase: 'blender_bridge_tool',
       duration_ms: Date.now() - t0,
@@ -86,8 +80,7 @@ export async function callBlenderBridgeTool(
     return {
       error: {
         code: 'blender_bridge_not_configured',
-        message:
-          'Most Blender nie jest skonfigurowany: ustaw var BLENDER_BRIDGE_ORIGIN na workerze czatu i EPIR_OPERATOR_PANEL_SECRET (relay + worker).',
+        message: 'Most Blender nie jest skonfigurowany na workerze (BLENDER_BRIDGE_ORIGIN).',
       },
     };
   }
@@ -106,7 +99,6 @@ export async function callBlenderBridgeTool(
     const r = await fetch(url, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${bearer}`,
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
@@ -177,8 +169,7 @@ export async function callBlenderBridgeTool(
     return {
       error: {
         code: 'BLENDER_OFFLINE',
-        message:
-          'Nie można połączyć z mostem Blender (relay/tunnel). Uruchom addon + python -m relay na PC.',
+        message: 'Nie można połączyć z mostem Blender. W Blenderze: Start MCP Bridge.',
         details: msg.slice(0, 500),
       },
     };
@@ -191,7 +182,7 @@ export async function blenderBridgeHealth(env: Env): Promise<{
   detail?: string;
 }> {
   if (!isBlenderBridgeConfigured(env)) {
-    return { configured: false, detail: 'missing_origin_or_operator_secret' };
+    return { configured: false, detail: 'missing_blender_bridge_origin' };
   }
   const out = await callBlenderBridgeTool(env, 'blender_ping', { timeout_s: 5 });
   if (out.error) {

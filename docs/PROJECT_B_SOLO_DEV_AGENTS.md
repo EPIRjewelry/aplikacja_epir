@@ -140,6 +140,6 @@ Lista **Tryb pracy** mapuje intencję na agent + model + sufiks promptu ([`workf
 
 - Materiał roboczy: [`EPIR_BLENDER_OPERATOR_STUDIO_BRIDGE.md`](EPIR_BLENDER_OPERATOR_STUDIO_BRIDGE.md)
 - SSOT HTTP: [Blender_assist `docs/BLENDER_BRIDGE_HTTP.md`](https://github.com/EPIRjewelry/Blender_assist/blob/main/docs/BLENDER_BRIDGE_HTTP.md)
-- **Sekrety:** brak nowych nazw — `EPIR_OPERATOR_PANEL_SECRET` + var `BLENDER_BRIDGE_ORIGIN`
+- **Sekrety:** `EPIR_OPERATOR_PANEL_SECRET` (Studio); var `BLENDER_BRIDGE_ORIGIN` (worker, bez ręcznej konfiguracji); relay PC bez hasła
 - **Narzędzie czatu:** `blender_bridge_invoke` (tylko `internal-dashboard`)
 - **UI:** panel „Most Blender” + `GET /internal/solo-dev-chat/api/blender-bridge-health`

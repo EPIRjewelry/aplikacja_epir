@@ -280,9 +280,9 @@ export default function App() {
     setBlenderStatus('Sprawdzam…');
     try {
       const j = await fetchBlenderHealth();
-      if (!j.configured) setBlenderStatus('Nie skonfigurowano BLENDER_BRIDGE_ORIGIN');
+      if (!j.configured) setBlenderStatus('Most niedostępny (worker)');
       else if (j.online) setBlenderStatus('OK — most odpowiada');
-      else setBlenderStatus(`Offline: ${j.detail ?? 'brak odpowiedzi'}`);
+      else setBlenderStatus(`Offline: ${j.detail ?? 'w Blenderze: Start MCP Bridge'}`);
     } catch {
       setBlenderStatus('Błąd sprawdzenia');
     }
@@ -675,7 +675,7 @@ export default function App() {
         {tab === 'blender' && (
           <div className="mt-2 space-y-2 text-xs text-slate-400">
             <p className="rounded border border-slate-800 bg-slate-950/80 p-2">
-              W Blenderze: jeden klik <strong>Start MCP Bridge</strong> (sidebar Blender MCP). Status odświeża się co 15 s.
+              W Blenderze: <strong>Start MCP Bridge</strong> (sidebar Blender MCP). Klucz tylko w Studiu — na PC nic nie wpisujesz.
             </p>
             <p>{blenderStatus}</p>
             <button type="button" className="rounded border border-slate-700 px-2 py-1" onClick={() => void checkBlender()}>

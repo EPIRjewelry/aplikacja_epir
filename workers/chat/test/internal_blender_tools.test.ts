@@ -9,7 +9,6 @@ describe('internal-blender-tools', () => {
 
   it('reports not configured without origin', async () => {
     const env = {
-      EPIR_OPERATOR_PANEL_SECRET: 'op',
       BLENDER_BRIDGE_ORIGIN: '',
     } as unknown as Env;
     expect(isBlenderBridgeConfigured(env)).toBe(false);
@@ -17,7 +16,14 @@ describe('internal-blender-tools', () => {
     expect(out.error?.code).toBe('blender_bridge_not_configured');
   });
 
-  it('proxies allowlisted tool with operator bearer', async () => {
+  it('is configured with origin only (no relay bearer)', () => {
+    const env = {
+      BLENDER_BRIDGE_ORIGIN: 'https://bridge.example.com',
+    } as unknown as Env;
+    expect(isBlenderBridgeConfigured(env)).toBe(true);
+  });
+
+  it('proxies allowlisted tool without Authorization header', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({ ok: true, error: null, warnings: [], metrics: {}, logs: ['pong'], timing_ms: 1 }),
@@ -27,7 +33,6 @@ describe('internal-blender-tools', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const env = {
-      EPIR_OPERATOR_PANEL_SECRET: 'op-secret',
       BLENDER_BRIDGE_ORIGIN: 'https://bridge.example.com',
     } as unknown as Env;
 
@@ -36,12 +41,11 @@ describe('internal-blender-tools', () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('https://bridge.example.com/v1/tools/blender_ping');
-    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer op-secret');
+    expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
   });
 
   it('rejects tool outside allowlist', async () => {
     const env = {
-      EPIR_OPERATOR_PANEL_SECRET: 'op',
       BLENDER_BRIDGE_ORIGIN: 'https://bridge.example.com',
     } as unknown as Env;
     const out = await callBlenderBridgeTool(env, 'run_script', {});
@@ -58,7 +62,6 @@ describe('internal-blender-tools', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const env = {
-      EPIR_OPERATOR_PANEL_SECRET: 'op-secret',
       BLENDER_BRIDGE_ORIGIN: 'https://bridge.example.com',
     } as unknown as Env;
 

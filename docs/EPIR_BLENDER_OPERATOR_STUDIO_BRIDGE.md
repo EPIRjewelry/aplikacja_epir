@@ -6,45 +6,32 @@
 
 OpenRouter w Operator Studio nie ma dostępu do stdio MCP Blender w Cursorze. Most HTTP + proxy w `workers/chat` łączy te warstwy.
 
-## Polityka sekretów (wiążąca dla tego projektu)
+## Polityka sekretów
 
 - **Zero nowych nazw** sekretów w Cloudflare.
-- Auth relay: reuse `EPIR_OPERATOR_PANEL_SECRET` (już w Secret Store workera czatu).
-- URL mostka: **`BLENDER_BRIDGE_ORIGIN`** — wyłącznie `[vars]` w `workers/chat/wrangler.toml`, nie secret.
-- Brak sekretów w HTML panelu, Pages, repo.
+- **Jeden klucz operatora:** `EPIR_OPERATOR_PANEL_SECRET` — tylko logowanie do Operator Studio (Secret Store workera czatu).
+- **URL mostka:** `BLENDER_BRIDGE_ORIGIN` = `https://blender-bridge.epirbizuteria.pl` — już w [`workers/chat/wrangler.toml`](../workers/chat/wrangler.toml) `[vars]`, operator **nie wpisuje** tego ręcznie.
+- **Relay na PC:** domyślnie **bez** Bearer (`RELAY_AUTH=0`). Brak sekretu w `.env` na PC.
 
 ## Przepływ
 
-1. Grafik: Operator Studio → model OpenRouter → tool call `blender_*`
-2. Worker: `POST {BLENDER_BRIDGE_ORIGIN}/v1/tools/{name}` + Bearer = `EPIR_OPERATOR_PANEL_SECRET`
-3. PC: relay `127.0.0.1:9876` → addon TCP `8765` → Blender 5.1
+1. Grafik: Operator Studio → model OpenRouter → tool call `blender_bridge_invoke`
+2. Worker: `POST {BLENDER_BRIDGE_ORIGIN}/v1/tools/{name}` (bez Authorization do relay)
+3. PC: named tunnel → relay `127.0.0.1:9876` → addon TCP `8765` → Blender 5.1
 
-## Bramki
+## Uruchomienie (sesja grafika)
 
-| Faza | ESOG przed kolejną fazą |
-|------|-------------------------|
-| 0 Kontrakt + allowlist | Wymagany PASS |
-| 1 Relay (Blender_assist) | Wymagany PASS |
-| 2 Proxy (workers/chat) | Wymagany PASS |
-| 3 UX Studio | Wymagany PASS |
-| Deploy | Wymagany PASS + var origin |
-
-## Uruchomienie (sesja grafika — jeden klik)
-
-**Setup raz:** `Blender_assist/scripts/setup-blender-bridge-once.ps1` + `.env` z `EPIR_OPERATOR_PANEL_SECRET` (ta sama wartość co Operator Studio).
+**Setup raz:** `Blender_assist/scripts/setup-blender-bridge-once.ps1` (tunel + venv). Opcjonalnie `copy .env.example .env`.
 
 **Codziennie:**
 
-1. Blender → sidebar **Blender MCP** → **Start MCP Bridge** — addon uruchamia TCP `:8765`, relay `:9876` i named tunnel (`bridge_orchestrator.py` w Blender_assist).
-2. Operator Studio → zakładka **Blender** → status mostu (auto-odświeżanie).
+1. Operator Studio — klucz `EPIR_OPERATOR_PANEL_SECRET` (jak dotąd).
+2. Blender → **Start MCP Bridge**.
+3. Studio → zakładka **Blender** → status mostu.
 
-**Fallback CLI:** `scripts/start-blender-bridge.ps1` — tylko diagnostyka, bez Blendera.
+**Fallback CLI:** `scripts/start-blender-bridge.ps1` — diagnostyka.
 
-**Nie używać** quick tunnel (`cloudflared tunnel --url`, `*.trycloudflare.com`) — losowy URL wymagałby ponownego deploy workera.
-
-## Uruchomienie lokalne (skrót)
-
-Zob. powyżej; SSOT skryptów: repo Blender_assist `scripts/`.
+**Nie używać** quick tunnel (`trycloudflare.com`).
 
 ## Powiązane
 
