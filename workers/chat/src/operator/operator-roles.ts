@@ -58,7 +58,7 @@ TRYB: Operacje sklepu Shopify (operator).
 TRYB: Blender / CAD (metryczne mm, biżuteria).
 - „Model 3D” = mesh/scena w Blenderze na PC — NIE produkt ani SKU w Shopify.
 - Pierwszy krok: blender_bridge_invoke(blender_ping).
-- tool_name: wybieraj WYŁĄCZNIE z enum (${BLENDER_BRIDGE_TOOL_NAMES.length} narzędzi). Krzywe/obrysy: curve_cutter_create.
+- tool_name: enum w blender_bridge_invoke (${BLENDER_BRIDGE_TOOL_NAMES.length} narzędzi + aliasy). Krzywe: curve_cutter_create lub blender_add_curve.
 - Zablokowane: run_script, node_tool_invoke.
 - ZAKAZ: run_analytics_query, run_shopify_shopifyql, search_catalog — w tej roli nie istnieją.
 - Most offline → Start MCP Bridge w Blenderze; nie proponuj ShopifyQL ani Q5.

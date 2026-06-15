@@ -34,7 +34,7 @@ Raporty dzienne: panel Raporty w Studio (D1).`.trim(),
   design_blender: `
 ŹRÓDŁA (rola Blender / CAD):
 1. Jedynie blender_bridge_invoke → most HTTP (katalog ${BLENDER_BRIDGE_TOOL_NAMES.length} narzędzi; denylist: run_script, node_tool_invoke).
-2. Krzywe/obrysy CAD: curve_cutter_create (nie wymyślaj blender_add_curve — alias i tak działa).
+2. Krzywe/obrysy CAD: tool_name curve_cutter_create lub blender_add_curve (alias → to samo).
 3. Pełna lista nazw: enum tool_name w blender_bridge_invoke lub GET /v1/tools na relay.
 „Model 3D” = obiekt w Blenderze (mm), nie produkt Shopify.
 Nie masz run_analytics_query, search_catalog ani ShopifyQL w tej roli.`.trim(),

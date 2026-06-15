@@ -61,6 +61,13 @@ export async function callBlenderBridgeTool(
   const t0 = Date.now();
   const origin = bridgeOrigin(env);
   const resolvedName = resolveBridgeToolName(toolName);
+  // #region agent log
+  chatPipelineLog({
+    phase: 'blender_bridge_tool',
+    tool: resolvedName,
+    reason: toolName !== resolvedName ? `alias:${toolName}` : 'resolve',
+  });
+  // #endregion
 
   if (!origin) {
     chatPipelineLog({

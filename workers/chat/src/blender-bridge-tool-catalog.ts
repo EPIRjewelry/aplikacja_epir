@@ -15,6 +15,15 @@ export const BLENDER_BRIDGE_TOOL_ALIASES = catalog.aliases as Readonly<Record<st
 
 export const BLENDER_BRIDGE_TOOL_NAMES = catalog.tools.map((t) => t.name) as readonly string[];
 
+/** Enum dla schematu LLM: kanoniczne nazwy + aliasy (np. blender_add_curve). */
+export function blenderBridgeToolEnumForSchema(): string[] {
+  const names = new Set<string>(BLENDER_BRIDGE_TOOL_NAMES);
+  for (const alias of Object.keys(BLENDER_BRIDGE_TOOL_ALIASES)) {
+    names.add(alias);
+  }
+  return [...names].sort();
+}
+
 export function resolveBridgeToolName(toolName: string): string {
   const raw = toolName.trim();
   return BLENDER_BRIDGE_TOOL_ALIASES[raw] ?? raw;

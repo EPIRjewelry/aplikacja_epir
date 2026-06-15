@@ -6,6 +6,7 @@ import {
   shouldUseSlimToolSchemas,
   getToolDefinitions,
 } from '../src/mcp_tools';
+import { blenderBridgeToolEnumForSchema } from '../src/blender-bridge-tool-catalog';
 
 describe('TOOL_SCHEMAS_SLIM size reduction', () => {
   const fullJson = JSON.stringify(Object.values(TOOL_SCHEMAS));
@@ -41,6 +42,13 @@ describe('TOOL_SCHEMAS_SLIM size reduction', () => {
       const slimEnum = (TOOL_SCHEMAS_SLIM as any)[tool].parameters.properties[prop].enum;
       expect(slimEnum).toEqual(fullEnum);
     }
+  });
+
+  it('slim blender_bridge_invoke enum includes curve aliases', () => {
+    const slimEnum = (TOOL_SCHEMAS_SLIM as any).blender_bridge_invoke.parameters.properties.tool_name.enum;
+    expect(slimEnum).toContain('curve_cutter_create');
+    expect(slimEnum).toContain('blender_add_curve');
+    expect(slimEnum).toEqual(blenderBridgeToolEnumForSchema());
   });
 
   it('slim preserves additionalProperties: false on update_cart', () => {

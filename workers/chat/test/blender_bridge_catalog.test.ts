@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import catalog from '../src/blender-bridge-tools.json';
 import {
   BLENDER_BRIDGE_TOOL_NAMES,
+  blenderBridgeToolEnumForSchema,
   isBlenderBridgeToolDenied,
   isBlenderBridgeToolKnown,
   resolveBridgeToolName,
@@ -23,6 +24,13 @@ describe('blender-bridge-tool-catalog', () => {
   it('resolves blender_add_curve alias', () => {
     expect(resolveBridgeToolName('blender_add_curve')).toBe('curve_cutter_create');
     expect(isBlenderBridgeToolKnown('blender_add_curve')).toBe(true);
+  });
+
+  it('includes aliases in schema enum', () => {
+    const names = blenderBridgeToolEnumForSchema();
+    expect(names).toContain('curve_cutter_create');
+    expect(names).toContain('blender_add_curve');
+    expect(names.length).toBeGreaterThan(BLENDER_BRIDGE_TOOL_NAMES.length);
   });
 
   it('matches committed JSON tool count', () => {
