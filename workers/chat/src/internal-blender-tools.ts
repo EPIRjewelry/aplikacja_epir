@@ -179,14 +179,76 @@ export async function callBlenderBridgeTool(
 export async function blenderBridgeHealth(env: Env): Promise<{
   configured: boolean;
   online?: boolean;
+  relay_online?: boolean;
+  addon_online?: boolean;
   detail?: string;
 }> {
   if (!isBlenderBridgeConfigured(env)) {
     return { configured: false, detail: 'missing_blender_bridge_origin' };
   }
+  const origin = bridgeOrigin(env);
+  let relayHttp = 0;
+  try {
+    const hr = await fetch(`${origin}/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(12_000),
+    });
+    relayHttp = hr.status;
+    // #region agent log
+    chatPipelineLog({
+      phase: 'blender_bridge_health',
+      ok: hr.ok,
+      http_status: hr.status,
+      reason: 'relay_health',
+    });
+    // #endregion
+    if (!hr.ok) {
+      const preview = (await hr.text()).slice(0, 200);
+      const tunnelMsg = cloudflareOriginOfflineMessage(hr.status, preview);
+      return {
+        configured: true,
+        online: false,
+        relay_online: false,
+        detail: tunnelMsg ?? `relay health HTTP ${hr.status}`,
+      };
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // #region agent log
+    chatPipelineLog({
+      phase: 'blender_bridge_health',
+      ok: false,
+      reason: `relay_health_error:${msg.slice(0, 80)}`,
+    });
+    // #endregion
+    return {
+      configured: true,
+      online: false,
+      relay_online: false,
+      detail: 'Most Blender offline: w Blenderze kliknij Start MCP Bridge.',
+    };
+  }
+
   const out = await callBlenderBridgeTool(env, 'blender_ping', { timeout_s: 5 });
   if (out.error) {
-    return { configured: true, online: false, detail: out.error.message };
+    // #region agent log
+    chatPipelineLog({
+      phase: 'blender_bridge_health',
+      ok: false,
+      http_status: relayHttp,
+      reason: `addon_ping:${String(out.error.code)}`,
+    });
+    // #endregion
+    return {
+      configured: true,
+      online: false,
+      relay_online: true,
+      addon_online: false,
+      detail:
+        out.error.code === 'BLENDER_OFFLINE'
+          ? 'Relay OK — w Blenderze kliknij Start MCP Bridge (addon TCP :8765).'
+          : out.error.message,
+    };
   }
-  return { configured: true, online: true };
+  return { configured: true, online: true, relay_online: true, addon_online: true };
 }

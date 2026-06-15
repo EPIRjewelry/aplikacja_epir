@@ -280,9 +280,31 @@ export default function App() {
     setBlenderStatus('Sprawdzam…');
     try {
       const j = await fetchBlenderHealth();
+      // #region agent log
+      fetch('http://127.0.0.1:7837/ingest/dcb4ed34-231a-411e-ae6d-7573a0294e12', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '34c45b' },
+        body: JSON.stringify({
+          sessionId: '34c45b',
+          location: 'App.tsx:checkBlender',
+          message: 'blender_bridge_health_response',
+          data: {
+            configured: j.configured,
+            online: j.online,
+            relay_online: (j as { relay_online?: boolean }).relay_online,
+            addon_online: (j as { addon_online?: boolean }).addon_online,
+            detail: j.detail?.slice(0, 200),
+          },
+          timestamp: Date.now(),
+          hypothesisId: 'C',
+        }),
+      }).catch(() => {});
+      // #endregion
       if (!j.configured) setBlenderStatus('Most niedostępny (worker)');
       else if (j.online) setBlenderStatus('OK — most odpowiada');
-      else setBlenderStatus(`Offline: ${j.detail ?? 'w Blenderze: Start MCP Bridge'}`);
+      else if ((j as { relay_online?: boolean }).relay_online) {
+        setBlenderStatus(`Relay OK — ${j.detail ?? 'uruchom addon w Blenderze'}`);
+      } else setBlenderStatus(`Offline: ${j.detail ?? 'w Blenderze: Start MCP Bridge'}`);
     } catch {
       setBlenderStatus('Błąd sprawdzenia');
     }
