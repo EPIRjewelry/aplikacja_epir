@@ -11,6 +11,8 @@
  * - `get_size_table` jest narzędziem wewnętrznym worker-a i korzysta bezpośrednio ze Storefront API.
  */
 
+import { BLENDER_BRIDGE_TOOL_NAMES } from './blender-bridge-tool-catalog';
+
 /**
  * JSON Schema definitions for Shopify Storefront MCP tools.
  * Format zgodny z OpenAI function-calling.
@@ -486,24 +488,15 @@ export const TOOL_SCHEMAS_SLIM = {
   blender_bridge_invoke: {
     name: 'blender_bridge_invoke',
     description:
-      'Blender most HTTP (allowlist v1). Relay+addon na PC. Zwraca metrics/logs z Blender_assist.',
+      'Blender most HTTP — 30 narzędzi MCP (denylist: run_script, node_tool_invoke). Katalog: GET {BLENDER_BRIDGE_ORIGIN}/v1/tools. Krzywe CAD: curve_cutter_create.',
     parameters: {
       type: 'object',
       properties: {
         tool_name: {
           type: 'string',
-          enum: [
-            'blender_ping',
-            'scene_list_objects',
-            'object_get_info',
-            'object_convert_to_mesh',
-            'mesh_get_bbox_mm',
-            'mesh_check_manifold',
-            'jewelry_mass_report',
-            'export_stl',
-            'render_packshot',
-            'apply_material_preset',
-          ],
+          enum: [...BLENDER_BRIDGE_TOOL_NAMES],
+          description:
+            'Dokładna nazwa z katalogu MCP. Krzywe/obrysy: curve_cutter_create (aliasy blender_add_curve/add_curve też działają).',
         },
         arguments: { type: 'object' },
       },

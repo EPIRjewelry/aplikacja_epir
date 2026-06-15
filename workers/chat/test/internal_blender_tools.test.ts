@@ -44,12 +44,52 @@ describe('internal-blender-tools', () => {
     expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
   });
 
-  it('rejects tool outside allowlist', async () => {
+  it('rejects denylisted run_script without fetch', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
     const env = {
       BLENDER_BRIDGE_ORIGIN: 'https://bridge.example.com',
     } as unknown as Env;
     const out = await callBlenderBridgeTool(env, 'run_script', {});
     expect(out.error?.code).toBe('tool_not_allowed');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('proxies curve_cutter_create (not allowlist-blocked)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ ok: true, error: null, warnings: [], metrics: {}, logs: [], timing_ms: 1 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const env = {
+      BLENDER_BRIDGE_ORIGIN: 'https://bridge.example.com',
+    } as unknown as Env;
+
+    const out = await callBlenderBridgeTool(env, 'curve_cutter_create', { name: 'cutter' });
+    expect(out.result?.source).toBe('blender_bridge');
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://bridge.example.com/v1/tools/curve_cutter_create');
+  });
+
+  it('resolves blender_add_curve alias to curve_cutter_create URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ ok: true, error: null, warnings: [], metrics: {}, logs: [], timing_ms: 1 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const env = {
+      BLENDER_BRIDGE_ORIGIN: 'https://bridge.example.com',
+    } as unknown as Env;
+
+    await callBlenderBridgeTool(env, 'blender_add_curve', { object_name: 'Band', name: 'cutter' });
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://bridge.example.com/v1/tools/curve_cutter_create');
   });
 
   it('maps Cloudflare 530 HTML to BLENDER_OFFLINE', async () => {

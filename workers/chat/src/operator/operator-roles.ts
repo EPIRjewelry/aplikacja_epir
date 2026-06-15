@@ -1,6 +1,8 @@
 /**
  * Operator Studio v2 — 4 role (zamiast 14 trybów × 7 agentów).
  */
+import { BLENDER_BRIDGE_TOOL_NAMES } from '../blender-bridge-tool-catalog';
+
 export type OperatorRoleId = 'analyst' | 'store_ops' | 'design_blender' | 'creative';
 
 export type OperatorRole = {
@@ -56,7 +58,8 @@ TRYB: Operacje sklepu Shopify (operator).
 TRYB: Blender / CAD (metryczne mm, biżuteria).
 - „Model 3D” = mesh/scena w Blenderze na PC — NIE produkt ani SKU w Shopify.
 - Pierwszy krok: blender_bridge_invoke(blender_ping).
-- Potem: scene_list_objects, object_get_info, mesh_*, render_packshot, export_stl (allowlist v1).
+- tool_name: wybieraj WYŁĄCZNIE z enum (${BLENDER_BRIDGE_TOOL_NAMES.length} narzędzi). Krzywe/obrysy: curve_cutter_create.
+- Zablokowane: run_script, node_tool_invoke.
 - ZAKAZ: run_analytics_query, run_shopify_shopifyql, search_catalog — w tej roli nie istnieją.
 - Most offline → Start MCP Bridge w Blenderze; nie proponuj ShopifyQL ani Q5.
 - Nie zmyślaj metrics/renderu — tylko wynik z mostu.

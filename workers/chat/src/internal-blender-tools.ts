@@ -5,22 +5,13 @@
  */
 import type { Env } from './config/bindings';
 import { chatPipelineLog } from './utils/chat-pipeline-log';
+import {
+  isBlenderBridgeToolDenied,
+  resolveBridgeToolName,
+  BLENDER_BRIDGE_TOOL_NAMES,
+} from './blender-bridge-tool-catalog';
 
-/** Zgodne z Blender_assist relay/allowlist.py i docs/BLENDER_BRIDGE_HTTP.md */
-export const BLENDER_BRIDGE_ALLOWLIST_V1 = [
-  'blender_ping',
-  'scene_list_objects',
-  'object_get_info',
-  'object_convert_to_mesh',
-  'mesh_get_bbox_mm',
-  'mesh_check_manifold',
-  'jewelry_mass_report',
-  'export_stl',
-  'render_packshot',
-  'apply_material_preset',
-] as const;
-
-export type BlenderBridgeToolName = (typeof BLENDER_BRIDGE_ALLOWLIST_V1)[number];
+export { BLENDER_BRIDGE_DENYLIST, BLENDER_BRIDGE_TOOL_NAMES } from './blender-bridge-tool-catalog';
 
 const RENDER_TIMEOUT_MS = 130_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -69,6 +60,7 @@ export async function callBlenderBridgeTool(
 ): Promise<{ result?: Record<string, unknown>; error?: { code: number | string; message: string; details?: string } }> {
   const t0 = Date.now();
   const origin = bridgeOrigin(env);
+  const resolvedName = resolveBridgeToolName(toolName);
 
   if (!origin) {
     chatPipelineLog({
@@ -85,16 +77,25 @@ export async function callBlenderBridgeTool(
     };
   }
 
-  if (!BLENDER_BRIDGE_ALLOWLIST_V1.includes(toolName as BlenderBridgeToolName)) {
+  if (isBlenderBridgeToolDenied(resolvedName)) {
+    // #region agent log
+    chatPipelineLog({
+      phase: 'blender_bridge_tool',
+      duration_ms: Date.now() - t0,
+      ok: false,
+      tool: resolvedName,
+      reason: 'denylist',
+    });
+    // #endregion
     return {
       error: {
         code: 'tool_not_allowed',
-        message: `Narzędzie poza allowlistą v1: ${toolName}`,
+        message: `Narzędzie zablokowane na moście HTTP: ${resolvedName}`,
       },
     };
   }
 
-  const url = `${origin}/v1/tools/${encodeURIComponent(toolName)}`;
+  const url = `${origin}/v1/tools/${encodeURIComponent(resolvedName)}`;
   try {
     const r = await fetch(url, {
       method: 'POST',
@@ -103,7 +104,7 @@ export async function callBlenderBridgeTool(
         Accept: 'application/json',
       },
       body: JSON.stringify(args ?? {}),
-      signal: AbortSignal.timeout(timeoutForTool(toolName)),
+      signal: AbortSignal.timeout(timeoutForTool(resolvedName)),
     });
     const text = await r.text();
     let json: Record<string, unknown>;
@@ -117,7 +118,7 @@ export async function callBlenderBridgeTool(
         duration_ms: Date.now() - t0,
         ok: false,
         http_status: r.status,
-        tool: toolName,
+        tool: resolvedName,
         reason: tunnelMsg ? 'cloudflare_origin_offline' : 'invalid_json',
       });
       return {
@@ -135,7 +136,7 @@ export async function callBlenderBridgeTool(
       duration_ms: Date.now() - t0,
       ok,
       http_status: r.status,
-      tool: toolName,
+      tool: resolvedName,
     });
 
     if (!r.ok || !ok) {
@@ -153,7 +154,7 @@ export async function callBlenderBridgeTool(
     return {
       result: {
         source: 'blender_bridge',
-        tool: toolName,
+        tool: resolvedName,
         payload: json,
       },
     };
@@ -163,7 +164,7 @@ export async function callBlenderBridgeTool(
       phase: 'blender_bridge_tool',
       duration_ms: Date.now() - t0,
       ok: false,
-      tool: toolName,
+      tool: resolvedName,
       reason: msg.slice(0, 120),
     });
     return {
