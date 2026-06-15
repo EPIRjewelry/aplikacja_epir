@@ -494,6 +494,11 @@ export default function App() {
             ))}
           </select>
           <p className="mt-1 text-xs text-slate-500">{ROLES.find((r) => r.id === role)?.hint}</p>
+          {role === 'design_blender' && (
+            <p className="mt-1 text-xs text-amber-200/90">
+              CAD w Blenderze — nie szukaj „modeli 3D” w katalogu Shopify. Po przełączeniu z Analityka zalecana nowa rozmowa.
+            </p>
+          )}
           {(role === 'analyst' || role === 'creative') && (
             <p className="mt-2 rounded border border-slate-800 bg-slate-950/80 p-2 text-xs text-slate-400">
               {GROWTH_LOOP_HINT}

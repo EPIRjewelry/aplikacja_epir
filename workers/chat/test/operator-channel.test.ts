@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { filterToolSchemasForOperator, OPERATOR_TOOL_ALLOWLIST } from '../src/operator/operator-tool-allowlist';
 import { isOperatorChannel } from '../src/operator/operator-channel';
+import { getOperatorSystemPrompt } from '../src/operator/operator-system-prompt';
 import { resolveToolSchemas } from '../src/mcp_tools';
 
 describe('operator channel v2', () => {
@@ -19,13 +20,30 @@ describe('operator channel v2', () => {
     expect(OPERATOR_TOOL_ALLOWLIST.has('update_cart')).toBe(false);
   });
 
-  it('filterToolSchemasForOperator returns only allowlisted tools', () => {
+  it('filterToolSchemasForOperator returns only allowlisted tools for analyst', () => {
     const schemas = resolveToolSchemas({});
-    const filtered = filterToolSchemasForOperator(schemas);
+    const filtered = filterToolSchemasForOperator(schemas, 'analyst');
     const names = filtered.map((s) => s.name);
     expect(names).toContain('run_analytics_query');
+    expect(names).not.toContain('blender_bridge_invoke');
     expect(names).not.toContain('get_cart');
-    expect(names).not.toContain('update_cart');
-    expect(filtered.every((s) => OPERATOR_TOOL_ALLOWLIST.has(s.name))).toBe(true);
+  });
+
+  it('design_blender role exposes only blender_bridge_invoke', () => {
+    const schemas = resolveToolSchemas({});
+    const names = filterToolSchemasForOperator(schemas, 'design_blender').map((s) => s.name);
+    expect(names).toEqual(['blender_bridge_invoke']);
+  });
+
+  it('creative role has no operator tools', () => {
+    const schemas = resolveToolSchemas({});
+    expect(filterToolSchemasForOperator(schemas, 'creative')).toEqual([]);
+  });
+
+  it('design_blender prompt focuses on blender bridge only', () => {
+    const prompt = getOperatorSystemPrompt('design_blender');
+    expect(prompt).toContain('blender_bridge_invoke');
+    expect(prompt).not.toContain('Q1–Q10');
+    expect(prompt).not.toContain('fetch_marketing_preview');
   });
 });

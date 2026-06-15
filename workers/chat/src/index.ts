@@ -86,9 +86,13 @@ import {
   LEGACY_OPERATOR_CHAT_CONTEXT,
   OPERATOR_CHAT_CONTEXT,
 } from './operator/operator-channel';
-import { filterToolSchemasForOperator } from './operator/operator-tool-allowlist';
+import {
+  filterToolSchemasForOperator,
+  isOperatorToolAllowedForRole,
+} from './operator/operator-tool-allowlist';
 import { resolveOperatorPromptAddons } from './operator/operator-prompt-addons';
-import { OPERATOR_SYSTEM_PROMPT } from './operator/operator-system-prompt';
+import { getOperatorSystemPrompt } from './operator/operator-system-prompt';
+import { resolveOperatorRoleIdFromHeaders, type OperatorRoleId } from './operator/operator-roles';
 import { runOperatorShopifyAdminRead } from './operator/operator-shopify-admin-tools';
 import {
   isOperatorStudioAssetPath,
@@ -255,8 +259,8 @@ async function fetchSessionDO(
   return response;
 }
 
-function getSystemPromptForChannel(channel?: string): string {
-  if (isOperatorChannel(channel)) return OPERATOR_SYSTEM_PROMPT;
+function getSystemPromptForChannel(channel?: string, operatorRoleId?: OperatorRoleId): string {
+  if (isOperatorChannel(channel)) return getOperatorSystemPrompt(operatorRoleId);
   if (channel === 'internal-dashboard') return INTERNAL_DASHBOARD_SYSTEM_PROMPT;
   return LUXURY_SYSTEM_PROMPT;
 }
@@ -2993,6 +2997,7 @@ async function streamAssistantResponse(
 
     try {
       const operatorMode = isOperatorChannel(storefrontContext?.channel);
+      const operatorRoleId = operatorMode ? resolveOperatorRoleIdFromHeaders(request.headers) : null;
 
       // 🔴 KROK 1: POPRAWKA SESJI
       // Natychmiast wyślij klientowi ID sesji, aby mógł je zapisać.
@@ -3293,7 +3298,7 @@ async function streamAssistantResponse(
       // Wariant schematów (full vs slim) kontrolowany przez env.SLIM_TOOL_SCHEMAS.
       const activeSchemas = resolveToolSchemas(env as { SLIM_TOOL_SCHEMAS?: string | boolean });
       const schemasToUse = operatorMode
-        ? filterToolSchemasForOperator(activeSchemas)
+        ? filterToolSchemasForOperator(activeSchemas, operatorRoleId ?? undefined)
         : storefrontContext?.channel === 'internal-dashboard'
           ? Object.values(activeSchemas)
           : Object.values(activeSchemas).filter((s) => !INTERNAL_DASHBOARD_ONLY_TOOL_NAMES.has(s.name));
@@ -3332,7 +3337,7 @@ async function streamAssistantResponse(
           ? await resolveInternalDashboardPromptAddons(env, request.headers, sessionId)
           : '';
       const baseSystemPrompt =
-        getSystemPromptForChannel(storefrontContext?.channel) +
+        getSystemPromptForChannel(storefrontContext?.channel, operatorRoleId ?? undefined) +
         (agentAddon ? `\n\n${agentAddon}` : '');
 
       // Zbudowanie dynamicznych linii (koszyk, sklep, cross-session); trafią do ostatniego usera, nie do systemu.
@@ -3929,6 +3934,18 @@ async function streamAssistantResponse(
               call.name,
               call.arguments,
               async (safeArgs) => {
+                if (
+                  operatorMode &&
+                  operatorRoleId &&
+                  !isOperatorToolAllowedForRole(call.name, operatorRoleId)
+                ) {
+                  return {
+                    error: {
+                      code: 'tool_not_allowed_for_role',
+                      message: `Narzędzie ${call.name} niedostępne w roli ${operatorRoleId}.`,
+                    },
+                  };
+                }
                 if (call.name === 'run_analytics_query') {
                   return runWarehouseAnalyticsQuery(env, safeArgs as { queryId?: string });
                 }
