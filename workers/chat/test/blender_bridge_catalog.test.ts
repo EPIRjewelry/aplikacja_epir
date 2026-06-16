@@ -9,16 +9,17 @@ import {
 } from '../src/blender-bridge-tool-catalog';
 
 describe('blender-bridge-tool-catalog', () => {
-  it('lists 30 bridge tools with curve_cutter_create', () => {
-    expect(BLENDER_BRIDGE_TOOL_NAMES.length).toBe(30);
+  it('lists 32 bridge tools including run_script and node_tool_invoke', () => {
+    expect(BLENDER_BRIDGE_TOOL_NAMES.length).toBe(32);
     expect(BLENDER_BRIDGE_TOOL_NAMES).toContain('curve_cutter_create');
-    expect(BLENDER_BRIDGE_TOOL_NAMES).toContain('modifier_add_boolean_manifold');
+    expect(BLENDER_BRIDGE_TOOL_NAMES).toContain('run_script');
+    expect(BLENDER_BRIDGE_TOOL_NAMES).toContain('node_tool_invoke');
   });
 
-  it('denies only run_script and node_tool_invoke', () => {
-    expect(catalog.denied).toEqual(['node_tool_invoke', 'run_script']);
-    expect(isBlenderBridgeToolDenied('run_script')).toBe(true);
-    expect(isBlenderBridgeToolDenied('curve_cutter_create')).toBe(false);
+  it('has empty denylist (solo operator — addon gates run_script)', () => {
+    expect(catalog.denied).toEqual([]);
+    expect(isBlenderBridgeToolDenied('run_script')).toBe(false);
+    expect(isBlenderBridgeToolDenied('node_tool_invoke')).toBe(false);
   });
 
   it('resolves blender_add_curve alias', () => {

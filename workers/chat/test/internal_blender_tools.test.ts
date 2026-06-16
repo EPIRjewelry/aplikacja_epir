@@ -45,15 +45,22 @@ describe('internal-blender-tools', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer bridge-shared-secret');
   });
 
-  it('rejects denylisted run_script without fetch', async () => {
-    const fetchMock = vi.fn();
+  it('proxies run_script when not denylisted', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ ok: true, error: null, warnings: [], metrics: {}, logs: [], timing_ms: 1 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const env = {
       BLENDER_BRIDGE_ORIGIN: 'https://bridge.example.com',
     } as unknown as Env;
-    const out = await callBlenderBridgeTool(env, 'run_script', {});
-    expect(out.error?.code).toBe('tool_not_allowed');
-    expect(fetchMock).not.toHaveBeenCalled();
+    const out = await callBlenderBridgeTool(env, 'run_script', { code: 'print(1)', confirm: true });
+    expect(out.result?.source).toBe('blender_bridge');
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://bridge.example.com/v1/tools/run_script');
   });
 
   it('proxies curve_cutter_create (not allowlist-blocked)', async () => {

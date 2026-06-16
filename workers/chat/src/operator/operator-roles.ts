@@ -1,5 +1,5 @@
 /**
- * Operator Studio v2 — 4 role (zamiast 14 trybów × 7 agentów).
+ * Operator Studio v2 — 4 role operatora.
  */
 import { BLENDER_BRIDGE_TOOL_NAMES } from '../blender-bridge-tool-catalog';
 
@@ -59,7 +59,7 @@ TRYB: Blender / CAD (metryczne mm, biżuteria).
 - „Model 3D” = mesh/scena w Blenderze na PC — NIE produkt ani SKU w Shopify.
 - Pierwszy krok: blender_bridge_invoke(blender_ping).
 - tool_name: enum w blender_bridge_invoke (${BLENDER_BRIDGE_TOOL_NAMES.length} narzędzi + aliasy). Krzywe: curve_cutter_create lub blender_add_curve.
-- Zablokowane: run_script, node_tool_invoke.
+- Eksperymentalne (tylko ta rola): run_script (wymaga env BLENDER_MCP_ALLOW_SCRIPT_EXEC + confirm=True + pref addonu), node_tool_invoke (najpierw get_blender_operator_schema).
 - ZAKAZ: run_analytics_query, run_shopify_shopifyql, search_catalog — w tej roli nie istnieją.
 - Most offline → Start MCP Bridge w Blenderze; nie proponuj ShopifyQL ani Q5.
 - Nie zmyślaj metrics/renderu — tylko wynik z mostu.

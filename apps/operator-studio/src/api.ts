@@ -4,10 +4,28 @@ import type { GroqModelVariantKey } from './groq-models';
 const API = '/internal/operator-studio/api';
 
 const KEY = 'epir_operator_admin_key';
-/** Legacy solo-dev-chat v1 — migrated once into KEY on read */
+/** Migracja klucza z wcześniejszej wersji panelu — jednorazowo przy odczycie. */
 const LEGACY_KEY = 'epir_solo_dev_chat_admin_key';
-const SESSION = 'epir_operator_session_id';
+const SESSION_LEGACY = 'epir_operator_session_id';
 const ROLE = 'epir_operator_role';
+
+function sessionStorageKey(role: OperatorRoleId): string {
+  return `epir_operator_session_${role}`;
+}
+
+function migrateLegacySession(role: OperatorRoleId): void {
+  try {
+    const legacy = sessionStorage.getItem(SESSION_LEGACY)?.trim();
+    if (!legacy) return;
+    const key = sessionStorageKey(role);
+    if (!sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, legacy);
+    }
+    sessionStorage.removeItem(SESSION_LEGACY);
+  } catch {
+    /* ignore */
+  }
+}
 const OR_MODEL = 'epir_operator_or_model';
 const MODEL_SOURCE = 'epir_operator_model_source';
 const GROQ_VARIANT = 'epir_operator_groq_variant';
@@ -54,20 +72,65 @@ export function setAdminKey(v: string): void {
   sessionStorage.setItem(KEY, v.trim());
 }
 
-export function getSessionId(): string | null {
+export function getSessionId(role?: OperatorRoleId): string | null {
   try {
-    return sessionStorage.getItem(SESSION);
+    const r = role ?? getRole();
+    migrateLegacySession(r);
+    return sessionStorage.getItem(sessionStorageKey(r));
   } catch {
     return null;
   }
 }
 
-export function setSessionId(id: string): void {
-  sessionStorage.setItem(SESSION, id);
+export function setSessionId(id: string, role?: OperatorRoleId): void {
+  const r = role ?? getRole();
+  sessionStorage.setItem(sessionStorageKey(r), id);
 }
 
-export function clearSession(): void {
-  sessionStorage.removeItem(SESSION);
+export function clearSession(role?: OperatorRoleId): void {
+  const r = role ?? getRole();
+  sessionStorage.removeItem(sessionStorageKey(r));
+}
+
+export type HistoryMessage = { role: 'user' | 'assistant'; content: string };
+
+export async function fetchChatHistory(role?: OperatorRoleId): Promise<HistoryMessage[]> {
+  const r = role ?? getRole();
+  const sid = getSessionId(r)?.trim();
+  if (!sid || !getAdminKey()) return [];
+  const res = await fetch(`${API}/history`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ session_id: sid }),
+  });
+  if (!res.ok) return [];
+  const body = (await res.json().catch(() => ({}))) as { history?: HistoryMessage[] };
+  return Array.isArray(body.history) ? body.history : [];
+}
+
+export async function exportSessionToDisk(role?: OperatorRoleId): Promise<{
+  ok: boolean;
+  path?: string;
+  detail?: string;
+}> {
+  const r = role ?? getRole();
+  const sid = getSessionId(r)?.trim();
+  if (!sid) return { ok: false, detail: 'Brak aktywnej sesji do eksportu.' };
+  const res = await fetch(`${API}/export-session`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ session_id: sid, role: r }),
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    path?: string;
+    detail?: string;
+    error?: string;
+  };
+  if (!res.ok || body.ok === false) {
+    return { ok: false, detail: body.detail || body.error || `export HTTP ${res.status}` };
+  }
+  return { ok: true, path: body.path };
 }
 
 export function getRole(): OperatorRoleId {
@@ -188,7 +251,15 @@ export async function fetchOpenRouterModels(): Promise<{ ok: boolean; models: Op
 
 export async function fetchBlenderHealth() {
   const res = await fetch(`${API}/blender-bridge-health`, { headers: headers() });
-  return res.json() as Promise<{ ok: boolean; configured?: boolean; online?: boolean; detail?: string }>;
+  if (!res.ok) throw new Error(`blender-bridge-health HTTP ${res.status}`);
+  return res.json() as Promise<{
+    ok: boolean;
+    configured?: boolean;
+    online?: boolean;
+    relay_online?: boolean;
+    addon_online?: boolean;
+    detail?: string;
+  }>;
 }
 
 export async function fetchOperatorProfile() {
@@ -207,6 +278,8 @@ export async function saveOperatorProfile(body: { brandNotes: string; campaignPr
 }
 
 export type ChatMessage = { role: 'user' | 'assistant' | 'error'; content: string };
+
+const CHAT_REQUEST_TIMEOUT_MS = 120_000;
 
 export async function streamChat(
   built: BuiltMessagePayload,
@@ -235,17 +308,30 @@ export async function streamChat(
     h['X-Epir-Model-Variant'] = opts.groqVariant;
   }
 
-  const sid = getSessionId();
+  const sid = getSessionId(opts.role);
   const payload: Record<string, unknown> = { message: built.message, stream: true };
   if (sid) payload.session_id = sid;
   if (built.imageBase64) payload.image_base64 = built.imageBase64;
   if (built.parts?.length) payload.parts = built.parts;
 
-  const res = await fetch(`${API}/chat`, {
-    method: 'POST',
-    headers: h,
-    body: JSON.stringify(payload),
-  });
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort('chat_timeout'), CHAT_REQUEST_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${API}/chat`, {
+      method: 'POST',
+      headers: h,
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('Przekroczono timeout odpowiedzi modelu (120s). Spróbuj ponownie lub zmień model.');
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
   if (!res.ok) throw new Error(await res.text());
 
   const ct = res.headers.get('content-type') ?? '';
@@ -277,7 +363,7 @@ export async function streamChat(
           error?: string;
           images?: { url: string }[];
         };
-        if (o.session_id) setSessionId(o.session_id);
+        if (o.session_id) setSessionId(o.session_id, opts.role);
         if (o.error) throw new Error(o.error);
         if (o.delta) {
           acc += o.delta;

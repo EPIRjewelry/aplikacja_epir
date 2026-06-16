@@ -141,7 +141,7 @@ export const TOOL_SCHEMAS = {
   run_analytics_query: {
     name: 'run_analytics_query',
     description:
-      'Wykonuje whitelistowane zapytanie analityczne zgodne z kanonicznym kontraktem danych EPIR. Dostępne TYLKO dla internal-dashboard. Zwraca wyniki z R2 SQL nad tabelami Iceberg (odpowiedniki epir_pixel_events_raw i messages_raw w katalogu R2 Data Catalog).',
+      'Wykonuje whitelistowane zapytanie analityczne zgodne z kanonicznym kontraktem danych EPIR. Dostępne TYLKO dla kanału operator. Zwraca wyniki z R2 SQL nad tabelami Iceberg (odpowiedniki epir_pixel_events_raw i messages_raw w katalogu R2 Data Catalog).',
     parameters: {
       type: 'object',
       properties: {
@@ -158,7 +158,7 @@ export const TOOL_SCHEMAS = {
   fetch_marketing_preview: {
     name: 'fetch_marketing_preview',
     description:
-      'Pobiera z serwera epir-marketing-ingest agregowany podgląd GA4 + Google Ads (GET /ops/marketing-preview, Bearer). Dostępne TYLKO dla internal-dashboard. Wynik ma pole source=marketing_preview; cytuj liczby wyłącznie z payloadu.',
+      'Pobiera z serwera epir-marketing-ingest agregowany podgląd GA4 + Google Ads (GET /ops/marketing-preview, Bearer). Dostępne TYLKO dla kanału operator. Wynik ma pole source=marketing_preview; cytuj liczby wyłącznie z payloadu.',
     parameters: {
       type: 'object',
       properties: {
@@ -199,7 +199,7 @@ export const TOOL_SCHEMAS = {
   blender_bridge_invoke: {
     name: 'blender_bridge_invoke',
     description:
-      'Blender most HTTP — 30 narzędzi MCP (denylist: run_script, node_tool_invoke). Krzywe CAD: curve_cutter_create lub blender_add_curve.',
+      'Blender most HTTP — 32 narzędzi MCP (w tym run_script, node_tool_invoke; tylko rola CAD). Krzywe: curve_cutter_create lub blender_add_curve.',
     parameters: {
       type: 'object',
       properties: {
@@ -415,7 +415,7 @@ export const TOOL_SCHEMAS_SLIM = {
   run_analytics_query: {
     name: 'run_analytics_query',
     description:
-      'Wykonuje whitelistowane zapytanie analityczne (internal-dashboard only). Wyniki z R2 SQL / Iceberg (Workers RPC do epir-bigquery-batch).',
+      'Wykonuje whitelistowane zapytanie analityczne (operator channel only). Wyniki z R2 SQL / Iceberg (Workers RPC do epir-bigquery-batch).',
     parameters: {
       type: 'object',
       properties: {
@@ -442,7 +442,7 @@ export const TOOL_SCHEMAS_SLIM = {
   fetch_marketing_preview: {
     name: 'fetch_marketing_preview',
     description:
-      'GA4+Ads preview z epir-marketing-ingest (/ops/marketing-preview). internal-dashboard only.',
+      'GA4+Ads preview z epir-marketing-ingest (/ops/marketing-preview). operator channel only.',
     parameters: {
       type: 'object',
       properties: {
@@ -478,7 +478,7 @@ export const TOOL_SCHEMAS_SLIM = {
   blender_bridge_invoke: {
     name: 'blender_bridge_invoke',
     description:
-      'Blender most HTTP — 30 narzędzi MCP (denylist: run_script, node_tool_invoke). Katalog: GET {BLENDER_BRIDGE_ORIGIN}/v1/tools. Krzywe CAD: curve_cutter_create.',
+      'Blender most HTTP — 32 narzędzi MCP (w tym run_script, node_tool_invoke). Katalog: GET {BLENDER_BRIDGE_ORIGIN}/v1/tools. Krzywe CAD: curve_cutter_create.',
     parameters: {
       type: 'object',
       properties: {
