@@ -1,5 +1,5 @@
 /**
- * Proxy narzędzi Blender_assist HTTP relay — tylko kanał internal-dashboard.
+ * Proxy narzędzi Blender_assist HTTP relay — tylko kanał operator.
  * Origin: var BLENDER_BRIDGE_ORIGIN (worker). Relay bez Bearer (domyślnie).
  * Studio auth: EPIR_OPERATOR_PANEL_SECRET (tylko do API workera, nie do relay).
  */
@@ -104,12 +104,17 @@ export async function callBlenderBridgeTool(
 
   const url = `${origin}/v1/tools/${encodeURIComponent(resolvedName)}`;
   try {
+    const relayHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+    const relayBearer = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
+    if (relayBearer) {
+      relayHeaders.Authorization = `Bearer ${relayBearer}`;
+    }
     const r = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
+      headers: relayHeaders,
       body: JSON.stringify(args ?? {}),
       signal: AbortSignal.timeout(timeoutForTool(resolvedName)),
     });

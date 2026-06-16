@@ -23,7 +23,7 @@ describe('internal-blender-tools', () => {
     expect(isBlenderBridgeConfigured(env)).toBe(true);
   });
 
-  it('proxies allowlisted tool without Authorization header', async () => {
+  it('proxies allowlisted tool with relay bearer header', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({ ok: true, error: null, warnings: [], metrics: {}, logs: ['pong'], timing_ms: 1 }),
@@ -34,6 +34,7 @@ describe('internal-blender-tools', () => {
 
     const env = {
       BLENDER_BRIDGE_ORIGIN: 'https://bridge.example.com',
+      EPIR_OPERATOR_PANEL_SECRET: 'bridge-shared-secret',
     } as unknown as Env;
 
     const out = await callBlenderBridgeTool(env, 'blender_ping', { timeout_s: 5 });
@@ -41,7 +42,7 @@ describe('internal-blender-tools', () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('https://bridge.example.com/v1/tools/blender_ping');
-    expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer bridge-shared-secret');
   });
 
   it('rejects denylisted run_script without fetch', async () => {
