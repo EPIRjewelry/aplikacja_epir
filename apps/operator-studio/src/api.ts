@@ -262,6 +262,59 @@ export async function fetchBlenderHealth() {
   }>;
 }
 
+export type FlowHealthReport = {
+  edog_verdict: 'PASS' | 'FAIL' | 'DEGRADED';
+  reasons: string[];
+  pending_pixel_events: number;
+  d1_pixel_events_24h: number;
+  d1_messages_24h: number;
+  pipeline_pixel_configured: boolean;
+  pipeline_messages_configured: boolean;
+  batch_exports: {
+    last_pixel_export_at: number;
+    last_messages_export_at: number;
+    updated_at: number;
+  } | null;
+  warehouse_q1_ok: boolean;
+  warehouse_q1_skipped: boolean;
+  warehouse_q1_error?: string;
+  checked_at: string;
+  narrative_markdown?: string;
+};
+
+export async function fetchFlowHealth(): Promise<FlowHealthReport> {
+  const res = await fetch(`${API}/flow-health`, { headers: headers() });
+  if (!res.ok) throw new Error(`flow-health HTTP ${res.status}`);
+  return res.json() as Promise<FlowHealthReport>;
+}
+
+export async function triggerWarehouseExport(): Promise<{
+  ok: boolean;
+  summary: {
+    pixelExported: number;
+    messagesExported: number;
+    pending_pixel_after: number;
+    partial: boolean;
+    pipeline_error?: string;
+  } | null;
+}> {
+  const res = await fetch(`${API}/trigger-warehouse-export`, {
+    method: 'POST',
+    headers: headers(),
+  });
+  if (!res.ok) throw new Error(`trigger-warehouse-export HTTP ${res.status}`);
+  return res.json() as Promise<{
+    ok: boolean;
+    summary: {
+      pixelExported: number;
+      messagesExported: number;
+      pending_pixel_after: number;
+      partial: boolean;
+      pipeline_error?: string;
+    } | null;
+  }>;
+}
+
 export async function fetchOperatorProfile() {
   const res = await fetch(`${API}/operator-profile`, { headers: headers() });
   if (!res.ok) throw new Error('profile');

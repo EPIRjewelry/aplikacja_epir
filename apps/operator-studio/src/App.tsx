@@ -20,6 +20,9 @@ import {
   clearSession,
   exportSessionToDisk,
   fetchBlenderHealth,
+  fetchFlowHealth,
+  triggerWarehouseExport,
+  type FlowHealthReport,
   fetchChatHistory,
   fetchOpenRouterModels,
   fetchOperatorProfile,
@@ -59,7 +62,7 @@ export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState<'reports' | 'blender' | 'profile'>('reports');
+  const [tab, setTab] = useState<'reports' | 'flow' | 'blender' | 'profile'>('reports');
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [reportsError, setReportsError] = useState('');
   const [reportsStatus, setReportsStatus] = useState('');
@@ -70,6 +73,10 @@ export default function App() {
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
   const [reportBody, setReportBody] = useState('');
   const [blenderStatus, setBlenderStatus] = useState('—');
+  const [flowHealth, setFlowHealth] = useState<FlowHealthReport | null>(null);
+  const [flowStatus, setFlowStatus] = useState('');
+  const [flowLoading, setFlowLoading] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
   const [profileNotes, setProfileNotes] = useState('');
   const [profileCampaign, setProfileCampaign] = useState('');
   const [briefDraft, setBriefDraft] = useState('');
@@ -361,12 +368,58 @@ export default function App() {
     }
   }, []);
 
+  const loadFlowHealth = useCallback(async () => {
+    if (!resolveAdminKey()) {
+      setFlowStatus('Zapisz klucz operatora.');
+      return;
+    }
+    setFlowLoading(true);
+    setFlowStatus('');
+    try {
+      const h = await fetchFlowHealth();
+      setFlowHealth(h);
+      setFlowStatus(`Werdykt: ${h.edog_verdict}`);
+    } catch (e) {
+      setFlowHealth(null);
+      setFlowStatus(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFlowLoading(false);
+    }
+  }, [resolveAdminKey]);
+
+  const runWarehouseExport = useCallback(async () => {
+    if (!resolveAdminKey()) return;
+    setExportBusy(true);
+    setFlowStatus('Eksport w toku…');
+    try {
+      const out = await triggerWarehouseExport();
+      const s = out.summary;
+      if (!s) {
+        setFlowStatus('Eksport: brak summary (sprawdź sekrety PIPELINE_* na batch workerze).');
+      } else {
+        setFlowStatus(
+          `Wyeksportowano pixel: ${s.pixelExported}, pending po: ${s.pending_pixel_after}${s.pipeline_error ? ` — błąd: ${s.pipeline_error}` : ''}`,
+        );
+      }
+      await loadFlowHealth();
+    } catch (e) {
+      setFlowStatus(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExportBusy(false);
+    }
+  }, [resolveAdminKey, loadFlowHealth]);
+
   useEffect(() => {
     if (tab !== 'blender' || !keySaved) return;
     void checkBlender();
     const id = window.setInterval(() => void checkBlender(), 15000);
     return () => window.clearInterval(id);
   }, [tab, keySaved, checkBlender]);
+
+  useEffect(() => {
+    if (tab !== 'flow' || !keySaved) return;
+    void loadFlowHealth();
+  }, [tab, keySaved, loadFlowHealth]);
 
   const send = async () => {
     const text = input.trim();
@@ -692,7 +745,7 @@ export default function App() {
 
       <aside className="col-start-3 row-start-2 flex min-h-0 flex-col border-l border-slate-800 bg-slate-900 p-3 text-sm">
         <div className="flex gap-2 border-b border-slate-800 pb-2">
-          {(['reports', 'blender', 'profile'] as const).map((t) => (
+          {(['reports', 'flow', 'blender', 'profile'] as const).map((t) => (
             <button
               key={t}
               type="button"
@@ -700,9 +753,16 @@ export default function App() {
               onClick={() => {
                 setTab(t);
                 if (t === 'reports') void loadReports();
+                if (t === 'flow') void loadFlowHealth();
               }}
             >
-              {t === 'reports' ? 'Raporty' : t === 'blender' ? 'Blender' : 'Profil'}
+              {t === 'reports'
+                ? 'Raporty'
+                : t === 'flow'
+                  ? 'Przepływ'
+                  : t === 'blender'
+                    ? 'Blender'
+                    : 'Profil'}
             </button>
           ))}
         </div>
@@ -750,6 +810,68 @@ export default function App() {
             {reportBody && (
               <div className="prose prose-invert max-h-64 overflow-y-auto rounded border border-slate-800 p-2 text-xs prose-p:my-1">
                 <ReactMarkdown>{reportBody}</ReactMarkdown>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'flow' && (
+          <div className="mt-2 flex min-h-0 flex-1 flex-col space-y-2 text-xs">
+            <p className="rounded border border-slate-800 bg-slate-950/80 p-2 text-slate-400">
+              EDOG — audyt D1 → batch → Iceberg. Przy FAIL nie ufaj run_analytics_query bez naprawy pipeline.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded border border-slate-700 px-2 py-1 disabled:opacity-50"
+                disabled={flowLoading || !resolveAdminKey()}
+                onClick={() => void loadFlowHealth()}
+              >
+                {flowLoading ? 'Ładuję…' : 'Odśwież'}
+              </button>
+              <button
+                type="button"
+                className="rounded border border-amber-800 px-2 py-1 text-amber-100 disabled:opacity-50"
+                disabled={exportBusy || !resolveAdminKey()}
+                onClick={() => void runWarehouseExport()}
+              >
+                {exportBusy ? 'Eksport…' : 'Wymuś eksport D1→hurtownia'}
+              </button>
+            </div>
+            {flowStatus && <p className="text-slate-400">{flowStatus}</p>}
+            {flowHealth && (
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
+                <p
+                  className={
+                    flowHealth.edog_verdict === 'PASS'
+                      ? 'font-medium text-green-400'
+                      : 'font-medium text-red-400'
+                  }
+                >
+                  EDOG: {flowHealth.edog_verdict}
+                </p>
+                <ul className="space-y-1 text-slate-400">
+                  <li>pending_pixel_events: {flowHealth.pending_pixel_events}</li>
+                  <li>d1_pixel_events_24h: {flowHealth.d1_pixel_events_24h}</li>
+                  <li>pipeline pixel: {flowHealth.pipeline_pixel_configured ? 'tak' : 'nie'}</li>
+                  <li>
+                    batch updated:{' '}
+                    {flowHealth.batch_exports?.updated_at
+                      ? new Date(flowHealth.batch_exports.updated_at).toISOString()
+                      : 'brak'}
+                  </li>
+                </ul>
+                {flowHealth.narrative_markdown ? (
+                  <div className="prose prose-invert max-w-none rounded border border-slate-800 p-2 text-xs prose-p:my-1">
+                    <ReactMarkdown>{flowHealth.narrative_markdown}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <ul className="list-disc pl-4 text-slate-500">
+                    {(flowHealth.reasons ?? []).map((r) => (
+                      <li key={r}>{r}</li>
+                    ))}
+                  </ul>
+                )}
               </div>
             )}
           </div>
