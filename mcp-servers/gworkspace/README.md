@@ -1,6 +1,6 @@
 # @epir/mcp-gworkspace
 
-Lokalny serwer MCP (stdio) dla **Google Drive / Docs / Sheets** — zgodnie z `.notes/mcp_gworkspace_plan.md`.
+Lokalny serwer MCP (stdio) dla **Google Drive / Docs / Sheets** — tylko IDE (Cursor), nie worker produkcyjny.
 
 - Uruchamiany **wyłącznie w Cursorze** (jak Blender MCP), nie w workerze produkcyjnym.
 - OAuth refresh token w **OS keychain** (`keytar`) lub `GWORKSPACE_REFRESH_TOKEN` (dev).

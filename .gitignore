@@ -37,6 +37,7 @@ workers/**/.dev.vars
 
 # Python & Local Data
 .venv/
+.notes/
 __pycache__/
 *.pyc
 # Azure local exports / experiments (dirname may appear as untracked file or folder)

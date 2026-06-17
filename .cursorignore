@@ -8,6 +8,7 @@ node_modules/
 **/.vitest-cache/
 *.log
 audit_report.json
+.notes/
 specs/
 agents/
 .github/agents/
@@ -36,3 +37,5 @@ workers/chat/operator-studio-dist/
 # SVG: tylko public/ storefrontów (favicon); nie globalnie
 apps/kazka/public/**/*.svg
 apps/zareczyny/public/**/*.svg
+
+
