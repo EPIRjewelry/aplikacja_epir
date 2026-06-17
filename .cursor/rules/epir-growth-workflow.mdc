@@ -1,6 +1,7 @@
 ---
 description: Growth Engineer workflow — NotebookLM kompas, Cursor wykonawca, MCP tylko stdio
 alwaysApply: false
+globs: docs/PROJECT_B_SOLO_DEV_AGENTS.md,apps/operator-studio/**/*,mcp-servers/gworkspace/**/*,.cursor/mcp*.json,.cursor/rules/epir-growth-workflow.mdc
 ---
 
 ⚠️ SSOT ROUTING: `AGENTS.md`, `EPIR_AI_BIBLE.md`, `docs/PROJECT_B_SOLO_DEV_AGENTS.md` (sekcja Growth Engineer).

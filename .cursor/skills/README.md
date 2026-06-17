@@ -26,7 +26,7 @@
 | `agents/` | Opcjonalne Python CLI — read-only dla Cursor |
 | `.github/agents/` | GitHub Copilot |
 | `epir-marketing-agent-service/` | Worker `epir_analityc` (publiczne repo) |
-| `.kilo/` | Kilo Code — izolowane od Cursor (`.cursorignore`) |
+| `.kilo/` | Kilo Code — izolowane od Cursor (`.cursorignore`); lustro ignore: [`.kilocodeignore`](../../.kilocodeignore) ↔ `.cursorignore` |
 
 ## Aktualizacja wiedzy
 

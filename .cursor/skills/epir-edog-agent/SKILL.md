@@ -14,7 +14,7 @@
 |-----------|-----|
 | MCP `epir-data-ops` | Read-only D1 + `flow_health_summary` |
 | `GET /internal/flow-health` | `epir-bigquery-batch` — pole `edog_verdict` |
-| Operator Studio proxy | `GET /internal/operator-studio/api/flow-health` (alias solo-dev) |
+| Operator Studio proxy | `GET /internal/operator-studio/api/flow-health` |
 
 ## Werdykt
 

@@ -20,3 +20,19 @@ apps/zareczyny/public/build/
 # --- Kilo Code Encapsulation ---
 .kilo/
 kilo.jsonc
+
+# --- Token budget / vector isolation ---
+# Kompilacje Operator Studio (nie źródło)
+workers/chat/operator-studio-dist/
+
+# Zrzuty danych Shopify (Bulk Ops)
+**/*.jsonl
+
+# Binaria i statyki (bez blokowania kodu w extensions/*/assets/)
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.wasm
+# SVG: tylko public/ storefrontów (favicon); nie globalnie
+apps/kazka/public/**/*.svg
+apps/zareczyny/public/**/*.svg

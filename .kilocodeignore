@@ -1,0 +1,33 @@
+# EPIR — Kilo Code context ignore (lustro .cursorignore § token budget)
+# Aktualizuj razem z .cursorignore; nie duplikuj reguł .mdc — Kilo: REVIEW.md + Biblią
+# node_modules, .git, dist/build — dodatkowo: .gitignore + built-in Kilo
+
+# --- Dual Plane: Cursor execution plane — nie indeksuj ---
+.cursor/
+
+# --- Token budget / vector isolation (lustro .cursorignore) ---
+workers/chat/operator-studio-dist/
+**/*.jsonl
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.wasm
+apps/kazka/public/**/*.svg
+apps/zareczyny/public/**/*.svg
+
+# --- EPIR-specific (lustro .cursorignore; bez .kilo/ — własna konfiguracja Kilo) ---
+specs/
+agents/
+.github/agents/
+audit_report.json
+.env
+.env.*
+.dev.vars
+.cloudflare/
+.wrangler/
+.cache/
+.tmp/
+**/.vitest-cache/
+*.log
+apps/kazka/public/build/
+apps/zareczyny/public/build/

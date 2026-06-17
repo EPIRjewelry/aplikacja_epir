@@ -1,6 +1,7 @@
 ---
 description: EPIR — kolejność czytania, skills, zakaz kanonu z agents/ i Copilot
 alwaysApply: false
+globs: AGENTS.md,EPIR_AI_BIBLE.md,EPIR_AI_ECOSYSTEM_MASTER.md,docs/README.md,docs/kb/**/*
 ---
 
 ⚠️ SSOT ROUTING: Nie parsuj własnych założeń. Twoim jedynym punktem wejścia do wiedzy jest /EPIR_AI_BIBLE.md. Sprawdź w nim, z jakich modułów domenowych masz skorzystać.
