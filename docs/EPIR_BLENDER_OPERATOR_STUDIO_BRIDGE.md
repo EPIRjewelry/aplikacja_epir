@@ -21,15 +21,17 @@ OpenRouter w Operator Studio nie ma dostępu do stdio MCP Blender w Cursorze. Mo
 
 ## Uruchomienie (sesja grafika)
 
-**Setup raz:** `Blender_assist/scripts/setup-blender-bridge-once.ps1` (tunel + venv). Opcjonalnie `copy .env.example .env`.
+**Kanoniczna ścieżka repo na PC operatora:** `D:\Blender Assets\Blender_assist` (addon: `blender_addon\blender_mcp_bridge.py`). Nie utrzymuj drugiego klonu na `D:\Blender_Assist`. Przed pracą: `git status` bez `UU`.
+
+**Setup raz:** `D:\Blender Assets\Blender_assist\scripts\setup-blender-bridge-once.ps1` (tunel + venv). Opcjonalnie `copy .env.example .env`.
 
 **Codziennie:**
 
 1. Operator Studio — klucz `EPIR_OPERATOR_PANEL_SECRET` (jak dotąd).
-2. Blender → **Start MCP Bridge**.
+2. Blender → **Start MCP Bridge** (preferencje addonu: **Blender_assist root** = `D:\Blender Assets\Blender_assist`).
 3. Studio → zakładka **Blender** → status mostu.
 
-**Fallback CLI:** `scripts/start-blender-bridge.ps1` — diagnostyka.
+**Diagnostyka:** `D:\Blender Assets\Blender_assist\scripts\smoke-bridge-health.ps1` lub `scripts/start-blender-bridge.ps1`.
 
 **Nie używać** quick tunnel (`trycloudflare.com`).
 
