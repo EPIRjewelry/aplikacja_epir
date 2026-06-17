@@ -12,6 +12,7 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 import { getR2AnalyticsSql, VALID_QUERY_IDS } from './analytics-queries';
 import { PIXEL_CREATED_AT_MS_SQL, pixelCreatedAtIso, pixelCreatedAtMs } from './d1-timestamps';
 import { buildFlowHealthReport } from './edog-flow-health-runner';
+import { buildEdogNarrative } from './edog-reason-narrative';
 import { runOperatorDailyReport } from './operator-daily-report';
 import { postPipelineIngestBatch } from './pipeline-ingest';
 import { isR2SqlQueryConfigured, runR2SqlJob } from './r2-sql-client';
@@ -434,9 +435,12 @@ export class BigQueryBatchS2SRpc extends WorkerEntrypoint<Env, BigQueryS2SProps>
   }
 
   /** EDOG flow-health — ten sam scope co run_analytics_query (S2S z czatu). */
-  async getFlowHealth(): Promise<Awaited<ReturnType<typeof buildFlowHealthReport>>> {
+  async getFlowHealth(): Promise<
+    Awaited<ReturnType<typeof buildFlowHealthReport>> & { narrative_markdown: string }
+  > {
     requireBigQueryS2SScopes(this.ctx.props, 'bigquery.analytics_query');
-    return buildFlowHealthReport(this.env, probeQ1ForEdog);
+    const report = await buildFlowHealthReport(this.env, probeQ1ForEdog);
+    return { ...report, narrative_markdown: buildEdogNarrative(report).markdown };
   }
 }
 

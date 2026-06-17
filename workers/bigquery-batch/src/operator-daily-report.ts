@@ -3,6 +3,7 @@
  */
 import type { FlowHealthReport } from './edog-flow-health-runner';
 import { buildFlowHealthReport } from './edog-flow-health-runner';
+import { buildEdogNarrative } from './edog-reason-narrative';
 import { sanitizeReportForWorkspaceExport } from './report-pii-mask';
 
 export type OperatorReportEnv = {
@@ -43,16 +44,11 @@ export function buildOperatorReportMarkdown(args: {
   marketingSection: string;
 }): string {
   const { reportDate, health, q8Rows, q8Error, marketingSection } = args;
+  const narrative = buildEdogNarrative(health);
   const lines: string[] = [
     `# Raport EPIR — ${reportDate}`,
     '',
-    `**EDOG:** \`${health.edog_verdict}\` — ${(health.reasons ?? []).join('; ')}`,
-    '',
-    '## Flow health',
-    `- pending_pixel_events: ${health.pending_pixel_events}`,
-    `- d1_pixel_events_24h: ${health.d1_pixel_events_24h}`,
-    `- warehouse_q1_ok: ${health.warehouse_q1_ok}`,
-    `- checked_at: ${health.checked_at}`,
+    narrative.markdown,
     '',
     '## Hurtownia Q8 (dzienne zdarzenia)',
   ];

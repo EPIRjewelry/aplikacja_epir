@@ -27,5 +27,6 @@ describe('buildOperatorReportMarkdown', () => {
     expect(md).toContain('EDOG');
     expect(md).toContain('PASS');
     expect(md).toContain('Q8');
+    expect(md).toContain('Diagnoza EDOG');
   });
 });
