@@ -18,7 +18,9 @@ import {
   type OpenRouterCatalogModel,
   type OperatorRoleId,
   clearSession,
+  exportSessionToDisk,
   fetchBlenderHealth,
+  fetchChatHistory,
   fetchOpenRouterModels,
   fetchOperatorProfile,
   fetchLatestOperatorReport,
@@ -29,6 +31,7 @@ import {
   getModelSource,
   getOrModel,
   getRole,
+  getSessionId,
   saveOperatorProfile,
   setAdminKey,
   setGroqVariant,
@@ -70,6 +73,9 @@ export default function App() {
   const [profileNotes, setProfileNotes] = useState('');
   const [profileCampaign, setProfileCampaign] = useState('');
   const [briefDraft, setBriefDraft] = useState('');
+  const [sessionHint, setSessionHint] = useState('');
+  const [exportStatus, setExportStatus] = useState('');
+  const [historyLoading, setHistoryLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const keyInputRef = useRef<HTMLInputElement>(null);
 
@@ -215,6 +221,10 @@ export default function App() {
     loadProfileRef.current();
   }, []);
 
+  const openReport = async (date: string) => {
+    await previewReport(date);
+  };
+
   useEffect(() => {
     if (modelSource !== 'openrouter' || !getAdminKey().trim()) return;
     if (catalogStatus === 'idle' || catalogStatus === 'error') {
@@ -272,34 +282,75 @@ export default function App() {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
   };
 
-  const openReport = async (date: string) => {
-    await previewReport(date);
-  };
+  const loadRoleHistory = useCallback(async (activeRole: OperatorRoleId) => {
+    if (!getAdminKey().trim()) {
+      setMessages([]);
+      setSessionHint('');
+      return;
+    }
+    setHistoryLoading(true);
+    try {
+      const sid = getSessionId(activeRole);
+      const history = await fetchChatHistory(activeRole);
+      setMessages(history.map((m) => ({ role: m.role, content: m.content })));
+      const label = ROLES.find((r) => r.id === activeRole)?.label ?? activeRole;
+      if (sid && history.length > 0) {
+        setSessionHint(`Sesja: ${label} · ${history.length} wiadomości`);
+      } else if (sid) {
+        setSessionHint(`Sesja: ${label} · pusta`);
+      } else {
+        setSessionHint(`Sesja: ${label} · nowa`);
+      }
+    } catch {
+      setMessages([]);
+      setSessionHint('Nie udało się wczytać historii sesji.');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  const onRoleChange = useCallback(
+    (r: OperatorRoleId) => {
+      setRoleState(r);
+      setRole(r);
+      void loadRoleHistory(r);
+    },
+    [loadRoleHistory],
+  );
+
+  const startNewConversation = useCallback(() => {
+    clearSession(role);
+    setMessages([]);
+    setAttachments([]);
+    setExportStatus('');
+    const label = ROLES.find((r) => r.id === role)?.label ?? role;
+    setSessionHint(`Sesja: ${label} · nowa`);
+  }, [role]);
+
+  const saveSessionToDisk = useCallback(async () => {
+    if (!getAdminKey().trim()) return;
+    setExportStatus('Zapisuję…');
+    try {
+      const out = await exportSessionToDisk(role);
+      if (out.ok) {
+        setExportStatus(out.path ? `Zapisano: ${out.path}` : 'Zapisano na dysk.');
+      } else {
+        setExportStatus(out.detail ?? 'Eksport nieudany.');
+      }
+    } catch (e) {
+      setExportStatus(e instanceof Error ? e.message : String(e));
+    }
+  }, [role]);
+
+  useEffect(() => {
+    if (!keySaved) return;
+    void loadRoleHistory(role);
+  }, [keySaved, role, loadRoleHistory]);
 
   const checkBlender = useCallback(async () => {
     setBlenderStatus('Sprawdzam…');
     try {
       const j = await fetchBlenderHealth();
-      // #region agent log
-      fetch('http://127.0.0.1:7837/ingest/dcb4ed34-231a-411e-ae6d-7573a0294e12', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '34c45b' },
-        body: JSON.stringify({
-          sessionId: '34c45b',
-          location: 'App.tsx:checkBlender',
-          message: 'blender_bridge_health_response',
-          data: {
-            configured: j.configured,
-            online: j.online,
-            relay_online: (j as { relay_online?: boolean }).relay_online,
-            addon_online: (j as { addon_online?: boolean }).addon_online,
-            detail: j.detail?.slice(0, 200),
-          },
-          timestamp: Date.now(),
-          hypothesisId: 'C',
-        }),
-      }).catch(() => {});
-      // #endregion
       if (!j.configured) setBlenderStatus('Most niedostępny (worker)');
       else if (j.online) setBlenderStatus('OK — most odpowiada');
       else if ((j as { relay_online?: boolean }).relay_online) {
@@ -467,25 +518,29 @@ export default function App() {
         <button
           type="button"
           className="mt-2 w-full rounded border border-slate-700 px-3 py-1 text-sm"
-          onClick={() => {
-            clearSession();
-            setMessages([]);
-            setAttachments([]);
-          }}
+          onClick={startNewConversation}
         >
           Nowa rozmowa
         </button>
+        {(role === 'analyst' || role === 'design_blender') && (
+          <button
+            type="button"
+            className="mt-2 w-full rounded border border-slate-600 px-3 py-1 text-sm disabled:opacity-50"
+            disabled={!keySaved || busy || messages.length === 0}
+            onClick={() => void saveSessionToDisk()}
+          >
+            Zapisz na dysk (D:\)
+          </button>
+        )}
+        {sessionHint && <p className="mt-2 text-xs text-slate-400">{sessionHint}</p>}
+        {exportStatus && <p className="mt-1 text-xs text-amber-200">{exportStatus}</p>}
 
         <div className="mt-4">
           <label className="text-xs text-slate-400">Rola</label>
           <select
             className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
             value={role}
-            onChange={(e) => {
-              const r = e.target.value as OperatorRoleId;
-              setRoleState(r);
-              setRole(r);
-            }}
+            onChange={(e) => onRoleChange(e.target.value as OperatorRoleId)}
           >
             {ROLES.map((r) => (
               <option key={r.id} value={r.id}>
@@ -496,7 +551,7 @@ export default function App() {
           <p className="mt-1 text-xs text-slate-500">{ROLES.find((r) => r.id === role)?.hint}</p>
           {role === 'design_blender' && (
             <p className="mt-1 text-xs text-amber-200/90">
-              CAD w Blenderze — nie szukaj „modeli 3D” w katalogu Shopify. Po przełączeniu z Analityka zalecana nowa rozmowa.
+              CAD w Blenderze — osobna sesja od Analityka. Most: zakładka Blender.
             </p>
           )}
           {(role === 'analyst' || role === 'creative') && (
@@ -614,9 +669,10 @@ export default function App() {
 
       <main className="col-start-2 row-start-2 flex min-h-0 flex-col p-4">
         <div className="flex-1 space-y-3 overflow-y-auto rounded-lg border border-slate-800 bg-slate-900/50 p-4">
-          {messages.length === 0 && (
+          {messages.length === 0 && !historyLoading && (
             <p className="text-sm text-slate-500">Wybierz rolę i model. Załączniki: obraz, audio, wideo, CSV (max 4 MB).</p>
           )}
+          {historyLoading && <p className="text-sm text-slate-500">Ładuję historię sesji…</p>}
           {messages.map((m, i) => (
             <div
               key={i}
