@@ -818,7 +818,8 @@ export default function App() {
         {tab === 'flow' && (
           <div className="mt-2 flex min-h-0 flex-1 flex-col space-y-2 text-xs">
             <p className="rounded border border-slate-800 bg-slate-950/80 p-2 text-slate-400">
-              EDOG — audyt D1 → batch → Iceberg. Przy FAIL nie ufaj run_analytics_query bez naprawy pipeline.
+              EDOG — audyt D1 → batch → Iceberg. Eksport i raport e-mail: automatycznie (cron 02:00 i 09:00 UTC).
+              Przycisk poniżej tylko awaryjnie.
             </p>
             <div className="flex flex-wrap gap-2">
               <button
