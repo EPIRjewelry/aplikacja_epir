@@ -62,6 +62,7 @@ import {
   fetchMarketingPreviewTool,
   runShopifyShopifyqlTool,
 } from './internal-analytics-tools';
+import { getFlowHealthTool } from './internal-edog-tools';
 import { executeD1DataQuery, formatD1ResultForPrompt } from './d1-data-tool';
 import {
   blenderBridgeHealth,
@@ -176,6 +177,7 @@ const IMAGE_ATTACHMENT_PLACEHOLDER = '(załącznik obrazu)';
 const OPERATOR_ONLY_TOOL_NAMES = new Set([
   'run_analytics_query',
   'fetch_marketing_preview',
+  'get_flow_health',
   'run_shopify_shopifyql',
   'blender_bridge_invoke',
   'operator_shopify_admin_read',
@@ -3943,6 +3945,9 @@ async function streamAssistantResponse(
                 }
                 if (call.name === 'run_analytics_query') {
                   return runWarehouseAnalyticsQuery(env, safeArgs as { queryId?: string });
+                }
+                if (call.name === 'get_flow_health') {
+                  return getFlowHealthTool(env);
                 }
                 if (call.name === 'fetch_marketing_preview') {
                   return fetchMarketingPreviewTool(env, safeArgs as { date?: string });

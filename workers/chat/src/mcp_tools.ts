@@ -171,6 +171,17 @@ export const TOOL_SCHEMAS = {
     },
   },
 
+  get_flow_health: {
+    name: 'get_flow_health',
+    description:
+      'Audyt operacyjny przepływu danych EPIR (EDOG): D1 pixel backlog, batch_exports, pipeline, opcjonalnie sonda Q1. Zwraca edog_verdict, reasons[], narrative_markdown po polsku. Wywołaj PRZED run_analytics_query gdy operator pyta o stan danych lub metryki wydają się podejrzane.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+
   run_shopify_shopifyql: {
     name: 'run_shopify_shopifyql',
     description:
@@ -480,6 +491,13 @@ export const TOOL_SCHEMAS_SLIM = {
       },
       required: [],
     },
+  },
+
+  get_flow_health: {
+    name: 'get_flow_health',
+    description:
+      'EDOG flow-health: werdykt PASS/FAIL, backlog pixel, batch_exports, narrative_markdown PL. operator channel only.',
+    parameters: { type: 'object', properties: {}, required: [] },
   },
 
   run_shopify_shopifyql: {

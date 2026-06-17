@@ -13,6 +13,7 @@ type ToolSchemaLike = { readonly name: string };
 export const OPERATOR_INTERNAL_TOOL_NAMES = new Set([
   'run_analytics_query',
   'fetch_marketing_preview',
+  'get_flow_health',
   'run_shopify_shopifyql',
   'blender_bridge_invoke',
   'operator_shopify_admin_read',

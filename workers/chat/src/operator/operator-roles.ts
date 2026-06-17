@@ -19,6 +19,7 @@ export const OPERATOR_ROLES: readonly OperatorRole[] = [
     label: 'Analityk',
     description: 'Hurtownia, GA4/Ads, ShopifyQL, raporty, EDOG.',
     toolNames: [
+      'get_flow_health',
       'run_analytics_query',
       'fetch_marketing_preview',
       'run_shopify_shopifyql',
@@ -27,8 +28,9 @@ export const OPERATOR_ROLES: readonly OperatorRole[] = [
     ],
     systemAddon: `
 TRYB: Analityk operacyjny EPIR.
+- Przy pytaniach o stan danych, raport EDOG lub podejrzane metryki: najpierw get_flow_health, potem interpretacja.
 - Priorytet: run_analytics_query, fetch_marketing_preview, run_shopify_shopifyql.
-- Cytuj source w JSON; przy FAIL EDOG opisz warstwy przed interpretacją liczb.
+- Cytuj source w JSON; przy FAIL EDOG opisz warstwy (capture/D1/batch/pipeline/warehouse) przed liczbami z hurtowni.
 - Nie generuj obrazów, packshotów Blender ani copy reklamowego w tym trybie.
 `.trim(),
   },
