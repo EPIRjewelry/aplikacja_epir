@@ -120,11 +120,25 @@ Postura ingress dla produkcji:
 
 **EDOG (operacyjny przepływ danych):**
 
-- **EDOG flow-health (operator):** `GET /internal/operator-studio/api/flow-health` na workerze czatu (Cloudflare Access lub `X-Admin-Key`) — proxy `BIGQUERY_BATCH_RPC.getFlowHealth`. HTTP `GET /internal/flow-health` na batch → `404` (deprecated).
+- **EDOG flow-health (operator):** `GET /internal/operator-studio/api/flow-health` na workerze czatu (Cloudflare Access lub `X-Admin-Key`) — proxy `BIGQUERY_BATCH_RPC.getFlowHealth`. Odpowiedź zawiera `narrative_markdown` (diagnoza PL warstwa po warstwie).
+- **Ręczny eksport backlogu:** `POST /internal/operator-studio/api/trigger-warehouse-export` (ten sam auth) — ten sam kod co cron `0 2 * * *`; limit **2500** wierszy pixel/run (`MAX_PIXEL_ROWS_PER_RUN`).
+- **Audyt lokalny:** [`scripts/edog-audit-report.ps1`](../scripts/edog-audit-report.ps1) — raport PL + JSON; exit 1 przy FAIL.
+- **Remediacja backlogu:** [`scripts/edog-remediate-export.ps1`](../scripts/edog-remediate-export.ps1) — pętla trigger aż `pending_pixel_events` < 1000.
+- **Operator Studio:** zakładka **Przepływ** — flow-health + przycisk wymuszenia eksportu.
+- **Czat (rola Analityk):** narzędzie `get_flow_health` przed `run_analytics_query`.
 - Cron monitoringu: `0 8 * * *` i `0 20 * * *` UTC (osobno od eksportu `0 2 * * *`).
 - Opcjonalnie KV raportu: `wrangler kv namespace create epir-data-guardian` → odkomentuj `DATA_GUARDIAN_KV` w `workers/bigquery-batch/wrangler.toml`.
 - Smoke po deploy: [`scripts/smoke-flow-health.ps1`](../scripts/smoke-flow-health.ps1) lub [`scripts/smoke-flow-health.sh`](../scripts/smoke-flow-health.sh) z env `EPIR_CHAT_WORKER_ORIGIN` (oraz opcjonalnie `EPIR_OPERATOR_PANEL_SECRET` dla legacy).
 - Na `epir-art-jewellery-worker`: RPC `getFlowHealth` (dla Operator Studio / audytu). Twarda bramka przed `run_analytics_query` tylko przy `EDOG_GATE_ENABLED=true` (domyślnie wyłączona).
+- Materiał audytu (przykład): [`docs/EPIR_DATA_FLOW_AUDIT_2026-06-17.md`](EPIR_DATA_FLOW_AUDIT_2026-06-17.md).
+
+### Runbook EDOG (skrót przy FAIL)
+
+1. `.\scripts\edog-audit-report.ps1` — odczytaj `narrative_markdown` i warstwę FAIL.
+2. Jeśli `pipeline_pixel_not_configured`: audyt sekretów `PIPELINE_PIXEL_INGEST_URL` na `epir-bigquery-batch` (`node scripts/debug/cf-missing-secrets.mjs`).
+3. Jeśli `pending_pixel_events_critical` lub `batch_exports_stale_hours`: logi `[WAREHOUSE_BATCH]` w Cloudflare; potem `.\scripts\edog-remediate-export.ps1` lub przycisk w Studiu.
+4. Po spadku backlogu: ponów audyt — oczekiwane `EDOG: PASS` i `warehouse_q1_ok: true`.
+5. Dopiero wtedy interpretuj `run_analytics_query` / Q8 w raporcie dziennym.
 
 ### Cursor IDE i Cloud — MCP (nie deploy workera)
 
