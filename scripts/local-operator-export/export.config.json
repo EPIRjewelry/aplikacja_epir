@@ -1,0 +1,12 @@
+{
+  "rootDir": "D:\\EPIR\\operator-studio",
+  "host": "127.0.0.1",
+  "port": 9880,
+  "roleDirs": {
+    "analyst": "analyst",
+    "cad": "cad",
+    "design_blender": "cad",
+    "store_ops": "store_ops",
+    "creative": "creative"
+  }
+}

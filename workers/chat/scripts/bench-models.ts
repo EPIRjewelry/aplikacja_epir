@@ -102,7 +102,7 @@ async function runScenario(
   const body = {
     message: scenario.message,
     session_id: `bench-${variant}-${scenario.id}-${Date.now()}`,
-    channel: 'internal-dashboard',
+    channel: 'operator',
     brand: 'EPIR',
     ...scenario.overrides,
   };

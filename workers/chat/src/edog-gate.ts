@@ -1,5 +1,5 @@
 /**
- * Bramka EDOG przed run_analytics_query (internal-dashboard).
+ * Bramka EDOG przed run_analytics_query (kanał operator).
  * Odczyt flow-health przez BIGQUERY_BATCH_RPC.getFlowHealth (S2S).
  */
 import type { Env } from './config/bindings';

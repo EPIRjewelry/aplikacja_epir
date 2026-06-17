@@ -16,6 +16,7 @@ export const OPERATOR_INTERNAL_TOOL_NAMES = new Set([
   'run_shopify_shopifyql',
   'blender_bridge_invoke',
   'operator_shopify_admin_read',
+  'query_d1_data',
 ]);
 
 /** Odczyt sklepu — do analizy/operacji operatora, bez koszyka. */

@@ -241,6 +241,36 @@ export const TOOL_SCHEMAS = {
     },
   },
 
+  query_d1_data: {
+    name: 'query_d1_data',
+    description:
+      'Query D1 databases directly (pixel_events and messages tables) for natural language questions about user behavior and conversations. No Iceberg/R2 needed. Use for questions like "who is talking about what with Gemma", "show me recent conversations", "what products are people viewing", "what are users adding to cart".',
+    parameters: {
+      type: 'object',
+      properties: {
+        question: {
+          type: 'string',
+          description:
+            'Natural language question about the data. Examples: "who is talking about what with Gemma", "show me recent conversations", "what products are people viewing", "what are users adding to cart".',
+        },
+        table: {
+          type: 'string',
+          enum: ['pixel_events', 'messages', 'both'],
+          description:
+            'Which table to query. pixel_events: page views, cart events, purchases. messages: chat conversations with Gemma. both: cross-reference both tables.',
+        },
+        limit: {
+          type: 'number',
+          description:
+            'Maximum number of rows to return. Default: 20, max: 100.',
+          minimum: 1,
+          maximum: 100,
+        },
+      },
+      required: [],
+    },
+  },
+
   update_cart: {
     name: 'update_cart',
     description: 'Perform updates to a cart including add/update/remove line items and buyer identity.',
@@ -511,6 +541,21 @@ export const TOOL_SCHEMAS_SLIM = {
         },
       },
       required: ['presetId'],
+    },
+  },
+
+  query_d1_data: {
+    name: 'query_d1_data',
+    description:
+      'Query D1 databases directly (pixel_events, messages) for natural language questions about user behavior and conversations.',
+    parameters: {
+      type: 'object',
+      properties: {
+        question: { type: 'string' },
+        table: { type: 'string', enum: ['pixel_events', 'messages', 'both'] },
+        limit: { type: 'number', minimum: 1, maximum: 100 },
+      },
+      required: [],
     },
   },
 

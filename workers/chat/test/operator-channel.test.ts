@@ -7,7 +7,6 @@ import { resolveToolSchemas } from '../src/mcp_tools';
 describe('operator channel v2', () => {
   it('recognizes operator channel', () => {
     expect(isOperatorChannel('operator')).toBe(true);
-    expect(isOperatorChannel('internal-dashboard')).toBe(false);
     expect(isOperatorChannel('online-store')).toBe(false);
   });
 

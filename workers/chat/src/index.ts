@@ -45,7 +45,6 @@ import {
   CHAT_RECOVERY_MAX_TOKENS,
   type ModelCapabilities,
 } from './config/model-params';
-import { INTERNAL_DASHBOARD_SYSTEM_PROMPT } from './prompts/internal-dashboard-system-prompt';
 import { LUXURY_SYSTEM_PROMPT } from './prompts/luxury-system-prompt'; // 🟢 Używa nowego promptu v2
 import { TOOL_SCHEMAS, resolveToolSchemas, shouldUseSlimToolSchemas } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2 (+ slim wariant za flagą)
 import { sanitizeHarmonyHistory } from './utils/sanitizeHarmonyHistory';
@@ -63,6 +62,7 @@ import {
   fetchMarketingPreviewTool,
   runShopifyShopifyqlTool,
 } from './internal-analytics-tools';
+import { executeD1DataQuery, formatD1ResultForPrompt } from './d1-data-tool';
 import {
   blenderBridgeHealth,
   callBlenderBridgeTool,
@@ -78,12 +78,10 @@ import {
   listOperatorReports,
   maybeRefreshSessionDigest,
   putOperatorProfile,
-  resolveInternalDashboardPromptAddons,
 } from './internal-operator-copilot';
 import {
   isOperatorChannel,
   isProjectBChatChannel,
-  LEGACY_OPERATOR_CHAT_CONTEXT,
   OPERATOR_CHAT_CONTEXT,
 } from './operator/operator-channel';
 import {
@@ -92,15 +90,16 @@ import {
 } from './operator/operator-tool-allowlist';
 import { resolveOperatorPromptAddons } from './operator/operator-prompt-addons';
 import { getOperatorSystemPrompt } from './operator/operator-system-prompt';
-import { resolveOperatorRoleIdFromHeaders, type OperatorRoleId } from './operator/operator-roles';
+import { resolveOperatorRoleIdFromHeaders, type OperatorRoleId, isOperatorRoleId } from './operator/operator-roles';
+import { exportOperatorSessionToLocalDisk } from './operator/operator-local-export';
 import { runOperatorShopifyAdminRead } from './operator/operator-shopify-admin-tools';
 import {
   isOperatorStudioAssetPath,
-  normalizeOperatorIngressPath,
+  isOperatorStudioIngressPath,
+  OPERATOR_API_PREFIX,
   operatorAssetSubpath,
   STUDIO_PREFIX,
 } from './operator/operator-ingress-paths';
-import { SOLO_DEV_CHAT_HTML, SOLO_DEV_OPERATOR_STUDIO_HTML } from './solo-dev-chat-html';
 import { buildAIProfilePrompt, fetchAIProfile } from './ai-profile';
 import {
   loadPersonMemory,
@@ -173,8 +172,8 @@ interface ChatRequestBody {
 
 const IMAGE_ATTACHMENT_PLACEHOLDER = '(załącznik obrazu)';
 
-/** Narzędzia wyłącznie dla kanału internal-dashboard (nie w App Proxy MCP). */
-const INTERNAL_DASHBOARD_ONLY_TOOL_NAMES = new Set([
+/** Narzędzia wyłącznie dla kanału operator (nie w App Proxy MCP / Gemma). */
+const OPERATOR_ONLY_TOOL_NAMES = new Set([
   'run_analytics_query',
   'fetch_marketing_preview',
   'run_shopify_shopifyql',
@@ -261,7 +260,6 @@ async function fetchSessionDO(
 
 function getSystemPromptForChannel(channel?: string, operatorRoleId?: OperatorRoleId): string {
   if (isOperatorChannel(channel)) return getOperatorSystemPrompt(operatorRoleId);
-  if (channel === 'internal-dashboard') return INTERNAL_DASHBOARD_SYSTEM_PROMPT;
   return LUXURY_SYSTEM_PROMPT;
 }
 
@@ -1009,8 +1007,10 @@ function cors(env: Env, request?: Request): Record<string, string> {
       'X-Admin-Key',
       'X-Epir-Model-Variant',
       'x-epir-model-variant',
-      'X-EPIR-AGENT-PRESET',
-      'x-epir-agent-preset',
+      'X-EPIR-OPERATOR-ROLE',
+      'x-epir-operator-role',
+      'X-Epir-OpenRouter-Model',
+      'x-epir-openrouter-model',
       'x-d1-bookmark',
     ].join(','),
     'Access-Control-Expose-Headers': 'x-d1-bookmark,X-EPIR-Chart-Source',
@@ -3294,14 +3294,11 @@ async function streamAssistantResponse(
         
       const promptBuildT0 = Date.now();
 
-      // run_analytics_query tylko gdy channel === "internal-dashboard" (MUST z planu)
-      // Wariant schematów (full vs slim) kontrolowany przez env.SLIM_TOOL_SCHEMAS.
+      // Narzędzia operatora tylko na kanale `operator` (whitelist per rola).
       const activeSchemas = resolveToolSchemas(env as { SLIM_TOOL_SCHEMAS?: string | boolean });
       const schemasToUse = operatorMode
         ? filterToolSchemasForOperator(activeSchemas, operatorRoleId ?? undefined)
-        : storefrontContext?.channel === 'internal-dashboard'
-          ? Object.values(activeSchemas)
-          : Object.values(activeSchemas).filter((s) => !INTERNAL_DASHBOARD_ONLY_TOOL_NAMES.has(s.name));
+        : Object.values(activeSchemas).filter((s) => !OPERATOR_ONLY_TOOL_NAMES.has(s.name));
       const toolDefinitions = schemasToUse.map((schema) => ({
         type: 'function' as const,
         function: {
@@ -3333,9 +3330,7 @@ async function streamAssistantResponse(
 
       const agentAddon = operatorMode
         ? await resolveOperatorPromptAddons(env, request.headers, sessionId)
-        : storefrontContext?.channel === 'internal-dashboard'
-          ? await resolveInternalDashboardPromptAddons(env, request.headers, sessionId)
-          : '';
+        : '';
       const baseSystemPrompt =
         getSystemPromptForChannel(storefrontContext?.channel, operatorRoleId ?? undefined) +
         (agentAddon ? `\n\n${agentAddon}` : '');
@@ -3635,7 +3630,7 @@ async function streamAssistantResponse(
         (t) => t.function.name === 'search_shop_policies_and_faqs',
       );
       const forcePolicyMcp =
-        storefrontContext?.channel !== 'internal-dashboard' &&
+        !operatorMode &&
         policyToolAvailable &&
         detectPolicyInformationIntent(userMessage).match;
       if (forcePolicyMcp) {
@@ -3967,6 +3962,20 @@ async function streamAssistantResponse(
                   const oa = safeArgs as { presetId?: string };
                   return runOperatorShopifyAdminRead(env, typeof oa.presetId === 'string' ? oa.presetId : '');
                 }
+                if (call.name === 'query_d1_data') {
+                  const da = safeArgs as { question?: string; table?: 'pixel_events' | 'messages' | 'both'; limit?: number };
+                  const result = await executeD1DataQuery(env, da);
+                  if (!result.ok) {
+                    return { error: result.error };
+                  }
+                  return {
+                    result: {
+                      ...result.result,
+                      formatted: formatD1ResultForPrompt(result.result, result.source),
+                      source: result.source,
+                    },
+                  };
+                }
                 const brandForMcp = (storefrontContext?.storefrontId === 'kazka' || storefrontContext?.storefrontId === 'zareczyny')
                   ? storefrontContext.storefrontId
                   : brand;
@@ -4250,9 +4259,6 @@ async function streamAssistantResponse(
   });
 }
 
-/** @deprecated Stary solo-dev HTML — używa internal-dashboard. */
-const SOLO_DEV_CHAT_CONTEXT: ChatContextOverride = LEGACY_OPERATOR_CHAT_CONTEXT;
-
 function configuredChatSharedSecretForSoloProxy(env: Env): string {
   if (typeof env.EPIR_CHAT_SHARED_SECRET === 'string' && env.EPIR_CHAT_SHARED_SECRET.trim().length > 0) {
     return env.EPIR_CHAT_SHARED_SECRET.trim();
@@ -4283,10 +4289,10 @@ function operatorStudioGateSnapshot(env: Env): Record<string, boolean> {
 }
 
 /**
- * UI + proxy HTTP dla operatora: `EPIR_OPERATOR_PANEL_SECRET` (`X-Admin-Key`);
+ * UI + proxy HTTP dla Operator Studio: `EPIR_OPERATOR_PANEL_SECRET` (`X-Admin-Key`);
  * woła `handleChat` wewnętrznie (bez `EPIR_CHAT_SHARED_SECRET` — S2S dotyczy BFF/headless `/chat`).
  */
-async function handleSoloDevChatIngress(
+async function handleOperatorStudioIngress(
   request: Request,
   env: Env,
   ctx: ExecutionContext,
@@ -4294,7 +4300,9 @@ async function handleSoloDevChatIngress(
   method: string,
 ): Promise<Response | null> {
   const rawPath = url.pathname;
-  const isV2StudioRequest = rawPath === STUDIO_PREFIX || rawPath.startsWith(`${STUDIO_PREFIX}/`);
+  if (!isOperatorStudioIngressPath(rawPath) && !isOperatorStudioAssetPath(rawPath)) {
+    return null;
+  }
 
   if (method === 'GET' && isOperatorStudioAssetPath(rawPath) && env.OPERATOR_ASSETS) {
     const assetPath = operatorAssetSubpath(rawPath);
@@ -4328,19 +4336,9 @@ async function handleSoloDevChatIngress(
     );
   }
 
-  const path = normalizeOperatorIngressPath(rawPath);
-  if (path === '/internal/solo-dev-chat' && method === 'GET') {
-    return new Response(SOLO_DEV_CHAT_HTML, {
-      headers: {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Content-Security-Policy':
-          "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src 'none'; connect-src 'self'; base-uri 'none'; form-action 'self'",
-        ...cors(env, request),
-      },
-    });
-  }
+  const path = rawPath;
 
-  if (path === '/internal/solo-dev-chat/api/ready' && method === 'GET') {
+  if (path === `${OPERATOR_API_PREFIX}/ready` && method === 'GET') {
     if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -4358,7 +4356,7 @@ async function handleSoloDevChatIngress(
     );
   }
 
-  if (path === '/internal/solo-dev-chat/api/flow-health' && method === 'GET') {
+  if (path === '/internal/operator-studio/api/flow-health' && method === 'GET') {
     if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -4387,7 +4385,7 @@ async function handleSoloDevChatIngress(
     }
   }
 
-  if (path === '/internal/solo-dev-chat/api/steward/aggregate' && method === 'POST') {
+  if (path === '/internal/operator-studio/api/steward/aggregate' && method === 'POST') {
     if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -4415,7 +4413,7 @@ async function handleSoloDevChatIngress(
     }
   }
 
-  if (path === '/internal/solo-dev-chat/api/steward/insights' && method === 'GET') {
+  if (path === '/internal/operator-studio/api/steward/insights' && method === 'GET') {
     if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -4447,7 +4445,7 @@ async function handleSoloDevChatIngress(
     }
   }
 
-  if (path === '/internal/solo-dev-chat/api/blender-bridge-health' && method === 'GET') {
+  if (path === '/internal/operator-studio/api/blender-bridge-health' && method === 'GET') {
     if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -4461,7 +4459,7 @@ async function handleSoloDevChatIngress(
     });
   }
 
-  if (path === '/internal/solo-dev-chat/api/chat' && method === 'POST') {
+  if (path === '/internal/operator-studio/api/chat' && method === 'POST') {
     if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -4472,8 +4470,6 @@ async function handleSoloDevChatIngress(
     const bodyText = await request.text();
     const variant =
       request.headers.get('X-Epir-Model-Variant')?.trim() ?? request.headers.get('x-epir-model-variant')?.trim() ?? '';
-    const agentPreset =
-      request.headers.get('X-EPIR-AGENT-PRESET')?.trim() ?? request.headers.get('x-epir-agent-preset')?.trim() ?? '';
     const operatorRole =
       request.headers.get('X-EPIR-OPERATOR-ROLE')?.trim() ??
       request.headers.get('x-epir-operator-role')?.trim() ??
@@ -4489,19 +4485,16 @@ async function handleSoloDevChatIngress(
       '';
     if (orModel) innerHeaders.set('X-Epir-OpenRouter-Model', orModel);
     if (operatorRole) innerHeaders.set('X-EPIR-OPERATOR-ROLE', operatorRole);
-    if (agentPreset) innerHeaders.set('X-EPIR-AGENT-PRESET', agentPreset);
-
-    const chatContext = isV2StudioRequest ? OPERATOR_CHAT_CONTEXT : SOLO_DEV_CHAT_CONTEXT;
 
     const innerRequest = new Request('https://worker.internal/chat', {
       method: 'POST',
       headers: innerHeaders,
       body: bodyText,
     });
-    return handleChat(innerRequest, env, chatContext, ctx);
+    return handleChat(innerRequest, env, OPERATOR_CHAT_CONTEXT, ctx);
   }
 
-  if (path === '/internal/solo-dev-chat/api/trigger-warehouse-export' && method === 'POST') {
+  if (path === '/internal/operator-studio/api/trigger-warehouse-export' && method === 'POST') {
     if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -4530,7 +4523,7 @@ async function handleSoloDevChatIngress(
     }
   }
 
-  if (path === '/internal/solo-dev-chat/api/operator-profile' && (method === 'GET' || method === 'PUT')) {
+  if (path === '/internal/operator-studio/api/operator-profile' && (method === 'GET' || method === 'PUT')) {
     if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -4546,12 +4539,10 @@ async function handleSoloDevChatIngress(
     }
     const body = (await request.json()) as {
       brandNotes?: string;
-      defaultWorkflowId?: string;
       campaignPriorities?: string;
     };
     await putOperatorProfile(env, {
       brandNotes: body.brandNotes ?? '',
-      defaultWorkflowId: body.defaultWorkflowId ?? 'data_warehouse',
       campaignPriorities: body.campaignPriorities ?? '',
     });
     return new Response(JSON.stringify({ ok: true }), {
@@ -4560,7 +4551,7 @@ async function handleSoloDevChatIngress(
     });
   }
 
-  if (path === '/internal/solo-dev-chat/api/openrouter-models' && method === 'GET') {
+  if (path === '/internal/operator-studio/api/openrouter-models' && method === 'GET') {
     if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -4589,7 +4580,7 @@ async function handleSoloDevChatIngress(
     }
   }
 
-  if (path === '/internal/solo-dev-chat/api/operator-report/latest' && method === 'GET') {
+  if (path === '/internal/operator-studio/api/operator-report/latest' && method === 'GET') {
     if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -4603,7 +4594,7 @@ async function handleSoloDevChatIngress(
     });
   }
 
-  if (path === '/internal/solo-dev-chat/api/reports' && method === 'GET') {
+  if (path === '/internal/operator-studio/api/reports' && method === 'GET') {
     if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -4633,7 +4624,9 @@ async function handleSoloDevChatIngress(
     }
   }
 
-  const reportDateMatch = path.match(/^\/internal\/solo-dev-chat\/api\/reports\/(\d{4}-\d{2}-\d{2})$/);
+  const reportDateMatch = path.match(
+    /^\/internal\/operator-studio\/api\/reports\/(\d{4}-\d{2}-\d{2})$/,
+  );
   if (reportDateMatch && method === 'GET') {
     if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -4654,7 +4647,7 @@ async function handleSoloDevChatIngress(
     });
   }
 
-  if (path === '/internal/solo-dev-chat/api/history' && method === 'POST') {
+  if (path === '/internal/operator-studio/api/history' && method === 'POST') {
     if (!verifyOperatorPanelKey(request, env)) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -4668,6 +4661,41 @@ async function handleSoloDevChatIngress(
       body: bodyText,
     });
     return handleHistoryRequest(innerRequest, env);
+  }
+
+  if (path === '/internal/operator-studio/api/export-session' && method === 'POST') {
+    if (!verifyOperatorPanelKey(request, env)) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    const body = (await request.json().catch(() => null)) as {
+      session_id?: string;
+      role?: string;
+    } | null;
+    const sessionId = typeof body?.session_id === 'string' ? body.session_id.trim() : '';
+    const roleRaw = typeof body?.role === 'string' ? body.role.trim() : '';
+    const role: OperatorRoleId = isOperatorRoleId(roleRaw)
+      ? roleRaw
+      : resolveOperatorRoleIdFromHeaders(request.headers);
+    if (!sessionId) {
+      return new Response(JSON.stringify({ ok: false, detail: 'session_id required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    const out = await exportOperatorSessionToLocalDisk(env, sessionId, role);
+    if (!out.ok) {
+      return new Response(JSON.stringify({ ok: false, detail: out.detail }), {
+        status: 502,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    return new Response(JSON.stringify({ ok: true, path: out.path }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+    });
   }
 
   return null;
@@ -4805,8 +4833,8 @@ export default {
       return new Response('ok', { status: 200, headers: cors(env, request) });
     }
 
-    const soloDev = await handleSoloDevChatIngress(request, env, ctx, url, method);
-    if (soloDev) return soloDev;
+    const operatorStudio = await handleOperatorStudioIngress(request, env, ctx, url, method);
+    if (operatorStudio) return operatorStudio;
 
     // Dashboard leadów (Agent Command Center)
     if (url.pathname === '/admin/dashboard' && request.method === 'GET') {

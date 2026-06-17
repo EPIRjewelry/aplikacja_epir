@@ -91,7 +91,7 @@ function parseArgs(argv: string[]): CliOptions {
   const expectedTool = args.get('expect-tool') ?? 'search_catalog';
   const variant = args.get('variant') ?? 'default';
   const sessionId = args.get('session-id') ?? `smoke-harmony-${Date.now()}`;
-  const channel = args.get('channel') ?? 'internal-dashboard';
+  const channel = args.get('channel') ?? 'operator';
   const brand = args.get('brand') ?? 'EPIR';
   const out =
     args.get('out') ?? `docs/benchmarks/${new Date().toISOString().slice(0, 10)}-harmony-smoke.md`;

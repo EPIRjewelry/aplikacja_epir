@@ -4,27 +4,7 @@ import type { Env } from '../src/config/bindings';
 
 const noopCtx = { waitUntil() {} } as unknown as ExecutionContext;
 
-describe('solo dev chat ingress', () => {
-  it('returns HTML for GET /internal/solo-dev-chat', async () => {
-    const env = { EPIR_OPERATOR_PANEL_SECRET: 'op' } as unknown as Env;
-    const res = await worker.fetch(
-      new Request('https://asystent.test/internal/solo-dev-chat', { method: 'GET' }),
-      env,
-      noopCtx,
-    );
-    expect(res.status).toBe(200);
-    const text = await res.text();
-    expect(text).toContain('Dev-asystent');
-    expect(text).toContain('/internal/solo-dev-chat/api/chat');
-    expect(text).toContain('id="agentHint"');
-    expect(text).toContain('id="modelHint"');
-    expect(text).toContain('AGENT_HINTS');
-    expect(text).toContain('id="workflow"');
-    expect(text).toContain('WORKFLOWS');
-    expect(text).toContain('btn-dl');
-    expect(text).toContain('Operator Studio');
-  });
-
+describe('operator studio ingress', () => {
   it('returns HTML or build hint for GET /internal/operator-studio', async () => {
     const env = { EPIR_OPERATOR_PANEL_SECRET: 'op' } as unknown as Env;
     const res = await worker.fetch(
@@ -37,13 +17,23 @@ describe('solo dev chat ingress', () => {
     expect([200, 503]).toContain(res.status);
   });
 
-  it('returns 401 for POST /internal/solo-dev-chat/api/chat without X-Admin-Key', async () => {
+  it('returns 404 for removed legacy GET /internal/solo-dev-chat', async () => {
+    const env = { EPIR_OPERATOR_PANEL_SECRET: 'op' } as unknown as Env;
+    const res = await worker.fetch(
+      new Request('https://asystent.test/internal/solo-dev-chat', { method: 'GET' }),
+      env,
+      noopCtx,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 401 for POST /internal/operator-studio/api/chat without X-Admin-Key', async () => {
     const env = {
       EPIR_OPERATOR_PANEL_SECRET: 'secret',
       EPIR_CHAT_SHARED_SECRET: 'shared-secret',
     } as unknown as Env;
     const res = await worker.fetch(
-      new Request('https://asystent.test/internal/solo-dev-chat/api/chat', {
+      new Request('https://asystent.test/internal/operator-studio/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'hi', stream: false }),
@@ -60,7 +50,7 @@ describe('solo dev chat ingress', () => {
       EPIR_CHAT_SHARED_SECRET: 'shared-secret',
     } as unknown as Env;
     const res = await worker.fetch(
-      new Request('https://asystent.test/internal/solo-dev-chat/api/chat', {
+      new Request('https://asystent.test/internal/operator-studio/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -77,7 +67,7 @@ describe('solo dev chat ingress', () => {
   it('returns 401 for GET openrouter-models without X-Admin-Key', async () => {
     const env = { EPIR_OPERATOR_PANEL_SECRET: 'good' } as unknown as Env;
     const res = await worker.fetch(
-      new Request('https://asystent.test/internal/solo-dev-chat/api/openrouter-models', {
+      new Request('https://asystent.test/internal/operator-studio/api/openrouter-models', {
         method: 'GET',
       }),
       env,
@@ -89,7 +79,7 @@ describe('solo dev chat ingress', () => {
   it('GET /api/ready does not require EPIR_CHAT_SHARED_SECRET (operator key only)', async () => {
     const env = { EPIR_OPERATOR_PANEL_SECRET: 'good' } as unknown as Env;
     const res = await worker.fetch(
-      new Request('https://asystent.test/internal/solo-dev-chat/api/ready', {
+      new Request('https://asystent.test/internal/operator-studio/api/ready', {
         method: 'GET',
         headers: { 'X-Admin-Key': 'good' },
       }),
@@ -124,7 +114,7 @@ describe('solo dev chat ingress', () => {
     expect(body.error).toBe('db_not_configured');
   });
 
-  it('GET /internal/operator-studio/api/operator-report/latest aliases correctly', async () => {
+  it('GET /internal/operator-studio/api/operator-report/latest', async () => {
     const db = {
       prepare(_sql: string) {
         return {
@@ -207,7 +197,7 @@ describe('solo dev chat ingress', () => {
   it('returns 503 for openrouter-models when OPENROUTER_API_KEY missing', async () => {
     const env = { EPIR_OPERATOR_PANEL_SECRET: 'good' } as unknown as Env;
     const res = await worker.fetch(
-      new Request('https://asystent.test/internal/solo-dev-chat/api/openrouter-models', {
+      new Request('https://asystent.test/internal/operator-studio/api/openrouter-models', {
         method: 'GET',
         headers: { 'X-Admin-Key': 'good' },
       }),

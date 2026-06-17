@@ -244,14 +244,14 @@ describe('S2S ingress for /chat', () => {
     expect(session?.storage.get('channel')).toBe('hydrogen-zareczyny');
   });
 
-  it('uses Dev-asystent greeting for internal-dashboard channel', async () => {
+  it('uses operator greeting for operator channel', async () => {
     const { env } = makeEnv();
     const response = await worker.fetch(
       makeChatRequest(
         {
           'X-EPIR-SHARED-SECRET': 'shared-secret',
-          'X-EPIR-STOREFRONT-ID': 'online-store',
-          'X-EPIR-CHANNEL': 'internal-dashboard',
+          'X-EPIR-STOREFRONT-ID': 'operator',
+          'X-EPIR-CHANNEL': 'operator',
         },
         {
           message: 'hej',
@@ -280,7 +280,7 @@ describe('S2S ingress for /chat', () => {
         message: 'hej',
         stream: false,
         storefrontId: 'body-storefront',
-        channel: 'internal-dashboard',
+        channel: 'operator',
         brand: 'kazka',
       },
     );

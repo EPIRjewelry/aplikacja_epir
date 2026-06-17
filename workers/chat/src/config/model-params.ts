@@ -304,7 +304,7 @@ export type ReasoningEffort = 'low' | 'medium' | 'high';
  *   parser w `ai-client.ts createGroqStreamTransform` odrzuca ten kanał z widoku
  *   klienta, ale używamy go do telemetrii i ewentualnego debugowania.
  * - `reasoning_effort` = `'low'` — buyer-facing UX wymaga niskiej latencji
- *   i krótkiego łańcucha myśli; admin/internal-dashboard może override'ować.
+ *   i krótkiego łańcucha myśli; Operator Studio może override'ować.
  */
 export const MODEL_PARAMS = {
   /**

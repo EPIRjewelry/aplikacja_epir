@@ -412,7 +412,7 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
     return {
       error: {
         code: -32601,
-        message: `Tool "${toolName}" is internal-dashboard only and is not available via Shop MCP.`,
+        message: `Tool "${toolName}" is operator-only and is not available via Shop MCP.`,
       },
     };
   }

@@ -204,6 +204,8 @@ export interface Env {
   EDOG_GATE_ENABLED?: string;
   /** Publiczny URL lokalnego mosta Blender (Cloudflare Tunnel). Var — nie secret. */
   BLENDER_BRIDGE_ORIGIN?: string;
+  /** Publiczny URL mosta eksportu rozmów na PC (Cloudflare Tunnel). Var — nie secret. */
+  OPERATOR_EXPORT_ORIGIN?: string;
 }
 
 /**

@@ -1,5 +1,5 @@
 /**
- * Narzędzia analityczne wyłącznie dla kanału `internal-dashboard`.
+ * Narzędzia analityczne wyłącznie dla kanału `operator`.
  * Trzy jawne źródła: hurtownia EPIR (RPC), marketing-ingest (GA4+Ads preview), Shopify Admin (ShopifyQL presets).
  */
 import type { Env } from './config/bindings';

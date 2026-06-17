@@ -2,9 +2,8 @@
  * Project B — profil operatora (D1), digest sesji, odczyt raportów dziennych.
  */
 import type { Env } from './config/bindings';
-import { resolveSoloDevAgentAddonFromHeaders } from './solo-dev-agent-presets';
-import type { OperatorProfileV1 } from './solo-dev-ui/operator-profile';
-import { DEFAULT_OPERATOR_PROFILE } from './solo-dev-ui/operator-profile';
+import type { OperatorProfileV1 } from './operator/operator-profile';
+import { DEFAULT_OPERATOR_PROFILE } from './operator/operator-profile';
 
 const DIGEST_EVERY_N_MESSAGES = 6;
 const DIGEST_MAX_CHARS = 4000;
@@ -16,18 +15,16 @@ export type OperatorProfileRow = OperatorProfileV1 & {
 export async function getOperatorProfile(env: Env, operatorId = 'default'): Promise<OperatorProfileRow> {
   try {
     const row = await env.DB_CHATBOT.prepare(
-      `SELECT brand_notes, default_workflow_id, campaign_priorities FROM internal_operator_profile WHERE operator_id = ?1`,
+      `SELECT brand_notes, campaign_priorities FROM internal_operator_profile WHERE operator_id = ?1`,
     )
       .bind(operatorId)
       .first<{
         brand_notes: string;
-        default_workflow_id: string;
         campaign_priorities: string | null;
       }>();
     if (!row) return { ...DEFAULT_OPERATOR_PROFILE, campaignPriorities: '' };
     return {
       brandNotes: row.brand_notes ?? '',
-      defaultWorkflowId: row.default_workflow_id ?? 'data_warehouse',
       campaignPriorities: row.campaign_priorities ?? '',
     };
   } catch {
@@ -46,14 +43,13 @@ export async function putOperatorProfile(
      VALUES (?1, ?2, ?3, ?4, ?5)
      ON CONFLICT(operator_id) DO UPDATE SET
        brand_notes = excluded.brand_notes,
-       default_workflow_id = excluded.default_workflow_id,
        campaign_priorities = excluded.campaign_priorities,
        updated_at = excluded.updated_at`,
   )
     .bind(
       operatorId,
       profile.brandNotes ?? '',
-      profile.defaultWorkflowId ?? 'data_warehouse',
+      'data_warehouse',
       profile.campaignPriorities ?? null,
       now,
     )
@@ -125,40 +121,6 @@ export async function getOperatorReportByDate(
   } catch {
     return null;
   }
-}
-
-export async function resolveInternalDashboardPromptAddons(
-  env: Env,
-  headers: { get(name: string): string | null },
-  sessionId?: string,
-): Promise<string> {
-  const parts: string[] = [];
-  const agentAddon = resolveSoloDevAgentAddonFromHeaders(headers, env);
-  if (agentAddon) parts.push(agentAddon);
-
-  const profile = await getOperatorProfile(env);
-  if (profile.brandNotes.trim() || profile.campaignPriorities?.trim()) {
-    parts.push(
-      `Profil operatora (D1): brand_notes=${profile.brandNotes.trim().slice(0, 800)}; campaign_priorities=${(profile.campaignPriorities ?? '').trim().slice(0, 400)}; default_workflow=${profile.defaultWorkflowId}.`,
-    );
-  }
-
-  if (sessionId) {
-    try {
-      const dig = await env.DB_CHATBOT.prepare(
-        `SELECT digest FROM internal_session_digest WHERE session_id = ?1`,
-      )
-        .bind(sessionId)
-        .first<{ digest: string }>();
-      if (dig?.digest?.trim()) {
-        parts.push(`Streszczenie bieżącej sesji (digest):\n${dig.digest.trim().slice(0, DIGEST_MAX_CHARS)}`);
-      }
-    } catch {
-      /* table may not exist yet */
-    }
-  }
-
-  return parts.join('\n\n');
 }
 
 export async function maybeRefreshSessionDigest(env: Env, sessionId: string): Promise<void> {
