@@ -47,7 +47,7 @@ describe('buildEdogNarrative', () => {
         warehouse_q1_ok: false,
       }),
     );
-    expect(n.actions.some((a) => a.includes('trigger-warehouse-export'))).toBe(true);
+    expect(n.actions.some((a) => a.includes('automatycznie'))).toBe(true);
     expect(n.markdown).toContain('23173');
     expect(n.layers.find((l) => l.id === 'batch')?.status).toBe('FAIL');
   });

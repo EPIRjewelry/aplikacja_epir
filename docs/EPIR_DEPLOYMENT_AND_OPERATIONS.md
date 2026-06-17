@@ -131,6 +131,7 @@ Postura ingress dla produkcji:
 - Smoke po deploy: [`scripts/smoke-flow-health.ps1`](../scripts/smoke-flow-health.ps1) lub [`scripts/smoke-flow-health.sh`](../scripts/smoke-flow-health.sh) z env `EPIR_CHAT_WORKER_ORIGIN` (oraz opcjonalnie `EPIR_OPERATOR_PANEL_SECRET` dla legacy).
 - Na `epir-art-jewellery-worker`: RPC `getFlowHealth` (dla Operator Studio / audytu). Twarda bramka przed `run_analytics_query` tylko przy `EDOG_GATE_ENABLED=true` (domyślnie wyłączona).
 - Materiał audytu (przykład): [`docs/EPIR_DATA_FLOW_AUDIT_2026-06-17.md`](EPIR_DATA_FLOW_AUDIT_2026-06-17.md).
+- Raport dzienny e-mail: `OPERATOR_REPORT_EMAIL_TO` na `epir-bigquery-batch` (MailChannels); sekcja Gemma w treści — [`EPIR_GWORKSPACE_REPORT_BRIDGE.md`](EPIR_GWORKSPACE_REPORT_BRIDGE.md).
 
 ### Runbook EDOG (skrót przy FAIL)
 

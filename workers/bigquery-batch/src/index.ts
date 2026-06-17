@@ -14,6 +14,7 @@ import { PIXEL_CREATED_AT_MS_SQL, pixelCreatedAtIso, pixelCreatedAtMs } from './
 import { buildFlowHealthReport } from './edog-flow-health-runner';
 import { buildEdogNarrative } from './edog-reason-narrative';
 import { runOperatorDailyReport } from './operator-daily-report';
+import { runWarehouseExportCatchUp } from './warehouse-export-catchup';
 import { postPipelineIngestBatch } from './pipeline-ingest';
 import { isR2SqlQueryConfigured, runR2SqlJob } from './r2-sql-client';
 
@@ -43,6 +44,9 @@ interface Env {
   };
   /** Opcjonalny webhook (np. Google Apps Script) — zapis raportu na Drive. */
   GWORKSPACE_REPORT_WEBHOOK_URL?: string;
+  /** Adres e-mail operatora — raport dzienny (MailChannels). */
+  OPERATOR_REPORT_EMAIL_TO?: string;
+  OPERATOR_REPORT_EMAIL_FROM?: string;
 }
 
 const EDOG_KV_KEY = 'edog:latest';
@@ -83,8 +87,19 @@ async function runEdogHealthMonitor(env: Env): Promise<void> {
 }
 
 async function runOperatorReportCron(env: Env): Promise<void> {
-  await runOperatorDailyReport(env, probeQ1ForEdog, (e) =>
-    executeRunAnalyticsQuery(e as Env, { queryId: 'Q8_DAILY_EVENTS' }),
+  const catchUp = await runWarehouseExportCatchUp(() => handleScheduled(env));
+  const exportCatchUpNote =
+    catchUp.runs > 0
+      ? `Automatyczny catch-up przed raportem: ${catchUp.runs} przebieg(ów), pending_pixel po eksporcie: ${catchUp.lastPending}${catchUp.pipelineError ? `; pipeline: ${catchUp.pipelineError}` : ''}.`
+      : undefined;
+  if (catchUp.runs > 0) {
+    console.log('[operator-report] warehouse catch-up', catchUp);
+  }
+  await runOperatorDailyReport(
+    env,
+    probeQ1ForEdog,
+    (e) => executeRunAnalyticsQuery(e as Env, { queryId: 'Q8_DAILY_EVENTS' }),
+    { exportCatchUpNote },
   );
 }
 

@@ -162,7 +162,7 @@ export function buildEdogNarrative(report: FlowHealthReport): EdogNarrative {
   if (pending > 1000) {
     const runs = estimateExportRuns(pending);
     actions.push(
-      `POST /internal/operator-studio/api/trigger-warehouse-export — powtórz ok. ${runs}× (limit ${MAX_PIXEL_ROWS_PER_RUN} wierszy/run).`,
+      `Backlog pixel ${pending} — eksport uruchamia się automatycznie (cron 02:00 UTC i catch-up o 09:00 UTC przed raportem; ~${runs} przebiegów po ${MAX_PIXEL_ROWS_PER_RUN} wierszy).`,
     );
   }
   if (report.warehouse_q1_skipped && pending < 10_000 && (batchH ?? 999) < 48) {

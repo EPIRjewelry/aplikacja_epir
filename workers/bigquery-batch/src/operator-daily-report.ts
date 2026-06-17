@@ -4,7 +4,10 @@
 import type { FlowHealthReport } from './edog-flow-health-runner';
 import { buildFlowHealthReport } from './edog-flow-health-runner';
 import { buildEdogNarrative } from './edog-reason-narrative';
+import { buildGemmaDigestMarkdown, fetchGemmaConversations24h } from './operator-gemma-digest';
+import { sendOperatorReportEmail } from './operator-report-email';
 import { sanitizeReportForWorkspaceExport } from './report-pii-mask';
+import { since24hMs } from './edog-flow-health';
 
 export type OperatorReportEnv = {
   DB_CHATBOT: D1Database;
@@ -12,6 +15,8 @@ export type OperatorReportEnv = {
     getMarketingPreview(args?: { date?: string }): Promise<Record<string, unknown>>;
   };
   GWORKSPACE_REPORT_WEBHOOK_URL?: string;
+  OPERATOR_REPORT_EMAIL_TO?: string;
+  OPERATOR_REPORT_EMAIL_FROM?: string;
 };
 
 type Q1Probe = (env: OperatorReportEnv) => Promise<{
@@ -42,16 +47,20 @@ export function buildOperatorReportMarkdown(args: {
   q8Rows: Record<string, unknown>[] | null;
   q8Error?: string;
   marketingSection: string;
+  gemmaSection: string;
+  exportCatchUpNote?: string;
 }): string {
-  const { reportDate, health, q8Rows, q8Error, marketingSection } = args;
+  const { reportDate, health, q8Rows, q8Error, marketingSection, gemmaSection, exportCatchUpNote } = args;
   const narrative = buildEdogNarrative(health);
   const lines: string[] = [
     `# Raport EPIR — ${reportDate}`,
     '',
     narrative.markdown,
-    '',
-    '## Hurtownia Q8 (dzienne zdarzenia)',
   ];
+  if (exportCatchUpNote) {
+    lines.push('', '### Eksport D1→hurtownia (automatyczny)', '', exportCatchUpNote);
+  }
+  lines.push('', gemmaSection, '', '## Hurtownia Q8 (dzienne zdarzenia)');
   if (q8Error) {
     lines.push(`_Błąd Q8: ${q8Error}_`);
   } else if (q8Rows?.length) {
@@ -89,18 +98,21 @@ export type WorkspaceReportWebhookPayload = {
   piiMasked: true;
   exportedAt: string;
   ssot: 'd1_operator_daily_reports';
+  emailTo?: string;
 };
 
 export async function postReportToWorkspaceWebhook(env: OperatorReportEnv, markdown: string): Promise<void> {
   const url = (env.GWORKSPACE_REPORT_WEBHOOK_URL ?? '').trim();
   if (!url) return;
   const body = await sanitizeReportForWorkspaceExport(markdown);
+  const emailTo = (env.OPERATOR_REPORT_EMAIL_TO ?? '').trim();
   const payload: WorkspaceReportWebhookPayload = {
     title: `EPIR Raport ${new Date().toISOString().slice(0, 10)}`,
     body,
     piiMasked: true,
     exportedAt: new Date().toISOString(),
     ssot: 'd1_operator_daily_reports',
+    ...(emailTo ? { emailTo } : {}),
   };
   const res = await fetch(url, {
     method: 'POST',
@@ -119,9 +131,16 @@ export async function runOperatorDailyReport(
     | { ok: true; rows: Record<string, unknown>[] }
     | { ok: false; error: string }
   >,
+  opts?: {
+    exportCatchUpNote?: string;
+  },
 ): Promise<void> {
   const reportDate = new Date().toISOString().slice(0, 10);
+  const sinceMs = since24hMs(Date.now());
   const health = await buildFlowHealthReport(env as AnalyticsEnv, probeQ1 as AnalyticsProbe);
+
+  const gemmaRows = await fetchGemmaConversations24h(env, sinceMs, 20);
+  const gemmaSection = buildGemmaDigestMarkdown(gemmaRows, reportDate);
 
   let q8Rows: Record<string, unknown>[] | null = null;
   let q8Error: string | undefined;
@@ -140,9 +159,23 @@ export async function runOperatorDailyReport(
     q8Rows,
     q8Error,
     marketingSection,
+    gemmaSection,
+    exportCatchUpNote: opts?.exportCatchUpNote,
   });
 
   await persistOperatorDailyReport(env, reportDate, markdown, health.edog_verdict);
+
+  const emailResult = await sendOperatorReportEmail(
+    env,
+    `EPIR Raport ${reportDate} — EDOG ${health.edog_verdict}`,
+    await sanitizeReportForWorkspaceExport(markdown),
+  );
+  if (emailResult.error) {
+    console.warn('[operator-report] email failed:', emailResult.error);
+  } else if (emailResult.sent) {
+    console.log('[operator-report] email sent');
+  }
+
   await postReportToWorkspaceWebhook(env, markdown);
   console.log('[operator-report] saved', reportDate, health.edog_verdict);
 }

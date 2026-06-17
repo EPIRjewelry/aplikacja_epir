@@ -23,6 +23,7 @@ describe('buildOperatorReportMarkdown', () => {
       health,
       q8Rows: [{ event_date: '2026-05-22', event_count: 5 }],
       marketingSection: '_ok_',
+      gemmaSection: '## Gemma\n\n_brak_',
     });
     expect(md).toContain('EDOG');
     expect(md).toContain('PASS');
