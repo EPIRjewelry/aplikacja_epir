@@ -28,7 +28,7 @@ Werdykt operacyjny produkcji: `GET /internal/flow-health` na `epir-bigquery-batc
 | **3** | Runtime health | `workers/bigquery-batch/src/edog-flow-health.ts`, `GET /internal/flow-health` | **Krok 2:** `EDOG: PASS` |
 | **4** | MCP read-only | `mcp-servers/epir-data-ops/`, `.cursor/mcp-data-ops.example.json` | **Krok 3:** `EDOG: PASS` (+ smoke `flow-health` lokalnie/staging jeśli dostępne) |
 | **5** | Cron + KV (koszt 2×/dobę) | `wrangler.toml` crony `0 8,20 * * *`, opcjonalny `DATA_GUARDIAN_KV`, secret `DATA_GUARDIAN_OPS_KEY` | **Krok 4:** `EDOG: PASS` |
-| **6** | Operator Studio | `data_flow_audit` w `workflow-presets.ts`, `PROJECT_B_SOLO_DEV_AGENTS.md` | **Krok 5:** `EDOG: PASS` |
+| **6** | Operator Studio | rola `analyst`, `PROJECT_B_SOLO_DEV_AGENTS.md` | **Krok 5:** `EDOG: PASS` |
 | **7** | CI statyczne | `scripts/ci/validate-data-flow-map.py`, vitest `edog-flow-health`, krok w `deploy.yml` | **Krok 6:** `EDOG: PASS` |
 | **8** | (Opcjonalnie) Most do `epir_analityc` | callable / docs w `epir-marketing-agent-service` | **Krok 7:** `EDOG: PASS` |
 

@@ -48,8 +48,7 @@ Skopiuj fragment z [`.cursor/mcp-gworkspace.example.json`](../../.cursor/mcp-gwo
 
 ## Project B
 
-Preset agenta: `creative_gdocs_brief` w `workers/chat/src/solo-dev-agent-presets.ts`.  
-Panel Operator Studio: pole **ID pliku Google** (tylko dla tego agenta).
+Odczyt briefu: **Cursor** (MCP `epir-gworkspace`). W Operator Studio wklej Markdown/CSV w roli `creative` — worker nie ma tokenów Google.
 
 ## Testy
 

@@ -24,7 +24,7 @@ export function createDataOpsMcpServer(): McpServer {
 
   server.tool(
     'flow_health_summary',
-    'GET /internal/solo-dev-chat/api/flow-health (proxy RPC; Access cookie lub legacy X-Admin-Key).',
+    'GET /internal/operator-studio/api/flow-health (proxy RPC; Access cookie lub X-Admin-Key).',
     {},
     async () => {
       const origin =
@@ -34,7 +34,7 @@ export function createDataOpsMcpServer(): McpServer {
       const legacyKey = resolveEnv('EPIR_OPERATOR_PANEL_SECRET');
       const headers: Record<string, string> = { Accept: 'application/json' };
       if (legacyKey) headers['X-Admin-Key'] = legacyKey;
-      const res = await fetch(`${origin.replace(/\/$/, '')}/internal/solo-dev-chat/api/flow-health`, {
+      const res = await fetch(`${origin.replace(/\/$/, '')}/internal/operator-studio/api/flow-health`, {
         headers,
       });
       const text = await res.text();

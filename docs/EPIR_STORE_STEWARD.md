@@ -9,7 +9,7 @@ Store Steward to **proaktywny mózg sklepu** — obserwuje zachowanie klientów 
 | Warstwa | Mechanizm |
 |---------|-----------|
 | `epir-store-steward` | Cron + **StoreStewardS2SRpc** (brak sekretów HTTP) |
-| **Operator Studio** | `epir-art-jewellery-worker` → `/internal/solo-dev-chat/api/steward/*` (`X-Admin-Key` = `EPIR_OPERATOR_PANEL_SECRET`) → **STORE_STEWARD_RPC** |
+| **Operator Studio** | `epir-art-jewellery-worker` → `/internal/operator-studio/api/steward/*` (`X-Admin-Key` = `EPIR_OPERATOR_PANEL_SECRET`) → **STORE_STEWARD_RPC** |
 | `epir-analyst-worker` (opcjonalnie) | HTTP `/v1/steward/*` + **`ANALYST_HTTP_BEARER`** (Cursor / curl) |
 | Cursor agent | `EPIR_ANALYST_ORIGIN` + `ANALYST_HTTP_BEARER` **lub** panel API na czacie |
 
@@ -36,8 +36,8 @@ Nagłówek `X-Admin-Key` = `EPIR_OPERATOR_PANEL_SECRET`.
 
 | Metoda | Ścieżka |
 |--------|---------|
-| POST | `/internal/solo-dev-chat/api/steward/aggregate` |
-| GET | `/internal/solo-dev-chat/api/steward/insights` |
+| POST | `/internal/operator-studio/api/steward/aggregate` |
+| GET | `/internal/operator-studio/api/steward/insights` |
 
 ## API Cursor (opcjonalnie — analyst-worker)
 

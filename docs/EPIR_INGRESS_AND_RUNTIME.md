@@ -95,7 +95,7 @@ Typowe wartości:
 - `online-store`
 - `hydrogen-kazka`
 - `hydrogen-zareczyny`
-- `internal-dashboard`
+- `operator`
 
 Worker używa ich do:
 

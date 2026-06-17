@@ -8,7 +8,7 @@
 $ErrorActionPreference = 'Stop'
 $origin = $env:EPIR_CHAT_WORKER_ORIGIN
 if (-not $origin) { $origin = 'https://asystent.epirbizuteria.pl' }
-$uri = ($origin.TrimEnd('/')) + '/internal/solo-dev-chat/api/flow-health'
+$uri = ($origin.TrimEnd('/')) + '/internal/operator-studio/api/flow-health'
 $headers = @{ Accept = 'application/json' }
 if ($env:EPIR_OPERATOR_PANEL_SECRET) {
   $headers['X-Admin-Key'] = $env:EPIR_OPERATOR_PANEL_SECRET

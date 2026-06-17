@@ -7,7 +7,7 @@ HDR=(-H "Accept: application/json")
 if [[ -n "${EPIR_OPERATOR_PANEL_SECRET:-}" ]]; then
   HDR+=(-H "X-Admin-Key: ${EPIR_OPERATOR_PANEL_SECRET}")
 fi
-RES=$(curl -sf "${HDR[@]}" "${ORIGIN}/internal/solo-dev-chat/api/flow-health")
+RES=$(curl -sf "${HDR[@]}" "${ORIGIN}/internal/operator-studio/api/flow-health")
 echo "$RES"
 VERDICT=$(echo "$RES" | sed -n 's/.*"edog_verdict"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
 if [[ "$VERDICT" != "PASS" ]]; then

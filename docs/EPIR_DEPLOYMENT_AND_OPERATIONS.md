@@ -56,7 +56,7 @@ Wymagane sekrety backendowe:
 - `SHOPIFY_APP_SECRET`
 - `EPIR_CHAT_SHARED_SECRET`
 - `EPIR_OPERATOR_PANEL_SECRET` (powierzchnie HTTP panelu: `X-Admin-Key`, `Bearer` przy `X-Epir-Model-Variant`; odrębnie od S2S czatu `EPIR_CHAT_SHARED_SECRET` oraz od RPC `BIGQUERY_BATCH_RPC`, gdzie gateway przekazuje `ctx.props.scopes` na binding)
-- **Operator Studio (Project B):** `GET https://<host>/internal/operator-studio` (alias `/internal/solo-dev-chat`). W UI jeden klucz: `X-Admin-Key` = `EPIR_OPERATOR_PANEL_SECRET` (Cloudflare Secret Store). Kanał `internal-dashboard`; modele OpenRouter przez `OPENROUTER_API_KEY`. **Produkcja:** Cloudflare Access przed publicznym hostem.
+- **Operator Studio (Project B):** `GET https://<host>/internal/operator-studio`. W UI jeden klucz: `X-Admin-Key` = `EPIR_OPERATOR_PANEL_SECRET` (Cloudflare Secret Store). Kanał `operator`; modele OpenRouter przez `OPENROUTER_API_KEY`. **Produkcja:** Cloudflare Access przed publicznym hostem.
 - **Most Blender (grafika):** `BLENDER_BRIDGE_ORIGIN` = `https://blender-bridge.epirbizuteria.pl` w `wrangler.toml` (już ustawione). Relay na PC bez hasła (`RELAY_AUTH=0`). Klucz operatora tylko w Studiu (`EPIR_OPERATOR_PANEL_SECRET`). **Setup raz:** `setup-blender-bridge-once.ps1`. **Codziennie:** Blender **Start MCP Bridge**. Materiał roboczy: [`EPIR_BLENDER_OPERATOR_STUDIO_BRIDGE.md`](EPIR_BLENDER_OPERATOR_STUDIO_BRIDGE.md).
 - tokeny storefrontów używane przez worker, zależnie od konfiguracji:
   - `SHOPIFY_STOREFRONT_TOKEN`
@@ -120,7 +120,7 @@ Postura ingress dla produkcji:
 
 **EDOG (operacyjny przepływ danych):**
 
-- **EDOG flow-health (operator):** `GET /internal/solo-dev-chat/api/flow-health` na workerze czatu (Cloudflare Access lub legacy `X-Admin-Key`) — proxy `BIGQUERY_BATCH_RPC.getFlowHealth`. HTTP `GET /internal/flow-health` na batch → `404` (deprecated).
+- **EDOG flow-health (operator):** `GET /internal/operator-studio/api/flow-health` na workerze czatu (Cloudflare Access lub `X-Admin-Key`) — proxy `BIGQUERY_BATCH_RPC.getFlowHealth`. HTTP `GET /internal/flow-health` na batch → `404` (deprecated).
 - Cron monitoringu: `0 8 * * *` i `0 20 * * *` UTC (osobno od eksportu `0 2 * * *`).
 - Opcjonalnie KV raportu: `wrangler kv namespace create epir-data-guardian` → odkomentuj `DATA_GUARDIAN_KV` w `workers/bigquery-batch/wrangler.toml`.
 - Smoke po deploy: [`scripts/smoke-flow-health.ps1`](../scripts/smoke-flow-health.ps1) lub [`scripts/smoke-flow-health.sh`](../scripts/smoke-flow-health.sh) z env `EPIR_CHAT_WORKER_ORIGIN` (oraz opcjonalnie `EPIR_OPERATOR_PANEL_SECRET` dla legacy).
@@ -144,7 +144,7 @@ Integracje **poza repo** (włączasz w Cursor): Shopify Admin MCP, Shopify Dev M
 Faza 0 Store Steward — agregacja `pixel_events` + wnioski w D1 (`jewelry-analytics-db`). **Brak sekretów HTTP** na tym workerze; odczyt/zapis przez **RPC** `StoreStewardS2SRpc` (tylko service binding); zewnątrz — `epir-analyst-worker` + `ANALYST_HTTP_BEARER`.
 
 - Cron: `0 4 * * *` UTC
-- Operator (Studio): **`epir-art-jewellery-worker`** — `GET|POST /internal/solo-dev-chat/api/steward/*` (Access / legacy key) → `STORE_STEWARD_RPC`
+- Operator (Studio): **`epir-art-jewellery-worker`** — `GET|POST /internal/operator-studio/api/steward/*` (`X-Admin-Key` = `EPIR_OPERATOR_PANEL_SECRET`) → `STORE_STEWARD_RPC`
 - Wołający zewnętrzny (Cursor, opcjonalnie): **`epir-analyst-worker`** — `GET|POST /v1/steward/*` + Bearer **`ANALYST_HTTP_BEARER`**
 - Kanon: [`EPIR_STORE_STEWARD.md`](EPIR_STORE_STEWARD.md)
 
@@ -176,7 +176,7 @@ Osobny worker od `workers/bigquery-batch`: **pull** GA4 (Data API) + Google Ads 
 
 **Konfiguracja połączeń GA4 + Google Ads** (service account, OAuth refresh, developer token, `wrangler secret put`): [`workers/marketing-ingest/README.md`](../workers/marketing-ingest/README.md).
 
-**Smoke eksportu D1 → Pipelines (operator):** `POST /internal/solo-dev-chat/api/trigger-warehouse-export` na workerze czatu (przycisk w Operator Studio) albo cron w Dashboard. Odpowiedź JSON zawiera `batch_exports`; w D1 `last_pixel_export_at` powinno rosnąć, gdy ingest HTTP akceptuje batche. Jeśli w logach `[WAREHOUSE_BATCH] pipeline_chunk_failed` — ustaw `PIPELINE_INGEST_TOKEN` (Pipelines HTTP auth).
+**Smoke eksportu D1 → Pipelines (operator):** `POST /internal/operator-studio/api/trigger-warehouse-export` na workerze czatu (przycisk w Operator Studio) albo cron w Dashboard. Odpowiedź JSON zawiera `batch_exports`; w D1 `last_pixel_export_at` powinno rosnąć, gdy ingest HTTP akceptuje batche. Jeśli w logach `[WAREHOUSE_BATCH] pipeline_chunk_failed` — ustaw `PIPELINE_INGEST_TOKEN` (Pipelines HTTP auth).
 
 **Sekrety** (`wrangler secret put` w katalogu workera):
 
@@ -238,7 +238,7 @@ Postura ingress dla produkcji:
 **Troubleshooting: R2 SQL — `SELECT DISTINCT is not supported` / `COUNT(DISTINCT …)`**
 
 - Silnik **R2 SQL** nie obsługuje `SELECT DISTINCT` ani agregatu `COUNT(DISTINCT col)` — patrz [ograniczenia R2 SQL](https://developers.cloudflare.com/r2-sql/reference/limitations-best-practices/). Presety w [`workers/bigquery-batch/src/analytics-queries.ts`](../workers/bigquery-batch/src/analytics-queries.ts) muszą używać `GROUP BY` oraz `approx_distinct()` (jak CQRS w `workers/analytics/src/cqrs/r2-warehouse-query.ts`).
-- Po zmianie presetów: `wrangler deploy` z `workers/bigquery-batch`, potem retest `Q1_CONVERSION_CHAT` w internal-dashboard.
+- Po zmianie presetów analityki: `wrangler deploy` z `workers/bigquery-batch`, potem retest `Q1_CONVERSION_CHAT` w Operator Studio (rola `analyst`).
 
 ### Cloudflare Pages (`kazka`, `zareczyny`)
 

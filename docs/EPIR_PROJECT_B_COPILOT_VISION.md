@@ -12,9 +12,9 @@
 
 | Źródło | Gdzie żyje dane | Jak copilot może je dziś / wkrótce konsumować |
 |--------|------------------|-----------------------------------------------|
-| **Web Pixel** | `workers/analytics` → D1 → `workers/bigquery-batch` → hurtownia / widoki zgodne z `EPIR_DATA_SCHEMA_CONTRACT` | W czacie `internal-dashboard`: narzędzie **`run_analytics_query`** (whitelist **`queryId` Q1–Q10**) — **główna kopalnia** zdarzeń / zachowań w pipeline EPIR (nie mylić z sesjami Shopify Admin). |
-| **GA4 + Google Ads** | `workers/marketing-ingest` (ingest + `GET /ops/marketing-preview`) | W czacie `internal-dashboard`: narzędzie **`fetch_marketing_preview`** (serwerowy `GET` + Bearer); wymaga `MARKETING_INGEST_ORIGIN` + `MARKETING_OPS_PREVIEW_KEY` na workerze czatu (ta sama wartość Bearer co na ingest). |
-| **Natywna analityka Shopify** | Shopify Admin GraphQL `shopifyqlQuery` (ShopifyQL) | W czacie `internal-dashboard`: narzędzie **`run_shopify_shopifyql`** — wyłącznie **presety** z whitelisty (`S1`…`S3`); wymaga scope **`read_reports`** na aplikacji i `SHOPIFY_ADMIN_TOKEN`. |
+| **Web Pixel** | `workers/analytics` → D1 → `workers/bigquery-batch` → hurtownia / widoki zgodne z `EPIR_DATA_SCHEMA_CONTRACT` | W czacie kanału `operator` (rola `analyst`): narzędzie **`run_analytics_query`** (whitelist **`queryId` Q1–Q10**) — **główna kopalnia** zdarzeń / zachowań w pipeline EPIR (nie mylić z sesjami Shopify Admin). |
+| **GA4 + Google Ads** | `workers/marketing-ingest` (ingest + `GET /ops/marketing-preview`) | W czacie `operator` (rola `analyst`): narzędzie **`fetch_marketing_preview`** (serwerowy `GET` + Bearer); wymaga `MARKETING_INGEST_ORIGIN` + `MARKETING_OPS_PREVIEW_KEY` na workerze czatu (ta sama wartość Bearer co na ingest). |
+| **Natywna analityka Shopify** | Shopify Admin GraphQL `shopifyqlQuery` (ShopifyQL) | W czacie `operator`: narzędzie **`run_shopify_shopifyql`** — wyłącznie **presety** z whitelisty (`S1`…`S3`); wymaga scope **`read_reports`** na aplikacji i `SHOPIFY_ADMIN_TOKEN`. |
 | **Meta Ads** | (przyszłość) | Ten sam wzorzec co Ads: osobny ingest lub API, **sekrety tylko w Workerach**; agent nigdy nie „widzi” refresh tokena w przeglądarce. |
 
 **Zasada orthodoksji:** Project B może mieć **szerszy** dostęp serwerowy niż UI sklepu, ale **nadal** jeden kanon kontraktów (`EPIR_DATA_SCHEMA_CONTRACT`, whitelist zapytań) — bez równoległej „tajnej prawdy” w drugim repo dokumentacji.
@@ -61,12 +61,12 @@
 
 ## 8. Okno czatu (już vs potem)
 
-- **Już:** `GET …/internal/solo-dev-chat` w `workers/chat` — Twój panel operatora + modele Groq/CF.  
+- **Już:** `GET …/internal/operator-studio` w `workers/chat` — panel operatora + modele Groq/OpenRouter.  
 - **Potem:** cienki klient (np. bookmarklet / rozszerzenie) tylko jeśli musi żyć **poza** domeną workera — wtedy CORS + Access jeszcze ważniejsze.
 
 ## 9. Następne kroki inżynierskie (priorytet)
 
-1. **Trzy narzędzia analityczne** w `internal-dashboard`: **`run_analytics_query`** (hurtownia), **`fetch_marketing_preview`** (GA4+Ads z `epir-marketing-ingest`), **`run_shopify_shopifyql`** (presety ShopifyQL / `read_reports`).  
+1. **Trzy narzędzia analityczne** w kanale `operator` (rola `analyst`): **`run_analytics_query`** (hurtownia), **`fetch_marketing_preview`** (GA4+Ads z `epir-marketing-ingest`), **`run_shopify_shopifyql`** (presety ShopifyQL / `read_reports`).  
 2. **Profil operatora** w D1 + wstrzyknięcie do system prompt / pierwszej wiadomości (krótki).  
 3. **Cron + raport** (tekst) + opcjonalnie e-mail Workspace.  
 4. **HttpOnly cookie** zamiast `sessionStorage` dla panelu solo (mniejsza powierzchnia XSS).

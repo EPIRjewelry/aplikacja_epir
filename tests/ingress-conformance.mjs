@@ -103,12 +103,12 @@ const scenarios = [
     assertResult: assertJsonContentType,
   },
   {
-    name: 'Internal-only: kanał internal-dashboard przez S2S',
+    name: 'Internal-only: kanał operator przez S2S',
     expectedStatus: 200,
     headers: {
       secret: cfg.sharedSecret,
-      storefrontIdHeader: 'online-store',
-      channelHeader: 'internal-dashboard',
+      storefrontIdHeader: 'operator',
+      channelHeader: 'operator',
     },
     payload: {
       brand: 'epir',

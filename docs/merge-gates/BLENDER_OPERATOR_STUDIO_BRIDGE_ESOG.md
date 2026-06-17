@@ -49,7 +49,7 @@ Uzasadnienie: `relay/http_server.py` + allowlist; pytest 5/5; `.env.example` bez
 |---|-----------|
 | 2.1 | `internal-blender-tools.ts` — fetch + Bearer z `env.EPIR_OPERATOR_PANEL_SECRET` |
 | 2.2 | `BLENDER_BRIDGE_ORIGIN` tylko jako var w wrangler.toml |
-| 2.3 | Narzędzia tylko `internal-dashboard` |
+| 2.3 | Narzędzia tylko kanał `operator` (rola `design_blender`) |
 | 2.4 | Vitest mock fetch |
 | 2.5 | Brak `BLENDER_BRIDGE_BEARER` w bindings |
 
@@ -73,7 +73,7 @@ ESOG: PASS
 ESOG: PASS
 ```
 
-(Uwaga: checklista mostu w panelu bocznym + hint w workflow; pełny baner trybu z `workflow-presets`.)
+(Uwaga: checklista mostu w panelu bocznym Operator Studio.)
 
 ## Faza 4 — Deploy
 

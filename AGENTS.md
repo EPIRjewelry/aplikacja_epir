@@ -56,7 +56,15 @@ W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md
 - **Reguły sesji Cursor:** [`.cursor/rules/`](.cursor/rules/) — thin pointers do Biblii (globy wg pliku).
 - Folder **`agents/`** — opcjonalne **Python CLI** (read-only dla Cursor).
 - **`.github/agents/`** — definicje pod **GitHub Copilot**.
-- **`.kilo/`** — Kilo Code (izolowane od Cursor przez `.cursorignore`).
+- **`.kilo/`** — Kilo Code (izolowane od Cursor przez [`.cursorignore`](.cursorignore)).
+- **Ignore kontekstu:** [`.cursorignore`](.cursorignore) — token budget + blokada `.kilo/`; zmiany sekcji token-budget synchronizuj z [`.kilocodeignore`](.kilocodeignore).
+
+## Kilo Code — review UI / PR
+
+- **Entry:** [`REVIEW.md`](REVIEW.md) + [`EPIR_AI_BIBLE.md`](EPIR_AI_BIBLE.md) (reszta przez router `docs/kb/`).
+- **Ignore kontekstu:** [`.kilocodeignore`](.kilocodeignore) — lustro token-budget z `.cursorignore` + blokada `.cursor/` (Dual Plane).
+- **Utrzymanie:** zmiana ignore w jednym pliku → zsynchronizuj drugi (sekcje token-budget i EPIR-specific w obu plikach).
+- **Nie** duplikuj reguł `.mdc` — Kilo nie używa execution plane Cursora.
 
 ## Zasady pracy
 
@@ -107,6 +115,13 @@ W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md
 Przeczytaj cztery pliki z sekcji „Czytaj najpierw”, a dopiero potem przechodź do kodu i dokumentów technicznych w `docs/`.
 
 ## Cursor Cloud specific instructions
+
+### Bezpieczeństwo Agent (lokalnie, poza repo)
+
+Te ustawienia **nie** są w repozytorium — operator konfiguruje je w Cursorze:
+
+- **Settings → Agent:** wyłącz Auto-Run / YOLO; wymagaj zatwierdzenia komend terminala (human-in-the-loop).
+- **User settings (opcjonalnie):** `"json.schemaDownload.enable": false` globalnie dla nieufnych projektów; w tym repo workspace ma `true` w [`.vscode/settings.json`](.vscode/settings.json).
 
 ### Package manager
 

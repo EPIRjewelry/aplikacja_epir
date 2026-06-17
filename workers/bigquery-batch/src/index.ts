@@ -55,7 +55,7 @@ function deprecatedInternalHttp(): Response {
   return new Response(
     JSON.stringify({
       error: 'deprecated_use_rpc',
-      hint: 'flow-health i trigger-export: BIGQUERY_BATCH_RPC z workera czatu (/internal/solo-dev-chat/api/*).',
+      hint: 'flow-health i trigger-export: BIGQUERY_BATCH_RPC z workera czatu (/internal/operator-studio/api/*).',
     }),
     { status: 404, headers: { 'Content-Type': 'application/json' } },
   );

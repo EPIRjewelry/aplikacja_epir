@@ -98,7 +98,7 @@ Typowe kanały:
 - `online-store`
 - `hydrogen-kazka`
 - `hydrogen-zareczyny`
-- `internal-dashboard`
+- `operator`
 
 Te pola sterują:
 
@@ -126,11 +126,11 @@ Nie wolno jej:
 - tłumaczyć backendu,
 - rozmawiać jak agent developerski.
 
-#### `Dev-asystent` — internal / developer-facing
+#### Copilot operatora — Operator Studio (Project B)
 
-Aktywny w IDE i w `internal-dashboard`.
+Aktywny w Operator Studio (`/internal/operator-studio`, kanał `operator`) i w IDE (Cursor).
 
-Zakres (priorytet w kanale `internal-dashboard`):
+Zakres (priorytet w kanale `operator`, wg roli):
 
 - **analityka sklepu i marketingu**: hurtownia EPIR (whitelist `run_analytics_query`), podgląd GA4+Ads (`fetch_marketing_preview` → `epir-marketing-ingest`), natywna analityka Shopify (`run_shopify_shopifyql` / ShopifyQL, scope `read_reports`), lejki, kampanie **Google Ads** (w perspektywie także Meta), spójność danych z kanałami storefrontu,
 - architektura Shopify / EPIR, MCP, workers, deployment tam, gdzie wspiera analizę lub operacje.

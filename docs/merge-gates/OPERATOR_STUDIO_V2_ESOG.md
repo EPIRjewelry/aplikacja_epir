@@ -19,14 +19,14 @@ Każdy krok wymaga werdyktu **`ESOG: PASS`** przed rozpoczęciem następnego.
 | 1.1 | `OPERATOR_CHANNEL = 'operator'` w `workers/chat/src/operator/` |
 | 1.2 | `OPERATOR_TOOL_ALLOWLIST` — jawna lista; brak `get_cart`, `update_cart`, `get_size_table` |
 | 1.3 | `streamAssistant` pomija buyer context gdy `channel === 'operator'` |
-| 1.4 | Stary `internal-dashboard` nadal działa (wsteczna kompatybilność) |
+| 1.4 | Kanał `operator` — jedyny ingress Project B w Studiu |
 
 ## Krok 2 — API raportów
 
 | # | Kryterium |
 |---|-----------|
 | 2.1 | `GET …/api/reports` i `GET …/api/reports/:date` — tylko odczyt D1 |
-| 2.2 | Aliasy ścieżek `/internal/operator-studio/api/*` |
+| 2.2 | Ścieżki API pod `/internal/operator-studio/api/*` |
 
 ## Krok 3 — Role operatora
 

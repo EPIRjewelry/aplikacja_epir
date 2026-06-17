@@ -44,15 +44,9 @@ def main() -> None:
         if needle not in flow_map:
             fail(f"EPIR_DATA_FLOW_MAP.md missing: {needle}")
 
-    presets = (ROOT / "workers" / "chat" / "src" / "solo-dev-ui" / "workflow-presets.ts").read_text(
-        encoding="utf-8"
-    )
-    if "data_flow_audit" not in presets:
-        fail("workflow-presets.ts must define data_flow_audit")
-
     chat_index = (ROOT / "workers" / "chat" / "src" / "index.ts").read_text(encoding="utf-8")
-    if "resolveInternalDashboardPromptAddons" not in chat_index:
-        fail("chat index must wire internal-operator-copilot prompts")
+    if "resolveOperatorPromptAddons" not in chat_index:
+        fail("chat index must wire operator prompt addons")
     if not (ROOT / "workers" / "chat" / "src" / "edog-gate.ts").is_file():
         fail("missing workers/chat/src/edog-gate.ts")
     if "operator-profile" not in chat_index:

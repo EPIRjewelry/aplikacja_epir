@@ -35,7 +35,7 @@ Przy `FAIL` — poprawka i ponowna recenzja **tego samego** kroku.
 | **3** | Example pipeline SQL + README | `pixel-pipeline-production.example.sql`, `pipelines-schemas/README.md` | — |
 | **4** | Walidator CI kontraktu danych | `scripts/ci/validate-data-contract.py`, workflow / deploy-policy | `validate-data-contract.py` |
 | **5** | dbt legacy etykieta | `analytics/dbt/**`, `sources.yml` | — |
-| **6** | Prompt internal-dashboard (retest) | `internal-dashboard-system-prompt.ts` | `vitest` chat |
+| **6** | Prompt operatora (retest) | `operator-system-prompt.ts` | `vitest` chat |
 | **7** | Deploy + retest operatorski | `wrangler deploy` bigquery-batch, Q1 w panelu | smoke opcjonalny |
 | **8** | EDOG produkcja (opcjonalnie) | `GET /internal/flow-health` → `edog_verdict: PASS` | Bearer `DATA_GUARDIAN_OPS_KEY` |
 
@@ -73,8 +73,8 @@ Przed merge do `main`:
 | **3** | PASS | PASS | `pixel-pipeline-production.example.sql`, `pipelines-schemas/README.md` |
 | **4** | PASS | PASS | `validate-data-contract.py` (SQL w literałach), job w `.github/workflows/deploy.yml` |
 | **5** | PASS | PASS | `analytics/dbt/**` — etykieta legacy w `sources.yml` |
-| **6** | PASS | PASS | `internal-dashboard-system-prompt.ts` — retest po deploy operatora |
-| **7** | PASS | PASS | Deploy `epir-bigquery-batch` (wersja `f572fd5f-4601-4dc0-a1fc-d8cf599ea516`, 2026-05-19); retest `Q1_CONVERSION_CHAT` w internal-dashboard — operator |
+| **6** | PASS | PASS | `operator-system-prompt.ts` — retest po deploy operatora |
+| **7** | PASS | PASS | Deploy `epir-bigquery-batch` (wersja `f572fd5f-4601-4dc0-a1fc-d8cf599ea516`, 2026-05-19); retest `Q1_CONVERSION_CHAT` w Operator Studio — operator |
 
 **ESOG: PASS** — brak naruszeń orthodoksii (jeden backend, workers bez sekretów w repo, RPC `bigquery.analytics_query` w polityce CI).
 
