@@ -75,24 +75,24 @@ export default {
     const date = yesterdayUtcDate();
     console.log('[MARKETING_INGEST] scheduled start', { date });
 
-    if (!(env.MARKETING_PIPELINE_INGEST_URL ?? '').trim()) {
-      console.warn('[MARKETING_INGEST] MARKETING_PIPELINE_INGEST_URL not set, skip');
-      return;
+    const pipelineUrl = (env.MARKETING_PIPELINE_INGEST_URL ?? '').trim();
+    if (!pipelineUrl) {
+      console.warn('[MARKETING_INGEST] MARKETING_PIPELINE_INGEST_URL not set, skip ingest; preview still available');
     }
 
     ctx.waitUntil(
       (async () => {
         const ga = await fetchGa4MarketingRows(env, date);
-        const r = await sendBatches(env, ga as unknown as Record<string, unknown>[]);
-        console.log('[MARKETING_INGEST] GA4', { rows: ga.length, sent: r.sent, ok: r.ok });
+        const r = pipelineUrl ? await sendBatches(env, ga as unknown as Record<string, unknown>[]) : { ok: true, sent: 0 };
+        console.log('[MARKETING_INGEST] GA4', { date, rows: ga.length, sent: r.sent, ok: r.ok, pipelineUrlSet: !!pipelineUrl });
       })(),
     );
 
     ctx.waitUntil(
       (async () => {
         const ads = await fetchAdsMarketingRows(env, date);
-        const r = await sendBatches(env, ads as unknown as Record<string, unknown>[]);
-        console.log('[MARKETING_INGEST] Ads', { rows: ads.length, sent: r.sent, ok: r.ok });
+        const r = pipelineUrl ? await sendBatches(env, ads as unknown as Record<string, unknown>[]) : { ok: true, sent: 0 };
+        console.log('[MARKETING_INGEST] Ads', { date, rows: ads.length, sent: r.sent, ok: r.ok, pipelineUrlSet: !!pipelineUrl });
       })(),
     );
   },

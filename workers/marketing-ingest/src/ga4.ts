@@ -24,10 +24,16 @@ export function yesterdayUtcDate(): string {
 export async function fetchGa4MarketingRows(env: Ga4Env, date: string): Promise<MarketingStreamRecord[]> {
   const jsonStr = (env.GA4_SERVICE_ACCOUNT_JSON ?? '').trim();
   const prop = (env.GA4_PROPERTY_ID ?? '').trim();
-  if (!jsonStr || !prop) return [];
+  if (!jsonStr || !prop) {
+    console.warn('[MARKETING_INGEST] GA4 skip: missing GA4_SERVICE_ACCOUNT_JSON or GA4_PROPERTY_ID');
+    return [];
+  }
 
   const token = await getAccessTokenFromServiceAccountJson(jsonStr, GA_SCOPE);
-  if (!token) return [];
+  if (!token) {
+    console.error('[MARKETING_INGEST] GA4 skip: service-account token not obtained');
+    return [];
+  }
 
   const url = `https://analyticsdata.googleapis.com/v1beta/${propertyPath(prop)}:runReport`;
   const body = {
@@ -36,6 +42,8 @@ export async function fetchGa4MarketingRows(env: Ga4Env, date: string): Promise<
     metrics: [{ name: 'sessions' }, { name: 'eventCount' }, { name: 'totalRevenue' }],
     limit: 10000,
   };
+
+  console.log('[MARKETING_INGEST] GA4 runReport request', { date, property: propertyPath(prop) });
 
   const res = await fetch(url, {
     method: 'POST',
@@ -46,13 +54,16 @@ export async function fetchGa4MarketingRows(env: Ga4Env, date: string): Promise<
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    console.error('[MARKETING_INGEST] GA4 runReport HTTP', res.status, (await res.text()).slice(0, 200));
+    const errText = await res.text();
+    console.error('[MARKETING_INGEST] GA4 runReport HTTP', { status: res.status, body: errText.slice(0, 500) });
     return [];
   }
   const data = (await res.json()) as {
+    rowCount?: number;
     rows?: Array<{ dimensionValues?: Array<{ value?: string }>; metricValues?: Array<{ value?: string }> }>;
   };
   const rows = data.rows ?? [];
+  console.log('[MARKETING_INGEST] GA4 runReport response', { date, rowsReturned: rows.length, rowCount: data.rowCount ?? null });
   const out: MarketingStreamRecord[] = [];
   for (const r of rows) {
     const dims = r.dimensionValues ?? [];

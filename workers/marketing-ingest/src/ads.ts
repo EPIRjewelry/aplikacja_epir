@@ -37,10 +37,16 @@ async function refreshAdsAccessToken(env: AdsEnv): Promise<string | null> {
 export async function fetchAdsMarketingRows(env: AdsEnv, date: string): Promise<MarketingStreamRecord[]> {
   const customerId = (env.GOOGLE_ADS_CUSTOMER_ID ?? '').replace(/-/g, '').trim();
   const devTok = (env.GOOGLE_ADS_DEVELOPER_TOKEN ?? '').trim();
-  if (!customerId || !devTok) return [];
+  if (!customerId || !devTok) {
+    console.warn('[MARKETING_INGEST] Ads skip: missing GOOGLE_ADS_CUSTOMER_ID or GOOGLE_ADS_DEVELOPER_TOKEN');
+    return [];
+  }
 
   const access = await refreshAdsAccessToken(env);
-  if (!access) return [];
+  if (!access) {
+    console.error('[MARKETING_INGEST] Ads skip: access-token refresh failed');
+    return [];
+  }
 
   const query = `
     SELECT campaign.id, campaign.name, segments.date,
@@ -60,13 +66,16 @@ export async function fetchAdsMarketingRows(env: AdsEnv, date: string): Promise<
   };
   if (loginCid) headers['login-customer-id'] = loginCid;
 
+  console.log('[MARKETING_INGEST] Ads GAQL request', { date, customerId, loginCustomerId: loginCid || null });
+
   const res = await fetch(url, {
     method: 'POST',
     headers,
     body: JSON.stringify({ query }),
   });
   if (!res.ok) {
-    console.error('[MARKETING_INGEST] Ads search HTTP', res.status, (await res.text()).slice(0, 300));
+    const errText = await res.text();
+    console.error('[MARKETING_INGEST] Ads search HTTP', { status: res.status, body: errText.slice(0, 500) });
     return [];
   }
   const data = (await res.json()) as {
@@ -82,6 +91,7 @@ export async function fetchAdsMarketingRows(env: AdsEnv, date: string): Promise<
     }>;
   };
   const results = data.results ?? [];
+  console.log('[MARKETING_INGEST] Ads GAQL response', { date, resultsCount: results.length });
   const out: MarketingStreamRecord[] = [];
   for (const row of results) {
     const cidStr = row.campaign?.id != null ? String(row.campaign.id) : null;

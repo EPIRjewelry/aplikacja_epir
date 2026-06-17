@@ -65,7 +65,7 @@ export async function getAccessTokenFromServiceAccountJson(
     const tokenData = (await tokenResponse.json()) as { access_token?: string };
     return tokenData.access_token ?? null;
   } catch (e) {
-    console.error('[MARKETING_INGEST] SA JWT error:', e);
+    console.error('[MARKETING_INGEST] SA JWT error:', e instanceof Error ? e.message : String(e));
     return null;
   }
 }

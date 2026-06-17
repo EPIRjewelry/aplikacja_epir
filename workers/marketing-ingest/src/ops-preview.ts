@@ -89,7 +89,9 @@ export async function handleMarketingPreview(req: Request, env: MarketingPreview
   }
 
   const date = parseIsoDate(u.searchParams.get('date')) ?? yesterdayUtcDate();
+  console.log('[MARKETING_INGEST] preview request', { date, previewKeyConfigured: true });
   const body = await buildMarketingPreviewBody(env, date);
+  console.log('[MARKETING_INGEST] preview response', { date, adsRows: body.google_ads.rowCount, gaRows: body.google_analytics.rowCount });
 
   return new Response(JSON.stringify(body), {
     status: 200,
