@@ -10,9 +10,9 @@
       }
     },
     "blender-assist": {
-      "command": "D:\\Blender_Assist\\.venv\\Scripts\\python.exe",
+      "command": "D:\\Blender Assets\\Blender_assist\\.venv\\Scripts\\python.exe",
       "args": ["-m", "mcp_server"],
-      "cwd": "D:\\Blender_Assist"
+      "cwd": "D:\\Blender Assets\\Blender_assist"
     },
     "epir-data-ops": {
       "command": "npx",
