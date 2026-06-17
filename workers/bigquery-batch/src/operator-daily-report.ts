@@ -5,7 +5,6 @@ import type { FlowHealthReport } from './edog-flow-health-runner';
 import { buildFlowHealthReport } from './edog-flow-health-runner';
 import { buildEdogNarrative } from './edog-reason-narrative';
 import { buildGemmaDigestMarkdown, fetchGemmaConversations24h } from './operator-gemma-digest';
-import { sendOperatorReportEmail } from './operator-report-email';
 import { sanitizeReportForWorkspaceExport } from './report-pii-mask';
 import { since24hMs } from './edog-flow-health';
 
@@ -15,8 +14,6 @@ export type OperatorReportEnv = {
     getMarketingPreview(args?: { date?: string }): Promise<Record<string, unknown>>;
   };
   GWORKSPACE_REPORT_WEBHOOK_URL?: string;
-  OPERATOR_REPORT_EMAIL_TO?: string;
-  OPERATOR_REPORT_EMAIL_FROM?: string;
 };
 
 type Q1Probe = (env: OperatorReportEnv) => Promise<{
@@ -98,21 +95,18 @@ export type WorkspaceReportWebhookPayload = {
   piiMasked: true;
   exportedAt: string;
   ssot: 'd1_operator_daily_reports';
-  emailTo?: string;
 };
 
 export async function postReportToWorkspaceWebhook(env: OperatorReportEnv, markdown: string): Promise<void> {
   const url = (env.GWORKSPACE_REPORT_WEBHOOK_URL ?? '').trim();
   if (!url) return;
   const body = await sanitizeReportForWorkspaceExport(markdown);
-  const emailTo = (env.OPERATOR_REPORT_EMAIL_TO ?? '').trim();
   const payload: WorkspaceReportWebhookPayload = {
     title: `EPIR Raport ${new Date().toISOString().slice(0, 10)}`,
     body,
     piiMasked: true,
     exportedAt: new Date().toISOString(),
     ssot: 'd1_operator_daily_reports',
-    ...(emailTo ? { emailTo } : {}),
   };
   const res = await fetch(url, {
     method: 'POST',
@@ -164,17 +158,6 @@ export async function runOperatorDailyReport(
   });
 
   await persistOperatorDailyReport(env, reportDate, markdown, health.edog_verdict);
-
-  const emailResult = await sendOperatorReportEmail(
-    env,
-    `EPIR Raport ${reportDate} — EDOG ${health.edog_verdict}`,
-    await sanitizeReportForWorkspaceExport(markdown),
-  );
-  if (emailResult.error) {
-    console.warn('[operator-report] email failed:', emailResult.error);
-  } else if (emailResult.sent) {
-    console.log('[operator-report] email sent');
-  }
 
   await postReportToWorkspaceWebhook(env, markdown);
   console.log('[operator-report] saved', reportDate, health.edog_verdict);

@@ -21,7 +21,7 @@ const WORKERS = [
   },
   {
     dir: 'workers/bigquery-batch',
-    required: ['R2_SQL_API_TOKEN', 'PIPELINE_INGEST_TOKEN'],
+    required: ['R2_SQL_API_TOKEN'],
   },
   {
     dir: 'workers/rag-worker',

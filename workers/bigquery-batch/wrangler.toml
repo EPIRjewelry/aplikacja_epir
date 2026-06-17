@@ -33,14 +33,11 @@ database_id = "475a1cb7-f1b5-47ba-94ed-40fd64c32451"
 # Sekrety Pipelines (HTTP ingest D1 → Iceberg):
 # wrangler secret put PIPELINE_PIXEL_INGEST_URL    # https://{stream-id}.ingest.cloudflare.com
 # wrangler secret put PIPELINE_MESSAGES_INGEST_URL
-# wrangler secret put PIPELINE_INGEST_TOKEN       # opcjonalny Bearer (Workers Pipelines Send)
 #
 # R2 SQL — `run_analytics_query` (Iceberg w tym samym katalogu co CQRS w `epir-analityc-worker`):
 # wrangler secret put R2_SQL_API_TOKEN (Workers R2 SQL Read + Data Catalog + storage read)
 # Raport operatora 09:00 UTC: binding MARKETING_INGEST_RPC (bez MARKETING_OPS_PREVIEW_KEY między workerami)
 # Opcjonalny mostek Drive: wrangler secret put GWORKSPACE_REPORT_WEBHOOK_URL
-# Raport e-mail (MailChannels): wrangler secret put OPERATOR_REPORT_EMAIL_TO
-# Opcjonalnie nadawca: [vars] OPERATOR_REPORT_EMAIL_FROM = "reports@epirbizuteria.pl"
 # Opcjonalnie KV raportu: wrangler kv namespace create epir-data-guardian → odkomentuj [[kv_namespaces]] poniżej
 #
 # run_analytics_query: wyłącznie Workers RPC (`BigQueryBatchS2SRpc`) z czatu (`ctx.props`, scope `bigquery.analytics_query`).

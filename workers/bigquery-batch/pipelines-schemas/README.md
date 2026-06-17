@@ -17,15 +17,15 @@ Z katalogu `workers/bigquery-batch` (zaloguj `wrangler login`):
 npx wrangler pipelines streams create epir_pixel_events_stream ^
   --schema-file ../../specs/schemas/pixel-events-stream.schema.json ^
   --http-enabled true ^
-  --http-auth true
+  --http-auth false
 
 npx wrangler pipelines streams create epir_messages_stream ^
   --schema-file ../../specs/schemas/messages-stream.schema.json ^
   --http-enabled true ^
-  --http-auth true
+  --http-auth false
 ```
 
-Na Unixie zamień `^` na `\`. Z outputu skopiuj **HTTP ingest URL** do sekretów `PIPELINE_PIXEL_INGEST_URL` i `PIPELINE_MESSAGES_INGEST_URL`. Przy `--http-auth true` ustaw też token z uprawnieniem **Workers Pipelines Send** jako `PIPELINE_INGEST_TOKEN` (opcjonalny Bearer w batch workerze).
+Na Unixie zamień `^` na `\`. Z outputu skopiuj **HTTP ingest URL** do sekretów `PIPELINE_PIXEL_INGEST_URL` i `PIPELINE_MESSAGES_INGEST_URL`. Worker batch wysyła bez Bearer — streamy z **wyłączonym** HTTP auth (kanoniczna postura EPIR).
 
 ## Uwagi
 
@@ -112,7 +112,6 @@ Dokumentacja transformacji: [SQL transformations](https://developers.cloudflare.
 cd workers/bigquery-batch
 wrangler secret put PIPELINE_PIXEL_INGEST_URL    # https://<stream-id>.ingest.cloudflare.com
 wrangler secret put PIPELINE_MESSAGES_INGEST_URL
-wrangler secret put PIPELINE_INGEST_TOKEN        # jeśli HTTP ingest ma Bearer (Pipelines Send)
 wrangler secret put R2_SQL_API_TOKEN             # ten sam sens co catalog token / R2 SQL
 ```
 

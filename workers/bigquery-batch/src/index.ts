@@ -25,8 +25,6 @@ interface Env {
   PIPELINE_PIXEL_INGEST_URL?: string;
   /** Pipelines HTTP ingest — rekordy zgodne ze schematem tabeli wiadomości w Iceberg. */
   PIPELINE_MESSAGES_INGEST_URL?: string;
-  /** Opcjonalny Bearer dla obu endpointów (Workers Pipelines Send). */
-  PIPELINE_INGEST_TOKEN?: string;
   /** R2 SQL — whitelist `run_analytics_query`. */
   R2_SQL_ACCOUNT_ID?: string;
   R2_SQL_WAREHOUSE_BUCKET?: string;
@@ -44,9 +42,6 @@ interface Env {
   };
   /** Opcjonalny webhook (np. Google Apps Script) — zapis raportu na Drive. */
   GWORKSPACE_REPORT_WEBHOOK_URL?: string;
-  /** Adres e-mail operatora — raport dzienny (MailChannels). */
-  OPERATOR_REPORT_EMAIL_TO?: string;
-  OPERATOR_REPORT_EMAIL_FROM?: string;
 }
 
 const EDOG_KV_KEY = 'edog:latest';
@@ -140,7 +135,6 @@ async function exportPixelEvents(
 
   let totalInserted = 0;
   let maxTs = lastExportAt;
-  const pipelineToken = env.PIPELINE_INGEST_TOKEN;
 
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const chunk = rows.slice(i, i + BATCH_SIZE);
@@ -159,7 +153,7 @@ async function exportPixelEvents(
       };
     });
 
-    const pr = await postPipelineIngestBatch(pipelineUrl, pipelineToken, records);
+    const pr = await postPipelineIngestBatch(pipelineUrl, undefined, records);
     if (!pr.ok) {
       console.error(`[WAREHOUSE_BATCH] pixel_events Pipeline chunk failed at offset ${i}:`, pr);
       agentDebugLog(
@@ -170,7 +164,6 @@ async function exportPixelEvents(
           offset: i,
           status: pr.status,
           bodyPreview: pr.body.slice(0, 200),
-          hasIngestToken: !!(pipelineToken ?? '').trim(),
         },
         'H4',
       );
@@ -209,7 +202,6 @@ async function exportMessages(env: Env, lastExportAt: number): Promise<{ exporte
 
   let totalInserted = 0;
   let maxTs = lastExportAt;
-  const pipelineToken = env.PIPELINE_INGEST_TOKEN;
 
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const chunk = rows.slice(i, i + BATCH_SIZE);
@@ -226,7 +218,7 @@ async function exportMessages(env: Env, lastExportAt: number): Promise<{ exporte
       channel: r.channel ?? null,
     }));
 
-    const pr = await postPipelineIngestBatch(pipelineUrl, pipelineToken, records);
+    const pr = await postPipelineIngestBatch(pipelineUrl, undefined, records);
     if (!pr.ok) {
       console.error(`[WAREHOUSE_BATCH] messages Pipeline chunk failed at offset ${i}:`, pr);
       break;
@@ -251,14 +243,13 @@ async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null>
 
   const pixelPipeline = !!(env.PIPELINE_PIXEL_INGEST_URL ?? '').trim();
   const messagesPipeline = !!(env.PIPELINE_MESSAGES_INGEST_URL ?? '').trim();
-  const hasIngestToken = !!(env.PIPELINE_INGEST_TOKEN ?? '').trim();
 
   if (!pixelPipeline && !messagesPipeline) {
     console.warn('[WAREHOUSE_BATCH] Pipeline ingest URLs not configured, skipping');
     agentDebugLog(
       'bigquery-batch/index.ts:handleScheduled',
       'export_skipped_no_pipeline_urls',
-      { pixelPipeline, messagesPipeline, hasIngestToken },
+      { pixelPipeline, messagesPipeline },
       'H4',
     );
     return null;
@@ -295,7 +286,6 @@ async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null>
     {
       pixelPipeline,
       messagesPipeline,
-      hasIngestToken,
       pendingPixel,
       lastPixelWatermark: lastPixel,
       lastMessagesWatermark: lastMessages,
@@ -349,7 +339,6 @@ async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null>
       messagesExported: messagesResult.exported,
       newPixelTs,
       newMessagesTs,
-      hasIngestToken: !!(env.PIPELINE_INGEST_TOKEN ?? '').trim(),
     },
     'H4',
   );

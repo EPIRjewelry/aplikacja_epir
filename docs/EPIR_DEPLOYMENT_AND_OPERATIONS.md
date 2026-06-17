@@ -99,7 +99,8 @@ Dodatkowe wymaganie bezpieczeństwa:
 
 - `PIPELINE_PIXEL_INGEST_URL` — HTTP ingest dla strumienia zdarzeń pixel
 - `PIPELINE_MESSAGES_INGEST_URL` — HTTP ingest dla strumienia wiadomości czatu
-- `PIPELINE_INGEST_TOKEN` — opcjonalny Bearer, jeśli ingest wymaga autoryzacji
+
+Streamy ingest dla workera batch: **HTTP auth wyłączone** (eksport worker→Pipelines bez osobnego Bearer tokena).
 
 **Schematy streamów Pipelines** (zgodne z kształtem JSON z batcha): [`specs/schemas/`](../specs/schemas/) — pliki `*.schema.json`; komendy Wrangler: [`workers/bigquery-batch/pipelines-schemas/README.md`](../workers/bigquery-batch/pipelines-schemas/README.md).
 
@@ -131,7 +132,7 @@ Postura ingress dla produkcji:
 - Smoke po deploy: [`scripts/smoke-flow-health.ps1`](../scripts/smoke-flow-health.ps1) lub [`scripts/smoke-flow-health.sh`](../scripts/smoke-flow-health.sh) z env `EPIR_CHAT_WORKER_ORIGIN` (oraz opcjonalnie `EPIR_OPERATOR_PANEL_SECRET` dla legacy).
 - Na `epir-art-jewellery-worker`: RPC `getFlowHealth` (dla Operator Studio / audytu). Twarda bramka przed `run_analytics_query` tylko przy `EDOG_GATE_ENABLED=true` (domyślnie wyłączona).
 - Materiał audytu (przykład): [`docs/EPIR_DATA_FLOW_AUDIT_2026-06-17.md`](EPIR_DATA_FLOW_AUDIT_2026-06-17.md).
-- Raport dzienny e-mail: `OPERATOR_REPORT_EMAIL_TO` na `epir-bigquery-batch` (MailChannels); sekcja Gemma w treści — [`EPIR_GWORKSPACE_REPORT_BRIDGE.md`](EPIR_GWORKSPACE_REPORT_BRIDGE.md).
+- Raport dzienny: D1 `operator_daily_reports` + Operator Studio; opcjonalnie mostek Drive — [`EPIR_GWORKSPACE_REPORT_BRIDGE.md`](EPIR_GWORKSPACE_REPORT_BRIDGE.md) (sekcja Gemma w treści raportu).
 
 ### Runbook EDOG (skrót przy FAIL)
 
@@ -191,7 +192,7 @@ Osobny worker od `workers/bigquery-batch`: **pull** GA4 (Data API) + Google Ads 
 
 **Konfiguracja połączeń GA4 + Google Ads** (service account, OAuth refresh, developer token, `wrangler secret put`): [`workers/marketing-ingest/README.md`](../workers/marketing-ingest/README.md).
 
-**Smoke eksportu D1 → Pipelines (operator):** `POST /internal/operator-studio/api/trigger-warehouse-export` na workerze czatu (przycisk w Operator Studio) albo cron w Dashboard. Odpowiedź JSON zawiera `batch_exports`; w D1 `last_pixel_export_at` powinno rosnąć, gdy ingest HTTP akceptuje batche. Jeśli w logach `[WAREHOUSE_BATCH] pipeline_chunk_failed` — ustaw `PIPELINE_INGEST_TOKEN` (Pipelines HTTP auth).
+**Smoke eksportu D1 → Pipelines (operator):** `POST /internal/operator-studio/api/trigger-warehouse-export` na workerze czatu (przycisk w Operator Studio) albo cron w Dashboard. Odpowiedź JSON zawiera `batch_exports`; w D1 `last_pixel_export_at` powinno rosnąć, gdy ingest HTTP akceptuje batche. Jeśli w logach `[WAREHOUSE_BATCH] pipeline_chunk_failed` — sprawdź URL ingestu i czy stream ma wyłączone HTTP auth (kanoniczna postura dla batcha).
 
 **Sekrety** (`wrangler secret put` w katalogu workera):
 

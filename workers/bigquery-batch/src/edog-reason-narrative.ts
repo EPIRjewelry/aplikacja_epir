@@ -154,7 +154,7 @@ export function buildEdogNarrative(report: FlowHealthReport): EdogNarrative {
 
   const actions: string[] = [];
   if (!pipelineOk) {
-    actions.push('Ustaw PIPELINE_PIXEL_INGEST_URL (+ opcjonalnie PIPELINE_INGEST_TOKEN) na epir-bigquery-batch.');
+    actions.push('Ustaw PIPELINE_PIXEL_INGEST_URL na epir-bigquery-batch.');
   }
   if (batchH != null && batchH >= 26) {
     actions.push('Sprawdź logi epir-bigquery-batch ([WAREHOUSE_BATCH]) i czy cron 0 2 * * * UTC się wykonuje.');
