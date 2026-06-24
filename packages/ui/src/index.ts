@@ -33,6 +33,7 @@ export {
   type ChatMessage,
   type ChatWidgetProps,
   type ChatRequestPart,
+  type CommerceAction,
 } from './ChatWidget';
 export {
   type ConsentPayload,
@@ -42,6 +43,20 @@ export {
   getConsentStorageKey,
   getConsentSessionId,
 } from './consent';
+export {
+  COMMERCE_REVALIDATE_DEBOUNCE_MS,
+  createRevalidateScheduler,
+  type RevalidateScheduler,
+} from './commerce/schedule-revalidate';
+export {
+  formatCommerceActionSseChunk,
+  parseChatSseChunk,
+  type ParsedChatSsePayload,
+} from './commerce/parse-chat-sse-chunk';
+export {
+  processCommerceSseChunks,
+  type ProcessCommerceSseChunksOptions,
+} from './commerce/process-commerce-sse-chunks';
 export {ConsentToggle, type ConsentToggleProps} from './ConsentToggle';
 export {
   CustomerPrivacyConsentBridge,

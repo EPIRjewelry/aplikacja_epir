@@ -1,11 +1,13 @@
-import {useCallback, useEffect, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import {
   Links,
   Meta,
   Outlet,
   Scripts,
   ScrollRestoration,
+  useFetcher,
   useLoaderData,
+  useRevalidator,
 } from '@remix-run/react';
 import type {Shop, CountryCode, LanguageCode} from '@shopify/hydrogen/storefront-api-types';
 import styles from './styles/app.css';
@@ -23,6 +25,8 @@ import {
   storeConsent,
   getOrCreateAnonymousId,
   getConsentSessionId,
+  type CommerceAction,
+  createRevalidateScheduler,
 } from '@epir/ui';
 import type {PersonaUi} from '@epir/ui';
 import {Analytics, Seo, Storefront, getShopAnalytics, useNonce} from '@shopify/hydrogen';
@@ -75,8 +79,7 @@ export const links: LinksFunction = () => {
 
 export async function loader({context, request}: LoaderFunctionArgs) {
   const cartId = await context.session.get('cartId');
-  const configuredChatApiUrl = context.env.CHAT_API_URL as string | undefined;
-  const chatApiUrl = resolveChatApiUrl(configuredChatApiUrl);
+  const chatApiUrl = resolveChatApiUrl(context.env.CHAT_API_URL);
   const brand = (context.env.BRAND as string) || 'epir';
   const filter = context.env.COLLECTION_FILTER;
   const allowedHandles = filter
@@ -201,6 +204,30 @@ function KazkaConsentAndChat({
   const [consentGranted, setConsentGranted] = useState(false);
   const [pendingConsent, setPendingConsent] = useState(false);
   const [consentError, setConsentError] = useState<string | null>(null);
+  const revalidator = useRevalidator();
+  const cartFetcher = useFetcher();
+  const revalidateSchedulerRef = useRef(
+    createRevalidateScheduler(() => revalidator.revalidate()),
+  );
+
+  useEffect(() => {
+    revalidateSchedulerRef.current = createRevalidateScheduler(() =>
+      revalidator.revalidate(),
+    );
+  }, [revalidator]);
+
+  const onCommerceAction = useCallback(
+    (action: CommerceAction) => {
+      if (action.cart_id?.startsWith('gid://shopify/Cart/')) {
+        cartFetcher.submit(
+          {cartAction: 'SYNC_CART_ID', cartId: action.cart_id},
+          {method: 'post', action: '/cart'},
+        );
+      }
+      revalidateSchedulerRef.current.schedule();
+    },
+    [cartFetcher],
+  );
 
   useEffect(() => {
     if (getStoredConsent(KAZKA_CONSENT_STORAGE_KEY) === true) {
@@ -324,7 +351,9 @@ function KazkaConsentAndChat({
         storefrontId={storefrontId}
         channel={channel}
         route={route}
+        locale={analyticsConsent.language}
         consentGranted={consentGranted}
+        onCommerceAction={onCommerceAction}
       />
     </>
   );

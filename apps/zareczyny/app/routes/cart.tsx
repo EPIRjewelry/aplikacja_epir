@@ -177,6 +177,15 @@ export async function action({request, context}: LoaderFunctionArgs) {
       cartId = result.cart.id;
       break;
     }
+    case 'SYNC_CART_ID': {
+      const syncCartId = formData.get('cartId');
+      if (typeof syncCartId === 'string' && syncCartId.startsWith('gid://shopify/Cart/')) {
+        session.set('cartId', syncCartId);
+        headers.set('Set-Cookie', await session.commit());
+        cartId = syncCartId;
+      }
+      return json({ok: true, cartId}, {headers});
+    }
     default:
       throw new Error('Invalid cart action');
   }
