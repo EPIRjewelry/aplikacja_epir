@@ -26,6 +26,7 @@ import { parseAuthorizationBearer, verifyShopifySessionTokenJwt } from './shopif
 import { RateLimiterDO, checkRateLimit } from './rate-limiter';
 import { TokenVaultDO, TokenVault, getTokenVaultStub } from './token-vault';
 import { guardAssistantPricingAgainstCatalog } from './pricing-guard';
+import { buildCommerceActionPayload, isLikelyAjaxCartFakeGid } from './utils/commerce-result';
 
 // Importy AI i Narzędzi (BEZPOŚREDNIO z ai-client.ts)
 import {
@@ -56,6 +57,7 @@ import { buildMessagesForToolFailureRecovery } from './utils/buildRecoveryMessag
 import { executeToolWithParsedArguments } from './utils/tool-call-args';
 import { callMcpToolDirect, handleMcpRequest } from './mcp_server';
 import { STOREFRONTS, resolveStorefrontConfig } from './config/storefronts';
+import { resolveCommerceContext } from './config/commerce-context';
 import { chatPipelineLog } from './utils/chat-pipeline-log';
 import {
   runWarehouseAnalyticsQuery,
@@ -169,6 +171,10 @@ interface ChatRequestBody {
   customer_id_hint?: string;
   /** Źródło hintu (telemetria); bez wpływu na wiarygodne ID klienta. */
   customer_id_hint_source?: string;
+  /** IETF BCP 47 / Shopify locale z frontu (np. pl, pl-PL). */
+  locale?: string;
+  /** Shopify market handle / kod rynku (opcjonalnie). */
+  market?: string;
 }
 
 const IMAGE_ATTACHMENT_PLACEHOLDER = '(załącznik obrazu)';
@@ -687,6 +693,10 @@ function parseChatRequestBody(
     typeof maybe.customer_id_hint_source === 'string' && maybe.customer_id_hint_source.trim().length > 0
       ? maybe.customer_id_hint_source.trim()
       : undefined;
+  const locale =
+    typeof maybe.locale === 'string' && maybe.locale.trim().length > 0 ? maybe.locale.trim() : undefined;
+  const market =
+    typeof maybe.market === 'string' && maybe.market.trim().length > 0 ? maybe.market.trim() : undefined;
   return {
     message: resolvedMessage,
     session_id: sessionId,
@@ -701,6 +711,8 @@ function parseChatRequestBody(
     collectionHandle,
     customer_id_hint: customerIdHint,
     customer_id_hint_source: customerIdHintSource,
+    locale,
+    market,
   };
 }
 
@@ -2849,7 +2861,7 @@ async function handleChat(
       'append-user',
     );
 
-    if (payload.cart_id) {
+    if (payload.cart_id && !isLikelyAjaxCartFakeGid(payload.cart_id)) {
       console.log('[handleChat] Saving cart_id to session:', payload.cart_id);
       await fetchSessionDO(
         stub,
@@ -2861,6 +2873,8 @@ async function handleChat(
         },
         'set-cart-id',
       );
+    } else if (payload.cart_id && isLikelyAjaxCartFakeGid(payload.cart_id)) {
+      console.log('[handleChat] Skipping Ajax-style cart_id (no Storefront key); SessionDO MCP cart retained');
     }
 
     if (payload.storefrontId || payload.channel) {
@@ -2933,7 +2947,9 @@ async function handleChat(
     route: payload.route,
     collectionHandle: payload.collectionHandle,
     path: payload.path,
-  }, customerId, executionCtx, customerIdFromUrl, liquidIdentity, softCustomerFirstName); // soft personalization: imię z customer_id_hint, tylko do tonu powitania
+    locale: payload.locale,
+    market: payload.market,
+  }, customerId, executionCtx, customerIdFromUrl, liquidIdentity, softCustomerFirstName);
 }
 
 // ============================================================================
@@ -2946,6 +2962,8 @@ interface StorefrontContext {
   route?: string;
   collectionHandle?: string;
   path?: string;
+  locale?: string;
+  market?: string;
 }
 
 async function streamAssistantResponse(
@@ -3019,6 +3037,11 @@ async function streamAssistantResponse(
         };
         cartId = cartIdData.cart_id;
       }
+
+      const commerceContext = resolveCommerceContext(
+        storefrontContext?.storefrontId ?? brand,
+        { locale: storefrontContext?.locale, market: storefrontContext?.market },
+      );
 
       // Pobierz profil klienta z SessionDO
       let customerFirstName: string | null = null;
@@ -3141,8 +3164,8 @@ async function streamAssistantResponse(
               shopifyCustomerId: memoryShopifyCustomerId,
               idempotencyKey,
               turns,
-              locale: undefined,
-              market: undefined,
+              locale: commerceContext.locale,
+              market: commerceContext.market,
               channel: storefrontContext?.channel,
               storefrontId: storefrontContext?.storefrontId,
               enqueuedAt: Date.now(),
@@ -3984,7 +4007,11 @@ async function streamAssistantResponse(
                 const brandForMcp = (storefrontContext?.storefrontId === 'kazka' || storefrontContext?.storefrontId === 'zareczyny')
                   ? storefrontContext.storefrontId
                   : brand;
-                return callMcpToolDirect(env, call.name, safeArgs, brandForMcp);
+                return callMcpToolDirect(env, call.name, safeArgs, {
+                  brand: brandForMcp,
+                  sessionCartId: cartId ?? null,
+                  commerceContext,
+                });
               },
             );
 
@@ -3996,6 +4023,9 @@ async function streamAssistantResponse(
               });
             }
             if (call.name === 'search_catalog' && !skippedExecution && !toolResult.error && toolResult.result != null) {
+              catalogSnapshotsForPricing.push(toolResult.result);
+            }
+            if (call.name === 'lookup_catalog' && !skippedExecution && !toolResult.error && toolResult.result != null) {
               catalogSnapshotsForPricing.push(toolResult.result);
             }
 
@@ -4035,6 +4065,13 @@ async function streamAssistantResponse(
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ cart_id: resolvedCartId }),
               });
+              if (!toolResult.error && toolResult.result != null) {
+                const shopDomain = env.SHOP_DOMAIN?.trim();
+                const commerceAction = buildCommerceActionPayload(toolResult.result, shopDomain);
+                if (commerceAction) {
+                  await sendSSE('commerce_action', { commerce_action: commerceAction });
+                }
+              }
             }
 
             if (call.name === 'get_cart' && resolvedCartId) {

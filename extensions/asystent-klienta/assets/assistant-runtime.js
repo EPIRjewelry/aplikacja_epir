@@ -669,42 +669,46 @@ function ensureAssistantFileControls() {
 /* ===== CART INTEGRATION ===== */
 
 /**
- * Pobiera cart_id z Shopify Cart API (localStorage lub /cart.js)
- * Zwraca cart_id w formacie gid://shopify/Cart/xyz lub null
+ * Checkout-first: koszyk Storefront MCP jest utrzymywany w SessionDO workera.
+ * Ajax token z /cart.js nie jest kompatybilny z MCP (brak ?key=) — nie wysyłamy go.
  */
 async function getShopifyCartId() {
+  return null;
+}
+
+function getShopLocale() {
   try {
-    // Shopify cart token jest dostępny w localStorage lub przez /cart.js
-    const cartRes = await fetch('/cart.js', {
-      method: 'GET',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' }
-    });
-    
-    if (!cartRes.ok) {
-      console.warn('Failed to fetch Shopify cart:', cartRes.status);
-      return null;
+    if (typeof window !== 'undefined' && window.Shopify && window.Shopify.locale) {
+      return String(window.Shopify.locale).trim();
     }
-    
-    const cartData = await cartRes.json();
-    // Shopify cart response: { token: "...", items: [...], ... }
-    if (cartData && cartData.token) {
-      // Convert token to GID format
-      return `gid://shopify/Cart/${cartData.token}`;
-    }
-    
-    return null;
-  } catch (err) {
-    // W getShopifyCartId() nie mamy kontekstu wiadomości (message id) ani renderMode.
-    // Zgłaszamy błąd do Analytics i zwracamy null, aby chat mógł kontynuować.
-    console.error('[Assistant] getShopifyCartId error', err);
-    try { 
-      reportUiExtensionError(err, { stage: 'get_cart_id' }); 
-    } catch (e) { 
-      console.warn('reportUiExtensionError failed', e); 
-    }
-    return null;
+  } catch (_e) {}
+  return 'pl';
+}
+
+/**
+ * Stosuje strukturalny event commerce_action z SSE (kanoniczna ścieżka checkout-first).
+ */
+function applyCommerceActionFromSse(parsed, actionsHolder) {
+  if (!parsed || !parsed.commerce_action || typeof parsed.commerce_action !== 'object') {
+    return actionsHolder;
   }
+  const action = parsed.commerce_action;
+  const next = actionsHolder || {
+    hasCheckoutUrl: false,
+    checkoutUrl: null,
+    hasCartUpdate: false,
+    cartItems: [],
+    hasOrderStatus: false,
+    orderDetails: null,
+  };
+  if (action.type === 'cart_updated') {
+    next.hasCartUpdate = true;
+    if (typeof action.checkout_url === 'string' && action.checkout_url.trim()) {
+      next.hasCheckoutUrl = true;
+      next.checkoutUrl = action.checkout_url.trim();
+    }
+  }
+  return next;
 }
 
 /**
@@ -1473,6 +1477,11 @@ async function processSSEStream(
           continue;
         }
 
+        if (parsed.commerce_action) {
+          onUpdate(accumulated, parsed);
+          continue;
+        }
+
         // Nowa obsługa: delta (incremental) lub content (full replacement)
         if (parsed.delta !== undefined) {
           accumulated += parsed.delta;
@@ -1569,11 +1578,12 @@ async function sendMessageToWorker(
   try {
     // Pobierz cart_id z Shopify przed wysłaniem
     const cartId = await getShopifyCartId();
-    console.log('[Assistant] Cart ID:', cartId);
+    console.log('[Assistant] Cart ID (MCP session):', cartId);
     
     const brand = (sectionEl && sectionEl.dataset && sectionEl.dataset.brand) || 'epir';
     const storefrontId = (sectionEl && sectionEl.dataset && sectionEl.dataset.storefrontId) || '';
     const channel = (sectionEl && sectionEl.dataset && sectionEl.dataset.channel) || '';
+    const locale = getShopLocale();
     const parts = [];
     if (text && String(text).trim()) {
       parts.push({ type: 'text', text: String(text).trim() });
@@ -1588,6 +1598,7 @@ async function sendMessageToWorker(
     const body = {
       storefrontId: storefrontId,
       channel: channel,
+      locale: locale,
       message: (text && String(text).trim()) || (attachment ? '' : ''),
       session_id: (() => { try { return sessionStorage.getItem(sessionIdKey); } catch { return null; } })(),
       cart_id: cartId,
@@ -1665,8 +1676,11 @@ async function sendMessageToWorker(
         } // in 'dots' mode we keep the initial '...' until stream completes
         
         // Zapisz akcje do renderowania po zakończeniu streamu
+        lastParsedActions = applyCommerceActionFromSse(parsed, lastParsedActions);
         if (actions.hasCheckoutUrl || actions.hasCartUpdate || actions.hasOrderStatus) {
-          lastParsedActions = actions;
+          lastParsedActions = lastParsedActions
+            ? Object.assign({}, lastParsedActions, actions)
+            : actions;
         }
       });
     } else if (hasStreamAPI && contentType.includes('application/ndjson')) {
@@ -1681,8 +1695,11 @@ async function sendMessageToWorker(
         if (renderMode === 'growing') {
           updateAssistantMessage(msgId, cleanedText);
         }
+        lastParsedActions = applyCommerceActionFromSse(parsed, lastParsedActions);
         if (actions.hasCheckoutUrl || actions.hasCartUpdate || actions.hasOrderStatus) {
-          lastParsedActions = actions;
+          lastParsedActions = lastParsedActions
+            ? Object.assign({}, lastParsedActions, actions)
+            : actions;
         }
       });
     } else {
@@ -1694,8 +1711,11 @@ async function sendMessageToWorker(
       // Parsuj odpowiedź w trybie non-streaming
       const { text: cleanedText, actions } = parseAssistantResponse(accumulated);
       updateAssistantMessage(msgId, cleanedText);
+      lastParsedActions = applyCommerceActionFromSse(data, lastParsedActions);
       if (actions.hasCheckoutUrl || actions.hasCartUpdate || actions.hasOrderStatus) {
-        lastParsedActions = actions;
+        lastParsedActions = lastParsedActions
+          ? Object.assign({}, lastParsedActions, actions)
+          : actions;
       }
       
       if (data.session_id) {

@@ -16,15 +16,15 @@
 
 /**
  * Data source priority for RAG orchestration
- * 
+ *
  * Priority order (highest to lowest):
  * 1. MCP (Shopify Storefront MCP) - real-time product/cart/order data
- * 2. Vectorize (FAQ embeddings) - fallback for policies/FAQ when MCP unavailable
- * 3. Cache (D1) - cached results for performance optimization
- * 
- * MCP is ALWAYS preferred as primary source per architectural guidelines.
+ * 2. Cache (D1) - cached results for performance optimization
+ *
+ * Binding policy text: Vectorize must NOT substitute MCP for store policies/FAQ
+ * (see docs/EPIR_KB_MCP_POLICY_CONTRACT.md).
  */
-export const SOURCE_PRIORITY = ['mcp', 'vectorize', 'cache'] as const;
+export const SOURCE_PRIORITY = ['mcp', 'cache'] as const;
 export type DataSource = typeof SOURCE_PRIORITY[number];
 
 /**
@@ -35,17 +35,11 @@ export type DataSource = typeof SOURCE_PRIORITY[number];
  * @see workers/worker/src/rag.ts for current implementations
  */
 export const MCP_TOOLS = {
-  // Product catalog search
-  SEARCH_CATALOG: 'search_shop_catalog',
-  
-  // Cart operations
+  SEARCH_CATALOG: 'search_catalog',
+  LOOKUP_CATALOG: 'lookup_catalog',
   GET_CART: 'get_cart',
   UPDATE_CART: 'update_cart',
-  
-  // Order operations
   GET_RECENT_ORDER: 'get_most_recent_order_status',
-  
-  // Policies and FAQ (may also use Vectorize fallback)
   SEARCH_POLICIES_FAQ: 'search_shop_policies_and_faqs',
 } as const;
 
@@ -63,9 +57,8 @@ export const MCP_RETRY_CONFIG = {
 
 /**
  * Vectorize configuration
- * 
- * Used for FAQ/policies similarity search when MCP is unavailable
- * or for semantic search that MCP doesn't support.
+ *
+ * Used for non-binding semantic memory (not store policy text).
  */
 export const VECTORIZE_CONFIG = {
   // Embedding model for queries (Cloudflare AI binding)
