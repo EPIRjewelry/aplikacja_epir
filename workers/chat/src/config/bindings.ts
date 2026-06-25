@@ -68,6 +68,7 @@ export type BigQueryBatchRpcStub = {
       partial: boolean;
       pipeline_error?: string;
     } | null;
+    catchUp?: { runs: number; lastPending: number; pipelineError?: string };
   }>;
 };
 

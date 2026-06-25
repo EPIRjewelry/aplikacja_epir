@@ -69,7 +69,7 @@ describe('Shop MCP search_shop_policies_and_faqs', () => {
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(3);
   });
 
-  it('does not multi-retry search_catalog on AbortError (uses catalog fallback path)', async () => {
+  it('retries search_catalog once on AbortError then returns catalog fallback', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
@@ -91,6 +91,6 @@ describe('Shop MCP search_shop_policies_and_faqs', () => {
       products: [],
       system_note: expect.stringContaining('niedostępny'),
     });
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
   });
 });

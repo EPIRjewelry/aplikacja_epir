@@ -17,8 +17,7 @@ export const meta: MetaFunction<typeof loader> = ({data}) => {
 };
 
 export async function loader({context, request}: LoaderFunctionArgs) {
-  const configuredChatApiUrl = context.env.CHAT_API_URL as string | undefined;
-  const chatApiUrl = resolveChatApiUrl(configuredChatApiUrl);
+  const chatApiUrl = resolveChatApiUrl(context.env.CHAT_API_URL);
   const cartId = await context.session.get('cartId');
   const brand = (context.env.BRAND as string) || 'kazka';
   const route = new URL(request.url).pathname;

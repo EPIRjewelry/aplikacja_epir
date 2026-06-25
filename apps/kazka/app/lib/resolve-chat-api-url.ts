@@ -1,7 +1,6 @@
 /**
- * Hydrogen (kazka) wysyła czat na same-origin `POST /api/chat`,
- * a resource route robi S2S proxy do workera z wymaganym sekretem.
+ * Hydrogen (kazka) — same-origin `POST /api/chat`; BFF proxy do workera z sekretem S2S.
  */
-export function resolveChatApiUrl(_configured: string | undefined): string {
+export function resolveChatApiUrl(_configured?: string): string {
   return '/api/chat';
 }

@@ -25,7 +25,13 @@ import {
 } from './utils/jsonrpc';
 import type { Env } from './index';
 import { TOOL_SCHEMAS } from './mcp_tools';
-import { normalizeCartId, isValidCartGid } from './utils/cart';
+import { normalizeCartId, isValidCartGid, parseCartGid } from './utils/cart';
+import { injectSessionCartIdIntoArgs } from './utils/commerce-result';
+import {
+  mergeCatalogCommerceContext,
+  resolveCommerceContext,
+  type CommerceContext,
+} from './config/commerce-context';
 import { getSizeTable } from './size-table';
 import { compactCatalogResult } from './mcp/catalog-result-compact';
 import { getAccessTokenFromServiceAccount, clearAccessTokenCache } from './utils/google-auth';
@@ -60,6 +66,7 @@ const MCP_GOOGLE_AUTH_MAX_ATTEMPTS = 2;
 /** Policies/FAQ search przez Shop MCP bywa wolniejsze niż katalog — krótki timeout powodował AbortError. */
 const MCP_POLICIES_TIMEOUT_MS = 15000;
 const MCP_POLICIES_MAX_ATTEMPTS = 3;
+const MCP_CATALOG_MAX_ATTEMPTS = 2;
 
 const CATALOG_FALLBACK = {
   products: [],
@@ -138,7 +145,11 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-function normalizeSearchCatalogArgs(raw: any, brand?: string): Record<string, unknown> {
+function normalizeSearchCatalogArgs(
+  raw: any,
+  brand?: string,
+  commerce?: CommerceContext,
+): Record<string, unknown> {
   const source = raw && typeof raw === 'object' ? { ...raw } : {};
   const normalized: Record<string, unknown> = {};
   if (source.meta && typeof source.meta === 'object') {
@@ -172,7 +183,10 @@ function normalizeSearchCatalogArgs(raw: any, brand?: string): Record<string, un
   if (brand === 'zareczyny' && isNonEmptyString(context.intent)) {
     context.intent = `${context.intent} w kontekście pierścionków zaręczynowych`;
   }
-  catalog.context = context;
+  const mergedContext = commerce
+    ? mergeCatalogCommerceContext(context as Record<string, unknown>, commerce)
+    : context;
+  catalog.context = mergedContext;
 
   const pagination = catalog.pagination && typeof catalog.pagination === 'object'
     ? { ...(catalog.pagination as Record<string, unknown>) }
@@ -401,7 +415,25 @@ function normalizeCartArgs(raw: any, sessionCartKey?: string): any {
   return args;
 }
 
-async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: string): Promise<{ result?: any; error?: any }> {
+export type CallShopMcpOptions = {
+  brand?: string;
+  /** Cart GID z SessionDO — wstrzykiwany gdy model / klient nie podał poprawnego cart_id. */
+  sessionCartId?: string | null;
+  commerceContext?: CommerceContext;
+};
+
+async function callShopMcp(
+  env: Env,
+  toolName: string,
+  rawArgs: any,
+  options?: CallShopMcpOptions | string,
+): Promise<{ result?: any; error?: any }> {
+  const brand = typeof options === 'string' ? options : options?.brand;
+  const sessionCartId = typeof options === 'string' ? undefined : options?.sessionCartId;
+  const commerceContext =
+    typeof options === 'string'
+      ? resolveCommerceContext(brand)
+      : (options?.commerceContext ?? resolveCommerceContext(brand));
   const internalDashboardOnly = new Set([
     'run_analytics_query',
     'fetch_marketing_preview',
@@ -427,14 +459,50 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
     return { error: { code: -32602, message: 'SHOP_DOMAIN not configured' } };
   }
 
+  const sessionCartKey =
+    sessionCartId && typeof sessionCartId === 'string'
+      ? (parseCartGid(sessionCartId)?.key ?? undefined)
+      : undefined;
+
   // Normalize arguments based on tool type
   let args: any;
   if (toolName === 'search_catalog') {
-    args = normalizeSearchCatalogArgs(rawArgs, brand);
+    args = normalizeSearchCatalogArgs(rawArgs, brand, commerceContext);
+  } else if (toolName === 'lookup_catalog' || toolName === 'get_product') {
+    const source = rawArgs && typeof rawArgs === 'object' ? { ...(rawArgs as Record<string, unknown>) } : {};
+    const catalog =
+      source.catalog && typeof source.catalog === 'object'
+        ? { ...(source.catalog as Record<string, unknown>) }
+        : {};
+    catalog.context = mergeCatalogCommerceContext(
+      catalog.context as Record<string, unknown> | undefined,
+      commerceContext,
+    );
+    source.catalog = catalog;
+    args = source;
   } else if (toolName === 'update_cart') {
-    args = normalizeUpdateCartArgs(rawArgs ?? {});
+    const withSession = injectSessionCartIdIntoArgs(
+      toolName,
+      rawArgs && typeof rawArgs === 'object' ? { ...rawArgs } : {},
+      sessionCartId,
+    );
+    args = normalizeUpdateCartArgs(withSession, sessionCartKey);
   } else if (toolName === 'get_cart') {
-    args = normalizeCartArgs(rawArgs ?? {});
+    const withSession = injectSessionCartIdIntoArgs(
+      toolName,
+      rawArgs && typeof rawArgs === 'object' ? { ...rawArgs } : {},
+      sessionCartId,
+    );
+    args = normalizeCartArgs(withSession, sessionCartKey);
+  } else if (toolName === 'search_shop_policies_and_faqs') {
+    const source = rawArgs && typeof rawArgs === 'object' ? { ...(rawArgs as Record<string, unknown>) } : {};
+    if (!isNonEmptyString(source.locale)) {
+      source.locale = commerceContext.locale;
+    }
+    if (!isNonEmptyString(source.market)) {
+      source.market = commerceContext.market;
+    }
+    args = source;
   } else {
     args = rawArgs ?? {};
   }
@@ -458,6 +526,8 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
 
   const endpoint = getMcpEndpoint(env) || `https://${String(shopDomain).replace(/\/$/, '')}/api/mcp`;
   const isPoliciesTool = toolName === 'search_shop_policies_and_faqs';
+  const isCatalogTool =
+    toolName === 'search_catalog' || toolName === 'lookup_catalog' || toolName === 'get_product';
   const timeoutMs = isPoliciesTool ? MCP_POLICIES_TIMEOUT_MS : MCP_TIMEOUT_MS;
 
   const mayUseGoogleAuth =
@@ -467,9 +537,11 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
 
   const maxFetchAttempts = isPoliciesTool
     ? MCP_POLICIES_MAX_ATTEMPTS
-    : googleAuthWithRetry
-      ? MCP_GOOGLE_AUTH_MAX_ATTEMPTS
-      : 1;
+    : isCatalogTool
+      ? MCP_CATALOG_MAX_ATTEMPTS
+      : googleAuthWithRetry
+        ? MCP_GOOGLE_AUTH_MAX_ATTEMPTS
+        : 1;
 
   try {
     let res: Response | undefined;
@@ -536,7 +608,11 @@ async function callShopMcp(env: Env, toolName: string, rawArgs: any, brand?: str
           maxAttempts: maxFetchAttempts,
           error: errMsg,
         });
-        if (attempt < maxFetchAttempts && isPoliciesTool && shouldRetryPoliciesMcpFetch(err)) {
+        if (
+          attempt < maxFetchAttempts &&
+          (isPoliciesTool || isCatalogTool) &&
+          shouldRetryPoliciesMcpFetch(err)
+        ) {
           await sleepMs(100 * attempt);
           continue;
         }
@@ -648,8 +724,18 @@ export async function handleToolsCall(env: any, request: Request): Promise<Respo
 /**
  * Direct MCP tool call without HTTP - for internal calls
  */
-export async function callMcpToolDirect(env: any, toolName: string, args: any, brand?: string): Promise<any> {
-  const { result, error } = await callShopMcp(env, toolName, args, brand);
+export async function callMcpToolDirect(
+  env: any,
+  toolName: string,
+  args: any,
+  brandOrOptions?: string | CallShopMcpOptions,
+  legacySessionCartId?: string | null,
+): Promise<any> {
+  const options: CallShopMcpOptions =
+    typeof brandOrOptions === 'string'
+      ? { brand: brandOrOptions, sessionCartId: legacySessionCartId }
+      : (brandOrOptions ?? { sessionCartId: legacySessionCartId });
+  const { result, error } = await callShopMcp(env, toolName, args, options);
   if (error) return { error };
   return { result };
 }

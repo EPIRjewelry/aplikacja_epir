@@ -113,6 +113,46 @@ export const TOOL_SCHEMAS = {
     }
   },
 
+  lookup_catalog: {
+    name: 'lookup_catalog',
+    description:
+      'Look up a single product by handle, product GID, or variant GID (UCP catalog). Use after search_catalog when the buyer asks for details on one item.',
+    parameters: {
+      type: 'object',
+      properties: {
+        catalog: {
+          type: 'object',
+          description: 'Lookup parameters — provide handle and/or product_id / variant_id.',
+          properties: {
+            handle: { type: 'string', description: 'Product handle from the storefront URL.' },
+            product_id: { type: 'string', description: 'Shopify product GID.' },
+            variant_id: { type: 'string', description: 'Shopify product variant GID.' },
+            context: {
+              type: 'object',
+              properties: {
+                language: { type: 'string' },
+                currency: { type: 'string' },
+                address_country: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+      required: ['catalog'],
+    },
+  },
+
+  get_most_recent_order_status: {
+    name: 'get_most_recent_order_status',
+    description:
+      'Get the status of the logged-in customer\'s most recent order. Use when the buyer asks about their last order or delivery. Requires customer to be logged in.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+
   get_size_table: {
     name: 'get_size_table',
     description: 'Pobiera tabelę rozmiarów pierścionków (PL/US/UK/średnica mm/obwód mm). Użyj gdy klient pyta o rozmiar pierścionka, jak zmierzyć palec, lub prosi o przeliczenie rozmiaru.',
@@ -433,6 +473,31 @@ export const TOOL_SCHEMAS_SLIM = {
       },
       required: ['query'],
     },
+  },
+
+  lookup_catalog: {
+    name: 'lookup_catalog',
+    description: 'Szczegóły jednego produktu po handle lub GID (UCP).',
+    parameters: {
+      type: 'object',
+      properties: {
+        catalog: {
+          type: 'object',
+          properties: {
+            handle: { type: 'string' },
+            product_id: { type: 'string' },
+            variant_id: { type: 'string' },
+          },
+        },
+      },
+      required: ['catalog'],
+    },
+  },
+
+  get_most_recent_order_status: {
+    name: 'get_most_recent_order_status',
+    description: 'Status ostatniego zamówienia zalogowanego klienta.',
+    parameters: { type: 'object', properties: {}, required: [] },
   },
 
   get_size_table: {
