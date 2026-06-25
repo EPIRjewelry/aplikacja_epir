@@ -29,6 +29,8 @@ import {
   getConsentSessionId,
   type CommerceAction,
   createRevalidateScheduler,
+  applyStorefrontCommerceAction,
+  mountShopSignInButton,
 } from '@epir/ui';
 import type {PersonaUi} from '@epir/ui';
 import {Analytics, getSeoMeta, getShopAnalytics, Storefront, useNonce} from '@shopify/hydrogen';
@@ -172,6 +174,7 @@ export async function loader({context, request}: LoaderFunctionArgs) {
     channel: ZARECZYNY_CHANNEL,
     route,
     shopDomain: new URL(request.url).host,
+    shopifyClientId: (context.env.PUBLIC_SHOPIFY_CLIENT_ID as string | undefined)?.trim() || undefined,
     shopAnalytics,
     analyticsConsent,
   });
@@ -215,6 +218,7 @@ function ZareczynyConsentAndChat({
   shopDomain,
   analyticsConsent,
   privacyPolicyUrl,
+  shopifyClientId,
 }: {
   chatApiUrl: string;
   cartId?: string | null;
@@ -225,6 +229,7 @@ function ZareczynyConsentAndChat({
   route?: string;
   shopDomain: string;
   privacyPolicyUrl?: string;
+  shopifyClientId?: string;
   analyticsConsent: {
     checkoutDomain: string;
     storefrontAccessToken: string;
@@ -250,6 +255,7 @@ function ZareczynyConsentAndChat({
 
   const onCommerceAction = useCallback(
     (action: CommerceAction) => {
+      void applyStorefrontCommerceAction(action);
       if (action.cart_id?.startsWith('gid://shopify/Cart/')) {
         cartFetcher.submit(
           {cartAction: 'SYNC_CART_ID', cartId: action.cart_id},
@@ -260,6 +266,21 @@ function ZareczynyConsentAndChat({
     },
     [cartFetcher],
   );
+
+  useEffect(() => {
+    if (!shopifyClientId?.trim() || !consentGranted) return;
+    let cleanup: (() => void) | undefined;
+    void mountShopSignInButton({
+      apiKey: shopifyClientId.trim(),
+      locale: analyticsConsent.language ?? 'pl',
+      mountSelector: '#epir-shop-sign-in-mount-zareczyny',
+    }).then((fn) => {
+      cleanup = fn;
+    });
+    return () => {
+      cleanup?.();
+    };
+  }, [shopifyClientId, consentGranted, analyticsConsent.language]);
 
   useEffect(() => {
     if (getStoredConsent(ZARECZYNY_CONSENT_STORAGE_KEY) === true) {
@@ -375,6 +396,11 @@ function ZareczynyConsentAndChat({
           consentGranted={consentGranted}
         />
       ) : null}
+      <div
+        id="epir-shop-sign-in-mount-zareczyny"
+        className="fixed bottom-24 right-4 z-40"
+        aria-label="Sign in with Shop"
+      />
       <ChatWidget
         chatApiUrl={chatApiUrl}
         cartId={cartId}
@@ -438,6 +464,7 @@ export default function App() {
         route={data.route}
         shopDomain={data.shopDomain}
         privacyPolicyUrl={data.privacyPolicyUrl}
+        shopifyClientId={data.shopifyClientId}
         analyticsConsent={data.analyticsConsent}
       />
     </>

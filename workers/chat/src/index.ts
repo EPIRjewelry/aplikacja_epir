@@ -4022,10 +4022,16 @@ async function streamAssistantResponse(
                 error: (toolResult as any)?.error,
               });
             }
-            if (call.name === 'search_catalog' && !skippedExecution && !toolResult.error && toolResult.result != null) {
-              catalogSnapshotsForPricing.push(toolResult.result);
-            }
-            if (call.name === 'lookup_catalog' && !skippedExecution && !toolResult.error && toolResult.result != null) {
+            if (
+              (call.name === 'search_catalog' ||
+                call.name === 'catalog_search' ||
+                call.name === 'catalog_image_search' ||
+                call.name === 'catalog_lookup' ||
+                call.name === 'lookup_catalog') &&
+              !skippedExecution &&
+              !toolResult.error &&
+              toolResult.result != null
+            ) {
               catalogSnapshotsForPricing.push(toolResult.result);
             }
 
@@ -4873,6 +4879,18 @@ export default {
     // Healthcheck
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/ping' || url.pathname === '/health')) {
       return new Response('ok', { status: 200, headers: cors(env, request) });
+    }
+
+    if (request.method === 'GET' && url.pathname === '/.well-known/ucp-agent-profile.json') {
+      const { buildUcpAgentProfileJson } = await import('./catalog/ucp-agent-profile');
+      return new Response(JSON.stringify(buildUcpAgentProfileJson(env)), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+          ...cors(env, request),
+        },
+      });
     }
 
     const operatorStudio = await handleOperatorStudioIngress(request, env, ctx, url, method);

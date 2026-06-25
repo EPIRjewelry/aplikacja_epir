@@ -94,6 +94,69 @@ export const TOOL_SCHEMAS = {
     }
   },
 
+  catalog_search: {
+    name: 'catalog_search',
+    description:
+      'Search the store catalog via Storefront Catalog MCP (UCP /api/ucp/mcp). Prefer for product discovery. Same pricing rules as search_catalog — quote price_display_pl only.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Free-text search query.' },
+        catalog: {
+          type: 'object',
+          properties: {
+            query: { type: 'string' },
+            context: { type: 'object' },
+            filters: { type: 'object' },
+            pagination: { type: 'object' },
+          },
+        },
+      },
+    },
+  },
+
+  catalog_lookup: {
+    name: 'catalog_lookup',
+    description:
+      'Batch lookup up to 10 product or variant GIDs via Storefront Catalog MCP (UCP).',
+    parameters: {
+      type: 'object',
+      properties: {
+        ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Product or variant GIDs (max 10).',
+        },
+        catalog: {
+          type: 'object',
+          properties: {
+            ids: { type: 'array', items: { type: 'string' } },
+            context: { type: 'object' },
+          },
+        },
+      },
+    },
+  },
+
+  catalog_image_search: {
+    name: 'catalog_image_search',
+    description:
+      'Visual or multimodal catalog search (UCP catalog.like). Pass image_base64 or reference_id; optional query for multimodal intent.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Optional text intent alongside image.' },
+        image_base64: { type: 'string', description: 'Base64 image bytes (no data: prefix).' },
+        image_content_type: { type: 'string', description: 'MIME type, e.g. image/jpeg.' },
+        reference_id: {
+          type: 'string',
+          description: 'Product or variant GID for similarity search.',
+        },
+        catalog: { type: 'object' },
+      },
+    },
+  },
+
   search_shop_policies_and_faqs: {
     name: 'search_shop_policies_and_faqs',
     description: 'Answer questions about the store\'s policies, products, and services. Use for questions about shipping, returns, refunds, FAQs, and store information.',
@@ -459,6 +522,51 @@ export const TOOL_SCHEMAS_SLIM = {
         },
       },
       required: ['catalog'],
+    },
+  },
+
+  catalog_search: {
+    name: 'catalog_search',
+    description: 'Szuka produktów (UCP Catalog MCP). Cytuj price_display_pl.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+        catalog: {
+          type: 'object',
+          properties: {
+            query: { type: 'string' },
+            context: { type: 'object' },
+            pagination: { type: 'object' },
+          },
+        },
+      },
+    },
+  },
+
+  catalog_lookup: {
+    name: 'catalog_lookup',
+    description: 'Lookup batch do 10 GID (UCP Catalog MCP).',
+    parameters: {
+      type: 'object',
+      properties: {
+        ids: { type: 'array', items: { type: 'string' } },
+        catalog: { type: 'object' },
+      },
+    },
+  },
+
+  catalog_image_search: {
+    name: 'catalog_image_search',
+    description: 'Wyszukiwanie wizualne (catalog.like + opcjonalny query).',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+        image_base64: { type: 'string' },
+        image_content_type: { type: 'string' },
+        reference_id: { type: 'string' },
+      },
     },
   },
 

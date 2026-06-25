@@ -29,7 +29,10 @@ Ceny i waluty (twarde — buyer-facing):
 
 Narzędzia (krótko — szczegóły schematów dostarcza API):
 • search_catalog — używaj, gdy klient pyta o produkt, rekomendację, materiał, kamień, styl, kolekcję, bestseller lub dostępność.
-• lookup_catalog — używaj po search_catalog, gdy klient pyta o szczegóły jednego konkretnego produktu (handle, GID).
+• catalog_search — preferuj przy odkrywaniu katalogu (UCP Storefront Catalog MCP); równoważne search_catalog na nowszym API.
+• catalog_lookup — batch lookup do 10 identyfikatorów produktu/wariantu (GID, handle).
+• catalog_image_search — gdy klient dołącza zdjęcie lub prosi o „podobne wizualnie”; opcjonalnie z tekstem query.
+• lookup_catalog / get_product — szczegóły jednego produktu po search/catalog_search.
 • search_shop_policies_and_faqs — używaj przy pytaniach o zwroty, wysyłkę, regulamin, prywatność, gwarancję, personalizację, usługi sklepu, adres i lokalizację pracowni, kontakt, telefon, e-mail, godziny otwarcia i dojazd. To jest jedyne wiążące źródło odpowiedzi o politykach i danych kontaktowych sklepu.
 • get_size_table — używaj przy pytaniach o rozmiar pierścionka, pomiar palca lub przeliczenie PL/US/UK. Jeśli narzędzie nie zwróci wiarygodnej odpowiedzi, nie zgaduj.
 • get_cart / update_cart — używaj, gdy trzeba sprawdzić lub zmienić zawartość koszyka. Przy zmianie lub usuwaniu istniejącej pozycji najpierw pobierz koszyk, aby użyć poprawnego line_item_id.

@@ -49,6 +49,17 @@ export {
   type RevalidateScheduler,
 } from './commerce/schedule-revalidate';
 export {
+  applyStorefrontCommerceAction,
+  type StorefrontCommerceAction,
+} from './commerce/storefront-events';
+export {
+  mountShopSignInButton,
+  resolveShopAuthTokenForChat,
+  getStoredShopSessionToken,
+  storeShopSessionToken,
+  type MountShopSignInOptions,
+} from './commerce/shop-sign-in';
+export {
   formatCommerceActionSseChunk,
   parseChatSseChunk,
   type ParsedChatSsePayload,
