@@ -378,6 +378,13 @@ function readFileAsBase64Data(file: File): Promise<string> {
   });
 }
 
+export type CommerceAction = {
+  type: 'cart_updated';
+  cart_id: string | null;
+  checkout_url: string | null;
+  line_count: number | null;
+};
+
 export type ChatWidgetProps = {
   chatApiUrl: string;
   cartId?: string | null;
@@ -389,6 +396,7 @@ export type ChatWidgetProps = {
   /** Z loadera kanału headless — zawsze w body POST. */
   channel: string;
   route?: string;
+  locale?: string;
   /**
    * Consent Gate: gdy `false`, widget nie wysyła wiadomości (transport SSE bez zmian).
    * `undefined` — bez blokady (kompatybilność wsteczna).
@@ -399,6 +407,8 @@ export type ChatWidgetProps = {
    * (np. integracja z Hydrogen Customer Account API w przyszłości).
    */
   getSessionToken?: () => Promise<string | null | undefined>;
+  /** Wywoływane po strukturalnym evencie SSE `commerce_action` z workera czatu. */
+  onCommerceAction?: (action: CommerceAction) => void;
 };
 
 function ChatWidgetFallback({
@@ -409,8 +419,10 @@ function ChatWidgetFallback({
   storefrontId,
   channel,
   route,
+  locale,
   consentGranted,
   getSessionToken,
+  onCommerceAction,
   isOpen,
   onToggle,
 }: {
@@ -421,8 +433,10 @@ function ChatWidgetFallback({
   storefrontId: string;
   channel: string;
   route?: string;
+  locale?: string;
   consentGranted?: boolean;
   getSessionToken?: () => Promise<string | null | undefined>;
+  onCommerceAction?: (action: CommerceAction) => void;
   isOpen: boolean;
   onToggle: () => void;
 }) {
@@ -582,6 +596,7 @@ function ChatWidgetFallback({
           session_id: sessionId || undefined,
           cart_id: cartId ?? undefined,
           brand,
+          locale: locale ?? (typeof document !== 'undefined' ? document.documentElement.lang : undefined) ?? 'pl',
           stream: true,
           ...(route ? {route} : {}),
           ...(typeof window !== 'undefined' ? {path: window.location.pathname} : {}),
@@ -653,9 +668,13 @@ function ChatWidgetFallback({
                     delta?: string;
                     content?: string;
                     done?: boolean;
+                    commerce_action?: CommerceAction;
                   };
                   if (parsed.session_id) {
                     sessionStorage.setItem(SESSION_ID_KEY, parsed.session_id);
+                  }
+                  if (parsed.commerce_action && onCommerceAction) {
+                    onCommerceAction(parsed.commerce_action);
                   }
                   if (parsed.error) throw new Error(parsed.error);
                   if (parsed.delta) {
@@ -746,8 +765,10 @@ function ChatWidgetFallback({
       messagingAllowed,
       pendingImage,
       route,
+      locale,
       storefrontId,
       getSessionToken,
+      onCommerceAction,
     ],
   );
 
@@ -907,8 +928,10 @@ export function ChatWidget({
   storefrontId,
   channel,
   route,
+  locale,
   consentGranted,
   getSessionToken,
+  onCommerceAction,
 }: ChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const personaUi = {...DEFAULT_PERSONA_UI, ...personaUiProp};
@@ -945,8 +968,10 @@ export function ChatWidget({
       storefrontId={storefrontId}
       channel={channel}
       route={route}
+      locale={locale}
       consentGranted={consentGranted}
       getSessionToken={getSessionToken}
+      onCommerceAction={onCommerceAction}
       isOpen={isOpen}
       onToggle={() => setIsOpen((o) => !o)}
     />
