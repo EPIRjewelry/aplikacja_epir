@@ -16,14 +16,15 @@ describe('getR2AnalyticsSql', () => {
     expect(() => getR2AnalyticsSql({ WAREHOUSE_SQL_NAMESPACE: 'bad-ns!' }, 'Q2_CONVERSION_PATHS')).toThrow();
   });
 
-  it('Q4/Q5 allow COALESCE(page_url, url) for pipeline lag; still no payload', () => {
+  it('Q4/Q5 use page_url only (D-02); no stream url/payload', () => {
     const env = {};
     const q4 = getR2AnalyticsSql(env, 'Q4_STOREFRONT_SEGMENTATION')!;
     const q5 = getR2AnalyticsSql(env, 'Q5_TOP_PRODUCTS')!;
-    expect(q4).toContain('COALESCE(page_url, url)');
+    expect(q4).toContain('page_url');
+    expect(q4).not.toMatch(/\burl\b/);
     expect(q4).not.toContain('payload');
-    expect(q5).toContain('COALESCE(NULLIF(trim(page_url)');
-    expect(q5).toContain('url');
+    expect(q5).toContain('page_url');
+    expect(q5).not.toMatch(/\burl\b/);
     expect(q5).not.toContain('payload');
     expect(q5).not.toMatch(/json_get_str\s*\(\s*payload/);
   });

@@ -5,8 +5,8 @@
  * **Kontrakt odczytu (prod):** tabela pixel (np. `analytics.epir_pixel_events_raw`) ma układ
  * spłaszczony z D1 / pipeline (m.in. `page_url`, `referrer_url`, `session_id`, `event_type`,
  * `created_at`; opcjonalnie `product_id` / `product_title` gdy pipeline je mapuje) — **bez**
- * kolumn stream ingest `url` / `payload` jako SSOT. SQL używa `page_url` z
- * `COALESCE(page_url, url)` w Q5 gdy pipeline jeszcze ma surową kolumnę `url`.
+ * kolumn stream ingest `url` / `payload` jako SSOT. SQL używa wyłącznie `page_url`
+ * (pipeline: `url AS page_url`).
  *
  * **R2 SQL:** brak `SELECT DISTINCT` i `COUNT(DISTINCT …)` — używaj `GROUP BY` oraz
  * `approx_distinct()` (jak w `workers/analytics/src/cqrs/r2-warehouse-query.ts`).
@@ -100,16 +100,16 @@ GROUP BY content ORDER BY occurrence_count DESC LIMIT 20
 
   Q4_STOREFRONT_SEGMENTATION: (P) => `
 SELECT CASE
-  WHEN COALESCE(page_url, url) LIKE '%kazka%' THEN 'kazka'
-  WHEN COALESCE(page_url, url) LIKE '%zareczyny%' THEN 'zareczyny'
+  WHEN page_url LIKE '%kazka%' THEN 'kazka'
+  WHEN page_url LIKE '%zareczyny%' THEN 'zareczyny'
   ELSE 'online-store'
 END AS storefront_inferred,
   event_type, COUNT(*) AS event_count
 FROM ${P}
 WHERE CAST(created_at AS TIMESTAMP) >= now() - INTERVAL '30' DAY
 GROUP BY CASE
-  WHEN COALESCE(page_url, url) LIKE '%kazka%' THEN 'kazka'
-  WHEN COALESCE(page_url, url) LIKE '%zareczyny%' THEN 'zareczyny'
+  WHEN page_url LIKE '%kazka%' THEN 'kazka'
+  WHEN page_url LIKE '%zareczyny%' THEN 'zareczyny'
   ELSE 'online-store'
 END, event_type
 ORDER BY storefront_inferred, event_count DESC
@@ -117,14 +117,14 @@ ORDER BY storefront_inferred, event_count DESC
 
   Q5_TOP_PRODUCTS: (P) => `
 SELECT
-  COALESCE(NULLIF(trim(page_url), ''), NULLIF(trim(url), '')) AS product_id,
-  COALESCE(NULLIF(trim(page_url), ''), NULLIF(trim(url), '')) AS product_title,
+  page_url AS product_id,
+  page_url AS product_title,
   COUNT(*) AS view_count
 FROM ${P}
 WHERE event_type = 'product_viewed'
   AND CAST(created_at AS TIMESTAMP) >= now() - INTERVAL '30' DAY
-  AND COALESCE(NULLIF(trim(page_url), ''), NULLIF(trim(url), ''), '') <> ''
-GROUP BY COALESCE(NULLIF(trim(page_url), ''), NULLIF(trim(url), ''))
+  AND page_url IS NOT NULL AND trim(page_url) <> ''
+GROUP BY page_url
 ORDER BY view_count DESC
 LIMIT 20
 `,
