@@ -9,7 +9,7 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 // Logs prefix: [WAREHOUSE_BATCH]
 // ============================================================================
 
-import { getR2AnalyticsSql, VALID_QUERY_IDS } from './analytics-queries';
+import { getR2AnalyticsSql, getQ9ToolUsageFallbackSql, isMissingIcebergNameColumnError, VALID_QUERY_IDS } from './analytics-queries';
 import { PIXEL_CREATED_AT_MS_SQL, pixelCreatedAtIso, pixelCreatedAtMs } from './d1-timestamps';
 import { buildFlowHealthReport } from './edog-flow-health-runner';
 import { buildEdogNarrative } from './edog-reason-narrative';
@@ -17,6 +17,7 @@ import { runOperatorDailyReport } from './operator-daily-report';
 import { runWarehouseExportCatchUp } from './warehouse-export-catchup';
 import { postPipelineIngestBatch } from './pipeline-ingest';
 import { isR2SqlQueryConfigured, runR2SqlJob } from './r2-sql-client';
+import { epirDebugLog } from './epir-debug-log';
 
 interface Env {
   DB: D1Database;
@@ -65,12 +66,21 @@ async function probeQ1ForEdog(env: Env): Promise<{
   rowCount: number | null;
   skipped: boolean;
   error?: string;
+  totalPixelSessions?: number | null;
 }> {
   const result = await executeRunAnalyticsQuery(env, { queryId: 'Q1_CONVERSION_CHAT' });
   if (!result.ok) {
     return { rowCount: null, skipped: false, error: result.error };
   }
-  return { rowCount: result.rows.length, skipped: false };
+  const first = result.rows[0];
+  const raw = first?.total_pixel_sessions;
+  const totalPixelSessions =
+    typeof raw === 'number' && Number.isFinite(raw)
+      ? raw
+      : typeof raw === 'string' && raw.trim() !== '' && Number.isFinite(Number(raw))
+        ? Number(raw)
+        : null;
+  return { rowCount: result.rows.length, skipped: false, totalPixelSessions };
 }
 
 async function runEdogHealthMonitor(env: Env): Promise<void> {
@@ -126,62 +136,57 @@ async function exportPixelEvents(
   if (!pipelineUrl) {
     return { exported: 0, maxTimestamp: lastExportAt };
   }
-  const stmt = env.DB.prepare(
-    `SELECT * FROM pixel_events WHERE ${PIXEL_CREATED_AT_MS_SQL} > ?1 ORDER BY ${PIXEL_CREATED_AT_MS_SQL} ASC LIMIT ?2`,
-  ).bind(lastExportAt, MAX_PIXEL_ROWS_PER_RUN);
-  const result = await stmt.all<Record<string, unknown>>();
-  const rows = result.results ?? [];
-  if (rows.length === 0) return { exported: 0, maxTimestamp: lastExportAt };
+  try {
+    const stmt = env.DB.prepare(
+      `SELECT * FROM pixel_events WHERE ${PIXEL_CREATED_AT_MS_SQL} > ?1 ORDER BY ${PIXEL_CREATED_AT_MS_SQL} ASC LIMIT ?2`,
+    ).bind(lastExportAt, MAX_PIXEL_ROWS_PER_RUN);
+    const result = await stmt.all<Record<string, unknown>>();
+    const rows = result.results ?? [];
+    if (rows.length === 0) return { exported: 0, maxTimestamp: lastExportAt };
 
-  let totalInserted = 0;
-  let maxTs = lastExportAt;
+    let totalInserted = 0;
+    let maxTs = lastExportAt;
 
-  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-    const chunk = rows.slice(i, i + BATCH_SIZE);
-    const records = chunk.map((r) => {
-      const pageUrl = String(r.page_url ?? '').trim();
-      return {
-        event_type: r.event_type,
-        session_id: r.session_id,
-        customer_id: r.customer_id,
-        storefront_id: r.storefront_id ?? null,
-        channel: r.channel ?? null,
-        // Stream schema: `url` required — puste page_url w D1 (~legacy) → placeholder (inaczej ingest odrzuca cały batch).
-        url: pageUrl || 'https://epir.local/unknown',
-        payload: JSON.stringify(r),
-        created_at: pixelCreatedAtIso(r.created_at),
-      };
-    });
+    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+      const chunk = rows.slice(i, i + BATCH_SIZE);
+      const records = chunk.map((r) => {
+        const pageUrl = String(r.page_url ?? '').trim();
+        return {
+          event_type: r.event_type,
+          session_id: r.session_id,
+          customer_id: r.customer_id,
+          storefront_id: r.storefront_id ?? null,
+          channel: r.channel ?? null,
+          // Stream schema: `url` required — puste page_url w D1 (~legacy) → placeholder (inaczej ingest odrzuca cały batch).
+          url: pageUrl || 'https://epir.local/unknown',
+          payload: JSON.stringify(r),
+          created_at: pixelCreatedAtIso(r.created_at),
+        };
+      });
 
-    const pr = await postPipelineIngestBatch(pipelineUrl, undefined, records);
-    if (!pr.ok) {
-      console.error(`[WAREHOUSE_BATCH] pixel_events Pipeline chunk failed at offset ${i}:`, pr);
-      agentDebugLog(
-        'bigquery-batch/index.ts:exportPixelEvents',
-        'pipeline_chunk_failed',
-        {
-          stream: 'pixel',
-          offset: i,
-          status: pr.status,
-          bodyPreview: pr.body.slice(0, 200),
-        },
-        'H4',
-      );
-      return {
-        exported: totalInserted,
-        maxTimestamp: maxTs,
-        pipelineError: `pixel ingest HTTP ${pr.status}: ${pr.body.slice(0, 120)}`,
-      };
+      const pr = await postPipelineIngestBatch(pipelineUrl, undefined, records);
+      if (!pr.ok) {
+        console.error(`[WAREHOUSE_BATCH] pixel_events Pipeline chunk failed at offset ${i}:`, pr);
+        return {
+          exported: totalInserted,
+          maxTimestamp: maxTs,
+          pipelineError: `pixel ingest HTTP ${pr.status}: ${pr.body.slice(0, 120)}`,
+        };
+      }
+
+      totalInserted += chunk.length;
+      for (const r of chunk) {
+        const ts = pixelCreatedAtMs(r.created_at);
+        if (ts > maxTs) maxTs = ts;
+      }
     }
 
-    totalInserted += chunk.length;
-    for (const r of chunk) {
-      const ts = pixelCreatedAtMs(r.created_at);
-      if (ts > maxTs) maxTs = ts;
-    }
+    return { exported: totalInserted, maxTimestamp: maxTs };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[WAREHOUSE_BATCH] pixel_events export failed:', msg);
+    return { exported: 0, maxTimestamp: lastExportAt, pipelineError: `pixel export: ${msg}` };
   }
-
-  return { exported: totalInserted, maxTimestamp: maxTs };
 }
 
 // ============================================================================
@@ -240,18 +245,14 @@ async function exportMessages(env: Env, lastExportAt: number): Promise<{ exporte
 
 async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null> {
   console.log('[WAREHOUSE_BATCH] Starting scheduled export');
+  epirDebugLog('index.ts:handleScheduled', 'entry', {}, 'H-A');
 
   const pixelPipeline = !!(env.PIPELINE_PIXEL_INGEST_URL ?? '').trim();
   const messagesPipeline = !!(env.PIPELINE_MESSAGES_INGEST_URL ?? '').trim();
 
   if (!pixelPipeline && !messagesPipeline) {
     console.warn('[WAREHOUSE_BATCH] Pipeline ingest URLs not configured, skipping');
-    agentDebugLog(
-      'bigquery-batch/index.ts:handleScheduled',
-      'export_skipped_no_pipeline_urls',
-      { pixelPipeline, messagesPipeline },
-      'H4',
-    );
+    epirDebugLog('index.ts:handleScheduled', 'export_skipped_no_pipeline', {}, 'H-E');
     return null;
   }
 
@@ -280,34 +281,19 @@ async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null>
   } catch {
     pendingPixel = -1;
   }
-  agentDebugLog(
-    'bigquery-batch/index.ts:handleScheduled',
-    'export_start',
-    {
-      pixelPipeline,
-      messagesPipeline,
-      pendingPixel,
-      lastPixelWatermark: lastPixel,
-      lastMessagesWatermark: lastMessages,
-    },
-    'H4',
-  );
+  console.log('[WAREHOUSE_BATCH] export_start', {
+    pixelPipeline,
+    messagesPipeline,
+    pendingPixel,
+    lastPixelWatermark: lastPixel,
+    lastMessagesWatermark: lastMessages,
+  });
 
   const now = Date.now();
 
   const pixelResult = await exportPixelEvents(env, lastPixel);
   const pipelineError = pixelResult.pipelineError;
   console.log(`[WAREHOUSE_BATCH] pixel_events: exported ${pixelResult.exported} rows`);
-  agentDebugLog(
-    'bigquery-batch/index.ts:handleScheduled',
-    'pixel_export_done',
-    {
-      exported: pixelResult.exported,
-      maxTimestamp: pixelResult.maxTimestamp,
-      previousWatermark: lastPixel,
-    },
-    'H4',
-  );
 
   const messagesResult = await exportMessages(env, lastMessages);
   console.log(`[WAREHOUSE_BATCH] messages: exported ${messagesResult.exported} rows`);
@@ -331,17 +317,6 @@ async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null>
     console.error('[WAREHOUSE_BATCH] Failed to update batch_exports:', e);
   }
 
-  agentDebugLog(
-    'bigquery-batch/index.ts:handleScheduled',
-    'export_complete',
-    {
-      pixelExported: pixelResult.exported,
-      messagesExported: messagesResult.exported,
-      newPixelTs,
-      newMessagesTs,
-    },
-    'H4',
-  );
   let pendingAfter = 0;
   try {
     const pendingRow = await env.DB.prepare(
@@ -363,6 +338,12 @@ async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null>
     partial: pendingAfter > 0,
     ...(pipelineError ? { pipeline_error: pipelineError } : {}),
   };
+  epirDebugLog('index.ts:handleScheduled', 'export_complete', {
+    pixelExported: summary.pixelExported,
+    pendingAfter: summary.pending_pixel_after,
+    batchUpdatedAt: now,
+    pipelineError: pipelineError ?? null,
+  }, 'H-C');
   console.log('[WAREHOUSE_BATCH] Export complete', summary);
   return summary;
 }
@@ -415,6 +396,15 @@ async function executeRunAnalyticsQuery(
   }
   const { rows, error } = await runR2SqlJob(env, sql);
   if (error) {
+    if (queryId === 'Q9_TOOL_USAGE' && isMissingIcebergNameColumnError(error)) {
+      const fallbackSql = getQ9ToolUsageFallbackSql(env);
+      const fallback = await runR2SqlJob(env, fallbackSql);
+      if (fallback.error) {
+        return { ok: false, error: fallback.error, status: 500 };
+      }
+      console.warn('[WAREHOUSE_BATCH] Q9 fallback: messages_raw missing name column — pipeline must map name');
+      return { ok: true, queryId, rows: fallback.rows ?? [] };
+    }
     return { ok: false, error, status: 500 };
   }
   const rowList = rows ?? [];
@@ -431,11 +421,33 @@ export class BigQueryBatchS2SRpc extends WorkerEntrypoint<Env, BigQueryS2SProps>
     return executeRunAnalyticsQuery(this.env, args ?? {});
   }
 
-  /** Ręczny eksport D1→Pipelines (ten sam scope co odczyt hurtowni). */
-  async triggerWarehouseExport(): Promise<{ ok: true; summary: WarehouseExportSummary | null }> {
+  /** Ręczny eksport D1→Pipelines — catch-up do targetPending (jak cron 02:00 / raport 09:00). */
+  async triggerWarehouseExport(): Promise<{
+    ok: true;
+    summary: WarehouseExportSummary | null;
+    catchUp: { runs: number; lastPending: number; pipelineError?: string };
+  }> {
     requireBigQueryS2SScopes(this.ctx.props, 'bigquery.analytics_query');
-    const summary = await handleScheduled(this.env);
-    return { ok: true, summary };
+    epirDebugLog('index.ts:triggerWarehouseExport', 'catchup_start', { maxRuns: 12, targetPending: 1000 }, 'H-A');
+    const catchUp = await runWarehouseExportCatchUp(() => handleScheduled(this.env), {
+      maxRuns: 12,
+      targetPending: 1000,
+    });
+    epirDebugLog('index.ts:triggerWarehouseExport', 'catchup_done', {
+      runs: catchUp.runs,
+      lastPending: catchUp.lastPending,
+      pipelineError: catchUp.pipelineError ?? null,
+    }, 'H-C');
+    console.log('[WAREHOUSE_BATCH] triggerWarehouseExport catch-up', catchUp);
+    return {
+      ok: true,
+      summary: (catchUp.lastSummary as WarehouseExportSummary | null) ?? null,
+      catchUp: {
+        runs: catchUp.runs,
+        lastPending: catchUp.lastPending,
+        ...(catchUp.pipelineError ? { pipelineError: catchUp.pipelineError } : {}),
+      },
+    };
   }
 
   /** EDOG flow-health — ten sam scope co run_analytics_query (S2S z czatu). */
@@ -499,6 +511,24 @@ export default {
     }
     if (cron === CRON_EDOG_08 || cron === CRON_EDOG_20) {
       ctx.waitUntil(runEdogHealthMonitor(env));
+      return;
+    }
+    if (cron === CRON_EXPORT) {
+      ctx.waitUntil(
+        runWarehouseExportCatchUp(() => handleScheduled(env), { maxRuns: 12, targetPending: 1000 }).then(
+          (catchUp) => {
+            if (catchUp.runs > 0) {
+              console.log('[WAREHOUSE_BATCH] Nightly catch-up', catchUp);
+            }
+            if (catchUp.pipelineError) {
+              console.warn('[WAREHOUSE_BATCH] Nightly catch-up pipeline error:', catchUp.pipelineError);
+            }
+            if (catchUp.lastPending > 1000) {
+              console.warn('[WAREHOUSE_BATCH] Nightly catch-up partial; pending pixel:', catchUp.lastPending);
+            }
+          },
+        ),
+      );
       return;
     }
     ctx.waitUntil(handleScheduled(env).then((s) => {

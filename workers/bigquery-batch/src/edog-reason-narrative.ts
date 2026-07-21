@@ -63,6 +63,8 @@ function decodeReason(reason: string): string {
     return `Opóźnienie eksportu: ${reason.split(':')[1]} h od ostatniej aktualizacji batch_exports (próg DEGRADED ≥ 26 h).`;
   if (reason === 'no_pixel_events_24h') return 'Brak zdarzeń pixel w D1 w ostatnich 24 h.';
   if (reason === 'warehouse_q1_empty') return 'Sonda Q1 (R2 SQL) zwróciła 0 wierszy.';
+  if (reason === 'warehouse_pixel_empty')
+    return 'D1 ma zdarzenia pixel, ale Iceberg pixel ma 0 sesji (Q1 total_pixel_sessions) — sprawdź pipeline SQL i sink.';
   if (reason === 'warehouse_q1_skipped_batch_unhealthy')
     return 'Sonda Q1 pominięta — batch/backlog w stanie FAIL lub DEGRADED.';
   if (reason.startsWith('warehouse_q1_error:'))

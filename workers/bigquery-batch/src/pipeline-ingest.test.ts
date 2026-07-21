@@ -44,4 +44,10 @@ describe('postPipelineIngestBatch', () => {
       expect(r.body).toBe('bad');
     }
   });
+
+  it('returns error when fetch throws', async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new Error('network timeout'));
+    const r = await postPipelineIngestBatch('https://abc.ingest.cloudflare.com', undefined, [{ x: 1 }]);
+    expect(r).toEqual({ ok: false, status: 0, body: 'network timeout' });
+  });
 });

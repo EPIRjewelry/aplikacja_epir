@@ -17,6 +17,7 @@ function base(overrides: Partial<FlowHealthReport> = {}): FlowHealthReport {
     warehouse_q1_ok: true,
     warehouse_q1_row_count: 3,
     warehouse_q1_skipped: false,
+    warehouse_pixel_sessions: 40,
     checked_at: new Date().toISOString(),
     edog_verdict: 'PASS',
     reasons: ['ok'],

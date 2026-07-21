@@ -17,14 +17,19 @@ export async function postPipelineIngestBatch(
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(records),
-  });
-  if (!res.ok) {
-    const body = (await res.text()).slice(0, 500);
-    return { ok: false, status: res.status, body };
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(records),
+    });
+    if (!res.ok) {
+      const body = (await res.text()).slice(0, 500);
+      return { ok: false, status: res.status, body };
+    }
+    return { ok: true };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, status: 0, body: msg };
   }
-  return { ok: true };
 }

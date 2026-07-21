@@ -106,6 +106,16 @@ describe('memory/extractor (deterministic)', () => {
     expect(ring?.value).toBe('14');
   });
 
+  it('wyciąga granat, pozłacany, Gałązki jako product_interest', () => {
+    const out = extractFactsDeterministic([
+      'Chcę pozłacany pierścionek Gałązki z granatem, rozmiar 17',
+    ]);
+    expect(out.find((f) => f.slot === 'stone')?.value).toBe('granat');
+    expect(out.find((f) => f.slot === 'metal')?.value).toBe('pozłacany');
+    expect(out.find((f) => f.slot === 'ring_size')?.value).toBe('17');
+    expect(out.find((f) => f.slot === 'product_interest')?.value).toBe('kolekcja_gałązki');
+  });
+
   it('rozpoznaje intent policy_question', () => {
     const out = extractFactsDeterministic(['Jaka jest polityka zwrotów?']);
     const intent = out.find((f) => f.slot === 'intent');

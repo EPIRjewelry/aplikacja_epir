@@ -21,7 +21,7 @@ export const TOOL_SCHEMAS = {
   search_catalog: {
     name: 'search_catalog',
     description:
-      'Search for products from the online store using UCP catalog schema. Responses include explicit price_minor, currency, and for PLN price_display_pl — quote only price_display_pl for buyers; never invent or rescale PLN amounts.',
+      'Search products (UCP). Use when the buyer names a product/collection (e.g. Gałązki) before update_cart. Responses include price_minor, currency, and for PLN price_display_pl — quote only price_display_pl; never invent or rescale PLN amounts.',
     parameters: {
       type: 'object',
       properties: {
@@ -159,7 +159,8 @@ export const TOOL_SCHEMAS = {
 
   search_shop_policies_and_faqs: {
     name: 'search_shop_policies_and_faqs',
-    description: 'Answer questions about the store\'s policies, products, and services. Use for questions about shipping, returns, refunds, FAQs, and store information.',
+    description:
+      'Answer questions about store policies, FAQs, contact, phone, email, opening hours, and studio address. MUST use for short „Kontakt” / contact requests — do not invent contact details.',
     parameters: {
       type: 'object',
       properties: {
@@ -218,7 +219,8 @@ export const TOOL_SCHEMAS = {
 
   get_size_table: {
     name: 'get_size_table',
-    description: 'Pobiera tabelę rozmiarów pierścionków (PL/US/UK/średnica mm/obwód mm). Użyj gdy klient pyta o rozmiar pierścionka, jak zmierzyć palec, lub prosi o przeliczenie rozmiaru.',
+    description:
+      'Pobiera tabelę rozmiarów pierścionków (PL/US/UK/średnica mm/obwód mm). MUST gdy klient pisze „Rozmiar 17”, pyta o pomiar palca lub przeliczenie — nie zgaduj.',
     parameters: {
       type: 'object',
       properties: {},
@@ -387,7 +389,8 @@ export const TOOL_SCHEMAS = {
 
   update_cart: {
     name: 'update_cart',
-    description: 'Perform updates to a cart including add/update/remove line items and buyer identity.',
+    description:
+      'Add/update/remove cart lines. After search_catalog/lookup for a named product (e.g. Gałązki → koszyk), call this with product_variant_id, then give the buyer the checkout link from the cart result.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -478,7 +481,7 @@ export const TOOL_SCHEMAS_SLIM = {
   search_catalog: {
     name: 'search_catalog',
     description:
-      'Szuka produktów w katalogu. Wynik ma price_minor, currency, dla PLN price_display_pl — cytuj tylko price_display_pl; nie przeliczaj z price_minor.',
+      'Szuka produktów. Przy nazwie produktu/kolekcji (np. Gałązki) wywołaj przed update_cart. Wynik: price_display_pl dla PLN — cytuj tylko to pole.',
     parameters: {
       type: 'object',
       properties: {
@@ -572,7 +575,8 @@ export const TOOL_SCHEMAS_SLIM = {
 
   search_shop_policies_and_faqs: {
     name: 'search_shop_policies_and_faqs',
-    description: 'Odpowiedzi na pytania o polityki sklepu, wysyłkę, zwroty, FAQ.',
+    description:
+      'Polityki, FAQ, kontakt, telefon, e-mail, godziny, adres. MUST przy krótkim „Kontakt”.',
     parameters: {
       type: 'object',
       properties: {
@@ -610,7 +614,7 @@ export const TOOL_SCHEMAS_SLIM = {
 
   get_size_table: {
     name: 'get_size_table',
-    description: 'Zwraca tabelę rozmiarów pierścionków (PL/US/UK/mm).',
+    description: 'Tabela rozmiarów pierścionków. MUST przy „Rozmiar N” / pomiarze palca — nie zgaduj.',
     parameters: { type: 'object', properties: {}, required: [] },
   },
 
@@ -752,7 +756,8 @@ export const TOOL_SCHEMAS_SLIM = {
 
   update_cart: {
     name: 'update_cart',
-    description: 'Aktualizuje koszyk: dodaj/zmień/usuń pozycje, buyer identity, notatka.',
+    description:
+      'Dodaj/zmień/usuń pozycje koszyka. Po search/lookup nazwy produktu (np. Gałązki) — dodaj wariant i podaj link kasy.',
     parameters: {
       type: 'object',
       additionalProperties: false,

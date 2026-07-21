@@ -10,7 +10,36 @@ export function isR2SqlQueryConfigured(env: R2SqlEnv): boolean {
   return !!(env.R2_SQL_ACCOUNT_ID?.trim() && env.R2_SQL_WAREHOUSE_BUCKET?.trim() && env.R2_SQL_API_TOKEN?.trim());
 }
 
-/** Parsuje odpowiedź HTTP R2 SQL do listy rekordów (obiekty klucz → wartość). */
+function columnNamesFromSchema(schema: unknown): string[] | null {
+  if (!Array.isArray(schema) || schema.length === 0) return null;
+  if (typeof schema[0] === 'string') return schema.map((c) => String(c));
+  if (typeof schema[0] === 'object' && schema[0] !== null) {
+    return (schema as Record<string, unknown>[]).map((c, i) => {
+      const name = c.name ?? c.column_name ?? c.field;
+      return name != null ? String(name) : `col_${i}`;
+    });
+  }
+  return null;
+}
+
+function matrixToRecords(cols: string[], rows: unknown[]): Record<string, unknown>[] {
+  return rows.map((row) => {
+    const rec: Record<string, unknown> = {};
+    if (Array.isArray(row)) {
+      row.forEach((v, i) => {
+        rec[cols[i] ?? `col_${i}`] = v ?? null;
+      });
+    } else if (row && typeof row === 'object') {
+      return row as Record<string, unknown>;
+    }
+    return rec;
+  });
+}
+
+/**
+ * Parsuje odpowiedź HTTP R2 SQL do listy rekordów (obiekty klucz → wartość).
+ * Obsługuje m.in. opakowanie `{ result: { schema|columns, rows, metrics } }` z API prod.
+ */
 export function parseR2SqlJsonToRows(body: unknown): Record<string, unknown>[] {
   if (body === null || body === undefined || typeof body !== 'object') {
     return [];
@@ -23,18 +52,31 @@ export function parseR2SqlJsonToRows(body: unknown): Record<string, unknown>[] {
     }
   }
 
+  // Prod R2 SQL: { result: { request_id, schema, rows, metrics } }
+  if (typeof o.result === 'object' && o.result !== null && !Array.isArray(o.result)) {
+    const inner = o.result as Record<string, unknown>;
+    if (Array.isArray(inner.rows)) {
+      const cols =
+        columnNamesFromSchema(inner.schema) ??
+        (Array.isArray(inner.columns) ? (inner.columns as unknown[]).map((c) => String(c)) : null);
+      if (cols && inner.rows.length > 0 && Array.isArray(inner.rows[0])) {
+        return matrixToRecords(cols, inner.rows as unknown[]);
+      }
+      if (inner.rows.length > 0 && typeof inner.rows[0] === 'object' && !Array.isArray(inner.rows[0])) {
+        return inner.rows as Record<string, unknown>[];
+      }
+      return [];
+    }
+  }
+
   if (Array.isArray(o.rows) && o.columns && Array.isArray(o.columns)) {
     const cols = (o.columns as unknown[]).map((c) => String(c));
-    const rows = o.rows as unknown[];
-    return rows.map((row) => {
-      const rec: Record<string, unknown> = {};
-      if (Array.isArray(row)) {
-        row.forEach((v, i) => {
-          rec[cols[i] ?? `col_${i}`] = v ?? null;
-        });
-      }
-      return rec;
-    });
+    return matrixToRecords(cols, o.rows as unknown[]);
+  }
+
+  if (Array.isArray(o.rows) && o.schema) {
+    const cols = columnNamesFromSchema(o.schema);
+    if (cols) return matrixToRecords(cols, o.rows as unknown[]);
   }
 
   if (Array.isArray(o.result)) {
@@ -42,10 +84,6 @@ export function parseR2SqlJsonToRows(body: unknown): Record<string, unknown>[] {
     if (r.length > 0 && typeof r[0] === 'object' && r[0] !== null && !Array.isArray(r[0])) {
       return r as Record<string, unknown>[];
     }
-  }
-
-  if (typeof o.result === 'object' && o.result !== null && !Array.isArray(o.result)) {
-    return [o.result as Record<string, unknown>];
   }
 
   return [];

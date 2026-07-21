@@ -14,6 +14,7 @@ function base(overrides: Partial<Parameters<typeof computeEdogVerdict>[0]> = {})
     d1_messages_24h: 50,
     warehouse_q1_row_count: 3,
     warehouse_q1_skipped: false,
+    warehouse_pixel_sessions: 50,
     ...overrides,
   };
 }
@@ -42,11 +43,12 @@ describe('computeEdogVerdict', () => {
     expect(r.verdict).toBe('DEGRADED');
   });
 
-  it('returns FAIL when batch stale 50h', () => {
+  it('returns FAIL when D1 has pixel but Iceberg pixel sessions are 0', () => {
     const r = computeEdogVerdict(
-      base({ batch_exports_updated_at_ms: NOW - 50 * 3_600_000 }),
+      base({ d1_pixel_events_24h: 800, warehouse_pixel_sessions: 0, warehouse_q1_row_count: 1 }),
     );
     expect(r.verdict).toBe('FAIL');
+    expect(r.reasons).toContain('warehouse_pixel_empty');
   });
 });
 

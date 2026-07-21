@@ -24,6 +24,16 @@ const POLICY_MARKERS_PL = [
   'rękojmi',
   'rekojmi',
   'faq',
+  // Kontakt / lokalizacja — must → search_shop_policies_and_faqs (Q3: krótkie „Kontakt”)
+  'kontakt',
+  'telefon',
+  'e-mail',
+  'email',
+  'adres pracowni',
+  'godziny otwarcia',
+  'gdzie jesteście',
+  'gdzie jestescie',
+  'dojazd',
 ];
 
 const POLICY_MARKERS_EN = [
@@ -39,12 +49,20 @@ const POLICY_MARKERS_EN = [
   'withdrawal',
   'complaint',
   'faq',
+  'contact',
+  'phone number',
+  'opening hours',
+  'store address',
 ];
+
+/** Samo „Kontakt" / „Contact" bez dodatkowego kontekstu produktowego. */
+const SHORT_CONTACT_MESSAGE = /^(?:kontakt|contact|telefon|e-?mail)\s*[?.!]*$/iu;
 
 export function detectPolicyInformationIntent(userMessage: string): { match: boolean } {
   if (typeof userMessage !== 'string') return { match: false };
   const norm = userMessage.trim().toLowerCase();
   if (!norm) return { match: false };
+  if (SHORT_CONTACT_MESSAGE.test(norm)) return { match: true };
   for (const m of POLICY_MARKERS_PL) {
     if (norm.includes(m)) return { match: true };
   }

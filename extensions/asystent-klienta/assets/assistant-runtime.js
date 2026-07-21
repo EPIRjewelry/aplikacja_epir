@@ -603,9 +603,10 @@ function ensureAssistantFileControls() {
 
     const attachBtn = document.createElement('button');
     attachBtn.type = 'button';
-    attachBtn.setAttribute('aria-label', 'Dodaj zdjęcie');
+    attachBtn.setAttribute('aria-label', 'Znajdź podobne do zdjęcia');
     attachBtn.className = 'assistant-attach-btn';
     attachBtn.textContent = '📎';
+    attachBtn.title = 'Znajdź podobne do zdjęcia';
 
     fileInput.addEventListener('change', function () {
       const f = fileInput.files && fileInput.files[0];

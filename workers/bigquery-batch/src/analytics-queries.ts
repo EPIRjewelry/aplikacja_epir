@@ -5,9 +5,8 @@
  * **Kontrakt odczytu (prod):** tabela pixel (np. `analytics.epir_pixel_events_raw`) ma układ
  * spłaszczony z D1 / pipeline (m.in. `page_url`, `referrer_url`, `session_id`, `event_type`,
  * `created_at`; opcjonalnie `product_id` / `product_title` gdy pipeline je mapuje) — **bez**
- * kolumn stream ingest `url` / `payload`. SQL poniżej
- * odwołuje się wyłącznie do kolumn Iceberg; mapowanie HTTP ingest → Iceberg jest w Pipelines
- * (Dashboard), nie w tym pliku.
+ * kolumn stream ingest `url` / `payload` jako SSOT. SQL używa `page_url` z
+ * `COALESCE(page_url, url)` w Q5 gdy pipeline jeszcze ma surową kolumnę `url`.
  *
  * **R2 SQL:** brak `SELECT DISTINCT` i `COUNT(DISTINCT …)` — używaj `GROUP BY` oraz
  * `approx_distinct()` (jak w `workers/analytics/src/cqrs/r2-warehouse-query.ts`).
@@ -28,6 +27,9 @@ export interface WarehouseTableEnv {
   WAREHOUSE_SQL_MESSAGES_TABLE?: string;
 }
 
+/** Zakup: Shopify często emituje checkout_completed; pixel EPIR też purchase_completed. */
+const PURCHASE_EVENT_TYPES = `'purchase_completed', 'checkout_completed'`;
+
 function fqTables(env: WarehouseTableEnv): { pixel: string; messages: string } {
   const ns = assertSqlIdentifier((env.WAREHOUSE_SQL_NAMESPACE ?? 'analytics').trim(), 'namespace');
   const pt = assertSqlIdentifier((env.WAREHOUSE_SQL_PIXEL_TABLE ?? 'epir_pixel_events_raw').trim(), 'pixel table');
@@ -41,7 +43,7 @@ WITH chat_sessions AS (
   SELECT session_id FROM ${M} WHERE role = 'user' GROUP BY session_id
 ),
 purchase_sessions AS (
-  SELECT session_id FROM ${P} WHERE event_type = 'purchase_completed' GROUP BY session_id
+  SELECT session_id FROM ${P} WHERE event_type IN (${PURCHASE_EVENT_TYPES}) GROUP BY session_id
 ),
 chat_with_purchase AS (
   SELECT c.session_id
@@ -58,18 +60,34 @@ metrics AS (
 SELECT
   sessions_with_chat,
   sessions_with_purchase,
-  total_pixel_sessions - sessions_with_chat AS sessions_without_chat,
-  total_purchase_sessions - sessions_with_purchase AS purchase_sessions_without_chat
+  total_pixel_sessions,
+  CASE
+    WHEN total_pixel_sessions >= sessions_with_chat
+    THEN total_pixel_sessions - sessions_with_chat
+    ELSE 0
+  END AS sessions_without_chat,
+  CASE
+    WHEN total_purchase_sessions >= sessions_with_purchase
+    THEN total_purchase_sessions - sessions_with_purchase
+    ELSE 0
+  END AS purchase_sessions_without_chat
 FROM metrics
 `,
 
   Q2_CONVERSION_PATHS: (P) => `
 SELECT event_type, COUNT(*) AS event_count, approx_distinct(session_id) AS unique_sessions
 FROM ${P}
-WHERE event_type IN ('page_viewed', 'product_viewed', 'product_added_to_cart', 'cart_updated', 'purchase_completed')
+WHERE event_type IN ('page_viewed', 'product_viewed', 'product_added_to_cart', 'cart_updated', ${PURCHASE_EVENT_TYPES})
   AND CAST(created_at AS TIMESTAMP) >= now() - INTERVAL '30' DAY
 GROUP BY event_type
-ORDER BY CASE event_type WHEN 'page_viewed' THEN 1 WHEN 'product_viewed' THEN 2 WHEN 'product_added_to_cart' THEN 3 WHEN 'cart_updated' THEN 4 WHEN 'purchase_completed' THEN 5 ELSE 6 END
+ORDER BY CASE event_type
+  WHEN 'page_viewed' THEN 1
+  WHEN 'product_viewed' THEN 2
+  WHEN 'product_added_to_cart' THEN 3
+  WHEN 'cart_updated' THEN 4
+  WHEN 'purchase_completed' THEN 5
+  WHEN 'checkout_completed' THEN 5
+  ELSE 6 END
 `,
 
   Q3_TOP_CHAT_QUESTIONS: (_, M) => `
@@ -82,16 +100,16 @@ GROUP BY content ORDER BY occurrence_count DESC LIMIT 20
 
   Q4_STOREFRONT_SEGMENTATION: (P) => `
 SELECT CASE
-  WHEN page_url LIKE '%kazka%' THEN 'kazka'
-  WHEN page_url LIKE '%zareczyny%' THEN 'zareczyny'
+  WHEN COALESCE(page_url, url) LIKE '%kazka%' THEN 'kazka'
+  WHEN COALESCE(page_url, url) LIKE '%zareczyny%' THEN 'zareczyny'
   ELSE 'online-store'
 END AS storefront_inferred,
   event_type, COUNT(*) AS event_count
 FROM ${P}
 WHERE CAST(created_at AS TIMESTAMP) >= now() - INTERVAL '30' DAY
 GROUP BY CASE
-  WHEN page_url LIKE '%kazka%' THEN 'kazka'
-  WHEN page_url LIKE '%zareczyny%' THEN 'zareczyny'
+  WHEN COALESCE(page_url, url) LIKE '%kazka%' THEN 'kazka'
+  WHEN COALESCE(page_url, url) LIKE '%zareczyny%' THEN 'zareczyny'
   ELSE 'online-store'
 END, event_type
 ORDER BY storefront_inferred, event_count DESC
@@ -99,14 +117,14 @@ ORDER BY storefront_inferred, event_count DESC
 
   Q5_TOP_PRODUCTS: (P) => `
 SELECT
-  page_url AS product_id,
-  page_url AS product_title,
+  COALESCE(NULLIF(trim(page_url), ''), NULLIF(trim(url), '')) AS product_id,
+  COALESCE(NULLIF(trim(page_url), ''), NULLIF(trim(url), '')) AS product_title,
   COUNT(*) AS view_count
 FROM ${P}
 WHERE event_type = 'product_viewed'
   AND CAST(created_at AS TIMESTAMP) >= now() - INTERVAL '30' DAY
-  AND COALESCE(NULLIF(trim(page_url), ''), '') <> ''
-GROUP BY page_url
+  AND COALESCE(NULLIF(trim(page_url), ''), NULLIF(trim(url), ''), '') <> ''
+GROUP BY COALESCE(NULLIF(trim(page_url), ''), NULLIF(trim(url), ''))
 ORDER BY view_count DESC
 LIMIT 20
 `,
@@ -125,7 +143,7 @@ WITH product_sessions AS (
   SELECT session_id FROM ${P} WHERE event_type = 'product_viewed' GROUP BY session_id
 ),
 purchase_sessions AS (
-  SELECT session_id FROM ${P} WHERE event_type = 'purchase_completed' GROUP BY session_id
+  SELECT session_id FROM ${P} WHERE event_type IN (${PURCHASE_EVENT_TYPES}) GROUP BY session_id
 ),
 product_with_purchase AS (
   SELECT p.session_id
@@ -150,12 +168,13 @@ GROUP BY CAST(date_trunc('day', CAST(created_at AS TIMESTAMP)) AS DATE), event_t
 `,
 
   Q9_TOOL_USAGE: (_, M) => `
-SELECT name AS tool_name, COUNT(*) AS call_count
+SELECT "name" AS tool_name, COUNT(*) AS call_count
 FROM ${M}
-WHERE role = 'tool' AND name IS NOT NULL
+WHERE role = 'tool' AND "name" IS NOT NULL
   AND "timestamp" >= (CAST(to_unixtime(now() - INTERVAL '30' DAY) AS BIGINT) * 1000)
-GROUP BY name ORDER BY call_count DESC
+GROUP BY "name" ORDER BY call_count DESC
 `,
+
 
   Q10_SESSION_DURATION: (P) => `
 SELECT session_id,
@@ -177,8 +196,28 @@ LIMIT 100
 };
 
 export function getR2AnalyticsSql(env: WarehouseTableEnv, queryId: string): string | undefined {
-  const builder = QUERY_BUILDERS[queryId];
+  const builder = QUERY_BUILDERS[queryId as AnalyticsQueryId];
   if (!builder) return undefined;
   const { pixel, messages } = fqTables(env);
   return builder(pixel, messages).trim();
 }
+
+/**
+ * Fallback Q9 gdy Iceberg `messages_raw` nie ma kolumny `name`
+ * (pipeline 1:1 bez mapowania name — błąd R2 SQL „No field named name”).
+ */
+export function getQ9ToolUsageFallbackSql(env: WarehouseTableEnv): string {
+  const { messages } = fqTables(env);
+  return `
+SELECT 'missing_iceberg_name_column' AS tool_name, COUNT(*) AS call_count
+FROM ${messages}
+WHERE role = 'tool'
+  AND "timestamp" >= (CAST(to_unixtime(now() - INTERVAL '30' DAY) AS BIGINT) * 1000)
+`.trim();
+}
+
+export function isMissingIcebergNameColumnError(error: string | undefined): boolean {
+  if (!error) return false;
+  return /No field named name/i.test(error) || /field named ["']?name["']?/i.test(error);
+}
+
