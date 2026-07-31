@@ -1,7 +1,7 @@
 {% liquid
   assign default_title = 'Czat z Gemmą'
   assign default_greeting = 'Witaj! Jestem Gemmą, doradczynią EPIR Art Jewellery. Jak mogę pomóc w wyborze biżuterii?'
-  assign default_placeholder = 'Napisz wiadomość, np. „Pokaż pierścionki zaręczynowe z szafirem”'
+  assign default_placeholder = 'Napisz wiadomość lub dołącz zdjęcie — np. „Znajdź podobne do zdjęcia” / „Pokaż pierścionki z szafirem”'
   assign default_start_closed = true
   assign app_version = 'v1.5.1-bubble-layout-2026-04-08'
 %}
@@ -32,7 +32,7 @@
       "type": "text",
       "id": "input_placeholder",
       "label": "Tekst w polu wprowadzania",
-      "default": "Napisz wiadomość, np. „Pokaż pierścionki zaręczynowe z szafirem”"
+      "default": "Napisz wiadomość lub dołącz zdjęcie — np. „Znajdź podobne do zdjęcia” / „Pokaż pierścionki z szafirem”"
     },
     {
       "type": "checkbox",
@@ -57,13 +57,19 @@
       "id": "channel",
       "label": "Kanał (kontekst workera)",
       "default": "online-store"
+    },
+    {
+      "type": "text",
+      "id": "shopify_client_id",
+      "label": "Shopify Client ID (Sign in with Shop)",
+      "default": "80a9878cfb29c901c987bf0046a36238"
     }
   ],
   "default": {
     "settings": {
       "title": "Czat z Gemmą",
       "greeting_message": "Witaj! Jestem Gemmą, doradczynią EPIR Art Jewellery. Jak mogę pomóc w wyborze biżuterii?",
-      "input_placeholder": "Napisz wiadomość, np. „Pokaż pierścionki zaręczynowe z szafirem”",
+      "input_placeholder": "Napisz wiadomość lub dołącz zdjęcie — np. „Znajdź podobne do zdjęcia” / „Pokaż pierścionki z szafirem”",
       "start_closed": true,
       "storefront_id": "epir-liquid",
       "channel": "online-store",
@@ -85,6 +91,7 @@
   data-storefront-id="{{ block.settings.storefront_id | default: 'epir-liquid' }}"
   data-channel="{{ block.settings.channel | default: 'online-store' }}"
   data-brand="epir"
+  data-shopify-client-id="{{ block.settings.shopify_client_id | default: '80a9878cfb29c901c987bf0046a36238' }}"
   data-start-closed="{{ block.settings.start_closed | default: default_start_closed }}"
   data-stream-render="dots"
 >
@@ -146,6 +153,7 @@
     >
       <div class="assistant-header" role="heading" aria-level="3">
         <h3>{{ block.settings.title | default: default_title }}</h3>
+        <div id="epir-shop-sign-in-mount" class="epir-shop-sign-in-mount"></div>
         <button id="assistant-close-button-embed" class="assistant-close-btn" aria-label="Zamknij panel czatu">
           ✕
         </button>

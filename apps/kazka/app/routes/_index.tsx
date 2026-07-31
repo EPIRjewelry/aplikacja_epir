@@ -1,16 +1,19 @@
-import {Link, useLoaderData} from '@remix-run/react';
-import {Image} from '@shopify/hydrogen';
+import {Link, type MetaFunction, useLoaderData} from '@remix-run/react';
+import {Image, getSeoMeta} from '@shopify/hydrogen';
 import type {LoaderFunctionArgs} from '@remix-run/cloudflare';
+import {
+  filterCollectionsForNav,
+  parseCollectionFilter,
+} from '~/lib/collection-filters';
+import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 
-export function meta() {
-  return [
-    {title: 'EPIR Art Jewellery – Pierścionki zaręczynowe'},
-    {
-      description:
-        'Luksusowe pierścionki zaręczynowe i biżuteria EPIR Art Jewellery & Gemstone.',
-    },
-  ];
-}
+export const meta: MetaFunction<typeof loader> = ({data}) =>
+  getSeoMeta({
+    title: 'EPIR Art Jewellery — Kazka',
+    description:
+      'Biżuteria inspirowana naturą — kolekcja Kazka EPIR Art Jewellery & Gemstone.',
+    url: data?.canonicalUrl,
+  });
 
 type FeaturedProduct = {
   id: string;
@@ -53,12 +56,8 @@ type LoaderData = {
   };
 };
 
-export async function loader({context}: LoaderFunctionArgs): Promise<LoaderData> {
-  const brand = context.env.BRAND ?? 'kazka';
-  const filter = context.env.COLLECTION_FILTER;
-  const allowedHandles = filter
-    ? filter.split(',').map((h) => h.trim()).filter(Boolean)
-    : null;
+export async function loader({context, request}: LoaderFunctionArgs): Promise<LoaderData & {canonicalUrl: string}> {
+  const allowedHandles = parseCollectionFilter(context.env.COLLECTION_FILTER);
 
   const [collectionsResult, productsResult] = await Promise.all([
     context.storefront.query<{
@@ -72,15 +71,16 @@ export async function loader({context}: LoaderFunctionArgs): Promise<LoaderData>
   const {collections} = collectionsResult;
   const {products} = productsResult;
 
-  const collectionNodes = allowedHandles?.length
-    ? collections.nodes.filter((c: {handle: string}) =>
-        allowedHandles.includes(c.handle),
-      )
-    : collections.nodes;
+  const collectionNodes = filterCollectionsForNav({
+    nodes: collections.nodes,
+    allowedHandles,
+    hideHubHandle: null,
+  });
 
   return {
     collections: {...collections, nodes: collectionNodes},
     products,
+    canonicalUrl: canonicalUrlFromRequest(request, context.env),
   };
 }
 

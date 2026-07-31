@@ -2,21 +2,22 @@ import {useLoaderData} from '@remix-run/react';
 import type {MetaFunction} from '@remix-run/react';
 import {json, type LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {ChatWidget} from '@epir/ui';
+import {getSeoMeta} from '@shopify/hydrogen';
 import {resolveChatApiUrl} from '~/lib/resolve-chat-api-url';
 import {
   ZARECZYNY_CHANNEL,
   ZARECZYNY_STOREFRONT_ID,
 } from '~/lib/chat-widget-context';
 import {loadZareczynyPersonaUi} from '~/lib/persona-ui.server';
+import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 
 export const meta: MetaFunction<typeof loader> = ({data}) => {
   const name = data?.personaUi?.displayName ?? 'EPIR Art Jewellery';
-  return [
-    {title: `Czat – ${name} · EPIR Art Jewellery`},
-    {
-      description: `Rozmowa z ${name}, doradczynią EPIR Art Jewellery.`,
-    },
-  ];
+  return getSeoMeta({
+    title: `Czat – ${name}`,
+    description: `Rozmowa z ${name}, doradczynią EPIR Art Jewellery — pierścionki zaręczynowe.`,
+    url: data?.canonicalUrl,
+  });
 };
 
 export async function loader({context, request}: LoaderFunctionArgs) {
@@ -34,6 +35,7 @@ export async function loader({context, request}: LoaderFunctionArgs) {
     storefrontId: ZARECZYNY_STOREFRONT_ID,
     channel: ZARECZYNY_CHANNEL,
     route,
+    canonicalUrl: canonicalUrlFromRequest(request, context.env),
   });
 }
 

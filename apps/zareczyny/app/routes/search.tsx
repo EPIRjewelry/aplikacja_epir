@@ -1,7 +1,17 @@
-import {Link, useLoaderData} from '@remix-run/react';
+import {Link, type MetaFunction, useLoaderData} from '@remix-run/react';
 import {json, type LoaderFunctionArgs} from '@remix-run/cloudflare';
+import {getSeoMeta} from '@shopify/hydrogen';
 import type {Product} from '@shopify/hydrogen-react/storefront-api-types';
 import {ProductCard} from '@epir/ui';
+import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
+
+export const meta: MetaFunction<typeof loader> = ({data}) =>
+  getSeoMeta({
+    title: data?.q ? `Wyniki: ${data.q}` : 'Wyszukiwanie produktów',
+    description:
+      'Wyszukaj pierścionki zaręczynowe i biżuterię EPIR Art Jewellery.',
+    url: data?.canonicalUrl,
+  });
 
 type SearchProductNode = {
   id: string;
@@ -93,9 +103,14 @@ export async function loader({request, context}: LoaderFunctionArgs) {
   const q = url.searchParams.get('q')?.trim() ?? '';
 
   if (!q) {
-    return json({q, products: [] as SearchProductNode[]} satisfies {
+    return json({
+      q,
+      products: [] as SearchProductNode[],
+      canonicalUrl: canonicalUrlFromRequest(request, context.env),
+    } satisfies {
       q: string;
       products: SearchProductNode[];
+      canonicalUrl: string;
     });
   }
 
@@ -104,7 +119,11 @@ export async function loader({request, context}: LoaderFunctionArgs) {
   });
 
   const products = data?.products?.nodes ?? [];
-  return json({q, products});
+  return json({
+    q,
+    products,
+    canonicalUrl: canonicalUrlFromRequest(request, context.env),
+  });
 }
 
 const linkClass =

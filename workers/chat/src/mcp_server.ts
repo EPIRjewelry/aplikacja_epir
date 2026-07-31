@@ -28,6 +28,16 @@ import { TOOL_SCHEMAS } from './mcp_tools';
 import { normalizeCartId, isValidCartGid, parseCartGid } from './utils/cart';
 import { injectSessionCartIdIntoArgs } from './utils/commerce-result';
 import {
+  normalizeCatalogImageSearchArgs,
+  normalizeCatalogLookupArgs,
+  normalizeCatalogSearchArgs,
+} from './catalog/catalog-tool-args';
+import {
+  getUcpCatalogEndpoint,
+  mapGemmaToolToUcpMcp,
+  UCP_CATALOG_TOOL_NAMES,
+} from './catalog/ucp-catalog-endpoint';
+import {
   mergeCatalogCommerceContext,
   resolveCommerceContext,
   type CommerceContext,
@@ -143,6 +153,15 @@ function toFiniteNumber(value: unknown): number | null {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isUcpDiscoveryTool(toolName: string): boolean {
+  return (
+    UCP_CATALOG_TOOL_NAMES.has(toolName) ||
+    toolName === 'search_catalog' ||
+    toolName === 'lookup_catalog' ||
+    toolName === 'get_product'
+  );
 }
 
 function normalizeSearchCatalogArgs(
@@ -466,7 +485,13 @@ async function callShopMcp(
 
   // Normalize arguments based on tool type
   let args: any;
-  if (toolName === 'search_catalog') {
+  if (toolName === 'catalog_search') {
+    args = normalizeCatalogSearchArgs(rawArgs, env, commerceContext, brand);
+  } else if (toolName === 'catalog_lookup') {
+    args = normalizeCatalogLookupArgs(rawArgs, env, commerceContext);
+  } else if (toolName === 'catalog_image_search') {
+    args = normalizeCatalogImageSearchArgs(rawArgs, env, commerceContext, brand);
+  } else if (toolName === 'search_catalog') {
     args = normalizeSearchCatalogArgs(rawArgs, brand, commerceContext);
   } else if (toolName === 'lookup_catalog' || toolName === 'get_product') {
     const source = rawArgs && typeof rawArgs === 'object' ? { ...(rawArgs as Record<string, unknown>) } : {};
@@ -517,17 +542,28 @@ async function callShopMcp(
     return { error: validationError };
   }
 
+  const mcpToolName = UCP_CATALOG_TOOL_NAMES.has(toolName)
+    ? mapGemmaToolToUcpMcp(toolName)
+    : toolName;
+
   const rpc: JsonRpcRequest = {
     jsonrpc: '2.0',
     method: 'tools/call',
-    params: { name: toolName, arguments: args },
+    params: { name: mcpToolName, arguments: args },
     id: Date.now()
   };
 
-  const endpoint = getMcpEndpoint(env) || `https://${String(shopDomain).replace(/\/$/, '')}/api/mcp`;
+  const useUcpCatalog = isUcpDiscoveryTool(toolName);
+  const endpoint = useUcpCatalog
+    ? getUcpCatalogEndpoint(env) ||
+      `https://${String(shopDomain).replace(/\/$/, '')}/api/ucp/mcp`
+    : getMcpEndpoint(env) || `https://${String(shopDomain).replace(/\/$/, '')}/api/mcp`;
   const isPoliciesTool = toolName === 'search_shop_policies_and_faqs';
   const isCatalogTool =
-    toolName === 'search_catalog' || toolName === 'lookup_catalog' || toolName === 'get_product';
+    useUcpCatalog ||
+    toolName === 'search_catalog' ||
+    toolName === 'lookup_catalog' ||
+    toolName === 'get_product';
   const timeoutMs = isPoliciesTool ? MCP_POLICIES_TIMEOUT_MS : MCP_TIMEOUT_MS;
 
   const mayUseGoogleAuth =
@@ -586,11 +622,14 @@ async function callShopMcp(
         }
 
         const queryPreview =
-          toolName === 'search_catalog' && typeof args?.catalog?.query === 'string'
+          (toolName === 'search_catalog' || toolName === 'catalog_search' || toolName === 'catalog_image_search') &&
+          typeof args?.catalog?.query === 'string'
             ? args.catalog.query.slice(0, 240)
             : undefined;
         console.log('[mcp] call', {
           tool: toolName,
+          mcpTool: mcpToolName,
+          endpointKind: useUcpCatalog ? 'ucp' : 'storefront',
           status: res.status,
           args: safeArgsSummary(args),
           queryPreview,
@@ -628,7 +667,12 @@ async function callShopMcp(
 
     if (!res.ok) {
       // Plan B: Safe fallback for search_catalog on network/service errors
-      if (toolName === 'search_catalog' && (res.status === 522 || res.status === 503 || res.status >= 500)) {
+      if (
+        (toolName === 'search_catalog' ||
+          toolName === 'catalog_search' ||
+          toolName === 'catalog_image_search') &&
+        (res.status === 522 || res.status === 503 || res.status >= 500)
+      ) {
         console.warn(`[mcp] Shop MCP ${res.status} for ${toolName}, returning safe fallback`);
         return { result: CATALOG_FALLBACK };
       }
@@ -638,7 +682,11 @@ async function callShopMcp(
 
     const json = (await res.json().catch(() => null)) as JsonRpcResponse | null;
     if (!json) {
-      if (toolName === 'search_catalog') {
+      if (
+        toolName === 'search_catalog' ||
+        toolName === 'catalog_search' ||
+        toolName === 'catalog_image_search'
+      ) {
         console.warn('[mcp] Invalid JSON from shop MCP for search_catalog, returning safe fallback');
         return { result: CATALOG_FALLBACK };
       }
@@ -648,10 +696,15 @@ async function callShopMcp(
       return { error: (json as any).error };
     }
     let resultPayload = (json as any).result ?? json;
-    if (toolName === 'search_catalog') {
+    if (
+      toolName === 'search_catalog' ||
+      toolName === 'catalog_search' ||
+      toolName === 'catalog_image_search'
+    ) {
       resultPayload = compactCatalogResult(resultPayload);
       const { productCount, parseError } = summarizeSearchCatalogResult(resultPayload);
-      console.log('[mcp] search_catalog outcome', {
+      console.log('[mcp] catalog search outcome', {
+        tool: toolName,
         productCount,
         parseError: parseError ?? false,
       });
@@ -663,7 +716,12 @@ async function callShopMcp(
     const errMsg = err?.message || String(err);
     
     // Plan B: Safe fallback for search_catalog on timeout/network errors
-    if (toolName === 'search_catalog' && (isAbortError || isNetworkError)) {
+    if (
+      (toolName === 'search_catalog' ||
+        toolName === 'catalog_search' ||
+        toolName === 'catalog_image_search') &&
+      (isAbortError || isNetworkError)
+    ) {
       console.warn(`[mcp] Timeout/Network error for ${toolName}, returning safe fallback`, { error: errMsg });
       return { result: CATALOG_FALLBACK };
     }

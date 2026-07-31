@@ -29,4 +29,27 @@ describe('parseR2SqlJsonToRows', () => {
   it('returns empty for unknown shape', () => {
     expect(parseR2SqlJsonToRows({ foo: 1 })).toEqual([]);
   });
+
+  it('unwraps prod result.schema + result.rows matrix', () => {
+    const rows = parseR2SqlJsonToRows({
+      result: {
+        request_id: 'dqe-1',
+        schema: [{ name: 'sessions_with_chat' }, { name: 'total_pixel_sessions' }],
+        rows: [[397, 0]],
+        metrics: {},
+      },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].sessions_with_chat).toBe(397);
+    expect(rows[0].total_pixel_sessions).toBe(0);
+  });
+
+  it('unwraps result.rows as objects', () => {
+    const rows = parseR2SqlJsonToRows({
+      result: {
+        rows: [{ event_type: 'page_viewed', event_count: 3 }],
+      },
+    });
+    expect(rows).toEqual([{ event_type: 'page_viewed', event_count: 3 }]);
+  });
 });

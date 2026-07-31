@@ -22,7 +22,27 @@ Ustaw **secrets / env** w UI Cursor (nie commituj):
 | `DATA_GUARDIAN_OPS_KEY` | Bearer EDOG |
 | `GWORKSPACE_OAUTH_*` | `epir-gworkspace` |
 
-Dodatkowo włącz w Cursor (jeśli dostępne): **Shopify Admin MCP**, **Cloudflare** plugin MCP, **Blender MCP** — jak lokalnie.
+**Shopify w Cloud Agent:** plugin Marketplace **nie działa** w chmurze — to jedyny kontekst, gdzie używasz deklaratywnego `shopify-dev-mcp` zamiast pluginu:
+
+```json
+{
+  "mcpServers": {
+    "shopify-dev-mcp": {
+      "command": "npx",
+      "args": ["-y", "@shopify/dev-mcp@latest"],
+      "env": {
+        "OPT_OUT_INSTRUMENTATION": "true"
+      }
+    }
+  }
+}
+```
+
+Połącz ten fragment z treścią `mcp-epir.example.json` w ustawieniach MCP Cloud. **Nie** dodawaj `shopify-admin-mcp` w chmurze bez świadomej konfiguracji OAuth — domyślnie audyt sklepu read-only idzie przez `epir-data-ops`.
+
+**Lokalnie (IDE):** plugin Shopify jest obowiązkowy — `/add-plugin shopify`, potem Connect/OAuth i `shopify auth login`. Szczegóły: [`.cursor/SHOPIFY_MCP_SETUP.txt`](../.cursor/SHOPIFY_MCP_SETUP.txt) sekcja 0.
+
+Dodatkowo włącz w Cursor (jeśli dostępne): **Cloudflare** plugin MCP — jak lokalnie.
 
 ## 3. Reguły i skille
 

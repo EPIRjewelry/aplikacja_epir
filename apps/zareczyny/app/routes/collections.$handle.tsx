@@ -10,6 +10,7 @@ import {
   parseCollectionFilter,
   pickFirstAllowedCollectionHandle,
 } from '~/lib/collection-filters';
+import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 
 type CollectionsQueryData = {
   collections: {nodes: {handle: string}[]};
@@ -330,6 +331,7 @@ export async function loader({
       missingSubcollection: missingSubcollection ?? null,
       breadcrumb: null,
       routeHandle: handle,
+      canonicalUrl: canonicalUrlFromRequest(request, context.env),
     });
   }
 
@@ -408,6 +410,7 @@ export async function loader({
         }
       : null,
     routeHandle: handle,
+    canonicalUrl: canonicalUrlFromRequest(request, context.env),
   });
 }
 
@@ -595,5 +598,6 @@ export const meta: MetaFunction<typeof loader> = ({data}) => {
   return getSeoMeta({
     title: data.collection.title ?? undefined,
     description: data.collection.description?.slice(0, 154) ?? undefined,
+    url: data.canonicalUrl,
   });
 };

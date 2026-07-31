@@ -8,10 +8,6 @@ node_modules/
 **/.vitest-cache/
 *.log
 audit_report.json
-.notes/
-specs/
-agents/
-.github/agents/
 apps/kazka/public/build/
 apps/zareczyny/public/build/
 .env
@@ -23,7 +19,7 @@ apps/zareczyny/public/build/
 kilo.jsonc
 
 # --- Token budget / vector isolation ---
-# Kompilacje Operator Studio (nie źródło)
+# Kompilacje Operator Studio (nie zrodlo)
 workers/chat/operator-studio-dist/
 
 # Zrzuty danych Shopify (Bulk Ops)
@@ -34,8 +30,18 @@ workers/chat/operator-studio-dist/
 **/*.jpg
 **/*.jpeg
 **/*.wasm
-# SVG: tylko public/ storefrontów (favicon); nie globalnie
+# SVG: tylko public/ storefrontow (favicon); nie globalnie
 apps/kazka/public/**/*.svg
 apps/zareczyny/public/**/*.svg
 
+# --- Blender 3D (binaria w repo) ---
+*.blend
+*.blend1
+*.blend2
+*.fbx
+*.glb
+*.gltf
+*.obj
+*.dae
 
+# specs/, agents/, .github/agents/, .notes/ -> .cursorindexingignore (dostep przez @, bez auto-indeksu)

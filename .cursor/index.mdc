@@ -8,7 +8,14 @@ alwaysApply: true
 1. **Zacznij od:** `EPIR_AI_BIBLE.md` (router SSOT) oraz `REVIEW.md` (UI/PR/marka).
 2. **Moduły domenowe:** czytaj wyłącznie te wskazane w Biblii (`docs/kb/*.md`).
 3. **Zakaz:** nie czytaj, nie indeksuj, nie cytuj `.kilo/` ani `kilo.jsonc`.
-4. **agents/ i .github/agents/:** read-only bez wyraźnej prośby użytkownika.
+4. **agents/ i .github/agents/:** read-only bez wyraźnej prośby użytkownika — dostęp przez `@agents/...` (folder w `.cursorindexingignore`, bez auto-indeksu).
+
+## Canon check (przed dużymi zmianami)
+
+- Przy zadaniach wieloplikowych (feature, refaktor, API, Shopify): **zatrzymaj się przed kodem** — najpierw `AGENTS.md` (root) → `EPIR_AI_BIBLE.md` → właściwy moduł `docs/kb/`.
+- Nie zgaduj wymagań Shopify/React/Hydrogen, jeśli kanon może definiować inaczej.
+- Przy braku kontekstu: poproś o `@AGENTS.md` lub konkretny plik z `docs/kb/`.
+- Złożone zadania → Plan Mode przed implementacją.
 
 ## Growth Engineer (Cursor execution plane)
 

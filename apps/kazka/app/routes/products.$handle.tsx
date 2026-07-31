@@ -1,12 +1,14 @@
-import {json, type LoaderFunctionArgs} from '@remix-run/cloudflare';
-import {useLoaderData} from '@remix-run/react';
+import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
+import {type MetaFunction, useLoaderData} from '@remix-run/react';
 import {ProductGallery, ProductOptions, ProductForm} from '@epir/ui';
-import {Money} from '@shopify/hydrogen';
+import {getSeoMeta, Money} from '@shopify/hydrogen';
 import React from 'react';
+import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 
 export async function loader({params, context, request}: LoaderFunctionArgs) {
   const {handle} = params;
-  const searchParams = new URL(request.url).searchParams;
+  const url = new URL(request.url);
+  const searchParams = url.searchParams;
   const selectedOptions: {name: string; value: string}[] = [];
 
   // set selected options from the query string
@@ -25,20 +27,71 @@ export async function loader({params, context, request}: LoaderFunctionArgs) {
     throw new Response(null, {status: 404});
   }
 
-  // optionally set a default variant so you always have an "orderable" product selected
+  const variantNodes = product.variants?.nodes ?? [];
+
+  // Bez parametrów w URL Shopify zwraca selectedVariant=null — ustaw domyślny wariant w adresie.
+  if (selectedOptions.length === 0 && !product.selectedVariant && variantNodes.length > 0) {
+    const defaultVariant =
+      variantNodes.find((v: {availableForSale?: boolean}) => v.availableForSale) ??
+      variantNodes[0];
+    if (defaultVariant?.selectedOptions?.length) {
+      const next = new URL(request.url);
+      for (const {name, value} of defaultVariant.selectedOptions) {
+        next.searchParams.set(name, value);
+      }
+      if (next.search !== url.search) {
+        return redirect(`${next.pathname}${next.search}`, 302);
+      }
+    }
+  }
+
+  // Domyślny wariant: dopasowany z URL, potem pierwszy dostępny, na końcu pierwszy z listy.
   const selectedVariant =
-    product.selectedVariant ?? product?.variants?.nodes[0];
+    product.selectedVariant ??
+    product.variants?.nodes?.find(
+      (v: {availableForSale?: boolean}) => v.availableForSale,
+    ) ??
+    product.variants?.nodes?.[0] ??
+    null;
   return json({
     product,
     selectedVariant,
     countryCode: context.storefront.i18n.country,
+    canonicalUrl: canonicalUrlFromRequest(request, context.env),
   });
 }
+
+export const meta: MetaFunction<typeof loader> = ({data}) => {
+  if (!data?.product) {
+    return [];
+  }
+  const p = data.product;
+  const title = p.seo?.title?.trim() || p.title;
+  const rawDescription =
+    p.seo?.description?.trim() ||
+    (typeof p.description === 'string' ? p.description.slice(0, 154) : undefined);
+  const description = rawDescription?.slice(0, 154);
+  return getSeoMeta({
+    title,
+    description,
+    url: data.canonicalUrl,
+    media: p.featuredImage?.url
+      ? {
+          type: 'image' as const,
+          url: p.featuredImage.url,
+          altText: p.featuredImage.altText ?? p.title,
+          width: p.featuredImage.width ?? undefined,
+          height: p.featuredImage.height ?? undefined,
+        }
+      : undefined,
+  });
+};
 
 export default function ProductHandle() {
   const {product, selectedVariant, countryCode} = useLoaderData<typeof loader>();
   const variantId = selectedVariant?.id;
-  const orderable = Boolean(selectedVariant?.availableForSale && variantId);
+  const hasPrice = Boolean(selectedVariant?.price?.amount);
+  const showPurchaseForm = Boolean(variantId && hasPrice);
 
   return (
     <section className="w-full gap-4 md:gap-8 grid px-6 md:px-8 lg:px-12">
@@ -59,20 +112,32 @@ export default function ProductHandle() {
             options={product.options}
             selectedVariant={selectedVariant}
           />
-          <Money
-            withoutTrailingZeros
-            data={selectedVariant.price}
-            className="text-xl font-semibold mb-2"
-          />
-          {orderable && (
+          {selectedVariant?.price ? (
+            <Money
+              withoutTrailingZeros
+              data={selectedVariant.price}
+              className="text-xl font-semibold mb-2"
+            />
+          ) : (
+            <p className="text-xl font-semibold mb-2 text-black/50">
+              Wybierz wariant, aby zobaczyć cenę.
+            </p>
+          )}
+          {showPurchaseForm ? (
             <div className="space-y-2">
+              {selectedVariant?.availableForSale === false ? (
+                <p className="text-sm text-amber-900" role="status">
+                  Weryfikujemy dostępność tego wariantu — jeśli „Do koszyka” nie zadziała,
+                  wybierz inną konfigurację lub napisz na czacie.
+                </p>
+              ) : null}
               <ProductForm
                 countryCode={countryCode}
                 variantId={variantId}
                 showBuyNow
               />
             </div>
-          )}
+          ) : null}
           <div
             className="prose border-t border-gray-200 pt-6 text-black text-md"
             dangerouslySetInnerHTML={{__html: product.descriptionHtml}}
@@ -91,7 +156,19 @@ const PRODUCT_QUERY = `#graphql
       title
       handle
       vendor
+      description
       descriptionHtml
+      seo {
+        title
+        description
+      }
+      featuredImage {
+        id
+        url
+        altText
+        width
+        height
+      }
       media(first: 10) {
         nodes {
         __typename
@@ -152,7 +229,7 @@ const PRODUCT_QUERY = `#graphql
           handle
         }
       }
-      variants(first: 1) {
+      variants(first: 250) {
         nodes {
           id
           title

@@ -403,6 +403,7 @@ function unlockChatUi(section) {
   });
   var fi = section.querySelector('#assistant-file-input-embed') || section.querySelector('#assistant-file-input-section');
   if (fi) fi.removeAttribute('disabled');
+  void mountEpirShopSignIn(section);
 }
 
 function initConsentGateForSection(section) {
@@ -602,9 +603,10 @@ function ensureAssistantFileControls() {
 
     const attachBtn = document.createElement('button');
     attachBtn.type = 'button';
-    attachBtn.setAttribute('aria-label', 'Dodaj zdjęcie');
+    attachBtn.setAttribute('aria-label', 'Znajdź podobne do zdjęcia');
     attachBtn.className = 'assistant-attach-btn';
     attachBtn.textContent = '📎';
+    attachBtn.title = 'Znajdź podobne do zdjęcia';
 
     fileInput.addEventListener('change', function () {
       const f = fileInput.files && fileInput.files[0];
@@ -693,6 +695,7 @@ function applyCommerceActionFromSse(parsed, actionsHolder) {
     return actionsHolder;
   }
   const action = parsed.commerce_action;
+  void applyStorefrontCommerceActionFromGemma(action);
   const next = actionsHolder || {
     hasCheckoutUrl: false,
     checkoutUrl: null,
@@ -709,6 +712,104 @@ function applyCommerceActionFromSse(parsed, actionsHolder) {
     }
   }
   return next;
+}
+
+var EPIR_SHOP_SESSION_TOKEN_KEY = 'epir-shop-session-token';
+var EPIR_SHOP_SDK_LOADER = 'https://cdn.shopify.com/shopifycloud/shop-js/modules/v2/loader.sdk.esm.js';
+
+function getStoredShopSessionToken() {
+  try {
+    var t = sessionStorage.getItem(EPIR_SHOP_SESSION_TOKEN_KEY);
+    return t && String(t).trim() ? String(t).trim() : undefined;
+  } catch (e) {
+    return undefined;
+  }
+}
+
+function storeShopSessionToken(token) {
+  try {
+    if (token && String(token).trim()) {
+      sessionStorage.setItem(EPIR_SHOP_SESSION_TOKEN_KEY, String(token).trim());
+    } else {
+      sessionStorage.removeItem(EPIR_SHOP_SESSION_TOKEN_KEY);
+    }
+  } catch (e) {}
+}
+
+/**
+ * Shopify standard storefront events/actions after Gemma commerce_action.
+ */
+async function applyStorefrontCommerceActionFromGemma(action) {
+  if (!action || action.type !== 'cart_updated' || typeof window === 'undefined') return;
+  var shopifyActions = window.Shopify && window.Shopify.actions;
+  if (shopifyActions && typeof shopifyActions.updateCart === 'function' && action.cart_id) {
+    try {
+      await shopifyActions.updateCart({
+        cartId: action.cart_id,
+        event: { context: 'standard-action', detail: { source: 'epir-gemma' } },
+      });
+      return;
+    } catch (e) {}
+  }
+  var deferred = { resolve: null, promise: null };
+  deferred.promise = new Promise(function (resolve) {
+    deferred.resolve = resolve;
+  });
+  document.dispatchEvent(
+    new CustomEvent('shopify:cart:lines-update', {
+      bubbles: true,
+      detail: {
+        action: 'update',
+        context: 'standard-action',
+        lines: [],
+        promise: deferred.promise,
+        cartId: action.cart_id || undefined,
+        checkoutUrl: action.checkout_url || undefined,
+        source: 'epir-gemma',
+      },
+    }),
+  );
+  deferred.resolve({ cart: action.cart_id ? { id: action.cart_id } : undefined });
+}
+
+var epirShopSdkLoaderPromise = null;
+var epirShopLoginMountPromise = null;
+
+async function mountEpirShopSignIn(section) {
+  if (!section || typeof window === 'undefined') return;
+  var apiKey = (section.dataset && section.dataset.shopifyClientId) || '';
+  apiKey = String(apiKey).trim();
+  if (!apiKey) return;
+  var mount = section.querySelector('#epir-shop-sign-in-mount');
+  if (!mount) return;
+
+  if (!epirShopSdkLoaderPromise) {
+    epirShopSdkLoaderPromise = import(EPIR_SHOP_SDK_LOADER).then(function () {});
+  }
+  await epirShopSdkLoaderPromise;
+  if (!window.ShopSDK) return;
+
+  if (!epirShopLoginMountPromise) {
+    epirShopLoginMountPromise = (async function () {
+      var sdk = window.ShopSDK.initialize({
+        apiKey: apiKey,
+        locale: getShopLocale() || 'pl',
+        features: { login: true },
+      });
+      return sdk.create('login', {
+        attributes: { buttonType: 'continue', buttonLayout: 'standalone' },
+        onComplete: function (event) {
+          if (event && event.signedIn && event.customerAccessToken) {
+            storeShopSessionToken(event.customerAccessToken);
+          }
+        },
+      });
+    })();
+  }
+  var login = await epirShopLoginMountPromise;
+  if (!login || !login.element) return;
+  mount.innerHTML = '';
+  mount.appendChild(login.element);
 }
 
 /**
@@ -1529,6 +1630,8 @@ async function processSSEStream(
 /* Główna funkcja wysyłki z fallbackiem JSON */
 async function resolveShopifySessionTokenForAssistant() {
   try {
+    var stored = getStoredShopSessionToken();
+    if (stored) return stored;
     if (typeof window === 'undefined') return undefined;
     var shopify = window.shopify;
     if (shopify && shopify.sessionToken && typeof shopify.sessionToken.get === 'function') {

@@ -54,6 +54,11 @@ const METALS: Array<{ pattern: RegExp; value: string; valueRaw: string }> = [
     value: 'stal_chirurgiczna',
     valueRaw: 'stal chirurgiczna',
   },
+  {
+    pattern: /\bpozłacan(?:y|a|e|ego|ej|ym|ą)|pozlacan(?:y|a|e)\b/iu,
+    value: 'pozłacany',
+    valueRaw: 'pozłacany',
+  },
 ];
 const STONES = [
   'diament',
@@ -71,6 +76,14 @@ const STONES = [
   'turmalin',
   'ametyst',
   'opal',
+  'granat',
+];
+
+const PRODUCT_INTEREST_KEYWORDS: Array<{ pattern: RegExp; value: string }> = [
+  { pattern: /\bgałązk|galazk/iu, value: 'kolekcja_gałązki' },
+  { pattern: /\bkolczyk/iu, value: 'kolczyki' },
+  { pattern: /\bnaszyjnik/iu, value: 'naszyjnik' },
+  { pattern: /\bbransolet/iu, value: 'bransoletka' },
 ];
 
 const STYLE_KEYWORDS: Array<{ pattern: RegExp; value: string }> = [
@@ -132,10 +145,14 @@ export function extractFactsDeterministic(userTexts: string[]): ExtractedFact[] 
       }
     }
 
-    // ring size
-    const ringMatch = text.match(/\brozmiar\s+(\d{1,2})\b/i);
+    // ring size — „rozmiar 17", „rozmiar: 16,5", średnica w mm
+    const ringMatch =
+      text.match(/\brozmiar\s*[:\-]?\s*(\d{1,2}(?:[.,]\d)?)\b/i) ||
+      text.match(/\bśrednic(?:a|y)\s*(?:ok\.|około)?\s*(\d{1,2}(?:[.,]\d)?)\s*mm\b/iu) ||
+      text.match(/\bsrednic(?:a|y)\s*(?:ok\.|okolo)?\s*(\d{1,2}(?:[.,]\d)?)\s*mm\b/iu);
     if (ringMatch) {
-      const size = Number(ringMatch[1]);
+      const sizeRaw = ringMatch[1].replace(',', '.');
+      const size = Number(sizeRaw);
       if (size >= 5 && size <= 30) {
         dedupePush(out, {
           slot: 'ring_size',
@@ -185,6 +202,17 @@ export function extractFactsDeterministic(userTexts: string[]): ExtractedFact[] 
     for (const { pattern, value } of EVENT_KEYWORDS) {
       if (pattern.test(text)) {
         dedupePush(out, { slot: 'event', value, valueRaw: text.slice(0, 120), confidence: 0.7 });
+      }
+    }
+    // product_interest (kolekcje / typy — Q3: Gałązki, kolczyki)
+    for (const { pattern, value } of PRODUCT_INTEREST_KEYWORDS) {
+      if (pattern.test(text)) {
+        dedupePush(out, {
+          slot: 'product_interest',
+          value,
+          valueRaw: text.slice(0, 120),
+          confidence: 0.75,
+        });
       }
     }
     // language

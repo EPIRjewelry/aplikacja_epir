@@ -18,6 +18,9 @@ export const POLICY_TOOL_NAMES = new Set<string>([
 
 export const PRODUCT_TOOL_NAMES = new Set<string>([
   'search_catalog',
+  'catalog_search',
+  'catalog_lookup',
+  'catalog_image_search',
   'lookup_catalog',
   'get_product',
   'get_product_details',

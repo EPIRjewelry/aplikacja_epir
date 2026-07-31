@@ -14,6 +14,7 @@ describe('buildOperatorReportMarkdown', () => {
       warehouse_q1_ok: true,
       warehouse_q1_row_count: 1,
       warehouse_q1_skipped: false,
+      warehouse_pixel_sessions: 10,
       checked_at: '2026-05-23T09:00:00.000Z',
       edog_verdict: 'PASS' as const,
       reasons: ['ok'],

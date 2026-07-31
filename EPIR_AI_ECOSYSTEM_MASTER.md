@@ -39,9 +39,12 @@ Jeżeli inny dokument opisuje architekturę inaczej, ten plik wygrywa razem z `E
 
 #### Frontendy
 
+- `themes/epir-online-store` — motyw Online Store na `epirbizuteria.pl` (DNS → Shopify)
 - `extensions/asystent-klienta` — Theme App Extension dla Online Store
-- `apps/kazka` — Hydrogen storefront Kazka
-- `apps/zareczyny` — Hydrogen storefront Zaręczyny
+- `apps/kazka` — Hydrogen na `kazka.epirbizuteria.pl` (Cloudflare Pages)
+- `apps/zareczyny` — Hydrogen na `zareczyny.epirbizuteria.pl` (Cloudflare Pages)
+
+Domeny i ADS: `docs/EPIR_STOREFRONT_DOMAIN_STRATEGY.md`.
 
 #### Backend
 

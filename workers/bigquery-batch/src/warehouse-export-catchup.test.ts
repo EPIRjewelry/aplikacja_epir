@@ -10,6 +10,7 @@ describe('runWarehouseExportCatchUp', () => {
     const r = await runWarehouseExportCatchUp(run, { maxRuns: 5, targetPending: 1000 });
     expect(r.runs).toBe(2);
     expect(r.lastPending).toBe(800);
+    expect(r.lastSummary?.pending_pixel_after).toBe(800);
   });
 
   it('stops on pipeline error', async () => {

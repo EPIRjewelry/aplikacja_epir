@@ -14,6 +14,7 @@ COLLECTION_GOLD_HANDLE=zareczyny-zlote
 COLLECTION_SILVER_HANDLE=zareczyny-srebrne
 # Sklep (musi się zgadzać z tokenem Storefront API z tego samego Shopify Admin → Headless channel)
 PUBLIC_STORE_DOMAIN=epir-art-silver-jewellery.myshopify.com
+PUBLIC_STOREFRONT_URL=https://zareczyny.epirbizuteria.pl
 PUBLIC_CHECKOUT_DOMAIN=checkout.shopify.com
 
 # PUBLIC_STOREFRONT_API_TOKEN — skopiuj z Shopify Admin dla tego TENANTA (`PUBLIC_STORE_DOMAIN`).

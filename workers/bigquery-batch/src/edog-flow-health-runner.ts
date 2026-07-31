@@ -25,6 +25,8 @@ type Q1Probe = {
   rowCount: number | null;
   skipped: boolean;
   error?: string;
+  /** total_pixel_sessions from Q1 metrics row (null when skipped/error/missing). */
+  totalPixelSessions?: number | null;
 };
 
 async function countPixel24h(env: EdogFlowHealthEnv, sinceMs: number): Promise<number> {
@@ -101,6 +103,7 @@ export async function buildFlowHealthReport(
     warehouse_q1_row_count: null as number | null,
     warehouse_q1_skipped: true,
     warehouse_q1_error: undefined as string | undefined,
+    warehouse_pixel_sessions: null as number | null,
   };
 
   let q1: Q1Probe = { rowCount: null, skipped: true };
@@ -113,6 +116,8 @@ export async function buildFlowHealthReport(
     warehouse_q1_row_count: q1.rowCount,
     warehouse_q1_skipped: q1.skipped,
     warehouse_q1_error: q1.error,
+    warehouse_pixel_sessions:
+      q1.skipped || q1.error ? null : (q1.totalPixelSessions ?? null),
   };
 
   const { verdict, reasons } = computeEdogVerdict(input);
@@ -128,6 +133,7 @@ export async function buildFlowHealthReport(
     warehouse_q1_row_count: q1.rowCount,
     warehouse_q1_skipped: q1.skipped,
     warehouse_q1_error: q1.error,
+    warehouse_pixel_sessions: input.warehouse_pixel_sessions,
     checked_at: new Date(nowMs).toISOString(),
     edog_verdict: verdict,
     reasons,

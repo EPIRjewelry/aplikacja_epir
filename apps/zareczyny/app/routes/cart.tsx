@@ -11,7 +11,8 @@ import {
   CartLineInput,
   CountryCode,
 } from '@shopify/hydrogen/dist/storefront-api-types';
-import {CartLineItems, CartSummary, CartActions} from '@epir/ui';
+import {CartLineItems, CartSummary, CartActions, queryFullCartAfterMutation} from '@epir/ui';
+import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 
 export const meta: MetaFunction<typeof loader> = ({data}) =>
   getSeoMeta({
@@ -54,7 +55,7 @@ export async function loader({context, request}: LoaderFunctionArgs) {
       ).cart
     : null;
 
-  return {cart, canonicalUrl: request.url};
+  return {cart, canonicalUrl: canonicalUrlFromRequest(request, context.env)};
 }
 
 export async function action({request, context}: LoaderFunctionArgs) {
@@ -134,20 +135,23 @@ export async function action({request, context}: LoaderFunctionArgs) {
 
       // Dla fetchera „Do koszyka” zwracamy pełny koszyk (lines + cost),
       // bo szuflada koszyka renderuje te pola natychmiast po odpowiedzi.
-      const fullCart = (
-        await storefront.query<CartQueryData>(CART_QUERY, {
-          variables: {
-            cartId,
-            country: storefront.i18n.country,
-            language: storefront.i18n.language,
-          },
-          cache: storefront.CacheNone(),
-        })
-      ).cart;
-      return json(
-        {cart: fullCart ?? result.cart, errors: result.errors},
-        {status, headers},
+      const fullCart = await queryFullCartAfterMutation<CartData>(
+        storefront,
+        cartId,
+        CART_QUERY,
       );
+      if (!fullCart) {
+        return json(
+          {
+            error:
+              'Produkt dodany, ale nie udało się odświeżyć koszyka. Odśwież stronę lub otwórz koszyk ponownie.',
+            cart: result.cart,
+            errors: result.errors,
+          },
+          {status: 502, headers},
+        );
+      }
+      return json({cart: fullCart, errors: result.errors}, {status, headers});
     }
     case 'REMOVE_FROM_CART': {
       if (!cartId) {

@@ -16,7 +16,7 @@ describe('getR2AnalyticsSql', () => {
     expect(() => getR2AnalyticsSql({ WAREHOUSE_SQL_NAMESPACE: 'bad-ns!' }, 'Q2_CONVERSION_PATHS')).toThrow();
   });
 
-  it('Q4/Q5 target flattened Iceberg columns (not stream url/payload)', () => {
+  it('Q4/Q5 use page_url only (D-02); no stream url/payload', () => {
     const env = {};
     const q4 = getR2AnalyticsSql(env, 'Q4_STOREFRONT_SEGMENTATION')!;
     const q5 = getR2AnalyticsSql(env, 'Q5_TOP_PRODUCTS')!;
@@ -24,8 +24,7 @@ describe('getR2AnalyticsSql', () => {
     expect(q4).not.toMatch(/\burl\b/);
     expect(q4).not.toContain('payload');
     expect(q5).toContain('page_url');
-    expect(q5).toMatch(/page_url AS product_id/);
-    expect(q5).toContain('GROUP BY page_url');
+    expect(q5).not.toMatch(/\burl\b/);
     expect(q5).not.toContain('payload');
     expect(q5).not.toMatch(/json_get_str\s*\(\s*payload/);
   });
@@ -40,6 +39,22 @@ describe('getR2AnalyticsSql', () => {
     const q1 = getR2AnalyticsSql(env, 'Q1_CONVERSION_CHAT')!;
     expect(q1).toContain('approx_distinct');
     expect(q1).toContain('GROUP BY session_id');
+    expect(q1).toMatch(/CASE\s*\n?\s*WHEN total_pixel_sessions >= sessions_with_chat/i);
+    expect(q1).toContain('checkout_completed');
     expect(q1).not.toMatch(/\bUNION\b/i);
+    const q9 = getR2AnalyticsSql(env, 'Q9_TOOL_USAGE')!;
+    expect(q9).toContain('"name"');
+    expect(q9).toContain('AS tool_name');
+  });
+});
+
+describe('getQ9ToolUsageFallbackSql', () => {
+  it('does not reference name column', async () => {
+    const { getQ9ToolUsageFallbackSql, isMissingIcebergNameColumnError } = await import('./analytics-queries');
+    const sql = getQ9ToolUsageFallbackSql({});
+    expect(sql).toContain('missing_iceberg_name_column');
+    expect(sql).not.toMatch(/"name"/);
+    expect(isMissingIcebergNameColumnError('No field named name. Valid fields are...')).toBe(true);
+    expect(isMissingIcebergNameColumnError('other')).toBe(false);
   });
 });

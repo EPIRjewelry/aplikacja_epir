@@ -50,6 +50,11 @@ import { LUXURY_SYSTEM_PROMPT } from './prompts/luxury-system-prompt'; // 🟢 U
 import { TOOL_SCHEMAS, resolveToolSchemas, shouldUseSlimToolSchemas } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2 (+ slim wariant za flagą)
 import { sanitizeHarmonyHistory } from './utils/sanitizeHarmonyHistory';
 import { detectPolicyInformationIntent } from './intent/policy-information';
+import { detectSizeTableIntent } from './intent/size-table';
+import {
+  detectJailbreakOrHarmIntent,
+  JAILBREAK_REDIRECT_REPLY,
+} from './intent/jailbreak-prefilter';
 import { truncateWithSummary, type Message as HistoryMessage } from './utils/history'; // 🔵 History truncation
 import { hashPromptPrefix } from './utils/prompt-stability';
 import { mergeEphemeralBlockIntoLastUser } from './utils/merge-ephemeral-last-user';
@@ -2909,6 +2914,30 @@ async function handleChat(
   const greetingPattern = /^(cześć|czesc|hej|witaj|witam|dzień dobry|dzien dobry|dobry wieczór|dobry wieczor|hi|hello|hey)$/i;
   const isShortGreeting = !payload.image_base64 && greetingCheck.length < 15 && greetingPattern.test(greetingCheck);
 
+  // [JAILBREAK PREFILTER] Odmowa + redirect do zakupów — nie puszczaj szumu do LLM / Q3
+  if (
+    !payload.image_base64 &&
+    !isProjectBChatChannel(payload.channel) &&
+    detectJailbreakOrHarmIntent(payload.message).match
+  ) {
+    const jailbreakReply = JAILBREAK_REDIRECT_REPLY;
+    await stub.fetch('https://session/append', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'assistant', content: jailbreakReply, ts: now() } as HistoryEntry),
+    });
+    console.log(
+      JSON.stringify({
+        tag: 'chat.jailbreak_prefilter',
+        session_id: sessionId,
+        storefrontId: payload.storefrontId ?? null,
+      }),
+    );
+    return new Response(JSON.stringify({ reply: jailbreakReply, session_id: sessionId }), {
+      headers: { ...cors(env), 'Content-Type': 'application/json' },
+    });
+  }
+
   if (isShortGreeting) {
     const greetingReply = isProjectBChatChannel(payload.channel)
       ? 'Witaj! Jestem wewnętrznym agentem analityczno-doradczym EPIR (dane sklepu, pixel, kampanie). W czym pomóc?'
@@ -3647,24 +3676,33 @@ async function streamAssistantResponse(
       const MAX_TOKENS_AFTER_TOOL_MESSAGE = CHAT_MAX_TOKENS_AFTER_TOOL;
       const MAX_TOKENS_NORMAL_ROUND = CHAT_MAX_TOKENS_TOOL_ROUND;
 
-      // Wymuszenie MCP dla intencji „polityka/zwroty/regulamin": w pierwszej turze narzędzi
-      // pchamy model bezpośrednio do `search_shop_policies_and_faqs` zamiast pozwolić mu
-      // odpowiedzieć z pamięci parametrycznej. Wyłącznie kanał buyer; heurystyka na wejściu
-      // użytkownika, lista markerów nie trafia do promptu.
+      // Wymuszenie MCP: polityka/kontakt → search_shop_policies_and_faqs;
+      // rozmiar → get_size_table. Wyłącznie kanał buyer; heurystyka na wejściu.
       const policyToolAvailable = toolDefinitions.some(
         (t) => t.function.name === 'search_shop_policies_and_faqs',
       );
+      const sizeToolAvailable = toolDefinitions.some((t) => t.function.name === 'get_size_table');
       const forcePolicyMcp =
         !operatorMode &&
         policyToolAvailable &&
         detectPolicyInformationIntent(userMessage).match;
-      if (forcePolicyMcp) {
+      const forceSizeMcp =
+        !operatorMode &&
+        !forcePolicyMcp &&
+        sizeToolAvailable &&
+        detectSizeTableIntent(userMessage).match;
+      const forcedBuyerTool = forcePolicyMcp
+        ? 'search_shop_policies_and_faqs'
+        : forceSizeMcp
+          ? 'get_size_table'
+          : null;
+      if (forcedBuyerTool) {
         console.log(
           JSON.stringify({
-            tag: 'chat.policy_intent',
+            tag: forcePolicyMcp ? 'chat.policy_intent' : 'chat.size_intent',
             session_id: sessionId,
             storefrontId: storefrontContext?.storefrontId ?? null,
-            forced_tool: 'search_shop_policies_and_faqs',
+            forced_tool: forcedBuyerTool,
           }),
         );
       }
@@ -3689,7 +3727,7 @@ async function streamAssistantResponse(
         };
         let attemptUsed = 0;
 
-        const maxAttempts = i === 0 && forcePolicyMcp ? 2 : 1;
+        const maxAttempts = i === 0 && forcedBuyerTool ? 2 : 1;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
           iterationText = '';
           reasoningPreview = '';
@@ -3707,12 +3745,16 @@ async function streamAssistantResponse(
           const toolChoiceResolved =
             toolDefinitions.length === 0
               ? undefined
-              : i === 0 && forcePolicyMcp
-                ? { type: 'function' as const, function: { name: 'search_shop_policies_and_faqs' } }
+              : i === 0 && forcedBuyerTool
+                ? { type: 'function' as const, function: { name: forcedBuyerTool } }
                 : ('auto' as const);
 
           const timingLabel =
-            attempt === 0 ? `tool_loop_${i}` : `tool_loop_${i}_policy_retry`;
+            attempt === 0
+              ? `tool_loop_${i}`
+              : forcePolicyMcp
+                ? `tool_loop_${i}_policy_retry`
+                : `tool_loop_${i}_size_retry`;
 
           // Diagnostyka prefix cache: hash z pierwszych ~8KB promptu. Stabilny hash w tej samej
           // sesji → prefix cache powinien trafiać; zmienny → coś podmienia początek między turami
@@ -3837,7 +3879,7 @@ async function streamAssistantResponse(
 
           const shouldRetry =
             i === 0 &&
-            forcePolicyMcp &&
+            Boolean(forcedBuyerTool) &&
             attempt === 0 &&
             pendingToolCalls.size === 0 &&
             finishReason !== 'tool_calls';
@@ -3846,10 +3888,11 @@ async function streamAssistantResponse(
 
           console.log(
             JSON.stringify({
-              tag: 'chat.policy_intent.retry',
+              tag: forcePolicyMcp ? 'chat.policy_intent.retry' : 'chat.size_intent.retry',
               session_id: sessionId,
               attempt,
               finish_reason: finishReason,
+              forced_tool: forcedBuyerTool,
             }),
           );
         } // koniec for(attempt)
@@ -4022,10 +4065,16 @@ async function streamAssistantResponse(
                 error: (toolResult as any)?.error,
               });
             }
-            if (call.name === 'search_catalog' && !skippedExecution && !toolResult.error && toolResult.result != null) {
-              catalogSnapshotsForPricing.push(toolResult.result);
-            }
-            if (call.name === 'lookup_catalog' && !skippedExecution && !toolResult.error && toolResult.result != null) {
+            if (
+              (call.name === 'search_catalog' ||
+                call.name === 'catalog_search' ||
+                call.name === 'catalog_image_search' ||
+                call.name === 'catalog_lookup' ||
+                call.name === 'lookup_catalog') &&
+              !skippedExecution &&
+              !toolResult.error &&
+              toolResult.result != null
+            ) {
               catalogSnapshotsForPricing.push(toolResult.result);
             }
 
@@ -4873,6 +4922,18 @@ export default {
     // Healthcheck
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/ping' || url.pathname === '/health')) {
       return new Response('ok', { status: 200, headers: cors(env, request) });
+    }
+
+    if (request.method === 'GET' && url.pathname === '/.well-known/ucp-agent-profile.json') {
+      const { buildUcpAgentProfileJson } = await import('./catalog/ucp-agent-profile');
+      return new Response(JSON.stringify(buildUcpAgentProfileJson(env)), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+          ...cors(env, request),
+        },
+      });
     }
 
     const operatorStudio = await handleOperatorStudioIngress(request, env, ctx, url, method);

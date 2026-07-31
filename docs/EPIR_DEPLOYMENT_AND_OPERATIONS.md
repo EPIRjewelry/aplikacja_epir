@@ -258,13 +258,22 @@ Postura ingress dla produkcji:
 
 ### Cloudflare Pages (`kazka`, `zareczyny`)
 
-W zależności od storefrontu i runtime:
+Custom domain per projekt Pages (subdomena). W zależności od storefrontu:
 
 - `SESSION_SECRET`
 - `PUBLIC_STOREFRONT_API_TOKEN`
 - `PRIVATE_STOREFRONT_API_TOKEN` (gdzie wymagany)
 - `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`
 - `EPIR_CHAT_SHARED_SECRET`
+
+Deploy Pages (subdomeny Hydrogen):
+
+```bash
+npm run pages:deploy:zareczyny
+npm run pages:deploy:kazka
+```
+
+Domeny: [`EPIR_STOREFRONT_DOMAIN_STRATEGY.md`](EPIR_STOREFRONT_DOMAIN_STRATEGY.md).
 
 ## Bazy D1
 

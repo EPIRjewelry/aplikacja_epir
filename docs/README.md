@@ -34,6 +34,8 @@ Ten katalog jest częścią jedynego kanonicznego pakietu dokumentacji EPIR. Ten
 - [`EPIR_STORE_STEWARD.md`](EPIR_STORE_STEWARD.md) — Store Steward (Kustosz): Faza 0 obserwacja analityki, worker `epir-store-steward`, agent Cursor SDK; izolacja od Gemmy
 - [`EPIR_HAM_ATTRIBUTION.md`](EPIR_HAM_ATTRIBUTION.md) — Hybrid Attribution Mesh (UTM, last_non_direct, resolved_*, Ads rekonsyliacja, bramki Steward)
 - [`EPIR_DEPLOYMENT_AND_OPERATIONS.md`](EPIR_DEPLOYMENT_AND_OPERATIONS.md) — sekrety, migracje, deploy, runbook operacyjny i **formalna bramka go/no-go** (jedyna kanoniczna checklista release: CI, sekrety, fail-closed ingress, kolejność deployu, smoke)
+- [`EPIR_STOREFRONT_DOMAIN_STRATEGY.md`](EPIR_STOREFRONT_DOMAIN_STRATEGY.md) — apex → Shopify, Hydrogen → subdomeny (kanon Shopify, bez routera)
+- [`EPIR_ADMIN_METAFIELDS_CHECKLIST.md`](EPIR_ADMIN_METAFIELDS_CHECKLIST.md) — metafieldy wspólne (motyw + Hydrogen), handle’e pod kampanie
 - [`EPIR_BLUEPRINTS_AND_EXCEPTIONS.md`](EPIR_BLUEPRINTS_AND_EXCEPTIONS.md) — Project B, automatyzacje, limity API i zasady agentowe
 - `merge-gates/` — karty merge gate per zakres PR (go/no-go dla pojedynczych pakietów zmian, zgodne z kanoniczną bramką release)
 
@@ -41,6 +43,7 @@ Ten katalog jest częścią jedynego kanonicznego pakietu dokumentacji EPIR. Ten
 
 Te pliki **muszą** być w tym samym drzewie co NotebookLM (mirror 1:1), ale **nie** równają się kanonowi: to syntezy, Q&A i kompas z research — przed decyzją produkcyjną obowiązuje weryfikacja w **aktualnych** dokumentach dostawców oraz w kodzie `aplikacja_epir`.
 
+- [`working/KUSTOSZ_BRIEF_LATEST.md`](working/KUSTOSZ_BRIEF_LATEST.md) — ostatni brief Cursor Kustosza (ops desk); niewiążący, odnawiany przy audycie.
 - [`Architektura AI Analityka w Ekosystemie Cloudflare i Google Ads.md`](Architektura%20AI%20Analityka%20w%20Ekosystemie%20Cloudflare%20i%20Google%20Ads.md) — synteza (np. NotebookLM / deep research): hipotezy, linki, ryzyka; nie zastępuje `EPIR_*` ani wdrożenia.
 - [`EPIR_CLOUDFLARE_AGENT_SERVICE_PLAN.md`](EPIR_CLOUDFLARE_AGENT_SERVICE_PLAN.md) — plan warstwy „agent jako usługa” (Agents SDK obok monorepo, bramki ESOG, publiczne repo); nie zastępuje kanonu ani kontraktu danych w `EPIR_*`.
 - [`EPIR_PROJECT_B_COPILOT_VISION.md`](EPIR_PROJECT_B_COPILOT_VISION.md) — wizja „copilota” Project B (dane pixel/GA4/Ads, pamięć, koszt tokenów, tło, Workspace, okno czatu); kompas do wchłonięcia w kanon po ESOG.

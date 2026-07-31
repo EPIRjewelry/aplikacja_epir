@@ -1,7 +1,8 @@
-import {useLoaderData} from '@remix-run/react';
-import {SeoHandleFunction} from '@shopify/hydrogen';
+import {type MetaFunction, useLoaderData} from '@remix-run/react';
+import {getSeoMeta} from '@shopify/hydrogen';
 import {ProductGrid} from '@epir/ui';
 import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
+import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 
 type CollectionsQueryData = {
   collections: {nodes: {handle: string}[]};
@@ -51,8 +52,20 @@ export async function loader({
 
   return json({
     collection,
+    canonicalUrl: canonicalUrlFromRequest(request, context.env),
   });
 }
+
+export const meta: MetaFunction<typeof loader> = ({data}) => {
+  if (!data?.collection) {
+    return [];
+  }
+  return getSeoMeta({
+    title: data.collection.title ?? undefined,
+    description: data.collection.description?.slice(0, 154) ?? undefined,
+    url: data.canonicalUrl,
+  });
+};
 
 export default function Collection() {
   const {collection} = useLoaderData<typeof loader>();
@@ -133,10 +146,3 @@ const COLLECTION_QUERY = `#graphql
   }
 `;
 
-const seo: SeoHandleFunction<typeof loader> = ({data}) => ({
-  title: data?.collection?.title,
-  description: data?.collection?.description?.substr(0, 154) ?? undefined,
-});
-export const handle = {
-  seo,
-};

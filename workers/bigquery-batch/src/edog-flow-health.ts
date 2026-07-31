@@ -20,6 +20,8 @@ export type FlowHealthSnapshot = {
   warehouse_q1_row_count: number | null;
   warehouse_q1_skipped: boolean;
   warehouse_q1_error?: string;
+  /** approx_distinct(session_id) z Q1 na tabeli pixel — 0 przy żywym D1 = Iceberg pixel pusty. */
+  warehouse_pixel_sessions: number | null;
   checked_at: string;
 };
 
@@ -34,6 +36,7 @@ export type FlowHealthInput = {
   warehouse_q1_row_count: number | null;
   warehouse_q1_skipped: boolean;
   warehouse_q1_error?: string;
+  warehouse_pixel_sessions: number | null;
 };
 
 const MS_24H = 24 * 60 * 60 * 1000;
@@ -91,6 +94,13 @@ export function computeEdogVerdict(input: FlowHealthInput): { verdict: EdogVerdi
     } else if (input.warehouse_q1_row_count === 0) {
       reasons.push('warehouse_q1_empty');
       degraded = true;
+    } else if (
+      input.d1_pixel_events_24h > 0 &&
+      input.warehouse_pixel_sessions !== null &&
+      input.warehouse_pixel_sessions === 0
+    ) {
+      reasons.push('warehouse_pixel_empty');
+      fail = true;
     }
   } else if (!fail && input.warehouse_q1_skipped && input.pipeline_pixel_configured) {
     reasons.push('warehouse_q1_skipped_batch_unhealthy');

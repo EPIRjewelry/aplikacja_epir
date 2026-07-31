@@ -22,6 +22,11 @@ describe('detectPolicyInformationIntent', () => {
     expect(detectPolicyInformationIntent('Do you offer warranty on rings?').match).toBe(true);
   });
 
+  it('wykrywa PL: kontakt (krótki)', () => {
+    expect(detectPolicyInformationIntent('Kontakt').match).toBe(true);
+    expect(detectPolicyInformationIntent('telefon?').match).toBe(true);
+  });
+
   it('nie wykrywa neutralnej prośby o produkt', () => {
     expect(detectPolicyInformationIntent('Pokaż mi złote pierścionki z brylantem').match).toBe(false);
   });

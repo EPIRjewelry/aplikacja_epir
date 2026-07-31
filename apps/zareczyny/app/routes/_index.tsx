@@ -1,6 +1,6 @@
 import {useEffect} from 'react';
-import {Link, useLoaderData} from '@remix-run/react';
-import {Image} from '@shopify/hydrogen';
+import {Link, type MetaFunction, useLoaderData} from '@remix-run/react';
+import {getSeoMeta, Image} from '@shopify/hydrogen';
 import type {LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {
   RouteContent,
@@ -12,16 +12,15 @@ import {
   parseCollectionFilter,
 } from '~/lib/collection-filters';
 import {HeroWithCollectionTiles} from '~/components/HeroWithCollectionTiles';
+import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 
-export function meta() {
-  return [
-    {title: 'EPIR Art Jewellery – Pierścionki zaręczynowe'},
-    {
-      description:
-        'Luksusowe pierścionki zaręczynowe i biżuteria EPIR Art Jewellery & Gemstone.',
-    },
-  ];
-}
+export const meta: MetaFunction<typeof loader> = ({data}) =>
+  getSeoMeta({
+    title: 'EPIR Art Jewellery – Pierścionki zaręczynowe',
+    description:
+      'Luksusowe pierścionki zaręczynowe i biżuteria EPIR Art Jewellery & Gemstone.',
+    url: data?.canonicalUrl,
+  });
 
 type FeaturedCollection = {
   id: string;
@@ -42,7 +41,7 @@ type LoaderData = {
   };
 };
 
-export async function loader({context}: LoaderFunctionArgs): Promise<LoaderData> {
+export async function loader({context, request}: LoaderFunctionArgs): Promise<LoaderData & {canonicalUrl: string}> {
   const allowedHandles = parseCollectionFilter(context.env.COLLECTION_FILTER);
   const hubHandle = context.env.COLLECTION_HUB_HANDLE;
 
@@ -82,6 +81,7 @@ export async function loader({context}: LoaderFunctionArgs): Promise<LoaderData>
   return {
     route: route ?? null,
     collections: {...collections, nodes},
+    canonicalUrl: canonicalUrlFromRequest(request, context.env),
   };
 }
 

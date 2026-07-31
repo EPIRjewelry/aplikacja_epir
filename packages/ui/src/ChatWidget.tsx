@@ -8,6 +8,7 @@ import {useState, useCallback, useRef, useEffect} from 'react';
 import ReactMarkdown, {type Components} from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {DEFAULT_PERSONA_UI, type PersonaUi} from './persona-ui';
+import {resolveShopAuthTokenForChat} from './commerce/shop-sign-in';
 
 /** Global Shopify (Customer Account UI extensions / App Bridge) — opcjonalnie. */
 type ShopifyWindowGlobal = {
@@ -23,27 +24,7 @@ type ShopifyWindowGlobal = {
 export async function resolveShopifySessionTokenForChat(
   getSessionToken?: () => Promise<string | null | undefined>,
 ): Promise<string | undefined> {
-  if (getSessionToken) {
-    try {
-      const t = await getSessionToken();
-      if (typeof t === 'string' && t.trim().length > 0) return t.trim();
-    } catch {
-      /* ignore */
-    }
-  }
-  if (typeof window === 'undefined') return undefined;
-  const shopify = (window as unknown as {shopify?: ShopifyWindowGlobal}).shopify;
-  if (shopify?.sessionToken?.get) {
-    try {
-      const t = await shopify.sessionToken.get();
-      if (typeof t === 'string' && t.trim().length > 0) return t.trim();
-    } catch {
-      /* ignore */
-    }
-  }
-  const idTok = shopify?.id?.token;
-  if (typeof idTok === 'string' && idTok.trim().length > 0) return idTok.trim();
-  return undefined;
+  return resolveShopAuthTokenForChat(getSessionToken);
 }
 
 /**

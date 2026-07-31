@@ -1,8 +1,9 @@
-import {json, type LoaderFunctionArgs} from '@remix-run/cloudflare';
+import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {type MetaFunction, useLoaderData} from '@remix-run/react';
 import {ProductGallery, ProductOptions, ProductForm} from '@epir/ui';
 import {getSeoMeta, Money, ShopPayButton} from '@shopify/hydrogen';
 import React, {useEffect, useState} from 'react';
+import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 
 export async function loader({
   params,
@@ -10,7 +11,8 @@ export async function loader({
   request,
 }: LoaderFunctionArgs) {
   const {handle} = params;
-  const searchParams = new URL(request.url).searchParams;
+  const url = new URL(request.url);
+  const searchParams = url.searchParams;
   const selectedOptions: {name: string; value: string}[] = [];
 
   const storeDomain = context.storefront.getShopifyDomain();
@@ -31,9 +33,28 @@ export async function loader({
     throw new Response(null, {status: 404});
   }
 
-  // optionally set a default variant so you always have an "orderable" product selected
+  const variantNodes = product.variants?.nodes ?? [];
+
+  if (selectedOptions.length === 0 && !product.selectedVariant && variantNodes.length > 0) {
+    const defaultVariant =
+      variantNodes.find((v: {availableForSale?: boolean}) => v.availableForSale) ??
+      variantNodes[0];
+    if (defaultVariant?.selectedOptions?.length) {
+      const next = new URL(request.url);
+      for (const {name, value} of defaultVariant.selectedOptions) {
+        next.searchParams.set(name, value);
+      }
+      if (next.search !== url.search) {
+        return redirect(`${next.pathname}${next.search}`, 302);
+      }
+    }
+  }
+
   const selectedVariant =
-    product.selectedVariant ?? product?.variants?.nodes[0];
+    product.selectedVariant ??
+    variantNodes.find((v: {availableForSale?: boolean}) => v.availableForSale) ??
+    variantNodes[0] ??
+    null;
   const shopPayEnabled =
     String(context.env.SHOP_PAY_ENABLED ?? '')
       .trim()
@@ -44,7 +65,7 @@ export async function loader({
     storeDomain,
     shopPayEnabled,
     countryCode: context.storefront.i18n.country,
-    canonicalUrl: request.url,
+    canonicalUrl: canonicalUrlFromRequest(request, context.env),
   });
 }
 
@@ -78,7 +99,8 @@ export default function ProductHandle() {
   const {product, selectedVariant, storeDomain, shopPayEnabled, countryCode} =
     useLoaderData<typeof loader>();
   const variantId = selectedVariant?.id;
-  const orderable = Boolean(selectedVariant?.availableForSale && variantId);
+  const hasPrice = Boolean(selectedVariant?.price?.amount);
+  const showPurchaseForm = Boolean(variantId && hasPrice);
 
   return (
     <section className="w-full gap-4 md:gap-8 grid px-6 md:px-8 lg:px-12">
@@ -110,8 +132,14 @@ export default function ProductHandle() {
               Wybierz wariant, aby zobaczyć cenę.
             </p>
           )}
-          {orderable && (
+          {showPurchaseForm ? (
             <div className="space-y-2">
+              {selectedVariant?.availableForSale === false ? (
+                <p className="text-sm text-amber-900" role="status">
+                  Weryfikujemy dostępność tego wariantu — jeśli „Do koszyka” nie zadziała,
+                  wybierz inną konfigurację lub napisz na czacie.
+                </p>
+              ) : null}
               {shopPayEnabled ? (
                 <ShopPayAfterMount
                   storeDomain={storeDomain}
@@ -125,7 +153,7 @@ export default function ProductHandle() {
                 showBuyNow
               />
             </div>
-          )}
+          ) : null}
           {product.descriptionHtml ? (
             <div
               className="prose border-t border-gray-200 pt-6 text-black text-md"
@@ -250,7 +278,7 @@ const PRODUCT_QUERY = `#graphql
           handle
         }
       }
-      variants(first: 1) {
+      variants(first: 250) {
         nodes {
           id
           title

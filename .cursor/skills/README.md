@@ -11,13 +11,23 @@
 | Dane, analityka, EDCG/EDOG/EAA | [`docs/kb/DATA_AND_ANALYTICS.md`](../../docs/kb/DATA_AND_ANALYTICS.md) |
 | Workers, deploy, ESOG/EFA/OQAG | [`docs/kb/WORKERS_AND_EDGE.md`](../../docs/kb/WORKERS_AND_EDGE.md) |
 | Entry point Cursor | [`.cursor/index.mdc`](../index.mdc) |
-| Growth Engineer (workflow Cursor vs Operator Studio) | [`.cursor/rules/epir-growth-workflow.mdc`](../rules/epir-growth-workflow.mdc) + [`docs/PROJECT_B_SOLO_DEV_AGENTS.md`](../../docs/PROJECT_B_SOLO_DEV_AGENTS.md) |
+| Growth / ops desk (Cursor-first) | [`.cursor/rules/epir-growth-workflow.mdc`](../rules/epir-growth-workflow.mdc) + [`docs/PROJECT_B_SOLO_DEV_AGENTS.md`](../../docs/PROJECT_B_SOLO_DEV_AGENTS.md) |
+
+## Playbooki Cursor (cienkie SKILL — nie duplikują kanonu)
+
+| Skill | Kiedy |
+|-------|--------|
+| [`epir-edog-agent`](epir-edog-agent/SKILL.md) | Audyt przepływu D1 → batch → Iceberg (`EDOG: PASS/FAIL`) |
+| [`epir-kustosz-agent`](epir-kustosz-agent/SKILL.md) | Codzienny / tygodniowy brief biznesowy: EDOG + Q1–Q10 + wzorce Gemmy |
+
+Wiedza domenowa zostaje w `docs/kb/` — te pliki to tylko **playbooki narzędziowe**.
 
 ## Werdykty bramkowe
 
 - Warehouse: **ESOG: PASS** + **EDCG: PASS** — `docs/merge-gates/WAREHOUSE_DATA_CONTRACT.md`
 - EDOG wdrożenie: **EDOG: PASS** — `docs/merge-gates/EDOG_IMPLEMENTATION_STEPS.md`
 - OpenRouter Project B: **OQAG: PASS**
+- Brief Kustosza: **CURATOR: PASS** tylko ze źródłami przy każdej tezie
 
 ## Nie są kanonem Cursor (cross-link)
 
@@ -32,4 +42,4 @@
 
 1. Edytuj moduł w `docs/kb/` lub router w `EPIR_AI_BIBLE.md`.
 2. Przy zmianie UI/marki — aktualizuj `REVIEW.md`.
-3. Nie twórz równoległych `SKILL.md` w tym katalogu.
+3. Nowe playbooki w `.cursor/skills/` tylko jako cienkie pointery (jak EDOG / Kustosz) — bez kopiowania całego kontraktu danych.
