@@ -1,5 +1,5 @@
 import {Link, type MetaFunction, useLoaderData} from '@remix-run/react';
-import {Image, getSeoMeta} from '@shopify/hydrogen';
+import {getSeoMeta} from '@shopify/hydrogen';
 import type {LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {
   filterCollectionsForNav,
@@ -128,12 +128,14 @@ function ModelkaLayout({
           >
             <div className="aspect-square overflow-hidden bg-gray-50 mb-2 md:mb-3">
               {product.images.nodes[0] && (
-                <Image
+                <img
+                  src={product.images.nodes[0].url}
                   alt={product.images.nodes[0].altText || product.title}
-                  data={product.images.nodes[0]}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  sizes="(max-width: 32em) 50vw, 25vw"
-                  width={400}
+                  width={product.images.nodes[0].width ?? 400}
+                  height={product.images.nodes[0].height ?? 400}
+                  loading={i < 4 ? 'eager' : 'lazy'}
+                  decoding="async"
                 />
               )}
             </div>
@@ -141,8 +143,11 @@ function ModelkaLayout({
               {product.title}
             </h3>
             <p className="text-xs md:text-sm text-[rgb(var(--color-primary))]/60 mt-1">
-              {product.priceRange.minVariantPrice.amount}{' '}
-              {product.priceRange.minVariantPrice.currencyCode}
+              {new Intl.NumberFormat('pl-PL', {
+                style: 'currency',
+                currency: product.priceRange.minVariantPrice.currencyCode,
+                maximumFractionDigits: 0,
+              }).format(Number(product.priceRange.minVariantPrice.amount))}
             </p>
           </Link>
         ))}
@@ -162,13 +167,15 @@ function ModelkaLayout({
                 style={{animationDelay: `${i * 100}ms`}}
               >
                 <div className="aspect-[4/5] overflow-hidden bg-gray-100 mb-3">
-                  {collection.image ? (
-                    <Image
-                      alt={collection.title}
-                      data={collection.image}
+                  {collection.image?.url ? (
+                    <img
+                      src={collection.image.url}
+                      alt={collection.image.altText || collection.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      sizes="(max-width: 32em) 50vw, 33vw"
-                      width={600}
+                      width={collection.image.width ?? 600}
+                      height={collection.image.height ?? 750}
+                      loading="lazy"
+                      decoding="async"
                     />
                   ) : null}
                 </div>
