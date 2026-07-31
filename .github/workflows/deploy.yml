@@ -1,11 +1,16 @@
 name: Deploy (Cloudflare)
 
-# Push na main (workers) → deploy workerów. Pełny deploy (Pages + smoke): workflow_dispatch.
+# Push na main → deploy workerów (workers/**) i storefrontów (apps/kazka, apps/zareczyny).
+# Pełny deploy ze smoke: workflow_dispatch.
 on:
   push:
     branches: [main]
     paths:
       - 'workers/**'
+      - 'apps/kazka/**'
+      - 'apps/zareczyny/**'
+      - 'packages/ui/**'
+      - 'packages/utils/**'
       - 'apps/operator-studio/**'
       - '.github/workflows/deploy.yml'
       - 'package-lock.json'
@@ -99,6 +104,11 @@ jobs:
         working-directory: workers/chat
         run: npx wrangler d1 execute ai-assistant-sessions-db --remote --file=./migrations/013_operator_copilot.sql
 
+      - name: Ensure RAG Vectorize index exists
+        working-directory: workers/rag-worker
+        run: |
+          npx wrangler vectorize create autorag-epir-chatbot-rag --dimensions=1024 --metric=cosine 2>/dev/null || true
+
       - name: Deploy rag worker
         working-directory: workers/rag-worker
         run: npx wrangler deploy --env=""
@@ -130,7 +140,7 @@ jobs:
   deploy-pages:
     name: deploy-pages
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy_pages == true
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy_pages == true)
     strategy:
       fail-fast: false
       matrix:

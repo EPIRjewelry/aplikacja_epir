@@ -20,6 +20,27 @@ export default async function handleRequest(
 ) {
   const {nonce, header, NonceProvider} = createContentSecurityPolicy({
     shop: SHOP_FOR_CSP,
+    styleSrc: [
+      "'self'",
+      "'unsafe-inline'",
+      'https://cdn.shopify.com',
+      'https://fonts.googleapis.com',
+    ],
+    fontSrc: ["'self'", 'https://fonts.gstatic.com', 'https://cdn.shopify.com'],
+    mediaSrc: [
+      "'self'",
+      'https://epirbizuteria.pl',
+      'https://kazka.epirbizuteria.pl',
+      'https://cdn.shopify.com',
+    ],
+    connectSrc: [
+      "'self'",
+      'https://monorail-edge.shopifysvc.com',
+      'https://checkout.shopify.com',
+      'https://epir-art-silver-jewellery.myshopify.com',
+      'https://cdn.shopify.com',
+      'https://shopifycloud.com',
+    ],
   });
 
   const body = await renderToReadableStream(
