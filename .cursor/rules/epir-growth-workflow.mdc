@@ -1,42 +1,41 @@
 ---
-description: Growth Engineer workflow — NotebookLM kompas, Cursor wykonawca, MCP tylko stdio
+description: Growth Engineer workflow — Cursor-first ops desk (Kustosz), NotebookLM kompas, Studio cienki backup
 alwaysApply: false
-globs: docs/PROJECT_B_SOLO_DEV_AGENTS.md,apps/operator-studio/**/*,mcp-servers/gworkspace/**/*,.cursor/mcp*.json,.cursor/rules/epir-growth-workflow.mdc
+globs: docs/PROJECT_B_SOLO_DEV_AGENTS.md,apps/operator-studio/**/*,mcp-servers/gworkspace/**/*,mcp-servers/epir-data-ops/**/*,.cursor/mcp*.json,.cursor/rules/epir-growth-workflow.mdc,.cursor/skills/epir-kustosz-agent/**
 ---
 
-⚠️ SSOT ROUTING: `AGENTS.md`, `EPIR_AI_BIBLE.md`, `docs/PROJECT_B_SOLO_DEV_AGENTS.md` (sekcja Growth Engineer).
+⚠️ SSOT ROUTING: `AGENTS.md`, `EPIR_AI_BIBLE.md`, `docs/PROJECT_B_SOLO_DEV_AGENTS.md` (sekcja Growth Engineer). Codzienny desk: [`.cursor/skills/epir-kustosz-agent/SKILL.md`](../skills/epir-kustosz-agent/SKILL.md).
 
 ## Podział ról
 
 | Warstwa | Rola | Gdzie |
 |---------|------|--------|
-| Kompas | Strategia, synteza z mirroru repo | NotebookLM (human-in-the-loop) |
-| Szyna | Weryfikacja blueprintu | Operator |
+| Kompas | Strategia, synteza z mirroru repo | NotebookLM (human-in-the-loop) — **niewiążący** |
 | Execution | Kod, Liquid, wrangler, lokalny odczyt Google | **Cursor** (Composer + MCP) |
-| Runtime | Czat operatora, raporty D1, cron | **Operator Studio** / workers (nie Cursor deploy na żywo) |
+| Ops desk (metryki) | EDOG + Q1–Q10 + wzorce Gemmy → 1-stronicowy brief | **Cursor** — skill **Kustosz EPIR** + MCP `epir-data-ops` |
+| Runtime awaryjny | Raporty D1, status przepływu, eksport | **Operator Studio** (cienki: Raporty + Przepływ) |
 
-## Przepływ pracy
+## Przepływ pracy (Cursor-first)
 
-1. Dane / raport z D1 lub panelu → excerpt do NotebookLM.
-2. NotebookLM → blueprint (architektura, DCO, UI) — **niewiążący** do weryfikacji z kanonem i kodem.
+1. W Cursorze: „uruchom Kustosza” → `flow_health` → whitelist Q* → brief (bez otwierania Studio).
+2. NotebookLM tylko gdy potrzebujesz syntezy strategicznej z mirroru — wynik zweryfikuj z kanonem i kodem.
 3. Operator wkleja zweryfikowany blueprint do Cursora → edycja repo, testy, deploy.
+4. Studio otwieraj rzadko: lista raportów / EDOG / awaryjny eksport — **nie** jako BI ani katalog modeli.
 
-## MCP Google Workspace
+## MCP
 
-- **Tylko stdio:** `epir-gworkspace` z `mcp-servers/gworkspace` — patrz `.cursor/mcp-gworkspace.example.json`.
-- **Zakaz** remote HTTP/SSE MCP dla Google (OAuth w przeglądarce w Cursorze bywa niestabilne).
-- OAuth refresh w **OS keychain** (`npm run auth -w @epir/mcp-gworkspace`); nie commituj tokenów.
-- Odczyt briefu: `gdocs_read_markdown` / `gsheets_read_csv` po **fileId** — nie skanuj całego Drive.
-- **Nie** Service Account w tym workflow bez osobnej decyzji operatora.
+- **Ops / hurtownia:** `epir-data-ops` — `flow_health_summary`, `warehouse_query` (Q1–Q10), D1 allowlist. Env: `.cursor/mcp.json` / `.cursor/mcp-data-ops.example.json`.
+- **Google Workspace (stdio):** `epir-gworkspace` — patrz `.cursor/mcp-gworkspace.example.json`.
+- **Zakaz** remote HTTP/SSE MCP dla Google (OAuth w przeglądarce bywa niestabilne).
 
 ## Governance
 
 - **Zakaz** `wrangler secret put` i nowych nazw sekretów bez zgody — `.cursor/rules/epir-secrets-governance.mdc`.
-- **Nie** duplikuj kanonu w `.cursor/skills/` — wiedza domenowa w `docs/kb/`.
-- **GAQL / Google Ads:** `docs/kb/DATA_AND_ANALYTICS.md`, `workers/marketing-ingest/README.md` — nie osobny skill w `.cursor/skills/`.
+- Wiedza domenowa w `docs/kb/` — playbooki w `.cursor/skills/` tylko cienkie.
+- **GAQL / Google Ads:** `docs/kb/DATA_AND_ANALYTICS.md`, `workers/marketing-ingest/README.md`.
 - **SSOT analityki:** D1 → Iceberg — **nie** Google Sheets jako ledger agentów.
 
-## Operator Studio (runtime)
+## Operator Studio (cienki backup)
 
-- Pytania o metryki, raporty, marketing → panel `/internal/operator-studio`, role `analyst` / `creative`.
-- Brief Google: odczyt w Cursorze (MCP), fragment wklejony do czatu kreacji — bez Google OAuth w przeglądarce panelu.
+- Domyślnie: zakładki **Raporty** + **Przepływ**. Blender / kreacja / katalog modeli — za **Zaawansowane**.
+- Metryki dzienne → skill Kustosz w Cursorze, nie czat Studio jako dashboard.

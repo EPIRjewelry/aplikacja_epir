@@ -1,0 +1,138 @@
+Shopify AI Toolkit + MCP w Cursor — EPIR (plugin-first)
+=========================================================
+
+Oficjalna rekomendacja Shopify: plugin AI Toolkit (auto-update).
+Kanon: https://shopify.dev/docs/apps/build/ai-toolkit
+
+GRANICA GEMMY (ważne)
+---------------------
+Ten setup dotyczy WYŁĄCZNIE Cursor IDE (dev / operator).
+Gemma (buyer-facing) działa w produkcji przez workers/chat → MCP_ENDPOINT
+w workers/chat/wrangler.toml — NIE zmieniaj tego pliku ani shopify-mcp-client.ts
+w ramach konfiguracji IDE.
+
+0) OPERATOR — pierwsza instalacja (obowiązkowe, ręcznie)
+----------------------------------------------------------
+Wykonaj w tej kolejności (agent nie może tego zrobić za Ciebie):
+
+  a) Cursor Chat: /add-plugin shopify
+     LUB Marketplace: https://cursor.com/marketplace/shopify
+
+  b) Settings → Tools & MCP — plugin v1.2.x często wystawia **skille** (shopify-liquid,
+     shopify-hydrogen, …) zamiast wpisów shopify-dev-mcp na liście MCP. To OK —
+     używaj skilli + skryptów search/validate. Opcjonalny fallback dev-mcp: sekcja 5.
+
+  c) Operacje w sklepie: skill shopify-use-shopify-cli + `shopify auth login`
+     (nie wymaga shopify-admin-mcp na liście MCP)
+
+Bez zainstalowanego pluginu Shopify skille i walidacja w IDE nie działają —
+nie używaj nieoficjalnych admin-mcp (np. lokalnych buildów spoza Toolkitu).
+
+1) Shopify AI Toolkit — plugin (jedyny kanał Shopify w IDE lokalnie)
+--------------------------------------------------------------------
+- Plugin dostarcza **skille** (m.in. shopify-liquid, shopify-hydrogen, shopify-admin)
+  oraz skrypty dokumentacji/walidacji. Starsze buildy mogły rejestrować shopify-dev-mcp
+  na liście MCP — nie duplikuj ręcznie w mcp.json.
+- Operacje admin w sklepie: Shopify CLI (`shopify store auth` / `store execute`) —
+  skill shopify-use-shopify-cli.
+- Wymagania: Node.js 18+ (node --version)
+- NIE dodawaj shopify-dev-mcp / shopify-admin-mcp do:
+    • .cursor/mcp.json w repo (projekt = tylko EPIR)
+    • C:\Users\user\.cursor\mcp.json (global = github, CF, blender, GCP)
+  Duplikat powodował wcześniej status „errored”.
+
+2) EPIR — mcp.json w projekcie
+------------------------------
+- Skopiuj .cursor/mcp-epir.example.json → .cursor/mcp.json (lokalnie).
+- Zawiera TYLKO serwery EPIR (+ opcjonalnie blender-assist):
+    epir-data-ops, epir-gworkspace
+- Ustaw env w systemie / profilu użytkownika (nie commituj wartości):
+    CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, EPIR_BATCH_WORKER_ORIGIN,
+    DATA_GUARDIAN_OPS_KEY, GWORKSPACE_OAUTH_CLIENT_ID, GWORKSPACE_OAUTH_CLIENT_SECRET
+- Szczegóły env: mcp-servers/epir-data-ops/README.md, mcp-servers/gworkspace/README.md
+
+3) Uprawnienia i bezpieczeństwo (Data-Permissions-First)
+--------------------------------------------------------
+- Cursor → Settings → Tools & MCP → shopify-admin-mcp:
+    domyślnie Ask (zezwól / pytaj / odrzuć) na operacje zapisu w sklepie.
+- Telemetria Shopify (opcjonalnie wyłącz):
+    OPT_OUT_INSTRUMENTATION=true  (zmienna użytkownika Windows)
+- Polaris Web Components (eksperymentalnie, tylko dev-mcp):
+    POLARIS_UNIFIED=true
+
+4) Opcjonalny debug Storefront MCP z IDE (read-only, bez tokenu)
+----------------------------------------------------------------
+Tylko do ręcznego testu katalogu / polityk z agenta w IDE — NIE zamiennik pluginu.
+Dodaj do LOKALNEGO .cursor/mcp.json (nie do mcp-epir.example.json w repo):
+
+  "epir-storefront-mcp-debug": {
+    "url": "https://epir-art-silver-jewellery.myshopify.com/api/mcp"
+  }
+
+UCP catalog (search_catalog, lookup_catalog, get_product) — osobny endpoint:
+  https://epir-art-silver-jewellery.myshopify.com/api/ucp/mcp
+Dokumentacja: https://shopify.dev/docs/apps/build/storefront-mcp/servers/storefront
+
+5) Windows — fallback TYLKO gdy plugin nadal „errored” po sekcji 0
+-------------------------------------------------------------------
+Najpierw dokończ sekcję 0 (install + Connect + auth login + restart).
+Fallback uruchamiaj wyłącznie jeśli plugin nie wstaje:
+
+a) View → Output → MCP (MCP Logs) — typowe przyczyny:
+   - brak Node 18+ lub npx poza PATH
+   - brak shopify auth login (admin)
+   - duplikat shopify-* w mcp.json — usuń z obu plików mcp.json
+
+b) Tylko shopify-dev-mcp (docs/walidacja) — user-level ~/.cursor/mcp.json:
+
+   {
+     "mcpServers": {
+       "shopify-dev-mcp": {
+         "command": "cmd",
+         "args": ["/k", "npx", "-y", "@shopify/dev-mcp@latest"],
+         "env": {
+           "OPT_OUT_INSTRUMENTATION": "true"
+         }
+       }
+     }
+   }
+
+   Nie dodawaj admin-mcp ręcznie — użyj pluginu lub shopify CLI.
+
+c) Restart Cursor po zmianach.
+
+6) Checklist — plugin zainstalowany i działa
+--------------------------------------------
+[ ] Node 18+: node --version
+[ ] /add-plugin shopify lub Marketplace — wykonane
+[ ] Settings → Tools & MCP: shopify-dev-mcp = zielony
+[ ] shopify-admin-mcp: Connect / OAuth wykonany
+[ ] shopify auth login w terminalu
+[ ] Brak shopify-* w .cursor/mcp.json (projekt) i ~/.cursor/mcp.json (global)
+[ ] Uprawnienia admin MCP: Ask na operacje zapisu
+[ ] MCP Logs bez błędów spawn / ECONNREFUSED
+[ ] Restart Cursor po pierwszej instalacji
+[ ] Test dev-mcp + read-only admin
+[ ] epir-data-ops: flow_health_summary (osobny test EPIR env)
+
+7) Cloud Agent
+--------------
+Plugin NIE działa w chmurze — patrz docs/CURSOR_CLOUD_AGENT_SETUP.md
+(deklaratywny shopify-dev-mcp tylko tam).
+
+8) Globalny mcp.json (user-level) — stan docelowy
+-------------------------------------------------
+Plik: C:\Users\user\.cursor\mcp.json
+- Shopify: brak wpisów (tylko plugin)
+- Sekrety GitHub/Cloudflare: C:\Users\user\.cursor\mcp.secrets.env (envFile)
+- Szablon pustych kluczy: mcp.secrets.env.example
+- notebooks / visualization (Google Datacloud): usunięte z globalnego mcp.json —
+  wymagają osobnego logowania GCP; nie są częścią stacku EPIR. Jeśli potrzebujesz:
+  włącz w rozszerzeniu Google Cloud Data Agent Kit i zaloguj gcloud, potem dodaj
+  wpisy z powrotem ręcznie.
+
+9) Powiązane pliki w repo
+-------------------------
+- .cursor/mcp-epir.example.json — szablon EPIR (bez Shopify MCP)
+- docs/EPIR_WORKSPACE_MAP.md — mapa MCP IDE vs runtime Gemmy
+- docs/CURSOR_CLOUD_AGENT_SETUP.md — Cloud + fallback declarative

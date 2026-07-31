@@ -1,4 +1,5 @@
-import {Form, useFetcher, useMatches, type UIMatch} from '@remix-run/react';
+import {Form, useFetcher, useMatches, useRevalidator, type UIMatch} from '@remix-run/react';
+import {useEffect, useRef} from 'react';
 
 type RootMatchData = {
   selectedLocale?: {
@@ -22,7 +23,17 @@ export function ProductForm(props: {
 }) {
   const [root] = useMatches() as UIMatch<RootMatchData>[];
   const selectedLocale = root?.data?.selectedLocale;
-  const fetcher = useFetcher<CartActionJson>();
+  const fetcher = useFetcher<CartActionJson>({key: 'add-to-cart'});
+  const revalidator = useRevalidator();
+  const lastSyncedCart = useRef<unknown>(null);
+
+  useEffect(() => {
+    if (fetcher.state !== 'idle' || !fetcher.data?.cart) return;
+    if (fetcher.data === lastSyncedCart.current) return;
+    if ('error' in fetcher.data && fetcher.data.error) return;
+    lastSyncedCart.current = fetcher.data;
+    revalidator.revalidate();
+  }, [fetcher.state, fetcher.data, revalidator]);
 
   if (!props.variantId) return null;
 

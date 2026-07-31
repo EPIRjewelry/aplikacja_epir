@@ -11,19 +11,21 @@
 
 ## Growth Engineer — podział Cursor vs Operator Studio
 
-Architektura „Full-Stack Growth Engineer”: strategia poza runtime, wykonanie w Cursorze, codzienne użycie w Operator Studio. **Nie** budujemy drugiego backendu ani Google Sheets jako SSOT.
+Architektura „Full-Stack Growth Engineer”: strategia poza runtime, **codzienny desk analityczny w Cursorze** (Kustosz), Studio jako cienki backup. **Nie** budujemy drugiego backendu ani Google Sheets jako SSOT.
 
 | Zadanie | Gdzie | Narzędzia / ścieżka |
 |---------|--------|---------------------|
 | Synteza strategii (DCO, kampanie, blueprint UI) | NotebookLM + operator | Mirror repo 1:1; wynik **niewiążący** do weryfikacji z kanonem |
 | Edycja Liquid, Hydrogen, workers, deploy | **Cursor** | Composer; reguły `.cursor/rules/epir-brand-growth.mdc`, `epir-consent-tracking.mdc`, `epir-growth-workflow.mdc` |
 | Odczyt briefu Google Docs/Sheets | **Cursor** (lokalnie) | MCP `epir-gworkspace` stdio — `gdocs_read_markdown` / `gsheets_read_csv` po `fileId` |
-| Metryki, raport dzienny, GA4/Ads preview | **Operator Studio** | Rola `analyst`; D1 `operator_daily_reports`; `fetch_marketing_preview` |
-| Copy / obrazy / brief w czacie | **Operator Studio** | Rola `creative`; OpenRouter; fragment briefu wklejony z Cursora (bez OAuth Google w panelu) |
+| Metryki, EDOG, Q1–Q10, wzorce Gemmy | **Cursor** (skill Kustosz) | MCP `epir-data-ops` + `analyst-worker`; playbook [`.cursor/skills/epir-kustosz-agent`](../.cursor/skills/epir-kustosz-agent/SKILL.md) |
+| Raporty D1 / status przepływu (bez IDE) | **Operator Studio** (cienki) | Zakładki Raporty + Przepływ; Blender/kreacja za „Zaawansowane” |
+| Copy / obrazy / brief w czacie | **Operator Studio** (zaawansowane) | Rola `creative`; OpenRouter; fragment briefu wklejony z Cursora |
 | Eksport raportu na Drive (opcjonalnie) | **Worker** `bigquery-batch` | `GWORKSPACE_REPORT_WEBHOOK_URL` → [`EPIR_GWORKSPACE_REPORT_BRIDGE.md`](EPIR_GWORKSPACE_REPORT_BRIDGE.md) |
 | Shopify Flow webhook (tylko przy timeout >5s) | **Worker** `chat` (plan PR3) | `200 OK` + `waitUntil` — nie GAS jako pierwszy hop |
 
-**Przepływ:** zdarzenie / raport → D1 → Operator Studio → excerpt do NotebookLM → blueprint → Cursor → commit/deploy.
+**Przepływ:** zdarzenie → D1/Iceberg → **Cursor Kustosz** (brief) → opcjonalnie NotebookLM (strategia) → Cursor (kod) → commit/deploy. Studio nie jest dashboardem BI.
+
 
 ## Nagłówki
 

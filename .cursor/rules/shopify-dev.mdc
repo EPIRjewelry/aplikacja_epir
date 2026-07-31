@@ -1,0 +1,29 @@
+---
+description: Shopify plugin workflow (Liquid/Hydrogen) — thin pointer
+globs: "**/*.liquid, extensions/**/*, themes/**/*, apps/kazka/**/*, apps/zareczyny/**/*, shopify.app*.toml"
+alwaysApply: false
+---
+
+⚠️ SSOT: [`REVIEW.md`](../../REVIEW.md), [`docs/kb/UI_UX_AND_FRONTEND.md`](../../docs/kb/UI_UX_AND_FRONTEND.md), [`docs/EPIR_STOREFRONT_DOMAIN_STRATEGY.md`](../../docs/EPIR_STOREFRONT_DOMAIN_STRATEGY.md).
+
+## Plugin Shopify (IDE)
+
+- Skille pluginu: `shopify-liquid`, `shopify-hydrogen`, `shopify-admin`, `shopify-use-shopify-cli`.
+- Przed kodem: dokumentacja + walidacja (skille) — nie zgaduj API.
+- Nie dodawaj ręcznego `shopify-dev-mcp` do `mcp.json`.
+
+## Gdzie budować UX (kanon domen)
+
+| Powierzchnia | DNS / deploy |
+|--------------|----------------|
+| Główny sklep + ADS marki | `epirbizuteria.pl` → Shopify (motyw w `themes/epir-online-store/`) |
+| Zaręczyny | `zareczyny.epirbizuteria.pl` → Pages (`apps/zareczyny`) |
+| Kazka | `kazka.epirbizuteria.pl` → Pages (`apps/kazka`) |
+| Czat TAE | `extensions/asystent-klienta` |
+
+**Zakaz:** workerów proxy na apex `epirbizuteria.pl`. Marka/Liquid: [`epir-brand-growth.mdc`](epir-brand-growth.mdc). Gemma runtime: nie ruszaj `workers/chat` MCP_ENDPOINT.
+
+## Liquid / Hydrogen
+
+- Liquid: `{% schema %}`, AJAX `/cart/add.js`, `image_url` + `image_tag`.
+- Hydrogen: `/api/chat` BFF, `Analytics.Provider` + `PUBLIC_CHECKOUT_DOMAIN`.

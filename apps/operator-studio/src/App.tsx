@@ -12,6 +12,7 @@ import {
 } from './attachments';
 import {
   ROLES,
+  CURSOR_KUSTOSZ_HINT,
   GROWTH_LOOP_HINT,
   type ChatMessage,
   type ModelSource,
@@ -48,10 +49,35 @@ import { GROQ_MODEL_OPTIONS, isGroqVariantMultimodal, type GroqModelVariantKey }
 type ReportItem = { report_date: string; edog_verdict: string; excerpt: string };
 type CatalogStatus = 'idle' | 'loading' | 'ok' | 'error';
 
+const ADVANCED_KEY = 'epir_operator_advanced_mode';
+const OWNER_ROLES: OperatorRoleId[] = ['analyst', 'store_ops'];
+const ADVANCED_ONLY_ROLES: OperatorRoleId[] = ['design_blender', 'creative'];
+
+function getAdvancedMode(): boolean {
+  try {
+    return sessionStorage.getItem(ADVANCED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function setAdvancedModePersist(v: boolean): void {
+  try {
+    sessionStorage.setItem(ADVANCED_KEY, v ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+}
+
 export default function App() {
   const [key, setKey] = useState(getAdminKey);
   const [keySaved, setKeySaved] = useState(() => Boolean(getAdminKey().trim()));
-  const [role, setRoleState] = useState<OperatorRoleId>(getRole);
+  const [advancedMode, setAdvancedMode] = useState(getAdvancedMode);
+  const [role, setRoleState] = useState<OperatorRoleId>(() => {
+    const r = getRole();
+    if (!getAdvancedMode() && ADVANCED_ONLY_ROLES.includes(r)) return 'analyst';
+    return r;
+  });
   const [modelSource, setModelSourceState] = useState<ModelSource>(getModelSource);
   const [groqVariant, setGroqVariantState] = useState<GroqModelVariantKey>(getGroqVariant);
   const [orModel, setOrModelState] = useState(getOrModel);
@@ -85,6 +111,29 @@ export default function App() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const keyInputRef = useRef<HTMLInputElement>(null);
+
+  const visibleRoles = useMemo(
+    () => ROLES.filter((r) => advancedMode || OWNER_ROLES.includes(r.id)),
+    [advancedMode],
+  );
+
+  const visibleTabs = useMemo(() => {
+    const base: Array<'reports' | 'flow' | 'blender' | 'profile'> = ['reports', 'flow'];
+    if (advancedMode) base.push('blender', 'profile');
+    return base;
+  }, [advancedMode]);
+
+  const onAdvancedToggle = useCallback((next: boolean) => {
+    setAdvancedMode(next);
+    setAdvancedModePersist(next);
+    if (!next) {
+      if (ADVANCED_ONLY_ROLES.includes(getRole())) {
+        setRole('analyst');
+        setRoleState('analyst');
+      }
+      setTab((t) => (t === 'blender' || t === 'profile' ? 'reports' : t));
+    }
+  }, []);
 
   const resolveAdminKey = useCallback((): string => {
     const fromSession = getAdminKey().trim();
@@ -394,12 +443,17 @@ export default function App() {
     try {
       const out = await triggerWarehouseExport();
       const s = out.summary;
-      if (!s) {
+      const cu = out.catchUp;
+      if (!s && !cu) {
         setFlowStatus('Eksport: brak summary (sprawdź sekrety PIPELINE_* na batch workerze).');
       } else {
-        setFlowStatus(
-          `Wyeksportowano pixel: ${s.pixelExported}, pending po: ${s.pending_pixel_after}${s.pipeline_error ? ` — błąd: ${s.pipeline_error}` : ''}`,
-        );
+        const parts = [
+          cu ? `Catch-up: ${cu.runs} przebieg(ów), pending po: ${cu.lastPending}` : null,
+          s ? `Ostatni run — pixel: ${s.pixelExported}, pending: ${s.pending_pixel_after}` : null,
+          s?.pipeline_error ? `błąd pipeline: ${s.pipeline_error}` : null,
+          cu?.pipelineError ? `błąd catch-up: ${cu.pipelineError}` : null,
+        ].filter(Boolean);
+        setFlowStatus(parts.join(' | '));
       }
       await loadFlowHealth();
     } catch (e) {
@@ -535,8 +589,12 @@ export default function App() {
   return (
     <div className="grid h-screen grid-cols-[280px_minmax(0,1fr)_minmax(260px,300px)] grid-rows-[auto_minmax(0,1fr)_auto]">
       <header className="col-span-3 row-start-1 border-b border-slate-800 bg-slate-900 px-4 py-3">
-        <h1 className="text-lg font-semibold">EPIR — Operator Studio (Project B)</h1>
-        <p className="text-sm text-slate-400">Groq / Workers AI lub OpenRouter · załączniki · raporty · Blender</p>
+        <h1 className="text-lg font-semibold">EPIR — Operator Studio</h1>
+        <p className="text-sm text-slate-400">
+          {advancedMode
+            ? 'Tryb zaawansowany · modele · Blender · kreacja'
+            : 'Cienki backup · Raporty + Przepływ · metryki w Cursorze (Kustosz)'}
+        </p>
         {reportsStatus && (
           <p className="mt-1 text-xs text-amber-200">Raporty: {reportsStatus}</p>
         )}
@@ -588,6 +646,19 @@ export default function App() {
         {sessionHint && <p className="mt-2 text-xs text-slate-400">{sessionHint}</p>}
         {exportStatus && <p className="mt-1 text-xs text-amber-200">{exportStatus}</p>}
 
+        <label className="mt-4 flex cursor-pointer items-center gap-2 text-xs text-slate-300">
+          <input
+            type="checkbox"
+            checked={advancedMode}
+            onChange={(e) => onAdvancedToggle(e.target.checked)}
+          />
+          Zaawansowane (Blender, kreacja, modele)
+        </label>
+
+        <p className="mt-3 rounded border border-slate-800 bg-slate-950/80 p-2 text-xs text-slate-400">
+          {CURSOR_KUSTOSZ_HINT}
+        </p>
+
         <div className="mt-4">
           <label className="text-xs text-slate-400">Rola</label>
           <select
@@ -595,7 +666,7 @@ export default function App() {
             value={role}
             onChange={(e) => onRoleChange(e.target.value as OperatorRoleId)}
           >
-            {ROLES.map((r) => (
+            {visibleRoles.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.label}
               </option>
@@ -607,14 +678,14 @@ export default function App() {
               CAD w Blenderze — osobna sesja od Analityka. Most: zakładka Blender.
             </p>
           )}
-          {(role === 'analyst' || role === 'creative') && (
+          {advancedMode && (role === 'analyst' || role === 'creative') && (
             <p className="mt-2 rounded border border-slate-800 bg-slate-950/80 p-2 text-xs text-slate-400">
               {GROWTH_LOOP_HINT}
             </p>
           )}
         </div>
 
-        {role === 'creative' && (
+        {advancedMode && role === 'creative' && (
           <div className="mt-3">
             <label className="text-xs text-slate-400" htmlFor="brief-draft">
               Brief z Cursora (wklej tekst)
@@ -638,85 +709,89 @@ export default function App() {
           </div>
         )}
 
-        <div className="mt-4">
-          <label className="text-xs text-slate-400">Źródło modelu</label>
-          <select
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
-            value={modelSource}
-            onChange={(e) => onModelSourceChange(e.target.value as ModelSource)}
-          >
-            <option value="groq">Groq / Workers AI</option>
-            <option value="openrouter">Katalog OpenRouter</option>
-          </select>
-        </div>
+        {advancedMode && (
+          <>
+            <div className="mt-4">
+              <label className="text-xs text-slate-400">Źródło modelu</label>
+              <select
+                className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
+                value={modelSource}
+                onChange={(e) => onModelSourceChange(e.target.value as ModelSource)}
+              >
+                <option value="groq">Groq / Workers AI</option>
+                <option value="openrouter">Katalog OpenRouter</option>
+              </select>
+            </div>
 
-        {modelSource === 'groq' ? (
-          <div className="mt-3">
-            <label className="text-xs text-slate-400" htmlFor="groq-model">
-              Model (preset)
-            </label>
-            <select
-              id="groq-model"
-              className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
-              value={groqVariant}
-              onChange={(e) => onGroqVariantChange(e.target.value as GroqModelVariantKey)}
-            >
-              {GROQ_MODEL_OPTIONS.map((o) => (
-                <option key={o.key || 'default'} value={o.key}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-slate-500">
-              Nagłówek <code className="text-slate-400">X-Epir-Model-Variant</code>
-              {groqVariant ? ` = ${groqVariant}` : ' (domyślny Groq)'}
-            </p>
-          </div>
-        ) : (
-          <div className="mt-3">
-            <label className="text-xs text-slate-400" htmlFor="or-model-input">
-              Model (OpenRouter)
-            </label>
-            <input
-              id="or-model-input"
-              type="text"
-              list="or-catalog"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="np. anthropic/claude-sonnet-4"
-              className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
-              value={orModel}
-              onChange={(e) => onOrModelChange(e.target.value)}
-            />
-            <datalist id="or-catalog">
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                  {m.imageGen ? ' 🖼' : ''}
-                </option>
-              ))}
-            </datalist>
-            <p
-              className={`mt-1 text-xs ${catalogStatus === 'error' ? 'text-red-400' : 'text-slate-500'}`}
-            >
-              {catalogHint}
-            </p>
-            {selectedOrModel && (
-              <p className="mt-1 text-xs text-slate-500">
-                Wybrany: {selectedOrModel.name}
-                {selectedOrModel.imageGen ? ' (generacja obrazu)' : ''}
-                {selectedOrModel.multimodal ? ' · multimodal' : ''}
-              </p>
+            {modelSource === 'groq' ? (
+              <div className="mt-3">
+                <label className="text-xs text-slate-400" htmlFor="groq-model">
+                  Model (preset)
+                </label>
+                <select
+                  id="groq-model"
+                  className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
+                  value={groqVariant}
+                  onChange={(e) => onGroqVariantChange(e.target.value as GroqModelVariantKey)}
+                >
+                  {GROQ_MODEL_OPTIONS.map((o) => (
+                    <option key={o.key || 'default'} value={o.key}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">
+                  Nagłówek <code className="text-slate-400">X-Epir-Model-Variant</code>
+                  {groqVariant ? ` = ${groqVariant}` : ' (domyślny Groq)'}
+                </p>
+              </div>
+            ) : (
+              <div className="mt-3">
+                <label className="text-xs text-slate-400" htmlFor="or-model-input">
+                  Model (OpenRouter)
+                </label>
+                <input
+                  id="or-model-input"
+                  type="text"
+                  list="or-catalog"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="np. anthropic/claude-sonnet-4"
+                  className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-2 text-sm"
+                  value={orModel}
+                  onChange={(e) => onOrModelChange(e.target.value)}
+                />
+                <datalist id="or-catalog">
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                      {m.imageGen ? ' 🖼' : ''}
+                    </option>
+                  ))}
+                </datalist>
+                <p
+                  className={`mt-1 text-xs ${catalogStatus === 'error' ? 'text-red-400' : 'text-slate-500'}`}
+                >
+                  {catalogHint}
+                </p>
+                {selectedOrModel && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Wybrany: {selectedOrModel.name}
+                    {selectedOrModel.imageGen ? ' (generacja obrazu)' : ''}
+                    {selectedOrModel.multimodal ? ' · multimodal' : ''}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  className="mt-2 w-full rounded border border-slate-700 px-3 py-1 text-xs"
+                  disabled={catalogStatus === 'loading' || !keySaved}
+                  onClick={() => void loadCatalog()}
+                >
+                  Odśwież katalog
+                </button>
+              </div>
             )}
-            <button
-              type="button"
-              className="mt-2 w-full rounded border border-slate-700 px-3 py-1 text-xs"
-              disabled={catalogStatus === 'loading' || !keySaved}
-              onClick={() => void loadCatalog()}
-            >
-              Odśwież katalog
-            </button>
-          </div>
+          </>
         )}
       </aside>
 
@@ -745,7 +820,7 @@ export default function App() {
 
       <aside className="col-start-3 row-start-2 flex min-h-0 flex-col border-l border-slate-800 bg-slate-900 p-3 text-sm">
         <div className="flex gap-2 border-b border-slate-800 pb-2">
-          {(['reports', 'flow', 'blender', 'profile'] as const).map((t) => (
+          {visibleTabs.map((t) => (
             <button
               key={t}
               type="button"
@@ -770,8 +845,7 @@ export default function App() {
         {tab === 'reports' && (
           <div className="mt-2 flex min-h-0 flex-1 flex-col space-y-2">
             <p className="rounded border border-slate-800 bg-slate-950/80 p-2 text-xs text-slate-400">
-              SSOT: D1. Eksport na Drive (opcjonalny) to tylko wizualizacja z maskowaniem PII.{' '}
-              {role === 'analyst' ? GROWTH_LOOP_HINT : 'Excerpt raportu możesz przenieść do NotebookLM.'}
+              SSOT: D1. Pełna analiza: Cursor (Kustosz). Tutaj tylko podgląd raportów.
             </p>
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-slate-400">Biblioteka raportów</span>

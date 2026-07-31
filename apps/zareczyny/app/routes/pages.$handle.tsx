@@ -1,6 +1,7 @@
 import {json, type LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {type MetaFunction, useLoaderData} from '@remix-run/react';
 import {getSeoMeta} from '@shopify/hydrogen';
+import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 
 const PAGE_QUERY = `#graphql
   query PageQuery($handle: String!) {
@@ -32,7 +33,7 @@ export async function loader({params, context, request}: LoaderFunctionArgs) {
 
   return json({
     page,
-    canonicalUrl: request.url,
+    canonicalUrl: canonicalUrlFromRequest(request, context.env),
   });
 }
 

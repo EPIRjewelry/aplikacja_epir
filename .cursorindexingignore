@@ -1,0 +1,11 @@
+# ==============================================================================
+# .cursorindexingignore - Ograniczenie auto-indeksowania bez blokady dostępu
+# Pliki w tym folderze NIE będą indeksowane wektorowo w tle (oszczędność tokenów),
+# ale Cursor zachowa do nich dostęp, gdy bezpośrednio wspomnisz o nich (@plik).
+# ==============================================================================
+
+# --- DOKUMENTACJA, REGUŁY I NOTATKI PROJEKTOWE ---
+.notes/
+specs/
+agents/
+.github/agents/

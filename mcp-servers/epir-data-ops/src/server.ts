@@ -4,10 +4,12 @@ import { z } from 'zod';
 import { d1Query } from './cloudflare-d1.js';
 import {
   D1_DATABASES,
+  WAREHOUSE_QUERY_IDS,
   flowMapExcerpt,
   resolveEnv,
   sampleColumnsFor,
   type D1DatabaseKey,
+  type WarehouseQueryId,
 } from './config.js';
 
 function textResult(body: string) {
@@ -103,28 +105,65 @@ export function createDataOpsMcpServer(): McpServer {
     },
   );
 
+  async function postWarehouseQuery(queryId: WarehouseQueryId): Promise<string> {
+    const origin = resolveEnv('EPIR_ANALYST_WORKER_ORIGIN');
+    const bearer = resolveEnv('ANALYST_HTTP_BEARER');
+    if (!origin || !bearer) {
+      return (
+        'Ustaw EPIR_ANALYST_WORKER_ORIGIN + ANALYST_HTTP_BEARER. Alternatywa: flow_health_summary (Q1 w workerze).'
+      );
+    }
+    const res = await fetch(`${origin.replace(/\/$/, '')}/v1/warehouse/query`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${bearer}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ queryId }),
+    });
+    const text = await res.text();
+    return `HTTP ${res.status}\n${text}`;
+  }
+
   server.tool(
     'warehouse_probe',
-    'Sonda wyłącznie Q1_CONVERSION_CHAT (analyst-worker HTTP lub batch RPC — przez origin env).',
+    'Sonda wyłącznie Q1_CONVERSION_CHAT (analyst-worker HTTP).',
     {},
-    async () => {
-      const origin = resolveEnv('EPIR_ANALYST_WORKER_ORIGIN');
-      const bearer = resolveEnv('ANALYST_HTTP_BEARER');
-      if (!origin || !bearer) {
-        return textResult(
-          'Opcjonalnie: EPIR_ANALYST_WORKER_ORIGIN + ANALYST_HTTP_BEARER. Alternatywa: flow_health_summary (Q1 w workerze).',
-        );
+    async () => textResult(await postWarehouseQuery('Q1_CONVERSION_CHAT')),
+  );
+
+  server.tool(
+    'warehouse_query',
+    'Hurtownia R2 SQL — whitelist queryId Q1–Q10 przez analyst-worker (Cursor Kustosz).',
+    {
+      queryId: z.enum(
+        WAREHOUSE_QUERY_IDS as unknown as [WarehouseQueryId, ...WarehouseQueryId[]],
+      ),
+    },
+    async ({ queryId }) => textResult(await postWarehouseQuery(queryId as WarehouseQueryId)),
+  );
+
+  server.tool(
+    'operator_report_excerpt',
+    'Ostatni raport dzienny operatora (D1): data, EDOG, skrót markdown ≤3000 znaków — do briefu Kustosza.',
+    {
+      report_date: z.string().optional().describe('YYYY-MM-DD; domyślnie najnowszy'),
+    },
+    async ({ report_date }) => {
+      const accountId = resolveEnv('CLOUDFLARE_ACCOUNT_ID');
+      const token = resolveEnv('CLOUDFLARE_API_TOKEN');
+      if (!accountId || !token) {
+        return textResult('Ustaw CLOUDFLARE_ACCOUNT_ID i CLOUDFLARE_API_TOKEN.');
       }
-      const res = await fetch(`${origin.replace(/\/$/, '')}/v1/warehouse/query`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${bearer}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ queryId: 'Q1_CONVERSION_CHAT' }),
-      });
-      const text = await res.text();
-      return textResult(`HTTP ${res.status}\n${text}`);
+      const date = report_date?.trim();
+      if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return textResult('report_date musi być YYYY-MM-DD.');
+      }
+      const sql = date
+        ? `SELECT report_date, edog_verdict, created_at, substr(markdown_body, 1, 3000) AS excerpt FROM operator_daily_reports WHERE report_date = '${date}' LIMIT 1`
+        : `SELECT report_date, edog_verdict, created_at, substr(markdown_body, 1, 3000) AS excerpt FROM operator_daily_reports ORDER BY created_at DESC LIMIT 1`;
+      const rows = await d1Query(accountId, token, 'ai_assistant_sessions', sql);
+      return textResult(JSON.stringify(rows, null, 2));
     },
   );
 

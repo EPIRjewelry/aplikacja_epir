@@ -445,12 +445,12 @@ export default function App() {
             renderCartHeader={() => null}
           />
         )}
-        renderCartHeader={({cart, openDrawer}) =>
-          cart ? <CartHeader cart={cart} openDrawer={openDrawer} /> : null
-        }
-        renderCartDrawer={({cart, close}) =>
-          cart ? <CartDrawer cart={cart} close={close} /> : null
-        }
+        renderCartHeader={({cart, openDrawer}) => (
+          <CartHeader cart={cart} openDrawer={openDrawer} />
+        )}
+        renderCartDrawer={({cart, close}) => (
+          <CartDrawer cart={cart} close={close} />
+        )}
       >
         <Outlet />
       </Layout>

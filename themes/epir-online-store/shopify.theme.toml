@@ -1,0 +1,8 @@
+# Ten plik jest uzupełniany przez `shopify theme pull`.
+# Przed pierwszym pull: shopify auth login
+#
+# Przykład po pull:
+# [theme]
+# name = "epir-online-store"
+# id = "<theme-id>"
+# role = "main"

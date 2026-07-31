@@ -1,31 +1,38 @@
-# Brief Kustosza — 2026-07-21 (po deployu PR #92)
+# Brief Kustosza — 2026-07-21
 
 ## EDOG
-**FAIL** — `warehouse_pixel_empty` (D1 pixel 24h=791, `warehouse_pixel_sessions=0`, pending=0).  
-Guard działa zgodnie z fazą A: nie myli żywego czatu z zdrowym lejkiem sklepu.
+**FAIL** — `warehouse_pixel_empty` (warstwa: **pipeline/warehouse**). D1 pixel 24h=797, pending=6, `warehouse_pixel_sessions=0`. Q1 OK technicznie, ale lejek sklepu w Iceberg jest pusty.
 
-## Lejek (źródło: Q* po deployu batch)
-- **Q1:** `sessions_with_chat=397`, `total_pixel_sessions=0`, `sessions_without_chat=0` — **brak underflow** (PASS kodu).
-- **Q2 / Q5:** puste — Iceberg pixel nadal bez użytecznych wierszy mimo catch-up exportu (210 wierszy HTTP ingest, pending=0).
-- **Q7:** 0/0 (pusta tabela pixel).
-- **Q9:** HTTP 200, wiersz `missing_iceberg_name_column` / `call_count=34` — Iceberg `messages_raw` bez kolumny `name`; fallback aktywny. Przykład SQL: `pipelines-schemas/messages-pipeline-production.example.sql`.
+## Lejek (źródło: Q* — zawodny przy EDOG FAIL)
+- **Q2 / Q5:** 0 wierszy — Iceberg pixel bez użytecznych danych.
+- **Q7:** `product_view_sessions=0`, `purchase_sessions=0`.
+- **Q1:** `sessions_with_chat=397`, `total_pixel_sessions=0`, `sessions_without_chat=0` (brak underflow po deployu).
+- **Nie interpretować** Q2/Q5/Q7 jako „brak konwersji sklepu” — to brak danych w sinku, nie brak ruchu (D1 żywy).
 
-## Czat vs zakup
-- Czat OK; zakup/lejek niewidoczny w hurtowni do naprawy Pipelines pixel (`url AS page_url`).
+## Czat vs zakup (Q1, Q6)
+- Czat żywy: Q6 top sesja 51 wiadomości; 21 sesji w limicie Q6.
+- Zakup z pixela w hurtowni: niewidoczny (`total_pixel_sessions=0`).
+- D1 messages 24h w flow-health = 0 (Iceberg messages nadal ma historię — Q3/Q6 działają na starszym korpusie).
 
-## Wzorce Gemma (Q3 + kod)
-- Sprzedaż: Gałązki→koszyk, Kontakt, rozmiar — playbook + must-tools wdrożone (chat deploy ✓).
-- Jailbreak „zniszcz siebie” — prefilter (unit PASS); wymaga ręcznego smoke na storefront z TAE.
-- CTA zdjęcia: placeholder + aria-label „Znajdź podobne do zdjęcia”.
+## Wzorce rozmów Gemmy (Q3, Q9)
+Źródło: `Q3_TOP_CHAT_QUESTIONS` / `Q9_TOOL_USAGE` (2026-07-21).
+1. Jailbreak/szum: „zniszcz siebie” ×8 (Q3) — prefilter wdrożony; w agregacie Iceberg jeszcze widoczny.
+2. **Kontakt** ×3 (Q3) — must-tool policies.
+3. **Szafir** ×3; **Kolczyki** ×3; **Gałązki → koszyk** ×3 (Q3).
+4. Dostępność produktu („Czarny opal…”) ×3; **Brylant inwestycyjny** ×3.
+5. Off-topic / długie wątki (Dawkins) ×3 — nie sprzedaż.
+6. **Q9:** tylko fallback `missing_iceberg_name_column` / 34 — brak kolumny `name` w Iceberg messages (nie ma breakdown narzędzi).
 
 ## Luki / ryzyka
-1. **Ops CF (wymaga tokenu Pipelines):** naprawić SQL sink pixel + dodać `name` do messages; potem catch-up / re-export.
-2. Deploy GH: batch+chat ✓; `Deploy rag worker` padł w tym samym runie (poza zakresem planu).
-3. TAE liquid wymaga `shopify app deploy` osobno (nie w Deploy Cloudflare).
+1. Pipelines pixel: HTTP ingest akceptuje, Iceberg puste — SQL sink (`url AS page_url`) / schema.
+2. Messages sink bez `name` → Q9 bezużyteczny biznesowo.
+3. Digest dzienny: endpoint reportu 404 (brak excerpt w tej sesji).
+4. MCP `epir-data-ops` niezaładowany w IDE — HTTP fallback.
 
-## 3 decyzje
-1. Scalić PR #92 po review.
-2. Operator: pipeline pixel + messages `name` w Dashboard.
-3. Po naprawie sinku — jeden run Kustosza; oczekiwane Q2/Q5 niepuste i EDOG PASS przy `warehouse_pixel_sessions>0`.
+## 3 decyzje biznesowe
+1. **Ops CF już:** naprawić Pipelines pixel SQL + dodać `name` do messages sink; catch-up; dopiero potem ufać lejkowi.
+2. **Sprzedaż Gemma (już w prod chat):** priorytet Gałązki/koszyk, Kontakt, rozmiar, kamienie — nie konfigurator/grawerunek (brak sygnału w Q3).
+3. **Jakość Q3:** jailbreak prefilter + filtr off-topic w kolejnym cyklu Kustosza; ocenić spadek „zniszcz siebie” po tygodniu.
 
-**CURATOR: PASS** (Q1/Q9/EDOG z queryId + flow-health po deployu).
+**CURATOR: PASS** (EDOG + Q1/Q2/Q3/Q5/Q6/Q7/Q9 z queryId/flow-health).  
+**Lejek biznesowy: FAIL** do naprawy sinku pixel.

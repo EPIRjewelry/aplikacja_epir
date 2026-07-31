@@ -9,6 +9,7 @@ export {CartDrawer} from './cart/CartDrawer';
 export {CartLineItems} from './cart/CartLineItems';
 export {CartSummary} from './cart/CartSummary';
 export {CartActions} from './cart/CartActions';
+export {queryFullCartAfterMutation} from './cart/query-full-cart-after-mutation';
 export {CartHeader} from './cart/CartHeader';
 export {ItemRemoveButton} from './cart/ItemRemove';
 export {SectionHero} from './sections/SectionHero';

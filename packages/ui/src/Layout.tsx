@@ -1,6 +1,6 @@
 import {Link} from '@remix-run/react';
 import {Drawer, useDrawer} from './Drawer';
-import {useFetchers} from '@remix-run/react';
+import {useFetchers, useRevalidator} from '@remix-run/react';
 import {useEffect, useRef} from 'react';
 
 export type NavCollection = {id: string; title: string; handle: string};
@@ -36,7 +36,9 @@ export type LayoutProps<TCart = unknown> = {
 
 function hasRenderableCartData(cart: unknown): boolean {
   if (!cart || typeof cart !== 'object') return false;
-  return 'lines' in cart && 'cost' in cart;
+  if ('lines' in cart && 'cost' in cart) return true;
+  const totalQuantity = (cart as {totalQuantity?: unknown}).totalQuantity;
+  return typeof totalQuantity === 'number' && totalQuantity > 0;
 }
 
 function getCartQuantity(cart: unknown): number {
@@ -57,13 +59,28 @@ export function Layout<TCart = unknown>({
 }: LayoutProps<TCart>) {
   const {isOpen, openDrawer, closeDrawer} = useDrawer();
   const fetchers = useFetchers();
+  const revalidator = useRevalidator();
+  const syncedFetcherKeys = useRef<Set<string>>(new Set());
 
   const addToCartFetchers = [];
   for (const fetcher of fetchers) {
-    if (fetcher?.formData?.get('cartAction') === 'ADD_TO_CART') {
+    const action = fetcher?.formData?.get('cartAction');
+    if (action === 'ADD_TO_CART' || fetcher.key === 'add-to-cart') {
       addToCartFetchers.push(fetcher);
     }
   }
+
+  useEffect(() => {
+    for (const fetcher of addToCartFetchers) {
+      if (fetcher.state !== 'idle' || !fetcher.data) continue;
+      const data = fetcher.data as {cart?: unknown; error?: string};
+      if (!data.cart || data.error) continue;
+      const syncKey = `${fetcher.key}:${JSON.stringify(data.cart)}`;
+      if (syncedFetcherKeys.current.has(syncKey)) continue;
+      syncedFetcherKeys.current.add(syncKey);
+      revalidator.revalidate();
+    }
+  }, [addToCartFetchers, revalidator]);
 
   const latestCart = addToCartFetchers
     .map((fetcher) => (fetcher.data as {cart?: TCart} | undefined)?.cart)

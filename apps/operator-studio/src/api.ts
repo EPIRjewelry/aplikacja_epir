@@ -38,20 +38,24 @@ export const ROLES: { id: OperatorRoleId; label: string; hint: string }[] = [
   {
     id: 'analyst',
     label: 'Analityk',
-    hint: 'Hurtownia, GA4/Ads, raporty D1. Excerpt → NotebookLM → blueprint → Cursor.',
+    hint: 'Awaryjny czat. Codzienne liczby: Cursor → skill Kustosz EPIR (MCP epir-data-ops).',
   },
   { id: 'store_ops', label: 'Operacje sklepu', hint: 'Katalog, Admin read, ShopifyQL' },
-  { id: 'design_blender', label: 'Blender / CAD', hint: 'Most HTTP, packshot, mesh' },
+  { id: 'design_blender', label: 'Blender / CAD', hint: 'Most HTTP, packshot, mesh (Zaawansowane)' },
   {
     id: 'creative',
     label: 'Kreacja',
-    hint: 'Brief z Cursora (MCP gworkspace) — wklej poniżej. Bez Google OAuth w panelu.',
+    hint: 'Brief z Cursora — wklej poniżej. Bez Google OAuth w panelu (Zaawansowane).',
   },
 ];
 
-/** Instrukcja pętli Growth Engineer (UI — bez NotebookLM API). */
+/** Hint Cursor-first — zamiast pętli NotebookLM na głównym ekranie. */
+export const CURSOR_KUSTOSZ_HINT =
+  'Codzienny desk: Cursor → „uruchom Kustosza” (EDOG + Q1–Q10). Studio = Raporty + Przepływ.';
+
+/** @deprecated Zachowane dla trybu Zaawansowane / kreacja — nie pokazuj na domyślnym ekranie. */
 export const GROWTH_LOOP_HINT =
-  'Skopiuj excerpt z raportu lub czatu → NotebookLM (strategia) → zweryfikowany blueprint → Cursor (kod). SSOT: D1, nie Sheets.';
+  'Opcjonalnie: excerpt → NotebookLM (strategia) → blueprint → Cursor. SSOT: D1/Iceberg, nie Sheets.';
 
 export function getAdminKey(): string {
   try {
@@ -297,12 +301,22 @@ export async function triggerWarehouseExport(): Promise<{
     partial: boolean;
     pipeline_error?: string;
   } | null;
+  catchUp?: { runs: number; lastPending: number; pipelineError?: string };
 }> {
   const res = await fetch(`${API}/trigger-warehouse-export`, {
     method: 'POST',
     headers: headers(),
   });
-  if (!res.ok) throw new Error(`trigger-warehouse-export HTTP ${res.status}`);
+  if (!res.ok) {
+    let detail = `trigger-warehouse-export HTTP ${res.status}`;
+    try {
+      const errBody = (await res.json()) as { error?: string };
+      if (errBody.error) detail = `${detail}: ${errBody.error}`;
+    } catch {
+      /* ignore non-JSON body */
+    }
+    throw new Error(detail);
+  }
   return res.json() as Promise<{
     ok: boolean;
     summary: {
@@ -312,6 +326,7 @@ export async function triggerWarehouseExport(): Promise<{
       partial: boolean;
       pipeline_error?: string;
     } | null;
+    catchUp?: { runs: number; lastPending: number; pipelineError?: string };
   }>;
 }
 

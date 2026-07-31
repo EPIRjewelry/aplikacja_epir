@@ -1,8 +1,11 @@
 {
   "mcpServers": {
     "epir-gworkspace": {
-      "command": "npx",
-      "args": ["tsx", "mcp-servers/gworkspace/src/index.ts"],
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/node_modules/tsx/dist/cli.mjs",
+        "mcp-servers/gworkspace/src/index.ts"
+      ],
       "env": {
         "GWORKSPACE_OAUTH_CLIENT_ID": "${env:GWORKSPACE_OAUTH_CLIENT_ID}",
         "GWORKSPACE_OAUTH_CLIENT_SECRET": "${env:GWORKSPACE_OAUTH_CLIENT_SECRET}",
@@ -15,8 +18,11 @@
       "cwd": "D:\\Blender Assets\\Blender_assist"
     },
     "epir-data-ops": {
-      "command": "npx",
-      "args": ["tsx", "mcp-servers/epir-data-ops/src/index.ts"],
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/node_modules/tsx/dist/cli.mjs",
+        "mcp-servers/epir-data-ops/src/index.ts"
+      ],
       "env": {
         "CLOUDFLARE_ACCOUNT_ID": "${env:CLOUDFLARE_ACCOUNT_ID}",
         "CLOUDFLARE_API_TOKEN": "${env:CLOUDFLARE_API_TOKEN}",

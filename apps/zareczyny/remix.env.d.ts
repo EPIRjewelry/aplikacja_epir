@@ -26,6 +26,8 @@ declare global {
     PUBLIC_STOREFRONT_API_TOKEN: string;
     PRIVATE_STOREFRONT_API_TOKEN: string;
     PUBLIC_STORE_DOMAIN: string;
+    /** Publiczny URL Hydrogen (kanoniczna domena storefrontu). */
+    PUBLIC_STOREFRONT_URL?: string;
     /** Wersja Storefront API zsynchronizowana z `@shopify/hydrogen-react` + proxy `api.$version.[graphql.json]`. */
     PUBLIC_STOREFRONT_API_VERSION?: string;
     /** Bez prefiksu https:// — domena checkoutu Shopify (Customer Privacy + Analytics). */
