@@ -2,6 +2,7 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import {
   Links,
   Meta,
+  MetaFunction,
   Outlet,
   Scripts,
   ScrollRestoration,
@@ -27,9 +28,10 @@ import {
   getConsentSessionId,
   type CommerceAction,
   createRevalidateScheduler,
+  applyStorefrontCommerceAction,
 } from '@epir/ui';
 import type {PersonaUi} from '@epir/ui';
-import {Analytics, Seo, Storefront, getShopAnalytics, useNonce} from '@shopify/hydrogen';
+import {Analytics, getSeoMeta, getShopAnalytics, Storefront, useNonce} from '@shopify/hydrogen';
 import type {LinksFunction, LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {CART_QUERY} from '~/queries/cart';
 import {json} from '@remix-run/cloudflare';
@@ -41,6 +43,12 @@ import {
   KAZKA_STOREFRONT_ID,
 } from '~/lib/chat-widget-context';
 import {loadKazkaPersonaUi} from '~/lib/persona-ui.server';
+import {
+  filterCollectionsForNav,
+  parseCollectionFilter,
+} from '~/lib/collection-filters';
+import {Footer} from '~/components/Footer';
+import {Header} from '~/components/Header';
 
 function privacyPolicyUrlFromShop(domain: string | undefined): string | undefined {
   if (!domain?.trim()) return undefined;
@@ -80,11 +88,8 @@ export const links: LinksFunction = () => {
 export async function loader({context, request}: LoaderFunctionArgs) {
   const cartId = await context.session.get('cartId');
   const chatApiUrl = resolveChatApiUrl(context.env.CHAT_API_URL);
-  const brand = (context.env.BRAND as string) || 'epir';
-  const filter = context.env.COLLECTION_FILTER;
-  const allowedHandles = filter
-    ? filter.split(',').map((h: string) => h.trim()).filter(Boolean)
-    : null;
+  const brand = (context.env.BRAND as string) || 'kazka';
+  const allowedHandles = parseCollectionFilter(context.env.COLLECTION_FILTER);
   const route = new URL(request.url).pathname;
 
   const [layout, collectionsResult, personaUi] = await Promise.all([
@@ -95,11 +100,11 @@ export async function loader({context, request}: LoaderFunctionArgs) {
     loadKazkaPersonaUi(context.env),
   ]);
 
-  const nodes = allowedHandles?.length
-    ? collectionsResult.collections.nodes.filter((c: {handle: string}) =>
-        allowedHandles.includes(c.handle),
-      )
-    : collectionsResult.collections.nodes;
+  const nodes = filterCollectionsForNav({
+    nodes: collectionsResult.collections.nodes,
+    allowedHandles,
+    hideHubHandle: null,
+  });
 
   const checkoutDomain = (context.env.PUBLIC_CHECKOUT_DOMAIN ?? '').trim();
   if (!checkoutDomain) {
@@ -154,6 +159,16 @@ export async function loader({context, request}: LoaderFunctionArgs) {
     analyticsConsent,
   });
 }
+
+export const meta: MetaFunction<typeof loader> = ({data}) => {
+  if (!data?.layout?.shop) {
+    return getSeoMeta({title: 'EPIR Art Jewellery — Kazka'});
+  }
+  return getSeoMeta({
+    title: data.layout.shop.name,
+    description: data.layout.shop.description?.slice(0, 154) ?? undefined,
+  });
+};
 
 async function getCart(storefront: Storefront, cartId: string) {
   if (!storefront) {
@@ -218,6 +233,7 @@ function KazkaConsentAndChat({
 
   const onCommerceAction = useCallback(
     (action: CommerceAction) => {
+      void applyStorefrontCommerceAction(action);
       if (action.cart_id?.startsWith('gid://shopify/Cart/')) {
         cartFetcher.submit(
           {cartAction: 'SYNC_CART_ID', cartId: action.cart_id},
@@ -372,12 +388,22 @@ export default function App() {
         title={data.layout.shop.name}
         collections={data.collections?.nodes ?? []}
         cart={data.cart}
-        renderCartHeader={({cart, openDrawer}) =>
-          cart ? <CartHeader cart={cart} openDrawer={openDrawer} /> : null
-        }
-        renderCartDrawer={({cart, close}) =>
-          cart ? <CartDrawer cart={cart} close={close} /> : null
-        }
+        footer={<Footer />}
+        renderHeader={({brandName, collections, cartQuantity, openDrawer}) => (
+          <Header
+            brandName={brandName}
+            collections={collections}
+            cartQuantity={cartQuantity}
+            onOpenCart={openDrawer}
+            renderCartHeader={() => null}
+          />
+        )}
+        renderCartHeader={({cart, openDrawer}) => (
+          <CartHeader cart={cart} openDrawer={openDrawer} />
+        )}
+        renderCartDrawer={({cart, close}) => (
+          <CartDrawer cart={cart} close={close} />
+        )}
       >
         <Outlet />
       </Layout>
@@ -401,7 +427,6 @@ export default function App() {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width,initial-scale=1" />
-        <Seo />
         <Meta />
         <Links />
       </head>

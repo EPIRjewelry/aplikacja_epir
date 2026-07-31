@@ -10,6 +10,7 @@ BRAND=kazka
 COLLECTION_FILTER=kazka
 # Sklep — musi się zgadzać ze Storefront API tokenami z Headless dla tego samego tenantu.
 PUBLIC_STORE_DOMAIN=epir-art-silver-jewellery.myshopify.com
+PUBLIC_STOREFRONT_URL=https://kazka.epirbizuteria.pl
 PUBLIC_CHECKOUT_DOMAIN=checkout.shopify.com
 
 # Nie używaj tokenu z innego sklepu lub placeholderów: przeglądarka lub BFF dostanie 403.
@@ -21,5 +22,5 @@ PUBLIC_STOREFRONT_ID=1000013955
 SHOP_ID=55145660472
 PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID=your-client-id
 
-# Chat worker – dev: localhost, prod: asystent.epirbizuteria.pl
-CHAT_API_URL=http://localhost:8787/api/chat
+# Chat worker – proxy S2S (ten sam sekret co na workerze czatu)
+EPIR_CHAT_SHARED_SECRET=twoj-shared-secret

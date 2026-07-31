@@ -1,0 +1,24 @@
+# Kazka – EPIR Art Jewellery (Hydrogen on Cloudflare Pages)
+# Custom domain (kanon Shopify, hosting poza Oxygen): kazka.epirbizuteria.pl → ten projekt Pages.
+# Deploy: npm run deploy
+
+name = "kazka-hydrogen-pages"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+pages_build_output_dir = "public"
+
+[vars]
+BRAND = "kazka"
+COLLECTION_FILTER = "kazka"
+NODE_ENV = "production"
+PUBLIC_STORE_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
+PUBLIC_STOREFRONT_URL = "https://kazka.epirbizuteria.pl"
+PUBLIC_CHECKOUT_DOMAIN = "checkout.shopify.com"
+PUBLIC_STOREFRONT_ID = "1000013955"
+SHOP_ID = "55145660472"
+PUBLIC_STOREFRONT_API_VERSION = "2025-10"
+
+# Secrets (Cloudflare Pages → Settings → Variables and Secrets):
+# SESSION_SECRET, EPIR_CHAT_SHARED_SECRET, PUBLIC_STOREFRONT_API_TOKEN,
+# PRIVATE_STOREFRONT_API_TOKEN, PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID

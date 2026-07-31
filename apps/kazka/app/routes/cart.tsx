@@ -1,6 +1,6 @@
-import {Link, useLoaderData} from '@remix-run/react';
+import {Link, type MetaFunction, useLoaderData} from '@remix-run/react';
 import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
-import {Storefront} from '@shopify/hydrogen';
+import {getSeoMeta, Storefront} from '@shopify/hydrogen';
 import type {
   BaseCartLineConnection,
   CartCost,
@@ -11,7 +11,16 @@ import {
   CountryCode,
 } from '@shopify/hydrogen/dist/storefront-api-types';
 import {CART_QUERY} from '~/queries/cart';
-import {CartLineItems, CartSummary, CartActions} from '@epir/ui';
+import {CartLineItems, CartSummary, CartActions, queryFullCartAfterMutation} from '@epir/ui';
+import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
+
+export const meta: MetaFunction<typeof loader> = ({data}) =>
+  getSeoMeta({
+    title: 'Koszyk',
+    description:
+      'Sprawdź produkty dodane do koszyka przed przejściem do kasy.',
+    url: data?.canonicalUrl,
+  });
 
 type CartData = {
   id: string;
@@ -25,7 +34,7 @@ type CartQueryData = {
   cart: CartData | null;
 };
 
-export async function loader({context}: LoaderFunctionArgs) {
+export async function loader({context, request}: LoaderFunctionArgs) {
   const cartId = await context.session.get('cartId');
 
   const cart = cartId
@@ -41,7 +50,10 @@ export async function loader({context}: LoaderFunctionArgs) {
       ).cart
     : null;
 
-  return {cart};
+  return {
+    cart,
+    canonicalUrl: canonicalUrlFromRequest(request, context.env),
+  };
 }
 
 export async function action({request, context}: LoaderFunctionArgs) {
@@ -110,20 +122,23 @@ export async function action({request, context}: LoaderFunctionArgs) {
 
       // Dla fetchera „Do koszyka” zwracamy pełny koszyk (lines + cost),
       // bo szuflada koszyka renderuje te pola natychmiast po odpowiedzi.
-      const fullCart = (
-        await storefront.query<CartQueryData>(CART_QUERY, {
-          variables: {
-            cartId,
-            country: storefront.i18n.country,
-            language: storefront.i18n.language,
-          },
-          cache: storefront.CacheNone(),
-        })
-      ).cart;
-      return json(
-        {cart: fullCart ?? result.cart, errors: result.errors},
-        {status, headers},
+      const fullCart = await queryFullCartAfterMutation<CartData>(
+        storefront,
+        cartId,
+        CART_QUERY,
       );
+      if (!fullCart) {
+        return json(
+          {
+            error:
+              'Produkt dodany, ale nie udało się odświeżyć koszyka. Odśwież stronę lub otwórz koszyk ponownie.',
+            cart: result.cart,
+            errors: result.errors,
+          },
+          {status: 502, headers},
+        );
+      }
+      return json({cart: fullCart, errors: result.errors}, {status, headers});
     case 'REMOVE_FROM_CART':
       const lineIds = formData.get('linesIds')
         ? JSON.parse(String(formData.get('linesIds')))
