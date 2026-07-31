@@ -14,25 +14,20 @@ export type SectionField = {
 };
 
 export type SectionsProps = {
-  sections?: SectionField;
-  featured_collections?: SectionField;
-  featured_products?: SectionField;
+  /** Ordered section fields from the parent (route metaobject field order). */
+  fields: SectionField[];
 };
 
 function getNodes(field: SectionField | undefined): SectionNode[] {
   return field?.references?.nodes ?? field?.nodes ?? [];
 }
 
-export function Sections({
-  sections,
-  featured_collections,
-  featured_products,
-}: SectionsProps) {
-  const nodes = [
-    ...getNodes(sections),
-    ...getNodes(featured_collections),
-    ...getNodes(featured_products),
-  ];
+/**
+ * Renders metaobject section nodes in the order of `fields`.
+ * Order is owned by the caller (RouteContent) — this component does not pick field sequence.
+ */
+export function Sections({fields}: SectionsProps) {
+  const nodes = fields.flatMap((field) => getNodes(field));
 
   return (
     <div className="flex flex-col gap-0">
@@ -40,7 +35,12 @@ export function Sections({
         if (!section) return null;
         switch (section.type) {
           case 'section_hero':
-            return <SectionHero key={section.id ?? i} {...(section as Parameters<typeof SectionHero>[0])} />;
+            return (
+              <SectionHero
+                key={section.id ?? i}
+                {...(section as Parameters<typeof SectionHero>[0])}
+              />
+            );
           case 'section_featured_products':
             return (
               <SectionFeaturedProducts
@@ -62,4 +62,3 @@ export function Sections({
     </div>
   );
 }
-

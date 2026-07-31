@@ -5,6 +5,18 @@ import {
   SECTIONS_FEATURED_PRODUCTS_FRAGMENT,
 } from './fragments';
 
+/**
+ * Kolejność pól metaobiektu `route` (Shopify): sections → featured_products → featured_collections.
+ * Jedyny SSOT kolejności renderu — `Sections` tylko iteruje tę listę.
+ */
+export const ROUTE_SECTION_FIELD_KEYS = [
+  'sections',
+  'featured_products',
+  'featured_collections',
+] as const;
+
+export type RouteSectionFieldKey = (typeof ROUTE_SECTION_FIELD_KEYS)[number];
+
 export type RouteContentProps = {
   route: {
     id?: string;
@@ -20,25 +32,25 @@ function getNodes(field: SectionField | undefined): unknown[] {
   return field?.references?.nodes ?? field?.nodes ?? [];
 }
 
+function orderedSectionFields(
+  route: NonNullable<RouteContentProps['route']>,
+): SectionField[] {
+  return ROUTE_SECTION_FIELD_KEYS.map((key) => route[key]).filter(
+    (field): field is SectionField => field != null,
+  );
+}
+
 export function RouteContent({route}: RouteContentProps) {
   if (!route) return null;
 
-  const heroNodes = getNodes(route.sections);
-  const collectionsNodes = getNodes(route.featured_collections);
-  const productsNodes = getNodes(route.featured_products);
-
-  const hasSections =
-    heroNodes.length > 0 || collectionsNodes.length > 0 || productsNodes.length > 0;
+  const fields = orderedSectionFields(route);
+  const hasSections = fields.some((field) => getNodes(field).length > 0);
 
   if (!hasSections) return null;
 
   return (
     <div className="flex flex-col">
-      <Sections
-        sections={route.sections}
-        featured_collections={route.featured_collections}
-        featured_products={route.featured_products}
-      />
+      <Sections fields={fields} />
     </div>
   );
 }
@@ -56,15 +68,15 @@ export const ROUTE_CONTENT_QUERY = `#graphql
       sections: field(key: "sections") {
         ...SectionsHero
       }
-      featured_collections: field(key: "featured_collections") {
-        ...SectionsFeaturedCollections
-      }
       featured_products: field(key: "featured_products") {
         ...SectionsFeaturedProducts
+      }
+      featured_collections: field(key: "featured_collections") {
+        ...SectionsFeaturedCollections
       }
     }
   }
   ${SECTIONS_HERO_FRAGMENT}
-  ${SECTIONS_FEATURED_COLLECTIONS_FRAGMENT}
   ${SECTIONS_FEATURED_PRODUCTS_FRAGMENT}
+  ${SECTIONS_FEATURED_COLLECTIONS_FRAGMENT}
 `;

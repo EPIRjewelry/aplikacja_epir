@@ -29,14 +29,13 @@ import {
   type CommerceAction,
   createRevalidateScheduler,
   applyStorefrontCommerceAction,
-  ClientOnly,
 } from '@epir/ui';
 import type {PersonaUi} from '@epir/ui';
 import {ShopifyProvider} from '@shopify/hydrogen-react';
 import {Analytics, getSeoMeta, getShopAnalytics, Storefront, useNonce} from '@shopify/hydrogen';
 
 /** Wersja SFAPI wbudowana w `@shopify/hydrogen-react@2024.10` — nie mieszać z PUBLIC_STOREFRONT_API_VERSION z env. */
-const HYDROGEN_REACT_SFAPI_VERSION = '2024-10';
+const HYDROGEN_REACT_SFAPI_VERSION = '2024-10' as const;
 import type {LinksFunction, LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {CART_QUERY} from '~/queries/cart';
 import {json} from '@remix-run/cloudflare';
@@ -414,20 +413,18 @@ export default function App() {
       >
         <Outlet />
       </Layout>
-      <ClientOnly>
-        <KazkaConsentAndChat
-          chatApiUrl={data.chatApiUrl}
-          cartId={data.cartId}
-          brand={data.brand}
-          personaUi={data.personaUi}
-          storefrontId={data.storefrontId}
-          channel={data.channel}
-          route={data.route}
-          shopDomain={data.shopDomain}
-          privacyPolicyUrl={data.privacyPolicyUrl}
-          analyticsConsent={data.analyticsConsent}
-        />
-      </ClientOnly>
+      <KazkaConsentAndChat
+        chatApiUrl={data.chatApiUrl}
+        cartId={data.cartId}
+        brand={data.brand}
+        personaUi={data.personaUi}
+        storefrontId={data.storefrontId}
+        channel={data.channel}
+        route={data.route}
+        shopDomain={data.shopDomain}
+        privacyPolicyUrl={data.privacyPolicyUrl}
+        analyticsConsent={data.analyticsConsent}
+      />
     </>
   );
 

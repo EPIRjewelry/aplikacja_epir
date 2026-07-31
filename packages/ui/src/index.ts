@@ -25,7 +25,9 @@ export {
 export {
   RouteContent,
   ROUTE_CONTENT_QUERY,
+  ROUTE_SECTION_FIELD_KEYS,
   type RouteContentProps,
+  type RouteSectionFieldKey,
 } from './sections/RouteContent';
 export {
   ChatWidget,

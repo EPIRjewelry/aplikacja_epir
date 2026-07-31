@@ -2,6 +2,13 @@ import {Link, type MetaFunction, useLoaderData} from '@remix-run/react';
 import {getSeoMeta} from '@shopify/hydrogen';
 import type {LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {
+  RouteContent,
+  ROUTE_CONTENT_QUERY,
+  ROUTE_SECTION_FIELD_KEYS,
+  type RouteContentProps,
+  type SectionField,
+} from '@epir/ui';
+import {
   filterCollectionsForNav,
   parseCollectionFilter,
 } from '~/lib/collection-filters';
@@ -48,6 +55,7 @@ type FeaturedCollection = {
 };
 
 type LoaderData = {
+  route: RouteContentProps['route'];
   collections: {
     nodes: FeaturedCollection[];
   };
@@ -56,10 +64,32 @@ type LoaderData = {
   };
 };
 
-export async function loader({context, request}: LoaderFunctionArgs): Promise<LoaderData & {canonicalUrl: string}> {
+const ROUTE_HANDLE = 'route-kazka-home';
+
+function sectionNodeCount(field: SectionField | undefined): number {
+  return field?.references?.nodes?.length ?? field?.nodes?.length ?? 0;
+}
+
+function routeHasRenderableSections(
+  route: RouteContentProps['route'],
+): route is NonNullable<RouteContentProps['route']> {
+  if (!route) return false;
+  return ROUTE_SECTION_FIELD_KEYS.some(
+    (key) => sectionNodeCount(route[key]) > 0,
+  );
+}
+
+export async function loader({
+  context,
+  request,
+}: LoaderFunctionArgs): Promise<LoaderData & {canonicalUrl: string}> {
   const allowedHandles = parseCollectionFilter(context.env.COLLECTION_FILTER);
 
-  const [collectionsResult, productsResult] = await Promise.all([
+  const [routeResult, collectionsResult, productsResult] = await Promise.all([
+    context.storefront.query<{route: RouteContentProps['route']}>(
+      ROUTE_CONTENT_QUERY,
+      {variables: {handle: {type: 'route', handle: ROUTE_HANDLE}}},
+    ),
     context.storefront.query<{
       collections: {nodes: FeaturedCollection[]};
     }>(COLLECTIONS_QUERY),
@@ -68,6 +98,7 @@ export async function loader({context, request}: LoaderFunctionArgs): Promise<Lo
     }>(PRODUCTS_QUERY),
   ]);
 
+  const {route} = routeResult;
   const {collections} = collectionsResult;
   const {products} = productsResult;
 
@@ -78,6 +109,7 @@ export async function loader({context, request}: LoaderFunctionArgs): Promise<Lo
   });
 
   return {
+    route: route ?? null,
     collections: {...collections, nodes: collectionNodes},
     products,
     canonicalUrl: canonicalUrlFromRequest(request, context.env),
@@ -192,7 +224,11 @@ function ModelkaLayout({
 }
 
 export default function Index() {
-  const {collections, products} = useLoaderData<typeof loader>();
+  const {route, collections, products} = useLoaderData<typeof loader>();
+
+  if (routeHasRenderableSections(route)) {
+    return <RouteContent route={route} />;
+  }
 
   return <ModelkaLayout collections={collections} products={products} />;
 }
