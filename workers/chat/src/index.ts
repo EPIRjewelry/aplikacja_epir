@@ -690,7 +690,8 @@ function parseChatRequestBody(
     typeof maybe.productHandle === 'string' && maybe.productHandle.trim().length > 0
       ? maybe.productHandle.trim()
       : undefined;
-  const pathContext = path ? parseStorefrontPathContext(path) : {};
+  const pathForContext = path ?? route;
+  const pathContext = pathForContext ? parseStorefrontPathContext(pathForContext) : {};
   const collectionHandle = collectionHandleFromBody ?? pathContext.collectionHandle;
   const productHandle = productHandleFromBody ?? pathContext.productHandle;
   const customerIdHint =

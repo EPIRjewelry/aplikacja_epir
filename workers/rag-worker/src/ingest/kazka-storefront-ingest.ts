@@ -12,10 +12,20 @@ import {
 export type KazkaIngestEnv = {
   SHOP_DOMAIN?: string;
   PUBLIC_STOREFRONT_API_TOKEN_KAZKA?: string;
+  /** Fallback — ten sam token co w chat worker (docs: opcja A). */
+  SHOPIFY_STOREFRONT_TOKEN?: string;
   KAZKA_COLLECTION_FILTER?: string;
   VECTOR_INDEX?: VectorizeIndex;
   AI?: AIBinding;
 };
+
+function resolveKazkaStorefrontToken(env: KazkaIngestEnv): string {
+  return (
+    env.PUBLIC_STOREFRONT_API_TOKEN_KAZKA?.trim() ??
+    env.SHOPIFY_STOREFRONT_TOKEN?.trim() ??
+    ''
+  );
+}
 
 export type KazkaVectorDoc = {
   id: string;
@@ -110,9 +120,9 @@ export async function resolveKazkaCollections(
   env: KazkaIngestEnv,
 ): Promise<{collections: KazkaCollectionNode[]; warnings: string[]}> {
   const shopDomain = env.SHOP_DOMAIN?.trim();
-  const token = env.PUBLIC_STOREFRONT_API_TOKEN_KAZKA?.trim();
+  const token = resolveKazkaStorefrontToken(env);
   if (!shopDomain || !token) {
-    throw new Error('Kazka ingest: missing SHOP_DOMAIN or PUBLIC_STOREFRONT_API_TOKEN_KAZKA');
+    throw new Error('Kazka ingest: missing SHOP_DOMAIN or Storefront token (KAZKA / SHOPIFY_STOREFRONT_TOKEN)');
   }
 
   const warnings: string[] = [];
@@ -157,9 +167,9 @@ export async function buildKazkaIngestDocuments(env: KazkaIngestEnv): Promise<{
   result: KazkaIngestResult;
 }> {
   const shopDomain = env.SHOP_DOMAIN?.trim();
-  const token = env.PUBLIC_STOREFRONT_API_TOKEN_KAZKA?.trim();
+  const token = resolveKazkaStorefrontToken(env);
   if (!shopDomain || !token) {
-    throw new Error('Kazka ingest: missing SHOP_DOMAIN or PUBLIC_STOREFRONT_API_TOKEN_KAZKA');
+    throw new Error('Kazka ingest: missing SHOP_DOMAIN or Storefront token (KAZKA / SHOPIFY_STOREFRONT_TOKEN)');
   }
 
   const {collections, warnings} = await resolveKazkaCollections(env);

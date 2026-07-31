@@ -78,6 +78,9 @@ export interface Env {
   /** Storefront token Kazka — ingest dropu (secret, ten sam co w chat worker). */
   PUBLIC_STOREFRONT_API_TOKEN_KAZKA?: string;
 
+  /** Fallback Storefront token (chat worker: SHOPIFY_STOREFRONT_TOKEN). */
+  SHOPIFY_STOREFRONT_TOKEN?: string;
+
   /** CSV handles — szyna bezpieczeństwa ingestu (vars). */
   KAZKA_COLLECTION_FILTER?: string;
 }
