@@ -459,3 +459,178 @@ export async function fetchKazkaProductByHandle(
     {handle: productHandle},
   );
 }
+
+const KAZKA_ADMIN_COLLECTION_BY_HANDLE_QUERY = `
+  query AdminKazkaCollectionByHandle($handle: String!, $first: Int!) {
+    collectionByIdentifier(identifier: {handle: $handle}) {
+      id
+      handle
+      title
+      description
+      products(first: $first) {
+        nodes {
+          id
+          handle
+          title
+          productType
+          vendor
+          tags
+          description
+          status
+          options {
+            name
+            values
+          }
+          variants(first: 3) {
+            nodes {
+              id
+              title
+              sku
+              availableForSale
+              price
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const KAZKA_ADMIN_PRODUCT_BY_HANDLE_QUERY = `
+  query AdminKazkaProductByHandle($handle: String!) {
+    productByIdentifier(identifier: {handle: $handle}) {
+      id
+      handle
+      title
+      productType
+      vendor
+      tags
+      description
+      descriptionHtml
+      status
+      options {
+        name
+        values
+      }
+      variants(first: 10) {
+        nodes {
+          id
+          title
+          sku
+          availableForSale
+          price
+        }
+      }
+    }
+  }
+`;
+
+type AdminKazkaVariantNode = {
+  id: string;
+  title: string;
+  sku?: string | null;
+  availableForSale?: boolean;
+  price?: string | null;
+};
+
+type AdminKazkaProductNode = {
+  id: string;
+  handle: string;
+  title: string;
+  productType?: string | null;
+  vendor?: string | null;
+  tags?: string[];
+  description?: string | null;
+  descriptionHtml?: string | null;
+  status?: string | null;
+  options?: Array<{name: string; values: string[]}>;
+  variants?: {nodes: AdminKazkaVariantNode[]};
+};
+
+function mapAdminVariantToHydrate(v: AdminKazkaVariantNode): KazkaHydrateVariant {
+  const amount = typeof v.price === 'string' ? v.price.trim() : '';
+  return {
+    id: v.id,
+    title: v.title,
+    sku: v.sku,
+    availableForSale: v.availableForSale ?? true,
+    price: amount
+      ? {amount, currencyCode: 'PLN'}
+      : undefined,
+  };
+}
+
+function mapAdminProductToHydrate(node: AdminKazkaProductNode): KazkaHydrateProduct {
+  const variants = node.variants?.nodes ?? [];
+  const firstVariant = variants[0];
+  const amount =
+    typeof firstVariant?.price === 'string' ? firstVariant.price.trim() : '';
+  return {
+    id: node.id,
+    handle: node.handle,
+    title: node.title,
+    productType: node.productType,
+    vendor: node.vendor,
+    tags: node.tags,
+    description: node.description,
+    descriptionHtml: node.descriptionHtml,
+    availableForSale: node.status === 'ACTIVE',
+    options: node.options,
+    variants: {
+      nodes: variants.map(mapAdminVariantToHydrate),
+    },
+    priceRange: amount
+      ? {minVariantPrice: {amount, currencyCode: 'PLN'}}
+      : undefined,
+  };
+}
+
+export async function fetchKazkaCollectionProductsByHandleAdmin(
+  shopDomain: string,
+  adminToken: string,
+  collectionHandle: string,
+  first: number = 16,
+): Promise<KazkaCollectionProductsResponse> {
+  const data = await callAdminAPI<{
+    collectionByIdentifier?: {
+      id: string;
+      handle: string;
+      title: string;
+      description?: string | null;
+      products?: {nodes: AdminKazkaProductNode[]};
+    } | null;
+  }>(shopDomain, adminToken, KAZKA_ADMIN_COLLECTION_BY_HANDLE_QUERY, {
+    handle: collectionHandle,
+    first,
+  });
+
+  const collection = data.collectionByIdentifier;
+  if (!collection) return {collection: null};
+
+  return {
+    collection: {
+      id: collection.id,
+      handle: collection.handle,
+      title: collection.title,
+      description: collection.description,
+      products: {
+        nodes: (collection.products?.nodes ?? []).map(mapAdminProductToHydrate),
+      },
+    },
+  };
+}
+
+export async function fetchKazkaProductByHandleAdmin(
+  shopDomain: string,
+  adminToken: string,
+  productHandle: string,
+): Promise<KazkaProductByHandleResponse> {
+  const data = await callAdminAPI<{
+    productByIdentifier?: AdminKazkaProductNode | null;
+  }>(shopDomain, adminToken, KAZKA_ADMIN_PRODUCT_BY_HANDLE_QUERY, {
+    handle: productHandle,
+  });
+
+  const product = data.productByIdentifier;
+  return {product: product ? mapAdminProductToHydrate(product) : null};
+}

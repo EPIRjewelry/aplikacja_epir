@@ -1,7 +1,9 @@
 import type {Env} from '../config/bindings';
 import {
   fetchKazkaCollectionProductsByHandle,
+  fetchKazkaCollectionProductsByHandleAdmin,
   fetchKazkaProductByHandle,
+  fetchKazkaProductByHandleAdmin,
   type KazkaHydrateProduct,
 } from '../graphql';
 import {resolveStorefrontConfig} from '../config/storefronts';
@@ -90,15 +92,93 @@ export type KazkaHydrateInput = {
   collectionProductLimit?: number;
 };
 
+async function fetchKazkaCollectionHydrateData(
+  env: Env,
+  shopDomain: string,
+  storefrontToken: string | undefined,
+  collectionHandle: string,
+  limit: number,
+): Promise<{collection?: {handle: string; title: string; description?: string | null}; products: KazkaHydrateProduct[]} | null> {
+  if (storefrontToken) {
+    try {
+      const data = await fetchKazkaCollectionProductsByHandle(
+        shopDomain,
+        storefrontToken,
+        collectionHandle,
+        limit,
+      );
+      const collection = data.collection;
+      const products = collection?.products?.nodes ?? [];
+      if (collection && products.length > 0) {
+        return {collection, products};
+      }
+    } catch (error) {
+      console.warn('[kazka-hydrate] storefront collection fetch failed:', error);
+    }
+  }
+
+  const adminToken = env.SHOPIFY_ADMIN_TOKEN?.trim();
+  if (!adminToken) return null;
+
+  try {
+    const data = await fetchKazkaCollectionProductsByHandleAdmin(
+      shopDomain,
+      adminToken,
+      collectionHandle,
+      limit,
+    );
+    const collection = data.collection;
+    if (!collection) return null;
+    return {
+      collection,
+      products: collection.products?.nodes ?? [],
+    };
+  } catch (error) {
+    console.warn('[kazka-hydrate] admin collection fetch failed:', error);
+    return null;
+  }
+}
+
+async function fetchKazkaProductHydrateData(
+  env: Env,
+  shopDomain: string,
+  storefrontToken: string | undefined,
+  productHandle: string,
+): Promise<KazkaHydrateProduct | null> {
+  if (storefrontToken) {
+    try {
+      const data = await fetchKazkaProductByHandle(shopDomain, storefrontToken, productHandle);
+      if (data.product) return data.product;
+    } catch (error) {
+      console.warn('[kazka-hydrate] storefront product fetch failed:', error);
+    }
+  }
+
+  const adminToken = env.SHOPIFY_ADMIN_TOKEN?.trim();
+  if (!adminToken) return null;
+
+  try {
+    const data = await fetchKazkaProductByHandleAdmin(shopDomain, adminToken, productHandle);
+    return data.product ?? null;
+  } catch (error) {
+    console.warn('[kazka-hydrate] admin product fetch failed:', error);
+    return null;
+  }
+}
+
 export async function buildKazkaHeadlessStorefrontContext(
   env: Env,
   input: KazkaHydrateInput,
 ): Promise<string | null> {
   const sfConfig = resolveStorefrontConfig(env, 'kazka');
-  const token = sfConfig?.apiToken?.trim();
+  const storefrontToken = sfConfig?.apiToken?.trim();
   const shopDomain = env.SHOP_DOMAIN?.trim();
-  if (!token || !shopDomain) {
-    console.warn('[kazka-hydrate] missing token or SHOP_DOMAIN');
+  if (!shopDomain) {
+    console.warn('[kazka-hydrate] missing SHOP_DOMAIN');
+    return null;
+  }
+  if (!storefrontToken && !env.SHOPIFY_ADMIN_TOKEN?.trim()) {
+    console.warn('[kazka-hydrate] missing Storefront token and SHOPIFY_ADMIN_TOKEN');
     return null;
   }
 
@@ -108,37 +188,32 @@ export async function buildKazkaHeadlessStorefrontContext(
   ];
 
   if (input.productHandle) {
-    try {
-      const data = await fetchKazkaProductByHandle(shopDomain, token, input.productHandle);
-      if (data.product) {
-        sections.push(formatKazkaProductContext(data.product));
-      } else {
-        sections.push(`(Nie znaleziono produktu o handle: ${input.productHandle} na kanale Kazka.)`);
-      }
-    } catch (error) {
-      console.warn('[kazka-hydrate] product fetch failed:', error);
+    const product = await fetchKazkaProductHydrateData(
+      env,
+      shopDomain,
+      storefrontToken,
+      input.productHandle,
+    );
+    if (product) {
+      sections.push(formatKazkaProductContext(product));
+    } else {
+      sections.push(`(Nie znaleziono produktu o handle: ${input.productHandle} na kanale Kazka.)`);
     }
   } else if (input.collectionHandle) {
-    try {
-      const limit = input.collectionProductLimit ?? 16;
-      const data = await fetchKazkaCollectionProductsByHandle(
-        shopDomain,
-        token,
-        input.collectionHandle,
-        limit,
+    const limit = input.collectionProductLimit ?? 16;
+    const data = await fetchKazkaCollectionHydrateData(
+      env,
+      shopDomain,
+      storefrontToken,
+      input.collectionHandle,
+      limit,
+    );
+    if (data?.collection) {
+      sections.push(formatKazkaCollectionContext(data.collection, data.products));
+    } else {
+      sections.push(
+        `(Nie znaleziono kolekcji o handle: ${input.collectionHandle} na kanale Kazka.)`,
       );
-      const collection = data.collection;
-      if (collection) {
-        sections.push(
-          formatKazkaCollectionContext(collection, collection.products?.nodes ?? []),
-        );
-      } else {
-        sections.push(
-          `(Nie znaleziono kolekcji o handle: ${input.collectionHandle} na kanale Kazka.)`,
-        );
-      }
-    } catch (error) {
-      console.warn('[kazka-hydrate] collection fetch failed:', error);
     }
   } else {
     return null;
