@@ -31,6 +31,7 @@ import {
   applyStorefrontCommerceAction,
 } from '@epir/ui';
 import type {PersonaUi} from '@epir/ui';
+import {ShopifyProvider} from '@shopify/hydrogen-react';
 import {Analytics, getSeoMeta, getShopAnalytics, Storefront, useNonce} from '@shopify/hydrogen';
 import type {LinksFunction, LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {CART_QUERY} from '~/queries/cart';
@@ -155,6 +156,8 @@ export async function loader({context, request}: LoaderFunctionArgs) {
     channel: KAZKA_CHANNEL,
     route,
     shopDomain: new URL(request.url).host,
+    shopifyStoreDomain: context.env.PUBLIC_STORE_DOMAIN,
+    storefrontApiVersion: context.env.PUBLIC_STOREFRONT_API_VERSION || '2025-10',
     shopAnalytics,
     analyticsConsent,
   });
@@ -436,28 +439,37 @@ export default function App() {
           Iteracja 1: ConsentToggle przy czacie + CustomerPrivacyConsentBridge.
           Iteracja 2: `withPrivacyBanner: true` dopiero po uporządkowaniu jednego UI zgód.
         */}
-        {canHydrogenAnalytics ? (
-          <Analytics.Provider
-            cart={data.cart ?? null}
-            shop={shopAnalytics}
-            consent={{
-              checkoutDomain: data.analyticsConsent.checkoutDomain,
-              storefrontAccessToken: data.analyticsConsent.storefrontAccessToken,
-              withPrivacyBanner: false,
-              country: data.analyticsConsent.country,
-              language: data.analyticsConsent.language,
-              sameDomainForStorefrontApi: data.analyticsConsent.sameDomainForStorefrontApi,
-            }}
-            customData={{
-              channel: data.channel,
-              storefrontId: data.storefrontId,
-            }}
-          >
-            {shell}
-          </Analytics.Provider>
-        ) : (
-          shell
-        )}
+        <ShopifyProvider
+          storeDomain={data.shopifyStoreDomain}
+          storefrontToken={data.analyticsConsent.storefrontAccessToken}
+          storefrontApiVersion={data.storefrontApiVersion}
+          countryIsoCode={data.selectedLocale.country}
+          languageIsoCode={data.selectedLocale.language}
+          sameDomainForStorefrontApi={data.analyticsConsent.sameDomainForStorefrontApi}
+        >
+          {canHydrogenAnalytics ? (
+            <Analytics.Provider
+              cart={data.cart ?? null}
+              shop={shopAnalytics}
+              consent={{
+                checkoutDomain: data.analyticsConsent.checkoutDomain,
+                storefrontAccessToken: data.analyticsConsent.storefrontAccessToken,
+                withPrivacyBanner: false,
+                country: data.analyticsConsent.country,
+                language: data.analyticsConsent.language,
+                sameDomainForStorefrontApi: data.analyticsConsent.sameDomainForStorefrontApi,
+              }}
+              customData={{
+                channel: data.channel,
+                storefrontId: data.storefrontId,
+              }}
+            >
+              {shell}
+            </Analytics.Provider>
+          ) : (
+            shell
+          )}
+        </ShopifyProvider>
         <ScrollRestoration nonce={nonce} />
         <Scripts nonce={nonce} />
       </body>
