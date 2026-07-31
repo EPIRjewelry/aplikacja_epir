@@ -46,7 +46,9 @@ import {
   CHAT_RECOVERY_MAX_TOKENS,
   type ModelCapabilities,
 } from './config/model-params';
-import { LUXURY_SYSTEM_PROMPT } from './prompts/luxury-system-prompt'; // 🟢 Używa nowego promptu v2
+import { LUXURY_SYSTEM_PROMPT, KAZKA_HEADLESS_PERSONA_ADDON } from './prompts/luxury-system-prompt'; // 🟢 Używa nowego promptu v2
+import { parseStorefrontPathContext } from './storefront/path-context';
+import { buildKazkaHeadlessStorefrontContext, isKazkaHeadlessChannel } from './storefront/kazka-hydrate';
 import { TOOL_SCHEMAS, resolveToolSchemas, shouldUseSlimToolSchemas } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2 (+ slim wariant za flagą)
 import { sanitizeHarmonyHistory } from './utils/sanitizeHarmonyHistory';
 import { detectPolicyInformationIntent } from './intent/policy-information';
@@ -132,6 +134,7 @@ import {
   searchShopPoliciesAndFaqsWithMCP,
   searchProductCatalogWithMCP,
   formatRagContextForPrompt,
+  fetchKazkaDropRagContext,
   type VectorizeIndex,
 } from './rag-client-wrapper';
 
@@ -172,6 +175,8 @@ interface ChatRequestBody {
   path?: string;
   /** Handle kolekcji, gdy na stronie kolekcji */
   collectionHandle?: string;
+  /** Handle produktu, gdy na stronie produktu */
+  productHandle?: string;
   /** Pole opcjonalne z body — nie jest tożsamością Shopify w kanale App Proxy (ADR docs/adr/0001-tae-app-proxy-customer-identity.md). */
   customer_id_hint?: string;
   /** Źródło hintu (telemetria); bez wpływu na wiarygodne ID klienta. */
@@ -216,25 +221,6 @@ const EPIR_SHARED_SECRET_HEADER = 'X-EPIR-SHARED-SECRET';
 const EPIR_STOREFRONT_HEADER = 'X-EPIR-STOREFRONT-ID';
 const EPIR_CHANNEL_HEADER = 'X-EPIR-CHANNEL';
 
-// #region agent log
-function debugIngressLog(
-  hypothesisId: string,
-  location: string,
-  data: Record<string, unknown>,
-): void {
-  console.log(
-    JSON.stringify({
-      tag: 'debug.c882f5',
-      sessionId: 'c882f5',
-      hypothesisId,
-      location,
-      data,
-      timestamp: Date.now(),
-      runId: 'pre-fix',
-    }),
-  );
-}
-// #endregion
 const REPLAY_PROTECTION_SHARD_NAME = 'replay-protection:v1:global';
 const SESSION_DO_FALLBACK_SHARD_NAME = 'session:v1:fallback';
 const APP_PROXY_CHAT_CONTEXT_OVERRIDE: Required<ChatContextOverride> = {
@@ -271,8 +257,15 @@ async function fetchSessionDO(
   return response;
 }
 
-function getSystemPromptForChannel(channel?: string, operatorRoleId?: OperatorRoleId): string {
+function getSystemPromptForChannel(
+  channel?: string,
+  operatorRoleId?: OperatorRoleId,
+  storefrontId?: string,
+): string {
   if (isOperatorChannel(channel)) return getOperatorSystemPrompt(operatorRoleId);
+  if (isKazkaHeadlessChannel(channel, storefrontId)) {
+    return `${LUXURY_SYSTEM_PROMPT}\n\n${KAZKA_HEADLESS_PERSONA_ADDON}`;
+  }
   return LUXURY_SYSTEM_PROMPT;
 }
 
@@ -689,7 +682,17 @@ function parseChatRequestBody(
   const channel = contextOverride?.channel ?? channelFromBody ?? inferredChannel;
   const route = typeof maybe.route === 'string' && maybe.route.trim().length > 0 ? maybe.route.trim() : undefined;
   const path = typeof maybe.path === 'string' && maybe.path.trim().length > 0 ? maybe.path.trim() : undefined;
-  const collectionHandle = typeof maybe.collectionHandle === 'string' && maybe.collectionHandle.trim().length > 0 ? maybe.collectionHandle.trim() : undefined;
+  const collectionHandleFromBody =
+    typeof maybe.collectionHandle === 'string' && maybe.collectionHandle.trim().length > 0
+      ? maybe.collectionHandle.trim()
+      : undefined;
+  const productHandleFromBody =
+    typeof maybe.productHandle === 'string' && maybe.productHandle.trim().length > 0
+      ? maybe.productHandle.trim()
+      : undefined;
+  const pathContext = path ? parseStorefrontPathContext(path) : {};
+  const collectionHandle = collectionHandleFromBody ?? pathContext.collectionHandle;
+  const productHandle = productHandleFromBody ?? pathContext.productHandle;
   const customerIdHint =
     typeof maybe.customer_id_hint === 'string' && maybe.customer_id_hint.trim().length > 0
       ? maybe.customer_id_hint.trim()
@@ -714,6 +717,7 @@ function parseChatRequestBody(
     route,
     path,
     collectionHandle,
+    productHandle,
     customer_id_hint: customerIdHint,
     customer_id_hint_source: customerIdHintSource,
     locale,
@@ -2975,6 +2979,7 @@ async function handleChat(
     channel: payload.channel,
     route: payload.route,
     collectionHandle: payload.collectionHandle,
+    productHandle: payload.productHandle,
     path: payload.path,
     locale: payload.locale,
     market: payload.market,
@@ -2990,6 +2995,7 @@ interface StorefrontContext {
   channel?: string;
   route?: string;
   collectionHandle?: string;
+  productHandle?: string;
   path?: string;
   locale?: string;
   market?: string;
@@ -3386,7 +3392,11 @@ async function streamAssistantResponse(
         ? await resolveOperatorPromptAddons(env, request.headers, sessionId)
         : '';
       const baseSystemPrompt =
-        getSystemPromptForChannel(storefrontContext?.channel, operatorRoleId ?? undefined) +
+        getSystemPromptForChannel(
+          storefrontContext?.channel,
+          operatorRoleId ?? undefined,
+          storefrontContext?.storefrontId,
+        ) +
         (agentAddon ? `\n\n${agentAddon}` : '');
 
       // Zbudowanie dynamicznych linii (koszyk, sklep, cross-session); trafią do ostatniego usera, nie do systemu.
@@ -3424,6 +3434,7 @@ async function streamAssistantResponse(
         ];
         if (storefrontContext.route) ctxParts.push(`route: ${storefrontContext.route}`);
         if (storefrontContext.collectionHandle) ctxParts.push(`collectionHandle: ${storefrontContext.collectionHandle}`);
+        if (storefrontContext.productHandle) ctxParts.push(`productHandle: ${storefrontContext.productHandle}`);
         if (storefrontContext.path) ctxParts.push(`currentPath: ${storefrontContext.path}`);
         if (sfKey === 'kazka') {
           ctxParts.push('Marka Kazka Jewelry – kamienie szlachetne, biżuteria artystyczna.');
@@ -3431,6 +3442,28 @@ async function streamAssistantResponse(
           ctxParts.push('Kontekst: pierścionki zaręczynowe EPIR.');
         }
         dynamicContext.push(`Kontekst storefrontu: ${ctxParts.join(', ')}`);
+      }
+
+      if (
+        !operatorMode &&
+        isKazkaHeadlessChannel(storefrontContext?.channel, storefrontContext?.storefrontId) &&
+        (storefrontContext?.productHandle || storefrontContext?.collectionHandle)
+      ) {
+        const kazkaHydrated = await buildKazkaHeadlessStorefrontContext(env, {
+          productHandle: storefrontContext?.productHandle,
+          collectionHandle: storefrontContext?.collectionHandle,
+        });
+        if (kazkaHydrated) {
+          dynamicContext.push(kazkaHydrated);
+        }
+
+        const kazkaRag = await fetchKazkaDropRagContext(userMessage, env, {
+          collectionHandle: storefrontContext?.collectionHandle,
+          topK: 5,
+        });
+        if (kazkaRag) {
+          dynamicContext.push(kazkaRag);
+        }
       }
 
       if (!operatorMode && crossSessionSummary) {
@@ -4989,12 +5022,6 @@ export default {
 
     // Endpoint czatu (zabezpieczony przez App Proxy)
     if (url.pathname === '/apps/assistant/chat' && request.method === 'POST') {
-      // #region agent log
-      debugIngressLog('E', 'index.ts:/apps/assistant/chat', {
-        ingress: 'app_proxy_direct',
-        hasQuerySignature: Boolean(url.searchParams.get('signature')),
-      });
-      // #endregion
       return handleChat(request, env, APP_PROXY_CHAT_CONTEXT_OVERRIDE, ctx, { appProxyVerified: true });
     }
 
@@ -5016,37 +5043,15 @@ export default {
       if (viaAppProxy) {
         const appProxyAuthError = await authorizeAppProxyRequest(request, env);
         if (appProxyAuthError) {
-          // #region agent log
-          debugIngressLog('E', 'index.ts:/chat:app_proxy_auth', {
-            status: appProxyAuthError.status,
-          });
-          // #endregion
           return appProxyAuthError;
         }
-        // #region agent log
-        debugIngressLog('E', 'index.ts:/chat:app_proxy', { ingress: 'app_proxy_rewritten' });
-        // #endregion
         return handleChat(request, env, APP_PROXY_CHAT_CONTEXT_OVERRIDE, ctx, { appProxyVerified: true });
       }
 
       const s2sResult = verifyS2SChatRequest(request, env);
       if (!s2sResult.ok) {
-        // #region agent log
-        debugIngressLog('A', 'index.ts:/chat:s2s_reject', {
-          status: s2sResult.response.status,
-          hasSharedSecretHeader: Boolean(getTrimmedHeader(request, EPIR_SHARED_SECRET_HEADER)),
-          hasStorefrontHeader: Boolean(getTrimmedHeader(request, EPIR_STOREFRONT_HEADER)),
-          hasChannelHeader: Boolean(getTrimmedHeader(request, EPIR_CHANNEL_HEADER)),
-        });
-        // #endregion
         return s2sResult.response;
       }
-      // #region agent log
-      debugIngressLog('B', 'index.ts:/chat:s2s_ok', {
-        storefrontId: s2sResult.contextOverride.storefrontId,
-        channel: s2sResult.contextOverride.channel,
-      });
-      // #endregion
       return handleChat(request, env, s2sResult.contextOverride, ctx);
     }
 

@@ -302,3 +302,45 @@ export async function buildRagContext(
   
   return '';
 }
+
+export type KazkaDropRagOptions = {
+  topK?: number;
+  collectionHandle?: string;
+};
+
+/**
+ * Semantic RAG dla dropu Kazka (Vectorize w rag-worker).
+ * Uzupełnia runtime hydrate Storefront — nie zastępuje cen/dostępności.
+ */
+export async function fetchKazkaDropRagContext(
+  query: string,
+  env: Env,
+  options: KazkaDropRagOptions = {},
+): Promise<string> {
+  if (!env.RAG_WORKER || !(await isRAGWorkerAvailable(env))) {
+    return '';
+  }
+
+  try {
+    const response = await env.RAG_WORKER.fetch('https://rag-worker/search/kazka', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        query,
+        topK: options.topK ?? 5,
+        collectionHandle: options.collectionHandle,
+      }),
+    });
+
+    if (!response.ok) {
+      console.warn('[RAG Wrapper] Kazka drop search HTTP', response.status);
+      return '';
+    }
+
+    const data = (await response.json()) as {context?: string};
+    return typeof data.context === 'string' ? data.context.trim() : '';
+  } catch (error) {
+    console.warn('[RAG Wrapper] Kazka drop search failed:', error);
+    return '';
+  }
+}

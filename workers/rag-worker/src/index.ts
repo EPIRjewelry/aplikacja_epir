@@ -32,7 +32,14 @@ import {
   formatRagForPrompt,
   hasHighConfidenceResults,
 } from './domain/formatter';
-import { VectorizeIndex, AIBinding, upsertDocuments } from './services/vectorize';
+import {
+  VectorizeIndex,
+  AIBinding,
+  upsertDocuments,
+  searchKazkaDropVectorize,
+  formatKazkaDropResultsForPrompt,
+} from './services/vectorize';
+import { runKazkaIngest } from './ingest/kazka-storefront-ingest';
 
 /**
  * Cloudflare Worker environment bindings
@@ -67,6 +74,12 @@ export interface Env {
    * Admin token for protected endpoints (set via wrangler secret put ADMIN_TOKEN)
    */
   ADMIN_TOKEN?: string;
+
+  /** Storefront token Kazka — ingest dropu (secret, ten sam co w chat worker). */
+  PUBLIC_STOREFRONT_API_TOKEN_KAZKA?: string;
+
+  /** CSV handles — szyna bezpieczeństwa ingestu (vars). */
+  KAZKA_COLLECTION_FILTER?: string;
 }
 
 /**
@@ -93,6 +106,13 @@ interface ContextBuildRequest {
   intent?: UserIntent;
   cartId?: string | null;
   topK?: number;
+}
+
+interface KazkaSearchRequest {
+  query: string;
+  topK?: number;
+  collectionHandle?: string;
+  type?: 'product' | 'collection';
 }
 
 function getMcpEndpoint(env: Env): string | undefined {
@@ -140,6 +160,22 @@ function timingSafeEquals(a: string, b: string): boolean {
     diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
   }
   return diff === 0;
+}
+
+function authorizeAdmin(request: Request, env: Env): Response | null {
+  const configuredAdminToken = env.ADMIN_TOKEN?.trim() ?? '';
+  const requestAdminToken = readAdminTokenFromRequest(request);
+  const hasSafeConfiguredToken =
+    configuredAdminToken.length > 0 && !looksLikePlaceholderSecret(configuredAdminToken);
+
+  if (
+    !hasSafeConfiguredToken
+    || !requestAdminToken
+    || !timingSafeEquals(requestAdminToken, configuredAdminToken)
+  ) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  }
+  return null;
 }
 
 /**
@@ -263,6 +299,45 @@ export default {
       }
 
       // ========================================
+      // POST /search/kazka - Kazka drop RAG (Vectorize)
+      // ========================================
+      if (url.pathname === '/search/kazka' && request.method === 'POST') {
+        const body = (await request.json()) as KazkaSearchRequest;
+        const { query, topK = 5, collectionHandle, type } = body;
+
+        if (!query?.trim()) {
+          return new Response(
+            JSON.stringify({ error: 'Missing required field: query' }),
+            { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+          );
+        }
+
+        if (!env.VECTOR_INDEX || !env.AI) {
+          return new Response(
+            JSON.stringify({ error: 'Vectorize bindings not configured' }),
+            { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+          );
+        }
+
+        const results = await searchKazkaDropVectorize(
+          query.trim(),
+          env.VECTOR_INDEX,
+          env.AI,
+          { topK, collectionHandle, type },
+        );
+
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            query,
+            context: formatKazkaDropResultsForPrompt(results),
+            results,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+        );
+      }
+
+      // ========================================
       // POST /context/build - Full RAG context
       // ========================================
       if (url.pathname === '/context/build' && request.method === 'POST') {
@@ -325,20 +400,12 @@ export default {
       // Fail-closed: missing/weak/placeholder env token => always reject.
       // ========================================
       if (url.pathname === '/admin/upsert' && request.method === 'POST') {
-        const configuredAdminToken = env.ADMIN_TOKEN?.trim() ?? '';
-        const requestAdminToken = readAdminTokenFromRequest(request);
-        const hasSafeConfiguredToken =
-          configuredAdminToken.length > 0 && !looksLikePlaceholderSecret(configuredAdminToken);
-
-        if (
-          !hasSafeConfiguredToken
-          || !requestAdminToken
-          || !timingSafeEquals(requestAdminToken, configuredAdminToken)
-        ) {
-          return new Response(
-            JSON.stringify({ error: 'Unauthorized' }),
-            { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
-          );
+        const unauthorized = authorizeAdmin(request, env);
+        if (unauthorized) {
+          return new Response(unauthorized.body, {
+            status: unauthorized.status,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
         }
 
         const body = await request.json().catch(() => null);
@@ -365,6 +432,33 @@ export default {
         }
       }
 
+      // ========================================
+      // POST /admin/ingest/kazka - Full Kazka drop ingest → Vectorize
+      // ========================================
+      if (url.pathname === '/admin/ingest/kazka' && request.method === 'POST') {
+        const unauthorized = authorizeAdmin(request, env);
+        if (unauthorized) {
+          return new Response(unauthorized.body, {
+            status: unauthorized.status,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        try {
+          const result = await runKazkaIngest(env);
+          return new Response(
+            JSON.stringify({ ok: true, ...result }),
+            { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+          );
+        } catch (err: any) {
+          console.error('[RAG_WORKER] Kazka ingest failed:', err);
+          return new Response(
+            JSON.stringify({ error: 'Ingest failed', message: err?.message || String(err) }),
+            { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+          );
+        }
+      }
+
       return new Response(
         JSON.stringify({
           error: 'Not Found',
@@ -372,7 +466,10 @@ export default {
             'GET /health',
             'POST /search/products',
             'POST /search/policies',
+            'POST /search/kazka',
             'POST /context/build',
+            'POST /admin/upsert',
+            'POST /admin/ingest/kazka',
           ],
         }),
         { status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
@@ -389,5 +486,19 @@ export default {
         { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
       );
     }
+  },
+
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      (async () => {
+        try {
+          console.log(JSON.stringify({ tag: 'kazka.ingest.cron', scheduledTime: event.scheduledTime }));
+          const result = await runKazkaIngest(env);
+          console.log(JSON.stringify({ tag: 'kazka.ingest.cron.done', ...result }));
+        } catch (err) {
+          console.error('[RAG_WORKER] scheduled Kazka ingest failed:', err);
+        }
+      })(),
+    );
   },
 };

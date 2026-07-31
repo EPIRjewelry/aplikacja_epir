@@ -308,3 +308,154 @@ export async function fetchProductsForRAG(
 
   return [];
 }
+
+export const KAZKA_COLLECTION_PRODUCTS_BY_HANDLE_QUERY = `
+  query KazkaCollectionProductsByHandle($handle: String!, $first: Int!) {
+    collection(handle: $handle) {
+      id
+      handle
+      title
+      description
+      products(first: $first) {
+        nodes {
+          id
+          handle
+          title
+          productType
+          vendor
+          tags
+          description
+          availableForSale
+          priceRange {
+            minVariantPrice {
+              amount
+              currencyCode
+            }
+          }
+          variants(first: 3) {
+            nodes {
+              id
+              title
+              sku
+              availableForSale
+              price {
+                amount
+                currencyCode
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+export const KAZKA_PRODUCT_BY_HANDLE_QUERY = `
+  query KazkaProductByHandle($handle: String!) {
+    product(handle: $handle) {
+      id
+      handle
+      title
+      productType
+      vendor
+      tags
+      description
+      descriptionHtml
+      availableForSale
+      options(first: 5) {
+        name
+        values
+      }
+      images(first: 3) {
+        nodes {
+          url
+          altText
+        }
+      }
+      variants(first: 10) {
+        nodes {
+          id
+          title
+          sku
+          availableForSale
+          price {
+            amount
+            currencyCode
+          }
+        }
+      }
+    }
+  }
+`;
+
+export type KazkaHydrateMoney = {
+  amount: string;
+  currencyCode: string;
+};
+
+export type KazkaHydrateVariant = {
+  id: string;
+  title: string;
+  sku?: string | null;
+  availableForSale: boolean;
+  price?: KazkaHydrateMoney | null;
+};
+
+export type KazkaHydrateProduct = {
+  id: string;
+  handle: string;
+  title: string;
+  productType?: string | null;
+  vendor?: string | null;
+  tags?: string[];
+  description?: string | null;
+  descriptionHtml?: string | null;
+  availableForSale?: boolean;
+  options?: Array<{name: string; values: string[]}>;
+  images?: {nodes: Array<{url: string; altText?: string | null}>};
+  variants?: {nodes: KazkaHydrateVariant[]};
+  priceRange?: {
+    minVariantPrice?: KazkaHydrateMoney | null;
+  };
+};
+
+export type KazkaCollectionProductsResponse = {
+  collection?: {
+    id: string;
+    handle: string;
+    title: string;
+    description?: string | null;
+    products?: {nodes: KazkaHydrateProduct[]};
+  } | null;
+};
+
+export type KazkaProductByHandleResponse = {
+  product?: KazkaHydrateProduct | null;
+};
+
+export async function fetchKazkaCollectionProductsByHandle(
+  shopDomain: string,
+  storefrontToken: string,
+  collectionHandle: string,
+  first: number = 16,
+): Promise<KazkaCollectionProductsResponse> {
+  return callStorefrontAPI<KazkaCollectionProductsResponse>(
+    shopDomain,
+    storefrontToken,
+    KAZKA_COLLECTION_PRODUCTS_BY_HANDLE_QUERY,
+    {handle: collectionHandle, first},
+  );
+}
+
+export async function fetchKazkaProductByHandle(
+  shopDomain: string,
+  storefrontToken: string,
+  productHandle: string,
+): Promise<KazkaProductByHandleResponse> {
+  return callStorefrontAPI<KazkaProductByHandleResponse>(
+    shopDomain,
+    storefrontToken,
+    KAZKA_PRODUCT_BY_HANDLE_QUERY,
+    {handle: productHandle},
+  );
+}

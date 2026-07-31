@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { LUXURY_SYSTEM_PROMPT } from '../src/prompts/luxury-system-prompt';
+import { LUXURY_SYSTEM_PROMPT, KAZKA_HEADLESS_PERSONA_ADDON } from '../src/prompts/luxury-system-prompt';
 
 describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
   it('requires catalog-backed PLN amounts for buyer-facing pricing', () => {
@@ -24,5 +24,11 @@ describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
     expect(LUXURY_SYSTEM_PROMPT).toContain('czego szukałem');
     expect(LUXURY_SYSTEM_PROMPT).toContain('odpowiedz na podstawie historii bieżącej sesji');
     expect(LUXURY_SYSTEM_PROMPT).not.toContain('wspominaj tylko wtedy');
+  });
+
+  it('includes Kazka headless persona addon', () => {
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('Kazka Jewelry');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('aktualny drop Kazka');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('EPIR');
   });
 });
