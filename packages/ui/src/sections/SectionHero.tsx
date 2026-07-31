@@ -1,4 +1,5 @@
 import {Link} from '@remix-run/react';
+import {Image} from '@shopify/hydrogen';
 import {MediaFile} from '@shopify/hydrogen-react';
 import type {MediaContentType} from '@shopify/hydrogen-react/storefront-api-types';
 
@@ -57,12 +58,6 @@ function getValue(
   return field.value;
 }
 
-function isRenderableMedia(
-  mediaRef: MediaReference | undefined,
-): mediaRef is MediaImageReference | VideoReference {
-  return mediaRef?.__typename === 'MediaImage' || mediaRef?.__typename === 'Video';
-}
-
 function getMediaFallbackUrl(mediaRef: MediaReference | undefined): string | undefined {
   if (!mediaRef) return undefined;
   if (mediaRef.__typename === 'MediaImage') {
@@ -92,20 +87,29 @@ export function SectionHero(props: SectionHeroProps) {
   const openInNewTab = targetVal === '_blank';
 
   const mediaRef = image?.reference;
-  const hasMedia = isRenderableMedia(mediaRef);
+  const isMediaImage = mediaRef?.__typename === 'MediaImage';
+  const isVideo = mediaRef?.__typename === 'Video';
   const imageUrl = getMediaFallbackUrl(mediaRef);
-  const fallbackBackgroundImage =
-    imageUrl && !hasMedia ? `url("${imageUrl}")` : undefined;
-
-  const showFallbackImage = imageUrl && !hasMedia;
+  const showGenericFileImage =
+    Boolean(imageUrl) && !isMediaImage && !isVideo;
 
   return (
-    <section
-      className="relative flex flex-col items-center justify-center min-h-[50vh] bg-cover bg-center px-6 py-20 text-center overflow-hidden"
-      style={fallbackBackgroundImage ? {backgroundImage: fallbackBackgroundImage} : undefined}
-    >
-      {hasMedia && (
-        <div className="absolute inset-0 -z-10">
+    <section className="relative flex flex-col items-center justify-center min-h-[80vh] px-6 py-20 text-center overflow-hidden">
+      {isMediaImage && mediaRef.image?.url ? (
+        <div className="absolute inset-0 z-0">
+          <Image
+            data={mediaRef.image}
+            alt={mediaRef.image.altText ?? mediaRef.alt ?? ''}
+            className="w-full h-full object-cover"
+            sizes="100vw"
+            width={mediaRef.image.width ?? 1248}
+            height={mediaRef.image.height ?? 832}
+            loading="eager"
+          />
+        </div>
+      ) : null}
+      {isVideo ? (
+        <div className="absolute inset-0 z-0">
           <MediaFile
             data={mediaRef}
             className="block object-cover w-full h-full"
@@ -129,15 +133,17 @@ export function SectionHero(props: SectionHeroProps) {
             }}
           />
         </div>
-      )}
-      {showFallbackImage && (
+      ) : null}
+      {showGenericFileImage && imageUrl ? (
         <img
           src={imageUrl}
           alt={mediaRef?.alt ?? ''}
-          className="absolute inset-0 w-full h-full object-cover -z-10"
+          className="absolute inset-0 z-0 w-full h-full object-cover"
+          loading="eager"
+          decoding="async"
         />
-      )}
-      <div className="absolute inset-0 bg-black/30" />
+      ) : null}
+      <div className="absolute inset-0 z-[1] bg-black/30" />
       <div className="relative z-10 max-w-3xl">
         {heading?.parsedValue && (
           <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 drop-shadow-lg">
