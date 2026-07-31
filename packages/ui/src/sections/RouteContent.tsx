@@ -6,13 +6,14 @@ import {
 } from './fragments';
 
 /**
- * Kolejność pól metaobiektu `route` (Shopify): sections → featured_products → featured_collections.
+ * Kolejność pól metaobiektu `route` (Shopify):
+ * sections → featured_collections → featured_products (kategorie przed produktami).
  * Jedyny SSOT kolejności renderu — `Sections` tylko iteruje tę listę.
  */
 export const ROUTE_SECTION_FIELD_KEYS = [
   'sections',
-  'featured_products',
   'featured_collections',
+  'featured_products',
 ] as const;
 
 export type RouteSectionFieldKey = (typeof ROUTE_SECTION_FIELD_KEYS)[number];
@@ -26,6 +27,10 @@ export type RouteContentProps = {
     featured_collections?: SectionField;
     featured_products?: SectionField;
   } | null;
+  /** Pomiń hub / nie-kategorie w kaflach (np. `kazka`). */
+  featuredCollectionsExcludeHandles?: readonly string[];
+  /** Ukryj H2 sekcji featured_collections (Hydrogen — bez zmiany Admin). */
+  hideFeaturedCollectionsHeading?: boolean;
 };
 
 function getNodes(field: SectionField | undefined): unknown[] {
@@ -40,7 +45,11 @@ function orderedSectionFields(
   );
 }
 
-export function RouteContent({route}: RouteContentProps) {
+export function RouteContent({
+  route,
+  featuredCollectionsExcludeHandles,
+  hideFeaturedCollectionsHeading = false,
+}: RouteContentProps) {
   if (!route) return null;
 
   const fields = orderedSectionFields(route);
@@ -50,7 +59,11 @@ export function RouteContent({route}: RouteContentProps) {
 
   return (
     <div className="flex flex-col">
-      <Sections fields={fields} />
+      <Sections
+        fields={fields}
+        featuredCollectionsExcludeHandles={featuredCollectionsExcludeHandles}
+        hideFeaturedCollectionsHeading={hideFeaturedCollectionsHeading}
+      />
     </div>
   );
 }

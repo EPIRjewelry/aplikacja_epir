@@ -66,6 +66,9 @@ type LoaderData = {
 
 const ROUTE_HANDLE = 'route-kazka-home';
 
+/** Hub kolekcji Kazka — nie kategoria; pomijany w kaflach homepage. */
+const KAZKA_HUB_COLLECTION_HANDLE = 'kazka';
+
 function sectionNodeCount(field: SectionField | undefined): number {
   return field?.references?.nodes?.length ?? field?.nodes?.length ?? 0;
 }
@@ -227,7 +230,13 @@ export default function Index() {
   const {route, collections, products} = useLoaderData<typeof loader>();
 
   if (routeHasRenderableSections(route)) {
-    return <RouteContent route={route} />;
+    return (
+      <RouteContent
+        route={route}
+        featuredCollectionsExcludeHandles={[KAZKA_HUB_COLLECTION_HANDLE]}
+        hideFeaturedCollectionsHeading
+      />
+    );
   }
 
   return <ModelkaLayout collections={collections} products={products} />;
