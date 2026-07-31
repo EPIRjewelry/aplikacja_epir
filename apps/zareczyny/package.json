@@ -14,7 +14,7 @@
     "lint": "eslint --no-error-on-unmatched-pattern --ext .js,.ts,.jsx,.tsx .",
     "typecheck": "tsc --noEmit",
     "wrangler": "wrangler pages dev ./public",
-    "deploy": "npm run build && wrangler pages deploy public --project-name=zareczyny-hydrogen-pages --branch=main"
+    "deploy": "npm run build && node ../../node_modules/wrangler/bin/wrangler.js pages deploy public --project-name=zareczyny-hydrogen-pages --branch=main"
   },
   "prettier": "@shopify/prettier-config",
   "dependencies": {
