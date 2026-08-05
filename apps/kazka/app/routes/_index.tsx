@@ -2,6 +2,8 @@ import {Link, type MetaFunction, useLoaderData} from '@remix-run/react';
 import {getSeoMeta} from '@shopify/hydrogen';
 import type {LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {
+  CraftsmanshipStory,
+  GemologySection,
   RouteContent,
   ROUTE_CONTENT_QUERY,
   ROUTE_SECTION_FIELD_KEYS,
@@ -13,12 +15,13 @@ import {
   parseCollectionFilter,
 } from '~/lib/collection-filters';
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
+import {KAZKA_CRAFTSMANSHIP, KAZKA_GEMOLOGY} from '~/lib/kazka-brand-copy';
 
 export const meta: MetaFunction<typeof loader> = ({data}) =>
   getSeoMeta({
     title: 'EPIR Art Jewellery — Kazka',
     description:
-      'Biżuteria inspirowana naturą — kolekcja Kazka EPIR Art Jewellery & Gemstone.',
+      'Biżuteria KAZKA tworzona w polskiej pracowni — diamenty selekcjonowane przez gemmologów, projektowanie 3D i ręczne rzemiosło złotnicze.',
     url: data?.canonicalUrl,
   });
 
@@ -229,17 +232,23 @@ function ModelkaLayout({
 export default function Index() {
   const {route, collections, products} = useLoaderData<typeof loader>();
 
-  if (routeHasRenderableSections(route)) {
-    return (
-      <RouteContent
-        route={route}
-        featuredCollectionsExcludeHandles={[KAZKA_HUB_COLLECTION_HANDLE]}
-        hideFeaturedCollectionsHeading
-      />
-    );
-  }
+  const main = routeHasRenderableSections(route) ? (
+    <RouteContent
+      route={route}
+      featuredCollectionsExcludeHandles={[KAZKA_HUB_COLLECTION_HANDLE]}
+      hideFeaturedCollectionsHeading
+    />
+  ) : (
+    <ModelkaLayout collections={collections} products={products} />
+  );
 
-  return <ModelkaLayout collections={collections} products={products} />;
+  return (
+    <>
+      {main}
+      <CraftsmanshipStory {...KAZKA_CRAFTSMANSHIP} />
+      <GemologySection {...KAZKA_GEMOLOGY} />
+    </>
+  );
 }
 
 const COLLECTIONS_QUERY = `#graphql

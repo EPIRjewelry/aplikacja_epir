@@ -30,6 +30,18 @@ export {
   type RouteSectionFieldKey,
 } from './sections/RouteContent';
 export {
+  CraftsmanshipStory,
+  type CraftsmanshipStoryProps,
+} from './brand/CraftsmanshipStory';
+export {
+  GemologySection,
+  type GemologySectionProps,
+} from './brand/GemologySection';
+export {
+  SocialProofBanner,
+  type SocialProofBannerProps,
+} from './brand/SocialProofBanner';
+export {
   ChatWidget,
   getOrCreateAnonymousId,
   resolveShopifySessionTokenForChat,
