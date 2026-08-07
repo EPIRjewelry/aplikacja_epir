@@ -2,8 +2,8 @@ import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {type MetaFunction, useLoaderData} from '@remix-run/react';
 import {ProductGallery, ProductOptions, ProductForm} from '@epir/ui';
 import {getSeoMeta, Money} from '@shopify/hydrogen';
-import React from 'react';
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
+import {buildProductJsonLd} from '~/lib/product-json-ld';
 
 export async function loader({params, context, request}: LoaderFunctionArgs) {
   const {handle} = params;
@@ -11,7 +11,6 @@ export async function loader({params, context, request}: LoaderFunctionArgs) {
   const searchParams = url.searchParams;
   const selectedOptions: {name: string; value: string}[] = [];
 
-  // set selected options from the query string
   searchParams.forEach((value, name) => {
     selectedOptions.push({name, value});
   });
@@ -29,7 +28,6 @@ export async function loader({params, context, request}: LoaderFunctionArgs) {
 
   const variantNodes = product.variants?.nodes ?? [];
 
-  // Bez parametrów w URL Shopify zwraca selectedVariant=null — ustaw domyślny wariant w adresie.
   if (selectedOptions.length === 0 && !product.selectedVariant && variantNodes.length > 0) {
     const defaultVariant =
       variantNodes.find((v: {availableForSale?: boolean}) => v.availableForSale) ??
@@ -45,7 +43,6 @@ export async function loader({params, context, request}: LoaderFunctionArgs) {
     }
   }
 
-  // Domyślny wariant: dopasowany z URL, potem pierwszy dostępny, na końcu pierwszy z listy.
   const selectedVariant =
     product.selectedVariant ??
     product.variants?.nodes?.find(
@@ -71,6 +68,8 @@ export const meta: MetaFunction<typeof loader> = ({data}) => {
     p.seo?.description?.trim() ||
     (typeof p.description === 'string' ? p.description.slice(0, 154) : undefined);
   const description = rawDescription?.slice(0, 154);
+  const offerPrice = data.selectedVariant?.price ?? p.priceRange?.minVariantPrice;
+
   return getSeoMeta({
     title,
     description,
@@ -84,6 +83,12 @@ export const meta: MetaFunction<typeof loader> = ({data}) => {
           height: p.featuredImage.height ?? undefined,
         }
       : undefined,
+    jsonLd: buildProductJsonLd({
+      product: p,
+      canonicalUrl: data.canonicalUrl,
+      availableForSale: data.selectedVariant?.availableForSale,
+      offerPrice,
+    }),
   });
 };
 
@@ -156,6 +161,7 @@ const PRODUCT_QUERY = `#graphql
       title
       handle
       vendor
+      productType
       description
       descriptionHtml
       seo {
@@ -169,13 +175,69 @@ const PRODUCT_QUERY = `#graphql
         width
         height
       }
-      media(first: 10) {
+      priceRange {
+        minVariantPrice {
+          amount
+          currencyCode
+        }
+      }
+      stoneProfile: metafield(namespace: "custom", key: "stone_profile") {
+        reference {
+          ... on Metaobject {
+            fields {
+              key
+              value
+            }
+          }
+        }
+      }
+      glownyKamien: metafield(namespace: "custom", key: "glowny_kamien") {
+        reference {
+          ... on Metaobject {
+            fields {
+              key
+              value
+            }
+          }
+        }
+      }
+      media(first: 20) {
         nodes {
-        __typename
+          __typename
           ... on MediaImage {
+            id
             mediaContentType
             image {
               id
+              url
+              altText
+              width
+              height
+            }
+          }
+          ... on Video {
+            id
+            mediaContentType
+            previewImage {
+              url
+              altText
+              width
+              height
+            }
+            sources {
+              mimeType
+              url
+              format
+              height
+              width
+            }
+          }
+          ... on ExternalVideo {
+            id
+            mediaContentType
+            embedUrl
+            host
+            previewImage {
               url
               altText
               width

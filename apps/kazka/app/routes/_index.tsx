@@ -1,6 +1,5 @@
+import {redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {Link, type MetaFunction, useLoaderData} from '@remix-run/react';
-import {getSeoMeta} from '@shopify/hydrogen';
-import type {LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {
   CraftsmanshipStory,
   GemologySection,
@@ -10,11 +9,18 @@ import {
   type RouteContentProps,
   type SectionField,
 } from '@epir/ui';
+import {getSeoMeta} from '@shopify/hydrogen';
+import {
+  fetchCampaignMapping,
+  hasUtmParams,
+  resolveCampaignRedirect,
+} from '~/lib/campaign-landing.server';
 import {
   filterCollectionsForNav,
   parseCollectionFilter,
 } from '~/lib/collection-filters';
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
+
 import {KAZKA_CRAFTSMANSHIP, KAZKA_GEMOLOGY} from '~/lib/kazka-brand-copy';
 
 export const meta: MetaFunction<typeof loader> = ({data}) =>
@@ -89,6 +95,16 @@ export async function loader({
   context,
   request,
 }: LoaderFunctionArgs): Promise<LoaderData & {canonicalUrl: string}> {
+  if (hasUtmParams(request.url)) {
+    const mapping = await fetchCampaignMapping(context.storefront);
+    const redirectTo = resolveCampaignRedirect(request.url, mapping, {
+      allowDefault: false,
+    });
+    if (redirectTo) {
+      return redirect(redirectTo, 302);
+    }
+  }
+
   const allowedHandles = parseCollectionFilter(context.env.COLLECTION_FILTER);
 
   const [routeResult, collectionsResult, productsResult] = await Promise.all([

@@ -143,7 +143,7 @@ export default function Search() {
           name="q"
           type="search"
           defaultValue={q}
-          placeholder="Np. pierścionek, srebro…"
+          placeholder="Np. pierścionek, diament…"
           autoComplete="off"
           className="min-w-[12rem] flex-1 rounded-md border border-black/15 bg-[rgb(var(--color-contrast))] px-3 py-2 text-sm text-[rgb(var(--color-primary))] placeholder:text-black/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgb(var(--color-accent))] focus-visible:outline-offset-2"
         />

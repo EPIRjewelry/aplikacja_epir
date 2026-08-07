@@ -13,6 +13,7 @@
     "preview": "npm run build && shopify hydrogen preview",
     "lint": "eslint --no-error-on-unmatched-pattern --ext .js,.ts,.jsx,.tsx .",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "wrangler": "node ../../node_modules/wrangler/bin/wrangler.js pages dev ./public --local",
     "deploy": "npm run build && node ../../node_modules/wrangler/bin/wrangler.js pages deploy public --project-name=kazka-hydrogen-pages --branch=main"
   },

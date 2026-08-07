@@ -1,0 +1,2305 @@
+{
+  "summary": {
+    "attached": 199,
+    "skippedHasVideo": 1,
+    "skippedNoTag": 0,
+    "missing": 68,
+    "errors": 204
+  },
+  "csv": "D:\\marketing\\csv\\produkty_kazka_shopify.csv",
+  "shop": "epir-art-silver-jewellery.myshopify.com",
+  "log": [
+    {
+      "handle": "104-10002-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75003992605004 UPLOADED"
+    },
+    {
+      "handle": "102-10092",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914153902412"
+    },
+    {
+      "handle": "102-10129-5",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10050-3-7",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10075",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75003993325900 UPLOADED"
+    },
+    {
+      "handle": "104-10014-2-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75003993882956 UPLOADED"
+    },
+    {
+      "handle": "104-10016",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75003994669388 UPLOADED"
+    },
+    {
+      "handle": "102-10063",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75003995390284 UPLOADED"
+    },
+    {
+      "handle": "102-10095-5-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75003995717964 UPLOADED"
+    },
+    {
+      "handle": "102-10052",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75003996275020 UPLOADED"
+    },
+    {
+      "handle": "101-10017-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75003996701004 UPLOADED"
+    },
+    {
+      "handle": "102-10015-2-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75003996930380 UPLOADED"
+    },
+    {
+      "handle": "104-10055-2-5-pr",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75003997225292 UPLOADED"
+    },
+    {
+      "handle": "104-10035",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75003998077260 UPLOADED"
+    },
+    {
+      "handle": "101-10021-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75003998732620 UPLOADED"
+    },
+    {
+      "handle": "101-10027-4-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75003999125836 UPLOADED"
+    },
+    {
+      "handle": "102-10068",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75003999322444 UPLOADED"
+    },
+    {
+      "handle": "102-10046-2-7",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10012-1-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75003999650124 UPLOADED"
+    },
+    {
+      "handle": "102-10012-1-5-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75003999912268 UPLOADED"
+    },
+    {
+      "handle": "102-10054",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004000174412 UPLOADED"
+    },
+    {
+      "handle": "102-10010-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004000305484 UPLOADED"
+    },
+    {
+      "handle": "101-10020-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004000469324 UPLOADED"
+    },
+    {
+      "handle": "101-10191-0-30-par",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10170",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004000633164 UPLOADED"
+    },
+    {
+      "handle": "102-10040-1-5-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004000829772 UPLOADED"
+    },
+    {
+      "handle": "101-10016-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004001485132 UPLOADED"
+    },
+    {
+      "handle": "101-10103-5-1",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10048",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004001976652 UPLOADED"
+    },
+    {
+      "handle": "104-10039-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004002238796 UPLOADED"
+    },
+    {
+      "handle": "105-10012",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004002402636 UPLOADED"
+    },
+    {
+      "handle": "102-10061",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004002664780 UPLOADED"
+    },
+    {
+      "handle": "102-10192",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004003320140 UPLOADED"
+    },
+    {
+      "handle": "101-10021-5-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004003713356 UPLOADED"
+    },
+    {
+      "handle": "101-10190-0-30-pr",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004004139340 UPLOADED"
+    },
+    {
+      "handle": "102-10015-1-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004004335948 UPLOADED"
+    },
+    {
+      "handle": "104-10026",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004004565324 UPLOADED"
+    },
+    {
+      "handle": "101-10094-4-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004004925772 UPLOADED"
+    },
+    {
+      "handle": "104-10024",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004005122380 UPLOADED"
+    },
+    {
+      "handle": "101-10044-3",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004005286220 UPLOADED"
+    },
+    {
+      "handle": "101-10194-0-30-par",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10025",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004006400332 UPLOADED"
+    },
+    {
+      "handle": "101-10038-2-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004006662476 UPLOADED"
+    },
+    {
+      "handle": "101-10110-5-1-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10095-4-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004007285068 UPLOADED"
+    },
+    {
+      "handle": "102-10143-0-40-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10012-1-4-8",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004008595788 UPLOADED"
+    },
+    {
+      "handle": "101-10069",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004008825164 UPLOADED"
+    },
+    {
+      "handle": "101-10098-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004009218380 UPLOADED"
+    },
+    {
+      "handle": "101-10072",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004009414988 UPLOADED"
+    },
+    {
+      "handle": "101-10162-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004010004812 UPLOADED"
+    },
+    {
+      "handle": "102-10065",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10060",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004011118924 UPLOADED"
+    },
+    {
+      "handle": "104-10022",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004011381068 UPLOADED"
+    },
+    {
+      "handle": "102-10091",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10019-2-3-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004011741516 UPLOADED"
+    },
+    {
+      "handle": "101-10118-2-3-7",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10023",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004011970892 UPLOADED"
+    },
+    {
+      "handle": "102-10012-1-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004012233036 UPLOADED"
+    },
+    {
+      "handle": "101-10015-4-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004012462412 UPLOADED"
+    },
+    {
+      "handle": "101-10040-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004012659020 UPLOADED"
+    },
+    {
+      "handle": "101-10120",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10039-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004012888396 UPLOADED"
+    },
+    {
+      "handle": "104-10039-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004013117772 UPLOADED"
+    },
+    {
+      "handle": "102-10129-1",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10021-5-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004013379916 UPLOADED"
+    },
+    {
+      "handle": "102-10089-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004013609292 UPLOADED"
+    },
+    {
+      "handle": "102-10067",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004013838668 UPLOADED"
+    },
+    {
+      "handle": "101-10012-1-5-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004013969740 UPLOADED"
+    },
+    {
+      "handle": "104-10037-4-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004014133580 UPLOADED"
+    },
+    {
+      "handle": "101-10041-4-8",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10037-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004014362956 UPLOADED"
+    },
+    {
+      "handle": "102-10035-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004014526796 UPLOADED"
+    },
+    {
+      "handle": "101-10194-0-30-ov",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10040-4-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004014821708 UPLOADED"
+    },
+    {
+      "handle": "102-10012-1-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004015411532 UPLOADED"
+    },
+    {
+      "handle": "102-10068-2",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10040-1-5-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004016099660 UPLOADED"
+    },
+    {
+      "handle": "101-10019-3-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004016755020 UPLOADED"
+    },
+    {
+      "handle": "102-10171",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004017082700 UPLOADED"
+    },
+    {
+      "handle": "101-10073",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004017508684 UPLOADED"
+    },
+    {
+      "handle": "102-10129-6",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10016-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004017672524 UPLOADED"
+    },
+    {
+      "handle": "105-10008-5-1-9",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004017869132 UPLOADED"
+    },
+    {
+      "handle": "101-10144-5-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004018229580 UPLOADED"
+    },
+    {
+      "handle": "101-10300",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004018655564 UPLOADED"
+    },
+    {
+      "handle": "104-10002-2-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004019179852 UPLOADED"
+    },
+    {
+      "handle": "101-10021-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004019409228 UPLOADED"
+    },
+    {
+      "handle": "105-10011",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004019573068 UPLOADED"
+    },
+    {
+      "handle": "104-10032",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004019835212 UPLOADED"
+    },
+    {
+      "handle": "101-10161-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004020162892 UPLOADED"
+    },
+    {
+      "handle": "102-10044-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004020654412 UPLOADED"
+    },
+    {
+      "handle": "105-10007",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004020916556 UPLOADED"
+    },
+    {
+      "handle": "101-10012-1-4-8",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004021604684 UPLOADED"
+    },
+    {
+      "handle": "101-10151-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004021866828 UPLOADED"
+    },
+    {
+      "handle": "101-10012-1-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004022096204 UPLOADED"
+    },
+    {
+      "handle": "104-10066-0-30-hrt",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004022227276 UPLOADED"
+    },
+    {
+      "handle": "102-10027-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004022391116 UPLOADED"
+    },
+    {
+      "handle": "101-10016-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004022653260 UPLOADED"
+    },
+    {
+      "handle": "102-10089-2-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004022817100 UPLOADED"
+    },
+    {
+      "handle": "104-10033-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004023112012 UPLOADED"
+    },
+    {
+      "handle": "101-10010-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004023341388 UPLOADED"
+    },
+    {
+      "handle": "101-10152-4-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004023570764 UPLOADED"
+    },
+    {
+      "handle": "102-10015-4-2-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004023800140 UPLOADED"
+    },
+    {
+      "handle": "101-10089-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004024488268 UPLOADED"
+    },
+    {
+      "handle": "105-10005",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004025635148 UPLOADED"
+    },
+    {
+      "handle": "101-10012-1-6-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004025766220 UPLOADED"
+    },
+    {
+      "handle": "101-10094-6-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004026257740 UPLOADED"
+    },
+    {
+      "handle": "101-10126-4-2-6",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10165",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004027208012 UPLOADED"
+    },
+    {
+      "handle": "104-10077",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004028879180 UPLOADED"
+    },
+    {
+      "handle": "101-10089-4-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004029731148 UPLOADED"
+    },
+    {
+      "handle": "102-10129-3",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10021-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004031828300 UPLOADED"
+    },
+    {
+      "handle": "102-10017-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004033597772 UPLOADED"
+    },
+    {
+      "handle": "101-10191-0-30-ov",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10076",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004035170636 UPLOADED"
+    },
+    {
+      "handle": "101-10040-4-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004036219212 UPLOADED"
+    },
+    {
+      "handle": "101-10116-3-0",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10036-2-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004037366092 UPLOADED"
+    },
+    {
+      "handle": "104-10033-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004038119756 UPLOADED"
+    },
+    {
+      "handle": "104-10015-2-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004038381900 UPLOADED"
+    },
+    {
+      "handle": "101-10040-4-8",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004040741196 UPLOADED"
+    },
+    {
+      "handle": "104-10008",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004042019148 UPLOADED"
+    },
+    {
+      "handle": "101-10012-1-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004042477900 UPLOADED"
+    },
+    {
+      "handle": "102-10022-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004042707276 UPLOADED"
+    },
+    {
+      "handle": "102-10152-5-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004043002188 UPLOADED"
+    },
+    {
+      "handle": "102-10010-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004043297100 UPLOADED"
+    },
+    {
+      "handle": "101-10040-5-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004043559244 UPLOADED"
+    },
+    {
+      "handle": "101-10116-2-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004044247372 UPLOADED"
+    },
+    {
+      "handle": "101-10034-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004044509516 UPLOADED"
+    },
+    {
+      "handle": "101-10031",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004044804428 UPLOADED"
+    },
+    {
+      "handle": "101-10015-4-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004045099340 UPLOADED"
+    },
+    {
+      "handle": "102-10055",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004045525324 UPLOADED"
+    },
+    {
+      "handle": "102-10016-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004045853004 UPLOADED"
+    },
+    {
+      "handle": "101-10103-4-2",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10094-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004048802124 UPLOADED"
+    },
+    {
+      "handle": "101-10116-3-0-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10132-16-5",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10039-2-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004051816780 UPLOADED"
+    },
+    {
+      "handle": "104-10064",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004053225804 UPLOADED"
+    },
+    {
+      "handle": "101-10021-6-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004054765900 UPLOADED"
+    },
+    {
+      "handle": "101-10128",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004056240460 UPLOADED"
+    },
+    {
+      "handle": "102-10040-1-4-2",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10018-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004058239308 UPLOADED"
+    },
+    {
+      "handle": "102-10010-2-3",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004060959052 UPLOADED"
+    },
+    {
+      "handle": "105-10006",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004062794060 UPLOADED"
+    },
+    {
+      "handle": "102-10152-4-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004065349964 UPLOADED"
+    },
+    {
+      "handle": "102-10012-1-4-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004066791756 UPLOADED"
+    },
+    {
+      "handle": "104-10062",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004068004172 UPLOADED"
+    },
+    {
+      "handle": "104-10068",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004068921676 UPLOADED"
+    },
+    {
+      "handle": "102-10050",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004071149900 UPLOADED"
+    },
+    {
+      "handle": "101-10190-0-30-hrt",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004072493388 UPLOADED"
+    },
+    {
+      "handle": "101-10119-4-0",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10161-3",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004073935180 UPLOADED"
+    },
+    {
+      "handle": "102-10045-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004076785996 UPLOADED"
+    },
+    {
+      "handle": "101-10015-4-2-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004079407436 UPLOADED"
+    },
+    {
+      "handle": "101-10017-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004080750924 UPLOADED"
+    },
+    {
+      "handle": "102-10020-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004082422092 UPLOADED"
+    },
+    {
+      "handle": "104-10013-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004084093260 UPLOADED"
+    },
+    {
+      "handle": "102-10016-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004084715852 UPLOADED"
+    },
+    {
+      "handle": "104-10063",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004086878540 UPLOADED"
+    },
+    {
+      "handle": "102-10025-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004087894348 UPLOADED"
+    },
+    {
+      "handle": "101-10126-1-2-8",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10015-2-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004091302220 UPLOADED"
+    },
+    {
+      "handle": "104-10053-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004092186956 UPLOADED"
+    },
+    {
+      "handle": "102-10145",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004093858124 UPLOADED"
+    },
+    {
+      "handle": "102-10053",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004095070540 UPLOADED"
+    },
+    {
+      "handle": "101-10119-3-4",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10095-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004095693132 UPLOADED"
+    },
+    {
+      "handle": "105-10016",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004095955276 UPLOADED"
+    },
+    {
+      "handle": "101-10194-0-30-rn",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10126-2-2-6",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004097167692 UPLOADED"
+    },
+    {
+      "handle": "102-10098-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004098085196 UPLOADED"
+    },
+    {
+      "handle": "104-10004-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004098511180 UPLOADED"
+    },
+    {
+      "handle": "104-10007-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004099330380 UPLOADED"
+    },
+    {
+      "handle": "101-10077",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004100215116 UPLOADED"
+    },
+    {
+      "handle": "101-10191-0-30-rn",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10109-1-3",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004100739404 UPLOADED"
+    },
+    {
+      "handle": "104-10029",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004100903244 UPLOADED"
+    },
+    {
+      "handle": "102-10095-3-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004101361996 UPLOADED"
+    },
+    {
+      "handle": "104-10072",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004101820748 UPLOADED"
+    },
+    {
+      "handle": "102-10012-1-4-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004102246732 UPLOADED"
+    },
+    {
+      "handle": "102-10084",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004102574412 UPLOADED"
+    },
+    {
+      "handle": "104-10040-4-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004102803788 UPLOADED"
+    },
+    {
+      "handle": "104-10007-4-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004103262540 UPLOADED"
+    },
+    {
+      "handle": "101-10151-4-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004104180044 UPLOADED"
+    },
+    {
+      "handle": "101-10104-4-2",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10151-5-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004107194700 UPLOADED"
+    },
+    {
+      "handle": "101-10038-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004108505420 UPLOADED"
+    },
+    {
+      "handle": "101-10017-1-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004108833100 UPLOADED"
+    },
+    {
+      "handle": "101-10098-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004109128012 UPLOADED"
+    },
+    {
+      "handle": "101-10094-5-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004109488460 UPLOADED"
+    },
+    {
+      "handle": "102-10013-2-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004110569804 UPLOADED"
+    },
+    {
+      "handle": "101-10144-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004111126860 UPLOADED"
+    },
+    {
+      "handle": "102-10015-1-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004111389004 UPLOADED"
+    },
+    {
+      "handle": "102-10089-2-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004111978828 UPLOADED"
+    },
+    {
+      "handle": "102-10097",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004112339276 UPLOADED"
+    },
+    {
+      "handle": "104-10052",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004112568652 UPLOADED"
+    },
+    {
+      "handle": "102-10107",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004113092940 UPLOADED"
+    },
+    {
+      "handle": "102-10040-1-4-8",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004113715532 UPLOADED"
+    },
+    {
+      "handle": "102-10030",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004114698572 UPLOADED"
+    },
+    {
+      "handle": "102-10015-4-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004114993484 UPLOADED"
+    },
+    {
+      "handle": "104-10011-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004115091788 UPLOADED"
+    },
+    {
+      "handle": "102-10028",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004115353932 UPLOADED"
+    },
+    {
+      "handle": "102-10012-1-5-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004115845452 UPLOADED"
+    },
+    {
+      "handle": "102-10129-2",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10078",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004116271436 UPLOADED"
+    },
+    {
+      "handle": "101-10112",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004116435276 UPLOADED"
+    },
+    {
+      "handle": "105-10013",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004116533580 UPLOADED"
+    },
+    {
+      "handle": "101-10027-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004117090636 UPLOADED"
+    },
+    {
+      "handle": "101-10021-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004117614924 UPLOADED"
+    },
+    {
+      "handle": "101-10032-2-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004117975372 UPLOADED"
+    },
+    {
+      "handle": "105-10015",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004118171980 UPLOADED"
+    },
+    {
+      "handle": "102-10167",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004118499660 UPLOADED"
+    },
+    {
+      "handle": "101-10065",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004119581004 UPLOADED"
+    },
+    {
+      "handle": "105-10017",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004120301900 UPLOADED"
+    },
+    {
+      "handle": "101-10191-0-30-baq",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10040-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004121710924 UPLOADED"
+    },
+    {
+      "handle": "104-10069-0-30-ov",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004122235212 UPLOADED"
+    },
+    {
+      "handle": "101-10089-5-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004122890572 UPLOADED"
+    },
+    {
+      "handle": "104-10018-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004123382092 UPLOADED"
+    },
+    {
+      "handle": "102-10072",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004124496204 UPLOADED"
+    },
+    {
+      "handle": "102-10015-1-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004125544780 UPLOADED"
+    },
+    {
+      "handle": "101-10161-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004126429516 UPLOADED"
+    },
+    {
+      "handle": "104-10070-0-30-pr",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004126626124 UPLOADED"
+    },
+    {
+      "handle": "105-10010",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004126691660 UPLOADED"
+    },
+    {
+      "handle": "101-10063",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004127084876 UPLOADED"
+    },
+    {
+      "handle": "101-10181-1-0-15-marquise",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004127314252 UPLOADED"
+    },
+    {
+      "handle": "101-10055",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004127445324 UPLOADED"
+    },
+    {
+      "handle": "102-10118-2-3-7",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10025-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004128133452 UPLOADED"
+    },
+    {
+      "handle": "101-10018-1-2-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004128297292 UPLOADED"
+    },
+    {
+      "handle": "101-10110-0-40-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10040-4-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75004128624972 UPLOADED"
+    },
+    {
+      "handle": "101-10016-2-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10044-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10012-1-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10080-5-1-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10015-1-2-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10109-2-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10194-0-30-hrt",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10113-2-5-pr",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10075",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10020-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10129-4",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10040-4-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10116-3-0-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10012-1-4-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10076",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10170",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10010-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10127",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10040-5-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10002-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10016-2-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10010-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10001-2-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10047",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10044-2",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10017-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10035-2-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10056",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10151-5-1",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10095-4-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10030",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10014-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10046-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10041-4-7",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10040-1-3-0",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10047",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10001-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10022-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10023",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10061",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10057-4-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10038",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10028",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10033-2-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10013-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10021-4-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10037-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10190-0-30-rn",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10095-5-1",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10044-1",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10111",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10016-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10191-0-30-hrt",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10044-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10089-5-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10012-1-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10089-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10088",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10094-5-1",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10152-4-2",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10067",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10019-2-2-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10040-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10017-1-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10123-2-5",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10163",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10032-2-2",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10094-4-2",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10012-1-4-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10050",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10074",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10019",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10089-2-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10040-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10015-4-2-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10128",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10095-4-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10143-0-30-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10089-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10119-3-0",
+      "status": "missing"
+    },
+    {
+      "handle": "105-10008-5-1-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10013-4-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10115-3-0-pr",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10040-1-4-0",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10090-1",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10012-1-6-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10095-3-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10069",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10193v1",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10022-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10012-1-3-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10015-4-2-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10027-2-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10015-1-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10018-1-2-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10300",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10004-4-2",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10010-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10058",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10012-1-4-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10015-1-2-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10065",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10181-1-0-10-marquise",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10047",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10144-4-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10043",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10015-2-1-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10119-4-5",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10012-1-5-1",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10020",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10113-3-0-pr",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10125-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10031",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10117-3-0-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10036",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10147",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10162-1",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10144-4-2",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10194-0-30-baq",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10045-1",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10019",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "105-10009",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10090",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10040-3-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10108",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10017-1-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10190-0-30-baq",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10113-3-0-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10046-2-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10015-1-2-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10051",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10133",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10071-3-0-30-baq",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10014-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10015-4-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10018-2-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10010-3-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10045-3-0-pr",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10027-5-1",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10031",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10071-2-0-30-baq",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10017-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10036-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10027-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10015-2-2-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10016-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10029",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10068",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10018-2-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10037-3-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10190-0-30-ov",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10151-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10021-4-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10181-4-0-15-marquise",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10126-3-2-8",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10190-0-30-hrt",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10054",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10089-4-2",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10080-5-1-9",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10055-3-0-pr",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10191-0-30-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10041-4-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10143-0-30-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10059",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10041-3-0",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10003-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10039-2-3",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10190-0-30-par",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10040-5-1",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10012-1-4-2",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10013-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10064",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10003-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10011-3-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10151-4-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10053",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10059",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10049",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10071",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10040-3-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10081",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10010-2-3",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10016-3-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10038-2-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10067-0-30-par",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10077",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10040-4-0",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10142-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10117-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10015-2-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10051",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10181-4-0-10-marquise",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10140-4-5",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10012-1-4-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10042-3-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10045",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10127",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10152-4-2",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10040-4-2",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10018-2-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10116-2-3-0-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10027-4-2",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10054",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10018",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10018-2-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10301",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10115-3-0-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10017-2-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10071-1-0-30-baq",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10037-5-1",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10152-5-1",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10004-3-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10012-1-3-4",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10145",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10195-1",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10040-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10040-1-3-4",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10079",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10089-6-5",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10018-1-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10013-2-7",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10096",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10041-4-2",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10015-1-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10109-1-3",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10066",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "105-10014",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10028",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10059",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10171",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10041-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10013-4-2",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "104-10009",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10018-3-0",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "101-10194-0-30-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10089-2-4-2",
+      "status": "error",
+      "detail": "You can't upload more than 200 videos in an hour. To add more, try again in 1 hour."
+    },
+    {
+      "handle": "102-10144-4-2",
+      "status": "missing"
+    }
+  ]
+}

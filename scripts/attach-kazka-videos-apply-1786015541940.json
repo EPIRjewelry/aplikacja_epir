@@ -1,0 +1,2305 @@
+{
+  "summary": {
+    "attached": 204,
+    "skippedHasVideo": 200,
+    "skippedNoTag": 0,
+    "missing": 68,
+    "errors": 0
+  },
+  "csv": "D:\\marketing\\csv\\produkty_kazka_shopify.csv",
+  "shop": "epir-art-silver-jewellery.myshopify.com",
+  "log": [
+    {
+      "handle": "104-10002-2-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914153836876"
+    },
+    {
+      "handle": "102-10092",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914153902412"
+    },
+    {
+      "handle": "102-10129-5",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10050-3-7",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10075",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914267902284"
+    },
+    {
+      "handle": "104-10014-2-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914153967948"
+    },
+    {
+      "handle": "104-10016",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914154033484"
+    },
+    {
+      "handle": "102-10063",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914154066252"
+    },
+    {
+      "handle": "102-10095-5-1",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914154131788"
+    },
+    {
+      "handle": "102-10052",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914154164556"
+    },
+    {
+      "handle": "101-10017-2-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914267935052"
+    },
+    {
+      "handle": "102-10015-2-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914154262860"
+    },
+    {
+      "handle": "104-10055-2-5-pr",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914154328396"
+    },
+    {
+      "handle": "104-10035",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914154361164"
+    },
+    {
+      "handle": "101-10021-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914267967820"
+    },
+    {
+      "handle": "101-10027-4-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268000588"
+    },
+    {
+      "handle": "102-10068",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914154492236"
+    },
+    {
+      "handle": "102-10046-2-7",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10012-1-2-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268033356"
+    },
+    {
+      "handle": "102-10012-1-5-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914154623308"
+    },
+    {
+      "handle": "102-10054",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914154656076"
+    },
+    {
+      "handle": "102-10010-3-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914154688844"
+    },
+    {
+      "handle": "101-10020-3-4",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268098892"
+    },
+    {
+      "handle": "101-10191-0-30-par",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10170",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914154787148"
+    },
+    {
+      "handle": "102-10040-1-5-1",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914154852684"
+    },
+    {
+      "handle": "101-10016-4-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268197196"
+    },
+    {
+      "handle": "101-10103-5-1",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10048",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914154950988"
+    },
+    {
+      "handle": "104-10039-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914154983756"
+    },
+    {
+      "handle": "105-10012",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914155049292"
+    },
+    {
+      "handle": "102-10061",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914155082060"
+    },
+    {
+      "handle": "102-10192",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914155147596"
+    },
+    {
+      "handle": "101-10021-5-1",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268229964"
+    },
+    {
+      "handle": "101-10190-0-30-pr",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268262732"
+    },
+    {
+      "handle": "102-10015-1-2-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914155245900"
+    },
+    {
+      "handle": "104-10026",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914155344204"
+    },
+    {
+      "handle": "101-10094-4-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268328268"
+    },
+    {
+      "handle": "104-10024",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914155409740"
+    },
+    {
+      "handle": "101-10044-3",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268393804"
+    },
+    {
+      "handle": "101-10194-0-30-par",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10025",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914155540812"
+    },
+    {
+      "handle": "101-10038-2-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268426572"
+    },
+    {
+      "handle": "101-10110-5-1-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10095-4-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268524876"
+    },
+    {
+      "handle": "102-10143-0-40-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10012-1-4-8",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914155639116"
+    },
+    {
+      "handle": "101-10069",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268557644"
+    },
+    {
+      "handle": "101-10098-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268590412"
+    },
+    {
+      "handle": "101-10072",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268655948"
+    },
+    {
+      "handle": "101-10162-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268688716"
+    },
+    {
+      "handle": "102-10065",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10060",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914155868492"
+    },
+    {
+      "handle": "104-10022",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914155901260"
+    },
+    {
+      "handle": "102-10091",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10019-2-3-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268754252"
+    },
+    {
+      "handle": "101-10118-2-3-7",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10023",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914155999564"
+    },
+    {
+      "handle": "102-10012-1-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914156032332"
+    },
+    {
+      "handle": "101-10015-4-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268787020"
+    },
+    {
+      "handle": "101-10040-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268852556"
+    },
+    {
+      "handle": "101-10120",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10039-2-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268885324"
+    },
+    {
+      "handle": "104-10039-3-4",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914156196172"
+    },
+    {
+      "handle": "102-10129-1",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10021-5-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914268983628"
+    },
+    {
+      "handle": "102-10089-4-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914156261708"
+    },
+    {
+      "handle": "102-10067",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914156327244"
+    },
+    {
+      "handle": "101-10012-1-5-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269049164"
+    },
+    {
+      "handle": "104-10037-4-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914156425548"
+    },
+    {
+      "handle": "101-10041-4-8",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10037-4-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914156523852"
+    },
+    {
+      "handle": "102-10035-2-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914156556620"
+    },
+    {
+      "handle": "101-10194-0-30-ov",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10040-4-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914156654924"
+    },
+    {
+      "handle": "102-10012-1-2-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914156687692"
+    },
+    {
+      "handle": "102-10068-2",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10040-1-5-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914156753228"
+    },
+    {
+      "handle": "101-10019-3-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269114700"
+    },
+    {
+      "handle": "102-10171",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914156818764"
+    },
+    {
+      "handle": "101-10073",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269147468"
+    },
+    {
+      "handle": "102-10129-6",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10016-3-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914156884300"
+    },
+    {
+      "handle": "105-10008-5-1-9",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914156949836"
+    },
+    {
+      "handle": "101-10144-5-1",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269180236"
+    },
+    {
+      "handle": "101-10300",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269213004"
+    },
+    {
+      "handle": "104-10002-2-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914157048140"
+    },
+    {
+      "handle": "101-10021-3-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269245772"
+    },
+    {
+      "handle": "105-10011",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914157146444"
+    },
+    {
+      "handle": "104-10032",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914157179212"
+    },
+    {
+      "handle": "101-10161-1",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269311308"
+    },
+    {
+      "handle": "102-10044-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914157277516"
+    },
+    {
+      "handle": "105-10007",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914157343052"
+    },
+    {
+      "handle": "101-10012-1-4-8",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269344076"
+    },
+    {
+      "handle": "101-10151-3-4",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269376844"
+    },
+    {
+      "handle": "101-10012-1-4-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269409612"
+    },
+    {
+      "handle": "104-10066-0-30-hrt",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914157506892"
+    },
+    {
+      "handle": "102-10027-4-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914157539660"
+    },
+    {
+      "handle": "101-10016-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269442380"
+    },
+    {
+      "handle": "102-10089-2-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914157637964"
+    },
+    {
+      "handle": "104-10033-3-4",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914157670732"
+    },
+    {
+      "handle": "101-10010-4-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269507916"
+    },
+    {
+      "handle": "101-10152-4-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269573452"
+    },
+    {
+      "handle": "102-10015-4-2-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914157769036"
+    },
+    {
+      "handle": "101-10089-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269606220"
+    },
+    {
+      "handle": "105-10005",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914157900108"
+    },
+    {
+      "handle": "101-10012-1-6-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269638988"
+    },
+    {
+      "handle": "101-10094-6-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269671756"
+    },
+    {
+      "handle": "101-10126-4-2-6",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10165",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914157998412"
+    },
+    {
+      "handle": "104-10077",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914158063948"
+    },
+    {
+      "handle": "101-10089-4-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269704524"
+    },
+    {
+      "handle": "102-10129-3",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10021-2-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269770060"
+    },
+    {
+      "handle": "102-10017-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914158162252"
+    },
+    {
+      "handle": "101-10191-0-30-ov",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10076",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914158227788"
+    },
+    {
+      "handle": "101-10040-4-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269802828"
+    },
+    {
+      "handle": "101-10116-3-0",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10036-2-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914158326092"
+    },
+    {
+      "handle": "104-10033-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914158424396"
+    },
+    {
+      "handle": "104-10015-2-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914158489932"
+    },
+    {
+      "handle": "101-10040-4-8",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269835596"
+    },
+    {
+      "handle": "104-10008",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914158555468"
+    },
+    {
+      "handle": "101-10012-1-3-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269901132"
+    },
+    {
+      "handle": "102-10022-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914158653772"
+    },
+    {
+      "handle": "102-10152-5-1",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914158686540"
+    },
+    {
+      "handle": "102-10010-4-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914158752076"
+    },
+    {
+      "handle": "101-10040-5-1",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269966668"
+    },
+    {
+      "handle": "101-10116-2-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914269999436"
+    },
+    {
+      "handle": "101-10034-2-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270064972"
+    },
+    {
+      "handle": "101-10031",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270130508"
+    },
+    {
+      "handle": "101-10015-4-3-4",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270163276"
+    },
+    {
+      "handle": "102-10055",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914158948684"
+    },
+    {
+      "handle": "102-10016-3-4",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914159014220"
+    },
+    {
+      "handle": "101-10103-4-2",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10094-3-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270261580"
+    },
+    {
+      "handle": "101-10116-3-0-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10132-16-5",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10039-2-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270294348"
+    },
+    {
+      "handle": "104-10064",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914159210828"
+    },
+    {
+      "handle": "101-10021-6-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270392652"
+    },
+    {
+      "handle": "101-10128",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270425420"
+    },
+    {
+      "handle": "102-10040-1-4-2",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10018-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270458188"
+    },
+    {
+      "handle": "102-10010-2-3",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914159440204"
+    },
+    {
+      "handle": "105-10006",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914159505740"
+    },
+    {
+      "handle": "102-10152-4-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914159571276"
+    },
+    {
+      "handle": "102-10012-1-4-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914159636812"
+    },
+    {
+      "handle": "104-10062",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914159702348"
+    },
+    {
+      "handle": "104-10068",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914159735116"
+    },
+    {
+      "handle": "102-10050",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914159800652"
+    },
+    {
+      "handle": "101-10190-0-30-hrt",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270490956"
+    },
+    {
+      "handle": "101-10119-4-0",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10161-3",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270523724"
+    },
+    {
+      "handle": "102-10045-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914159964492"
+    },
+    {
+      "handle": "101-10015-4-2-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270556492"
+    },
+    {
+      "handle": "101-10017-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270589260"
+    },
+    {
+      "handle": "102-10020-3-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914160062796"
+    },
+    {
+      "handle": "104-10013-3-4",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914160128332"
+    },
+    {
+      "handle": "102-10016-4-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914160259404"
+    },
+    {
+      "handle": "104-10063",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914160292172"
+    },
+    {
+      "handle": "102-10025-2-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914160390476"
+    },
+    {
+      "handle": "101-10126-1-2-8",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10015-2-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914160456012"
+    },
+    {
+      "handle": "104-10053-3-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914160488780"
+    },
+    {
+      "handle": "102-10145",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914160587084"
+    },
+    {
+      "handle": "102-10053",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914160652620"
+    },
+    {
+      "handle": "101-10119-3-4",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10095-3-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914160718156"
+    },
+    {
+      "handle": "105-10016",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914160849228"
+    },
+    {
+      "handle": "101-10194-0-30-rn",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10126-2-2-6",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270622028"
+    },
+    {
+      "handle": "102-10098-2-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914160980300"
+    },
+    {
+      "handle": "104-10004-3-4",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914161078604"
+    },
+    {
+      "handle": "104-10007-3-4",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914161111372"
+    },
+    {
+      "handle": "101-10077",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270687564"
+    },
+    {
+      "handle": "101-10191-0-30-rn",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10109-1-3",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914161242444"
+    },
+    {
+      "handle": "104-10029",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914161275212"
+    },
+    {
+      "handle": "102-10095-3-1",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914161373516"
+    },
+    {
+      "handle": "104-10072",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914161406284"
+    },
+    {
+      "handle": "102-10012-1-4-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914161471820"
+    },
+    {
+      "handle": "102-10084",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914161537356"
+    },
+    {
+      "handle": "104-10040-4-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914161570124"
+    },
+    {
+      "handle": "104-10007-4-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914161668428"
+    },
+    {
+      "handle": "101-10151-4-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270753100"
+    },
+    {
+      "handle": "101-10104-4-2",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10151-5-1",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270818636"
+    },
+    {
+      "handle": "101-10038-4-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270851404"
+    },
+    {
+      "handle": "101-10017-1-2-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270916940"
+    },
+    {
+      "handle": "101-10098-2-5",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914270982476"
+    },
+    {
+      "handle": "101-10094-5-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914271015244"
+    },
+    {
+      "handle": "102-10013-2-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914161930572"
+    },
+    {
+      "handle": "101-10144-3-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914271048012"
+    },
+    {
+      "handle": "102-10015-1-3-4",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914162028876"
+    },
+    {
+      "handle": "102-10089-2-3-4",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914162127180"
+    },
+    {
+      "handle": "102-10097",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914162192716"
+    },
+    {
+      "handle": "104-10052",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914162258252"
+    },
+    {
+      "handle": "102-10107",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914162323788"
+    },
+    {
+      "handle": "102-10040-1-4-8",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914162356556"
+    },
+    {
+      "handle": "102-10030",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914162389324"
+    },
+    {
+      "handle": "102-10015-4-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914162487628"
+    },
+    {
+      "handle": "104-10011-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914162520396"
+    },
+    {
+      "handle": "102-10028",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914162618700"
+    },
+    {
+      "handle": "102-10012-1-5-1",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914162651468"
+    },
+    {
+      "handle": "102-10129-2",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10078",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914162749772"
+    },
+    {
+      "handle": "101-10112",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914271080780"
+    },
+    {
+      "handle": "105-10013",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914162848076"
+    },
+    {
+      "handle": "101-10027-3-4",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914271113548"
+    },
+    {
+      "handle": "101-10021-4-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914271179084"
+    },
+    {
+      "handle": "101-10032-2-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914271211852"
+    },
+    {
+      "handle": "105-10015",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914163011916"
+    },
+    {
+      "handle": "102-10167",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914163044684"
+    },
+    {
+      "handle": "101-10065",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914271244620"
+    },
+    {
+      "handle": "105-10017",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914163142988"
+    },
+    {
+      "handle": "101-10191-0-30-baq",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10040-4-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914271310156"
+    },
+    {
+      "handle": "104-10069-0-30-ov",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914163208524"
+    },
+    {
+      "handle": "101-10089-5-1",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914271342924"
+    },
+    {
+      "handle": "104-10018-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914163306828"
+    },
+    {
+      "handle": "102-10072",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914163339596"
+    },
+    {
+      "handle": "102-10015-1-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914163405132"
+    },
+    {
+      "handle": "101-10161-2",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914271441228"
+    },
+    {
+      "handle": "104-10070-0-30-pr",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914163536204"
+    },
+    {
+      "handle": "105-10010",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914163568972"
+    },
+    {
+      "handle": "101-10063",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914271473996"
+    },
+    {
+      "handle": "101-10181-1-0-15-marquise",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914271506764"
+    },
+    {
+      "handle": "101-10055",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914271539532"
+    },
+    {
+      "handle": "102-10118-2-3-7",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10025-3-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914163732812"
+    },
+    {
+      "handle": "101-10018-1-2-0",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914271572300"
+    },
+    {
+      "handle": "101-10110-0-40-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10040-4-7",
+      "status": "skipped_has_video",
+      "detail": "gid://shopify/Product/15914271670604"
+    },
+    {
+      "handle": "101-10016-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005616980300 UPLOADED"
+    },
+    {
+      "handle": "104-10044-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005617406284 UPLOADED"
+    },
+    {
+      "handle": "101-10012-1-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005618487628 UPLOADED"
+    },
+    {
+      "handle": "104-10080-5-1-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005618880844 UPLOADED"
+    },
+    {
+      "handle": "102-10015-1-2-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005619405132 UPLOADED"
+    },
+    {
+      "handle": "102-10109-2-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005619732812 UPLOADED"
+    },
+    {
+      "handle": "101-10194-0-30-hrt",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10113-2-5-pr",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005620977996 UPLOADED"
+    },
+    {
+      "handle": "102-10075",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005621567820 UPLOADED"
+    },
+    {
+      "handle": "102-10020-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005622092108 UPLOADED"
+    },
+    {
+      "handle": "102-10129-4",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10040-4-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005622550860 UPLOADED"
+    },
+    {
+      "handle": "102-10116-3-0-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10012-1-4-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005624025420 UPLOADED"
+    },
+    {
+      "handle": "101-10076",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005624746316 UPLOADED"
+    },
+    {
+      "handle": "101-10170",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005625303372 UPLOADED"
+    },
+    {
+      "handle": "104-10010-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005625762124 UPLOADED"
+    },
+    {
+      "handle": "102-10127",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10040-5-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005626712396 UPLOADED"
+    },
+    {
+      "handle": "104-10002-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005627072844 UPLOADED"
+    },
+    {
+      "handle": "102-10016-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005628055884 UPLOADED"
+    },
+    {
+      "handle": "102-10010-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005629038924 UPLOADED"
+    },
+    {
+      "handle": "104-10001-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005629563212 UPLOADED"
+    },
+    {
+      "handle": "101-10047",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005630742860 UPLOADED"
+    },
+    {
+      "handle": "101-10044-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005631037772 UPLOADED"
+    },
+    {
+      "handle": "101-10017-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005631693132 UPLOADED"
+    },
+    {
+      "handle": "101-10035-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005632151884 UPLOADED"
+    },
+    {
+      "handle": "104-10056",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005632512332 UPLOADED"
+    },
+    {
+      "handle": "102-10151-5-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005632741708 UPLOADED"
+    },
+    {
+      "handle": "101-10095-4-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005633462604 UPLOADED"
+    },
+    {
+      "handle": "104-10030",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005633823052 UPLOADED"
+    },
+    {
+      "handle": "101-10014-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005634249036 UPLOADED"
+    },
+    {
+      "handle": "101-10046-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005634445644 UPLOADED"
+    },
+    {
+      "handle": "101-10041-4-7",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10040-1-3-0",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10047",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005635297612 UPLOADED"
+    },
+    {
+      "handle": "104-10001-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005635821900 UPLOADED"
+    },
+    {
+      "handle": "102-10022-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005636411724 UPLOADED"
+    },
+    {
+      "handle": "101-10023",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005637099852 UPLOADED"
+    },
+    {
+      "handle": "104-10061",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005637591372 UPLOADED"
+    },
+    {
+      "handle": "104-10057-4-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005638639948 UPLOADED"
+    },
+    {
+      "handle": "104-10038",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005639164236 UPLOADED"
+    },
+    {
+      "handle": "101-10028",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005639917900 UPLOADED"
+    },
+    {
+      "handle": "101-10033-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005640245580 UPLOADED"
+    },
+    {
+      "handle": "102-10013-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005640900940 UPLOADED"
+    },
+    {
+      "handle": "101-10021-4-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005641752908 UPLOADED"
+    },
+    {
+      "handle": "104-10037-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005642015052 UPLOADED"
+    },
+    {
+      "handle": "101-10190-0-30-rn",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005642768716 UPLOADED"
+    },
+    {
+      "handle": "101-10095-5-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005643915596 UPLOADED"
+    },
+    {
+      "handle": "101-10044-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005644800332 UPLOADED"
+    },
+    {
+      "handle": "101-10111",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005645193548 UPLOADED"
+    },
+    {
+      "handle": "101-10016-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005647389004 UPLOADED"
+    },
+    {
+      "handle": "101-10191-0-30-hrt",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10044-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005650698572 UPLOADED"
+    },
+    {
+      "handle": "101-10089-5-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005651124556 UPLOADED"
+    },
+    {
+      "handle": "102-10012-1-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005651845452 UPLOADED"
+    },
+    {
+      "handle": "102-10089-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005652402508 UPLOADED"
+    },
+    {
+      "handle": "101-10088",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005652926796 UPLOADED"
+    },
+    {
+      "handle": "101-10094-5-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005653647692 UPLOADED"
+    },
+    {
+      "handle": "101-10152-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005654204748 UPLOADED"
+    },
+    {
+      "handle": "101-10067",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005654794572 UPLOADED"
+    },
+    {
+      "handle": "102-10019-2-2-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005655253324 UPLOADED"
+    },
+    {
+      "handle": "101-10040-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005656662348 UPLOADED"
+    },
+    {
+      "handle": "101-10017-1-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005657121100 UPLOADED"
+    },
+    {
+      "handle": "102-10123-2-5",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10163",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005657547084 UPLOADED"
+    },
+    {
+      "handle": "102-10032-2-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005658104140 UPLOADED"
+    },
+    {
+      "handle": "101-10094-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005658792268 UPLOADED"
+    },
+    {
+      "handle": "101-10012-1-4-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005659283788 UPLOADED"
+    },
+    {
+      "handle": "104-10050",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005659414860 UPLOADED"
+    },
+    {
+      "handle": "101-10074",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005659578700 UPLOADED"
+    },
+    {
+      "handle": "102-10019",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005659906380 UPLOADED"
+    },
+    {
+      "handle": "102-10089-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005660135756 UPLOADED"
+    },
+    {
+      "handle": "104-10040-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005660234060 UPLOADED"
+    },
+    {
+      "handle": "101-10015-4-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005660692812 UPLOADED"
+    },
+    {
+      "handle": "102-10128",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005661086028 UPLOADED"
+    },
+    {
+      "handle": "102-10095-4-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005661282636 UPLOADED"
+    },
+    {
+      "handle": "102-10143-0-30-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10089-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005663052108 UPLOADED"
+    },
+    {
+      "handle": "102-10119-3-0",
+      "status": "missing"
+    },
+    {
+      "handle": "105-10008-5-1-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005663248716 UPLOADED"
+    },
+    {
+      "handle": "102-10013-4-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005663478092 UPLOADED"
+    },
+    {
+      "handle": "102-10115-3-0-pr",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005664985420 UPLOADED"
+    },
+    {
+      "handle": "102-10040-1-4-0",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10090-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005665247564 UPLOADED"
+    },
+    {
+      "handle": "102-10012-1-6-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005665345868 UPLOADED"
+    },
+    {
+      "handle": "101-10095-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005665608012 UPLOADED"
+    },
+    {
+      "handle": "102-10069",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005665706316 UPLOADED"
+    },
+    {
+      "handle": "102-10193v1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005666984268 UPLOADED"
+    },
+    {
+      "handle": "101-10022-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005668229452 UPLOADED"
+    },
+    {
+      "handle": "102-10012-1-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005669474636 UPLOADED"
+    },
+    {
+      "handle": "102-10015-4-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005670523212 UPLOADED"
+    },
+    {
+      "handle": "102-10027-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005670818124 UPLOADED"
+    },
+    {
+      "handle": "101-10015-1-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005671080268 UPLOADED"
+    },
+    {
+      "handle": "101-10018-1-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005671244108 UPLOADED"
+    },
+    {
+      "handle": "102-10300",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005671440716 UPLOADED"
+    },
+    {
+      "handle": "104-10004-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005671670092 UPLOADED"
+    },
+    {
+      "handle": "101-10010-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005671833932 UPLOADED"
+    },
+    {
+      "handle": "104-10058",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005672161612 UPLOADED"
+    },
+    {
+      "handle": "101-10012-1-4-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005672292684 UPLOADED"
+    },
+    {
+      "handle": "101-10015-1-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005673079116 UPLOADED"
+    },
+    {
+      "handle": "104-10065",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005674848588 UPLOADED"
+    },
+    {
+      "handle": "101-10181-1-0-10-marquise",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005676093772 UPLOADED"
+    },
+    {
+      "handle": "104-10047",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005676323148 UPLOADED"
+    },
+    {
+      "handle": "101-10144-4-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005676618060 UPLOADED"
+    },
+    {
+      "handle": "104-10043",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005676781900 UPLOADED"
+    },
+    {
+      "handle": "102-10015-2-1-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005677076812 UPLOADED"
+    },
+    {
+      "handle": "101-10119-4-5",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10012-1-5-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005677240652 UPLOADED"
+    },
+    {
+      "handle": "104-10020",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005677699404 UPLOADED"
+    },
+    {
+      "handle": "102-10113-3-0-pr",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005677994316 UPLOADED"
+    },
+    {
+      "handle": "101-10125-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005678321996 UPLOADED"
+    },
+    {
+      "handle": "104-10031",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005678387532 UPLOADED"
+    },
+    {
+      "handle": "102-10117-3-0-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10036",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005678584140 UPLOADED"
+    },
+    {
+      "handle": "101-10147",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005678715212 UPLOADED"
+    },
+    {
+      "handle": "101-10162-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005679272268 UPLOADED"
+    },
+    {
+      "handle": "101-10144-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005681860940 UPLOADED"
+    },
+    {
+      "handle": "101-10194-0-30-baq",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10045-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005682090316 UPLOADED"
+    },
+    {
+      "handle": "101-10019",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005682286924 UPLOADED"
+    },
+    {
+      "handle": "105-10009",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005682516300 UPLOADED"
+    },
+    {
+      "handle": "102-10090",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005683040588 UPLOADED"
+    },
+    {
+      "handle": "101-10040-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005683368268 UPLOADED"
+    },
+    {
+      "handle": "101-10108",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10017-1-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005683859788 UPLOADED"
+    },
+    {
+      "handle": "101-10190-0-30-baq",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005684154700 UPLOADED"
+    },
+    {
+      "handle": "101-10113-3-0-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10046-2-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005684416844 UPLOADED"
+    },
+    {
+      "handle": "101-10015-1-2-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005684580684 UPLOADED"
+    },
+    {
+      "handle": "104-10051",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005684875596 UPLOADED"
+    },
+    {
+      "handle": "102-10133",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10071-3-0-30-baq",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005685104972 UPLOADED"
+    },
+    {
+      "handle": "102-10014-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005685268812 UPLOADED"
+    },
+    {
+      "handle": "102-10015-4-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005685629260 UPLOADED"
+    },
+    {
+      "handle": "102-10018-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005686022476 UPLOADED"
+    },
+    {
+      "handle": "101-10010-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005686219084 UPLOADED"
+    },
+    {
+      "handle": "104-10045-3-0-pr",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005686317388 UPLOADED"
+    },
+    {
+      "handle": "101-10027-5-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005686415692 UPLOADED"
+    },
+    {
+      "handle": "102-10031",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005686841676 UPLOADED"
+    },
+    {
+      "handle": "104-10071-2-0-30-baq",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005686972748 UPLOADED"
+    },
+    {
+      "handle": "102-10017-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005687300428 UPLOADED"
+    },
+    {
+      "handle": "101-10036-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005687497036 UPLOADED"
+    },
+    {
+      "handle": "101-10027-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005687726412 UPLOADED"
+    },
+    {
+      "handle": "102-10015-2-2-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005688086860 UPLOADED"
+    },
+    {
+      "handle": "102-10016-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005688709452 UPLOADED"
+    },
+    {
+      "handle": "102-10029",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005689332044 UPLOADED"
+    },
+    {
+      "handle": "101-10068",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005689626956 UPLOADED"
+    },
+    {
+      "handle": "101-10018-2-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005690609996 UPLOADED"
+    },
+    {
+      "handle": "104-10037-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005690806604 UPLOADED"
+    },
+    {
+      "handle": "101-10190-0-30-ov",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005691003212 UPLOADED"
+    },
+    {
+      "handle": "101-10151-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005691396428 UPLOADED"
+    },
+    {
+      "handle": "101-10021-4-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005691658572 UPLOADED"
+    },
+    {
+      "handle": "101-10181-4-0-15-marquise",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005691920716 UPLOADED"
+    },
+    {
+      "handle": "101-10126-3-2-8",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10190-0-30-hrt",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005692346700 UPLOADED"
+    },
+    {
+      "handle": "104-10054",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005693854028 UPLOADED"
+    },
+    {
+      "handle": "101-10089-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005694050636 UPLOADED"
+    },
+    {
+      "handle": "104-10080-5-1-9",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005694345548 UPLOADED"
+    },
+    {
+      "handle": "104-10055-3-0-pr",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005694640460 UPLOADED"
+    },
+    {
+      "handle": "101-10191-0-30-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10041-4-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005694738764 UPLOADED"
+    },
+    {
+      "handle": "101-10143-0-30-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10059",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005694902604 UPLOADED"
+    },
+    {
+      "handle": "102-10041-3-0",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10003-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005695459660 UPLOADED"
+    },
+    {
+      "handle": "104-10039-2-3",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005697950028 UPLOADED"
+    },
+    {
+      "handle": "101-10190-0-30-par",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005700505932 UPLOADED"
+    },
+    {
+      "handle": "104-10040-5-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005702930764 UPLOADED"
+    },
+    {
+      "handle": "102-10012-1-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005705978188 UPLOADED"
+    },
+    {
+      "handle": "101-10013-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005708796236 UPLOADED"
+    },
+    {
+      "handle": "101-10064",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005709779276 UPLOADED"
+    },
+    {
+      "handle": "104-10003-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005711319372 UPLOADED"
+    },
+    {
+      "handle": "104-10011-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005712466252 UPLOADED"
+    },
+    {
+      "handle": "102-10151-4-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005714268492 UPLOADED"
+    },
+    {
+      "handle": "101-10053",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005715448140 UPLOADED"
+    },
+    {
+      "handle": "102-10059",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10049",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005717446988 UPLOADED"
+    },
+    {
+      "handle": "101-10071",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005719150924 UPLOADED"
+    },
+    {
+      "handle": "104-10040-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005719806284 UPLOADED"
+    },
+    {
+      "handle": "102-10081",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10010-2-3",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005721280844 UPLOADED"
+    },
+    {
+      "handle": "101-10016-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005723410764 UPLOADED"
+    },
+    {
+      "handle": "101-10038-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005726196044 UPLOADED"
+    },
+    {
+      "handle": "104-10067-0-30-par",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005728948556 UPLOADED"
+    },
+    {
+      "handle": "102-10077",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10040-4-0",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10142-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10117-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005732225356 UPLOADED"
+    },
+    {
+      "handle": "102-10015-2-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005732913484 UPLOADED"
+    },
+    {
+      "handle": "102-10051",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005733110092 UPLOADED"
+    },
+    {
+      "handle": "101-10181-4-0-10-marquise",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005733667148 UPLOADED"
+    },
+    {
+      "handle": "101-10140-4-5",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10012-1-4-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005734191436 UPLOADED"
+    },
+    {
+      "handle": "104-10042-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005734388044 UPLOADED"
+    },
+    {
+      "handle": "101-10045",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005734715724 UPLOADED"
+    },
+    {
+      "handle": "101-10127",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10152-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005734945100 UPLOADED"
+    },
+    {
+      "handle": "104-10040-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005735141708 UPLOADED"
+    },
+    {
+      "handle": "101-10018-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005735567692 UPLOADED"
+    },
+    {
+      "handle": "101-10116-2-3-0-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10027-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005736583500 UPLOADED"
+    },
+    {
+      "handle": "101-10054",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005736812876 UPLOADED"
+    },
+    {
+      "handle": "104-10018",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005738582348 UPLOADED"
+    },
+    {
+      "handle": "102-10018-2-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005738975564 UPLOADED"
+    },
+    {
+      "handle": "102-10301",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005739729228 UPLOADED"
+    },
+    {
+      "handle": "101-10115-3-0-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10017-2-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005740056908 UPLOADED"
+    },
+    {
+      "handle": "104-10071-1-0-30-baq",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005740253516 UPLOADED"
+    },
+    {
+      "handle": "104-10037-5-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005741007180 UPLOADED"
+    },
+    {
+      "handle": "101-10152-5-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005741171020 UPLOADED"
+    },
+    {
+      "handle": "104-10004-3-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005741662540 UPLOADED"
+    },
+    {
+      "handle": "101-10012-1-3-4",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005742678348 UPLOADED"
+    },
+    {
+      "handle": "101-10145",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005743825228 UPLOADED"
+    },
+    {
+      "handle": "102-10195-1",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005744480588 UPLOADED"
+    },
+    {
+      "handle": "104-10040-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005744742732 UPLOADED"
+    },
+    {
+      "handle": "102-10040-1-3-4",
+      "status": "missing"
+    },
+    {
+      "handle": "104-10079",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005746250060 UPLOADED"
+    },
+    {
+      "handle": "101-10089-6-5",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005746872652 UPLOADED"
+    },
+    {
+      "handle": "101-10018-1-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005747495244 UPLOADED"
+    },
+    {
+      "handle": "104-10013-2-7",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005747691852 UPLOADED"
+    },
+    {
+      "handle": "102-10096",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005748019532 UPLOADED"
+    },
+    {
+      "handle": "101-10041-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005749133644 UPLOADED"
+    },
+    {
+      "handle": "101-10015-1-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005749363020 UPLOADED"
+    },
+    {
+      "handle": "101-10109-1-3",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005749985612 UPLOADED"
+    },
+    {
+      "handle": "101-10066",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005750247756 UPLOADED"
+    },
+    {
+      "handle": "105-10014",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005750575436 UPLOADED"
+    },
+    {
+      "handle": "104-10028",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005750640972 UPLOADED"
+    },
+    {
+      "handle": "104-10059",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005750772044 UPLOADED"
+    },
+    {
+      "handle": "101-10171",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005751132492 UPLOADED"
+    },
+    {
+      "handle": "101-10041-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75005753033036 UPLOADED"
+    },
+    {
+      "handle": "101-10013-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75006610604364 UPLOADED"
+    },
+    {
+      "handle": "104-10009",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75006611063116 UPLOADED"
+    },
+    {
+      "handle": "102-10018-3-0",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75006611423564 UPLOADED"
+    },
+    {
+      "handle": "101-10194-0-30-pr",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10089-2-4-2",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75006611816780 UPLOADED"
+    },
+    {
+      "handle": "102-10144-4-2",
+      "status": "missing"
+    }
+  ]
+}

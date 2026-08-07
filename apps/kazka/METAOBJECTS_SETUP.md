@@ -145,3 +145,39 @@ node scripts/enable-storefront-access.mjs
 W **Headless** → Storefront API permissions upewnij się, że są włączone:
 - `unauthenticated_read_metaobjects` – wymagane dla metaobiektów
 - `unauthenticated_read_product_listings` – **wymagane dla obrazów z Files** (GenericFile w polu file_reference)
+
+## 6. Campaign landing pages (`$app:campaign_landing`)
+
+Definicje:
+- Partner TOML ([`shopify.app.toml`](../../shopify.app.toml)) — app-owned dla `epir_ai` (wersja po `shopify app deploy`).
+- Operacyjny seed używa Admin tokenu custom app **Asystent Klienta** → reserved type Storefront:
+  `app--280344821761--campaign_landing`
+  (Hydrogen: `CAMPAIGN_LANDING_TYPE_STOREFRONT_DEFAULT` / env `PUBLIC_CAMPAIGN_LANDING_TYPE`).
+
+**Uwaga Shopify:** pole metaobiektu o kluczu `handle` jest **zarezerwowane** — handle kampanii to systemowy handle wpisu, nie osobne pole. `display_name_field = "hero_title"`.
+
+**Deploy i scope Admin API**
+
+1. `shopify app deploy` (root repo) — epir_ai TOML
+2. Scope `read_metaobjects` / `write_metaobjects` — custom app Asystent Klienta już je ma; reinstalacja `epir_ai` poza szczytem jeśli brakuje
+3. Seed: `node scripts/seed-campaign-landings.mjs --skip-invalid`
+4. Smoke Storefront: `node scripts/smoke-campaign-landing-storefront.mjs`
+5. Deploy Cloudflare Pages (`apps/kazka`) — bez tego `/p/*` zwraca 404 na produkcji
+
+**Routing Hydrogen (kazka.epirbizuteria.pl)**
+
+| URL | Zachowanie |
+|---|---|
+| `/?utm_campaign=…` | redirect → `/p/{handle}` gdy jest match w mappingu |
+| `/` bez UTM | normalny homepage |
+| `/p?utm_campaign=…` | redirect → `/p/{handle}` |
+| `/p` bez UTM | fallback `default` w mappingu lub redirect `/` |
+| `/p/{handle}` | render landinga (hero, produkty, CTA) |
+
+**Smoke test po seedzie + Pages deploy**
+
+- `/?utm_campaign=kazka_b2b` → `/p/b2b-landing`
+- `/p` → `/p/default-landing`
+- `/p/nieistniejacy` → 404
+- `curl -sI https://kazka.epirbizuteria.pl/p/default-landing` → `Cache-Control: … max-age=60 … stale-while-revalidate=600`
+

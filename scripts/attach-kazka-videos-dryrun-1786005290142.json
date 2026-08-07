@@ -1,0 +1,36 @@
+{
+  "summary": {
+    "attached": 3,
+    "skippedHasVideo": 0,
+    "skippedNoTag": 0,
+    "missing": 2,
+    "errors": 0
+  },
+  "csv": "D:\\marketing\\csv\\produkty_kazka_shopify.csv",
+  "shop": "epir-art-silver-jewellery.myshopify.com",
+  "log": [
+    {
+      "handle": "104-10002-2-5",
+      "status": "would_attach",
+      "detail": "gid://shopify/Product/15914153836876 <- https://kazkaj.s3.eu-central-1.amazonaws.com/8f1bb22d-bd74-4849-9989-55b3ce898f00/VIDEO_RENDER_1.451.mp4"
+    },
+    {
+      "handle": "102-10092",
+      "status": "would_attach",
+      "detail": "gid://shopify/Product/15914153902412 <- https://kazkaj.s3.eu-central-1.amazonaws.com/2a696b4f-1ca0-403a-9cbb-85d6294d5f39/102_10092_.mp4"
+    },
+    {
+      "handle": "102-10129-5",
+      "status": "missing"
+    },
+    {
+      "handle": "102-10050-3-7",
+      "status": "missing"
+    },
+    {
+      "handle": "101-10075",
+      "status": "would_attach",
+      "detail": "gid://shopify/Product/15914267902284 <- https://kazkaj.s3.eu-central-1.amazonaws.com/d4791eb4-9eb5-4566-9668-22a2a214abe6/101_10075_REN_VIDEO.mp4"
+    }
+  ]
+}

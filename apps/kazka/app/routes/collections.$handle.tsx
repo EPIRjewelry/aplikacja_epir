@@ -1,8 +1,21 @@
 import {type MetaFunction, useLoaderData} from '@remix-run/react';
-import {getSeoMeta} from '@shopify/hydrogen';
-import {ProductGrid} from '@epir/ui';
+import {getPaginationVariables, getSeoMeta} from '@shopify/hydrogen';
+import {CollectionFilters, ProductGrid} from '@epir/ui';
 import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
+import {
+  METAL_FILTER_OPTIONS,
+  PROBA_FILTER_OPTIONS,
+  QUALITY_FILTER_OPTIONS,
+  SHAPE_FILTER_OPTIONS,
+  SORT_FILTER_OPTIONS,
+  TYPE_FILTER_OPTIONS,
+  WEIGHT_FILTER_OPTIONS,
+  parseCollectionProductFilters,
+  parseCollectionSort,
+} from '~/lib/collection-product-filters';
+import {COLLECTION_QUERY} from '~/queries/collection';
+import type {CollectionQueryData} from '~/types/collection';
 
 type CollectionsQueryData = {
   collections: {nodes: {handle: string}[]};
@@ -23,13 +36,23 @@ export async function loader({
 }: LoaderFunctionArgs) {
   const {handle} = params;
   const searchParams = new URL(request.url).searchParams;
-  const cursor = searchParams.get('cursor');
-  const {collection} = await context.storefront.query(COLLECTION_QUERY, {
-    variables: {
-      handle,
-      cursor,
+  const paginationVariables = getPaginationVariables(request, {pageBy: 24});
+  const filters = parseCollectionProductFilters(searchParams);
+  const {sortKey, reverse} = parseCollectionSort(searchParams);
+
+  const {collection} = await context.storefront.query<CollectionQueryData>(
+    COLLECTION_QUERY,
+    {
+      variables: {
+        handle,
+        filters,
+        sortKey,
+        reverse,
+        ...paginationVariables,
+      },
+      cache: context.storefront.CacheShort(),
     },
-  });
+  );
   if (!collection) {
     const filter = context.env.COLLECTION_FILTER;
     const allowedHandles = filter
@@ -50,10 +73,21 @@ export async function loader({
     return redirect('/', 302);
   }
 
-  return json({
-    collection,
-    canonicalUrl: canonicalUrlFromRequest(request, context.env),
-  });
+  return json(
+    {
+      collection,
+      canonicalUrl: canonicalUrlFromRequest(request, context.env),
+      activeFilterCount: filters.length,
+    },
+    {
+      headers: {
+        'Cache-Control': context.storefront.generateCacheControlHeader({
+          maxAge: 60,
+          staleWhileRevalidate: 600,
+        }),
+      },
+    },
+  );
 }
 
 export const meta: MetaFunction<typeof loader> = ({data}) => {
@@ -68,7 +102,8 @@ export const meta: MetaFunction<typeof loader> = ({data}) => {
 };
 
 export default function Collection() {
-  const {collection} = useLoaderData<typeof loader>();
+  const {collection, activeFilterCount} = useLoaderData<typeof loader>();
+  const hasProducts = Boolean(collection.products?.nodes?.length);
 
   return (
     <section className="w-full gap-8">
@@ -84,65 +119,30 @@ export default function Collection() {
         )}
       </header>
 
+      <CollectionFilters
+        metalOptions={METAL_FILTER_OPTIONS}
+        probaOptions={PROBA_FILTER_OPTIONS}
+        shapeOptions={SHAPE_FILTER_OPTIONS}
+        weightOptions={WEIGHT_FILTER_OPTIONS}
+        qualityOptions={QUALITY_FILTER_OPTIONS}
+        typeOptions={TYPE_FILTER_OPTIONS}
+        sortOptions={SORT_FILTER_OPTIONS}
+      />
+
       <div className="fadeIn" style={{animationDelay: '100ms'}}>
-        {collection.products?.nodes?.length ? (
+        {hasProducts ? (
           <ProductGrid
-            key={collection.handle}
-            products={collection.products.nodes}
-            url={`/collections/${collection.handle}`}
-            hasNextPage={collection.products.pageInfo.hasNextPage}
-            endCursor={collection.products.pageInfo.endCursor}
+            key={`${collection.handle}-${activeFilterCount}`}
+            connection={collection.products}
           />
         ) : (
           <p className="text-[rgb(var(--color-primary))]/70 py-12">
-            Brak produktów w tej kolekcji. Upewnij się, że produkty są
-            opublikowane w kanale Pierścionki Zaręczynowe.
+            {activeFilterCount > 0
+              ? 'Brak produktów dla wybranych filtrów. Zmień kryteria lub wyczyść filtry.'
+              : 'Brak produktów w tej kolekcji. Upewnij się, że produkty są opublikowane w kanale Kazka.'}
           </p>
         )}
       </div>
     </section>
   );
 }
-
-const COLLECTION_QUERY = `#graphql
-  query CollectionDetails($handle: String!, $cursor: String) {
-    collection(handle: $handle) {
-      id
-      title
-      description
-      handle
-      products(first: 12, after: $cursor) {
-        pageInfo {
-          hasNextPage
-          endCursor
-        }
-        nodes {
-          id
-          title
-          publishedAt
-          handle
-          variants(first: 1) {
-            nodes {
-              id
-              image {
-                url
-                altText
-                width
-                height
-              }
-              price {
-                amount
-                currencyCode
-              }
-              compareAtPrice {
-                amount
-                currencyCode
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-`;
-

@@ -1,0 +1,18 @@
+{
+  "summary": {
+    "attached": 1,
+    "skippedHasVideo": 0,
+    "skippedNoTag": 0,
+    "missing": 0,
+    "errors": 0
+  },
+  "csv": "D:\\marketing\\csv\\produkty_kazka_shopify.csv",
+  "shop": "epir-art-silver-jewellery.myshopify.com",
+  "log": [
+    {
+      "handle": "102-10092",
+      "status": "attached",
+      "detail": "gid://shopify/Video/75003987919180 UPLOADED"
+    }
+  ]
+}

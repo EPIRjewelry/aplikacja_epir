@@ -3,6 +3,11 @@ export {Layout, type LayoutProps, type NavCollection} from './Layout';
 export {default as ProductCard} from './product/ProductCard';
 export {ProductGallery} from './product/ProductGallery';
 export {default as ProductGrid} from './product/ProductGrid';
+export {
+  CollectionFilters,
+  type CollectionFiltersProps,
+  type CollectionFilterOption,
+} from './collection/CollectionFilters';
 export {ProductForm} from './product/ProductForm';
 export {default as ProductOptions} from './product/ProductOptions';
 export {CartDrawer} from './cart/CartDrawer';

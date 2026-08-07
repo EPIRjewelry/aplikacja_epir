@@ -29,6 +29,8 @@ declare global {
     PUBLIC_STOREFRONT_COUNTRY?: string;
     /** Domyślny język dla Hydrogen `i18n`. Puste → PL. */
     PUBLIC_STOREFRONT_LANGUAGE?: string;
+    /** Override Storefront metaobject type for campaign landings (reserved app--… type). */
+    PUBLIC_CAMPAIGN_LANDING_TYPE?: string;
     /** Optional chat config; runtime resolver uses same-origin `/api/chat`. */
     CHAT_API_URL?: string;
     EPIR_CHAT_SHARED_SECRET?: string;

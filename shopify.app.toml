@@ -20,7 +20,40 @@ api_version = "2026-04"
 
 [access_scopes]
 # read_reports: ShopifyQL / shopifyqlQuery (natywna analityka Admin) — wymaga ponownej instalacji aplikacji po zmianie scope.
-scopes = "customer_read_customers,customer_read_orders,customer_read_store_credit_accounts,unauthenticated_read_product_listings,read_reports"
+# read_metaobjects, write_metaobjects: campaign landing ($app:campaign_landing) + shop.metafields.app.campaign_mapping
+scopes = "customer_read_customers,customer_read_orders,customer_read_store_credit_accounts,unauthenticated_read_product_listings,read_reports,read_metaobjects,write_metaobjects"
+
+[metaobjects.app.campaign_landing]
+name = "Campaign Landing"
+display_name_field = "hero_title"
+access.storefront = "public_read"
+
+[metaobjects.app.campaign_landing.fields.hero_title]
+name = "Hero title"
+type = "single_line_text_field"
+required = true
+
+[metaobjects.app.campaign_landing.fields.hero_subtitle]
+name = "Hero subtitle"
+type = "multi_line_text_field"
+
+[metaobjects.app.campaign_landing.fields.product_ids]
+name = "Product IDs"
+type = "list.single_line_text_field"
+
+[metaobjects.app.campaign_landing.fields.cta_label]
+name = "CTA label"
+type = "single_line_text_field"
+
+[metaobjects.app.campaign_landing.fields.cta_url]
+name = "CTA URL"
+type = "single_line_text_field"
+
+[shop.metafields.app.campaign_mapping]
+type = "json"
+name = "Campaign mapping"
+access.admin = "merchant_read_write"
+access.storefront = "public_read"
 
 [auth]
 redirect_urls = [

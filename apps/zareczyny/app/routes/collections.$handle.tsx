@@ -320,7 +320,9 @@ export async function loader({
         products: {
           nodes: [],
           pageInfo: {
+            hasPreviousPage: false,
             hasNextPage: false,
+            startCursor: null,
             endCursor: null,
           },
         },
@@ -486,11 +488,9 @@ export default function Collection() {
       {!hubMode ? (
         <div className="fadeIn" style={{animationDelay: '100ms'}}>
           {collection.products?.nodes?.length ? (
-            <ProductGrid key={routeHandle}
-              products={collection.products.nodes}
-              url={`/collections/${routeHandle}`}
-              hasNextPage={collection.products.pageInfo.hasNextPage}
-              endCursor={collection.products.pageInfo.endCursor}
+            <ProductGrid
+              key={routeHandle}
+              connection={collection.products}
             />
           ) : (
             <p className="text-[rgb(var(--color-primary))]/70 py-12">
@@ -551,7 +551,9 @@ const COLLECTION_QUERY = `#graphql
       }
       products(first: $productFirst, after: $cursor) {
         pageInfo {
+          hasPreviousPage
           hasNextPage
+          startCursor
           endCursor
         }
         nodes {
