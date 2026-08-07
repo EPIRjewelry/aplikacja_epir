@@ -11,11 +11,11 @@
   "dependencies": {
     "@cursor/sdk": "^1.0.13",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "openai": "^6.38.0"
+    "openai": "^7.4.0"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
+    "@types/node": "^26.1.2",
     "tsx": "^4.19.2",
-    "typescript": "^5.8.3"
+    "typescript": "^7.0.2"
   }
 }
