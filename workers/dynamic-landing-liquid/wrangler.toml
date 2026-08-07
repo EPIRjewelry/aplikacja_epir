@@ -1,0 +1,40 @@
+name = "epir-dynamic-landing-liquid"
+main = "src/index.ts"
+compatibility_date = "2025-09-30"
+compatibility_flags = ["nodejs_compat"]
+# Apex route only after Gate 0 (DNS proxied). Do not enable until operator confirms.
+workers_dev = true
+
+[build]
+command = ""
+
+[env.staging]
+
+[env.production]
+workers_dev = false
+
+[vars]
+SHOPIFY_STOREFRONT_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
+SHOPIFY_PUBLIC_DOMAIN = "epirbizuteria.pl"
+SHOPIFY_STOREFRONT_API_VERSION = "2024-10"
+CAMPAIGN_LANDING_TYPE = "app--280344821761--campaign_landing"
+
+# Reuse existing secret name only (no new secret names):
+#   npx wrangler secret put SHOPIFY_STOREFRONT_TOKEN --env=""
+# Value = same Storefront token as workers/chat (online-store fallback).
+
+# Phase A (workers.dev): KV optional — uncomment after `wrangler kv namespace create CAMPAIGN_CACHE`
+# [[kv_namespaces]]
+# binding = "CAMPAIGN_CACHE"
+# id = "REPLACE_AFTER_KV_CREATE"
+# preview_id = "REPLACE_AFTER_KV_CREATE"
+
+# Gate 0 must pass before enabling:
+# routes = [{ pattern = "epirbizuteria.pl/*", zone_name = "epirbizuteria.pl" }]
+
+[observability]
+enabled = true
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true

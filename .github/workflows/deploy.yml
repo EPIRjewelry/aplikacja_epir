@@ -96,6 +96,10 @@ jobs:
         working-directory: workers/marketing-ingest
         run: npx wrangler deploy --env=""
 
+      - name: Deploy dynamic-landing-liquid worker
+        working-directory: workers/dynamic-landing-liquid
+        run: npx wrangler deploy --env=""
+
       - name: Deploy chat worker
         working-directory: workers/chat
         run: npx wrangler deploy --env=""

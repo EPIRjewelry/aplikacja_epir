@@ -28,7 +28,7 @@ Moduł wiedzy dla Hydrogen, Theme App Extension, widgetu czatu, Liquid i warstwy
 
 ## Hydrogen (kazka, zareczyny)
 
-- **Kanon Shopify (hosting poza Oxygen):** subdomeny `zareczyny.epirbizuteria.pl`, `kazka.epirbizuteria.pl` → Cloudflare Pages; apex `epirbizuteria.pl` → motyw Shopify **bez** workera pośrodku. Patrz `docs/EPIR_STOREFRONT_DOMAIN_STRATEGY.md`.
+- **Kanon Shopify (hosting poza Oxygen):** subdomeny `zareczyny.epirbizuteria.pl`, `kazka.epirbizuteria.pl` → Cloudflare Pages; apex `epirbizuteria.pl` → motyw Shopify. Opcjonalny wyjątek po Gate 0 DNS: worker `epir-dynamic-landing-liquid` (HTMLRewriter, bez redirectów) — [`EPIR_STOREFRONT_DOMAIN_STRATEGY.md`](../EPIR_STOREFRONT_DOMAIN_STRATEGY.md).
 - Dwa brandy, jeden backend — osobne `storefrontId`, env, persona.
 - **Ingress czatu:** przeglądarka → same-origin `POST /api/chat` (Remix) → S2S `POST https://asystent.epirbizuteria.pl/chat` z `X-EPIR-SHARED-SECRET`, `X-EPIR-STOREFRONT-ID`, `X-EPIR-CHANNEL`.
 - Wspólna logika: preferuj `packages/utils` (`hydrogen.ts`) — nie duplikuj `app/lib/*.ts`.

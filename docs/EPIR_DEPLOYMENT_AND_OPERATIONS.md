@@ -13,6 +13,8 @@ Komponenty objęte tym dokumentem:
 - `workers/analytics`
 - `workers/bigquery-batch`
 - `workers/analyst-worker`
+- `workers/marketing-ingest`
+- `workers/dynamic-landing-liquid`
 - `apps/kazka`
 - `apps/zareczyny`
 - aplikacja Shopify `epir_ai`
@@ -221,6 +223,18 @@ Osobny worker od `workers/bigquery-batch`: **pull** GA4 (Data API) + Google Ads 
 EOF`
 2. Kontrola odczytu (dopiero po propagacji Iceberg / Data Catalog), z konta z tokenem R2 SQL: `wrangler r2 sql query <WAREHOUSE> --database <CATALOG> --command="SELECT * FROM marketing.marketing_daily LIMIT 5;"` (dostosuj `WAREHOUSE`, `CATALOG` i nazwę tabeli do konfiguracji pipeline’u).
 
+### `workers/dynamic-landing-liquid` (`epir-dynamic-landing-liquid`)
+
+HTMLRewriter na apex Liquid (`epirbizuteria.pl`): UTM → `shop.metafields.app.campaign_mapping` → metaobject kampanii (te same dane co KAZKA). Mutacja HTML in-place; **bez redirectów**.
+
+**Gate 0 (DNS):** apex musi być Proxied w strefie CF + SSL Full (strict) zanim włączysz Workers Route. Szczegóły: [`workers/dynamic-landing-liquid/README.md`](../workers/dynamic-landing-liquid/README.md), [`EPIR_STOREFRONT_DOMAIN_STRATEGY.md`](EPIR_STOREFRONT_DOMAIN_STRATEGY.md).
+
+**Sekret (reuse, bez nowej nazwy):** `SHOPIFY_STOREFRONT_TOKEN` — ta sama wartość co na `workers/chat` (online-store).
+
+**Vars:** `SHOPIFY_STOREFRONT_DOMAIN`, `SHOPIFY_STOREFRONT_API_VERSION`, `CAMPAIGN_LANDING_TYPE`. Binding KV: `CAMPAIGN_CACHE`.
+
+**Deploy:** Faza A = `wrangler deploy` bez trasy apex; Faza B = route `epirbizuteria.pl/*` dopiero po Gate 0. Motyw: atrybuty `data-dynamic-*` w [`themes/epir-online-store/README.md`](../themes/epir-online-store/README.md).
+
 ### `workers/analytics`
 
 Wymagane sekrety backendowe:
@@ -327,9 +341,10 @@ Kolejność zalecana:
 3. `workers/bigquery-batch`
 4. `workers/analyst-worker` (RPC do `epir-bigquery-batch`; wymaga wcześniejszego deployu batch)
 5. `workers/marketing-ingest`
-6. `workers/chat` (**musi obejmować trasy Consent Gate:** `POST /apps/assistant/consent`, `POST /consent` oraz zapis do `consent_events` po zastosowaniu migracji D1)
+6. `workers/dynamic-landing-liquid` (Faza A: kod; trasa apex dopiero po Gate 0 DNS)
+7. `workers/chat` (**musi obejmować trasy Consent Gate:** `POST /apps/assistant/consent`, `POST /consent` oraz zapis do `consent_events` po zastosowaniu migracji D1)
 
-W praktyce `deploy.ps1` powinien utrzymywać tę kolejność. Aby wdrożyć **wyłącznie** te sześć workerów bez `npm ci` i bez kroku Shopify, użyj `deploy-workers.ps1` w katalogu głównym repo.
+W praktyce `deploy.ps1` powinien utrzymywać tę kolejność. Aby wdrożyć **wyłącznie** te workery bez `npm ci` i bez kroku Shopify, użyj `deploy-workers.ps1` w katalogu głównym repo.
 
 ### 5. Deploy aplikacji Shopify
 

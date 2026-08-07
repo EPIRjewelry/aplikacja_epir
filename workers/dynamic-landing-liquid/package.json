@@ -1,0 +1,18 @@
+{
+  "name": "epir-dynamic-landing-liquid",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.10.5",
+    "@cloudflare/workers-types": "^4.20251117.0",
+    "typescript": "^5.4.0",
+    "vitest": "^3.2.4",
+    "wrangler": "4.46.0"
+  }
+}

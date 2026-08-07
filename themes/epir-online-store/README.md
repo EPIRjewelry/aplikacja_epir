@@ -41,6 +41,24 @@ Pełny `theme push` tylko po review — ryzyko nadpisania zmian z edytora motywu
 - Metafieldy: [`docs/EPIR_ADMIN_METAFIELDS_CHECKLIST.md`](../../docs/EPIR_ADMIN_METAFIELDS_CHECKLIST.md).
 - Nie duplikuj pełnego UI z Hydrogen — wspólne są **dane** (metafieldy), nie całe sekcje React.
 
+## Dynamic campaign hooks (HTMLRewriter)
+
+Worker [`workers/dynamic-landing-liquid`](../../workers/dynamic-landing-liquid) nadpisuje treść na edge, gdy URL ma UTM mapowane w `shop.metafields.app.campaign_mapping`. W sekcji hero (po `theme pull`) dodaj atrybuty:
+
+```liquid
+<h1 data-dynamic-hero-title>{{ section.settings.hero_title }}</h1>
+<p data-dynamic-hero-subtitle>{{ section.settings.hero_subtitle }}</p>
+<div data-dynamic-products>
+  {%- comment -%} Worker ustawi data-campaign-product-ids="[...]". {%- endcomment -%}
+  {% section 'featured-collection' %}
+</div>
+<a data-dynamic-cta href="{{ section.settings.hero_cta_url }}" class="btn btn--primary">
+  {{ section.settings.hero_cta_label }}
+</a>
+```
+
+Selektywny push sekcji po zmianie. Bez tych atrybutów worker pass-through działa, ale HTML nie zmienia się widocznie.
+
 ## Pliki w repo
 
 Po `theme pull` pojawią się m.in. `layout/`, `sections/`, `templates/`, `config/`.  

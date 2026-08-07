@@ -27,6 +27,10 @@ const WORKERS = [
     dir: 'workers/rag-worker',
     required: ['ADMIN_TOKEN'],
   },
+  {
+    dir: 'workers/dynamic-landing-liquid',
+    required: ['SHOPIFY_STOREFRONT_TOKEN'],
+  },
 ];
 
 const PAGES = [
