@@ -58,7 +58,7 @@ export async function fetchAdsMarketingRows(env: AdsEnv, date: string): Promise<
 
   const loginCid = (env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ?? '').replace(/-/g, '').trim();
 
-  const url = `https://googleads.googleapis.com/v17/customers/${customerId}/googleAds:search`;
+  const url = `https://googleads.googleapis.com/v25/customers/${customerId}/googleAds:search`;
   const headers: Record<string, string> = {
     Authorization: `Bearer ${access}`,
     'developer-token': devTok,

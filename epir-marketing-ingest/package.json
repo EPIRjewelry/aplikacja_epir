@@ -1,0 +1,26 @@
+{
+  "name": "epir-marketing-ingest",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shopify Admin API → Google Sheets → GMC feed pipeline for EPIR jewelry",
+  "type": "module",
+  "scripts": {
+    "ingest": "tsx src/runner.ts",
+    "ingest:dry": "tsx src/runner.ts --dry-run --no-ai",
+    "ingest:csv": "tsx src/runner.ts --no-ai --csv=auto",
+    "build": "tsc --noEmit",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "google-auth-library": "^9.0.0",
+    "googleapis": "^144.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.7"
+  }
+}

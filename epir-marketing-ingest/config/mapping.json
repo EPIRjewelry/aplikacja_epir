@@ -1,0 +1,89 @@
+{
+  "gmcColumns": [
+    "id",
+    "title",
+    "description",
+    "link",
+    "image_link",
+    "price",
+    "availability",
+    "brand",
+    "google_product_category",
+    "custom_label_0",
+    "custom_label_1",
+    "custom_label_2"
+  ],
+  "shopifyToInternal": {
+    "product.id": "productId",
+    "variant.id": "variantId",
+    "product.title": "title",
+    "product.descriptionHtml": "descriptionHtml",
+    "product.onlineStoreUrl": "productUrl",
+    "variant.image.url": "imageUrl",
+    "variant.price": "price",
+    "variant.inventoryQuantity": "inventoryQty",
+    "product.vendor": "brand",
+    "product.productType": "productType",
+    "product.tags": "tags",
+    "custom.main_stone": "gemType",
+    "custom.metal": "material",
+    "custom.design_style": "craftsmanship",
+    "custom.czas_dostawy": "leadTime",
+    "shopify.gemstone-type": "gemstoneTypeTaxonomy",
+    "shopify.jewelry-material": "jewelryMaterialTaxonomy"
+  },
+  "googleProductCategory": {
+    "default": "188",
+    "byProductType": {
+      "Pierścionek": "200",
+      "Naszyjnik": "196",
+      "Kolczyki": "194",
+      "Bransoletka": "191",
+      "Obrączka": "200"
+    },
+    "byCollection": {
+      "Forest": "200",
+      "Kazka": "200"
+    }
+  },
+  "marginRules": {
+    "heroTags": ["hero", "best-seller", "bestseller", "flagowy"],
+    "heroProductTypes": ["Pierścionek zaręczynowy"],
+    "heroVendors": ["EPIR Art Silver Jewellery"],
+    "highMarginMinPrice": 2500,
+    "highMarginMinRatio": 0.55,
+    "mediumMarginMinPrice": 900,
+    "mediumMarginMinRatio": 0.4,
+    "useUnitCostWhenAvailable": true,
+    "labels": {
+      "hero": "Hero-Product",
+      "high": "High-Margin",
+      "medium": "Medium-Margin",
+      "low": "Low-Margin"
+    }
+  },
+  "availabilityRules": {
+    "defaultLeadTime": "4-7 dni",
+    "labels": {
+      "ship24h": "Wysylka_24h",
+      "ship3to5": "Wysylka_4_7_dni",
+      "madeToOrder": "Na_zamowienie_7_dni"
+    },
+    "leadTimePatterns": {
+      "24h": ["24h", "24 h", "1 dzień", "1 dzien", "natychmiast", "od ręki", "od reki"],
+      "3to5": ["3-5", "3–5", "4-7", "4–7", "4 do 7", "2-4", "48h", "72h", "do 5 dni", "do 7 dni"],
+      "7plus": ["7 dni", "7-14", "na zamówienie", "na zamowienie", "indywidualnie", "custom"]
+    },
+    "inventoryThreshold24h": 1
+  },
+  "titleEnrichment": {
+    "craftsmanshipSuffix": "ręcznie kuty rzemieślniczy",
+    "maxLength": 150,
+    "aiEnabled": true,
+    "aiModels": [
+      "moonshotai/kimi-k3",
+      "x-ai/grok-4.5"
+    ],
+    "aiPromptTemplate": "Jesteś copywriterem biżuterii rzemieślniczej EPIR. Na podstawie danych produktu napisz JEDEN tytuł feedu Google Shopping (max 150 znaków). Bez spamu słów kluczowych, bez sprzeczności z parametrami. Tylko tytuł, bez cudzysłowów.\n\nDane:\n{context}"
+  }
+}

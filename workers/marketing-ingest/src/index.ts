@@ -5,6 +5,13 @@ import { fetchAdsMarketingRows } from './ads';
 import { fetchGa4MarketingRows, yesterdayUtcDate } from './ga4';
 import { handleMarketingPreview } from './ops-preview';
 import { postPipelineIngestBatch } from './pipeline-post';
+import {
+  applySearchAdGroupUtmSuffixes,
+  auditPmaxListingGroups,
+  expandPmaxListingGroups,
+  FOREST_UTM_SUFFIX,
+  setCampaignFinalUrlSuffix,
+} from './pmax-listing';
 
 export { MarketingAnalystAgent } from './marketing-analyst-agent';
 export { MarketingIngestS2SRpc } from './rpc';
@@ -19,6 +26,70 @@ function verifyMarketingOpsBearer(req: Request, env: Env): boolean {
   if (!key) return false;
   const m = /^Bearer\s+(\S+)/i.exec(req.headers.get('Authorization') ?? '');
   return (m?.[1]?.trim() ?? '') === key;
+}
+
+function opsUnauthorized(): Response {
+  return new Response('Unauthorized', {
+    status: 401,
+    headers: { 'WWW-Authenticate': 'Bearer', 'Cache-Control': 'no-store' },
+  });
+}
+
+function opsJson(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body, null, 2), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
+/** Bearer-gated PMax / Search UTM ops (reuse MARKETING_OPS_PREVIEW_KEY). */
+async function handlePmaxOps(req: Request, env: Env): Promise<Response | null> {
+  const u = new URL(req.url);
+  const path = u.pathname;
+  if (!path.startsWith('/ops/pmax-') && path !== '/ops/search-utm-suffixes') {
+    return null;
+  }
+  const key = (env.MARKETING_OPS_PREVIEW_KEY ?? '').trim();
+  if (!key) return new Response('Not Found', { status: 404 });
+  if (!verifyMarketingOpsBearer(req, env)) return opsUnauthorized();
+
+  if (path === '/ops/pmax-listing-audit' && req.method === 'GET') {
+    const campaignName = u.searchParams.get('campaign') ?? undefined;
+    return opsJson(await auditPmaxListingGroups(env, campaignName ?? undefined));
+  }
+
+  if (path === '/ops/pmax-listing-expand' && (req.method === 'POST' || req.method === 'GET')) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    const campaignName = u.searchParams.get('campaign') ?? undefined;
+    return opsJson(
+      await expandPmaxListingGroups(env, {
+        campaignName,
+        dryRun,
+        excludeBrand: u.searchParams.get('excludeBrand') ?? undefined,
+      }),
+    );
+  }
+
+  if (path === '/ops/pmax-forest-utm' && (req.method === 'POST' || req.method === 'GET')) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    return opsJson(
+      await setCampaignFinalUrlSuffix(env, {
+        campaignName: u.searchParams.get('campaign') ?? 'Epir_Forest-Dark',
+        finalUrlSuffix: FOREST_UTM_SUFFIX,
+        dryRun,
+      }),
+    );
+  }
+
+  if (path === '/ops/search-utm-suffixes' && (req.method === 'POST' || req.method === 'GET')) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    return opsJson(await applySearchAdGroupUtmSuffixes(env, { dryRun }));
+  }
+
+  return new Response('Not Found', { status: 404 });
 }
 
 async function sendBatches(env: Env, records: Record<string, unknown>[]): Promise<{ ok: boolean; sent: number }> {
@@ -65,6 +136,8 @@ export default {
 
     const preview = await handleMarketingPreview(req, env);
     if (preview) return preview;
+    const pmaxOps = await handlePmaxOps(req, env);
+    if (pmaxOps) return pmaxOps;
     if (req.method === 'GET' && (u.pathname === '/' || u.pathname === '/healthz')) {
       return new Response('ok', { status: 200 });
     }

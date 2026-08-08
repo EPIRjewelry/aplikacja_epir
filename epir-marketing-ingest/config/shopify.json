@@ -1,0 +1,25 @@
+{
+  "store": "epir-art-silver-jewellery.myshopify.com",
+  "apiVersion": "2026-04",
+  "brand": "EPIR Art Silver Jewellery",
+  "storefrontBaseUrl": "https://epirbizuteria.pl",
+  "productQuery": "status:active inventory_total:>0 -tag:sprzedane -tag:kazka",
+  "metafieldNamespaces": ["custom", "shopify", "mm-google-shopping"],
+  "metafieldKeys": [
+    "custom.czas_dostawy",
+    "custom.main_stone",
+    "custom.metal",
+    "custom.design_style",
+    "shopify.gemstone-type",
+    "shopify.jewelry-material",
+    "shopify.ring-size",
+    "mm-google-shopping.google_product_category",
+    "mm-google-shopping.custom_label_0",
+    "mm-google-shopping.custom_label_1",
+    "mm-google-shopping.custom_label_2"
+  ],
+  "variantMetafieldNamespace": "mm-google-shopping",
+  "pageSize": 50,
+  "variantsPageSize": 100,
+  "throttleMs": 300
+}

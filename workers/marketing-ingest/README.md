@@ -96,7 +96,34 @@ Jeśli deployujesz z innym środowiskiem Wrangler (`--env production` itd.), prz
 
    Oczekujesz JSON z polami zawierającymi wiersze GA4 i Ads (puste tablice, jeśli dany dzień nie ma danych lub brakuje uprawnień — wtedy sprawdź logi workera w Dashboard).
 
-3. **Cron:** po deployzie sprawdź *Logs* pod tagiem `[MARKETING_INGEST]` — powinny pojawić się linie `GA4` / `Ads` z liczbą wierszy.
+3. **PMax / Search UTM ops** (ten sam Bearer; wymaga ważnego `GOOGLE_ADS_REFRESH_TOKEN`):
+
+   | Ścieżka | Opis |
+   |---------|------|
+   | `GET /ops/pmax-listing-audit?campaign=Epir_Forest-Dark` | Audyt listing groups |
+   | `GET /ops/pmax-listing-expand?dryRun=1` | Dry-run: EXCLUDE brand Kazka + INCLUDE reszta |
+   | `GET /ops/pmax-listing-expand?dryRun=0` | Wykonaj przebudowę drzewa |
+   | `GET /ops/pmax-forest-utm?dryRun=0` | `final_url_suffix` = `utm_…&utm_campaign=forest_premium` |
+   | `GET /ops/search-utm-suffixes?dryRun=0` | Sufiksy per ad group Search `*27.04.2026*` |
+
+   RPC (bez Bearer, między workerami): `MarketingIngestS2SRpc.auditPmaxListingGroups` / `expandPmaxListingGroups` / `setForestPremiumCampaignSuffix` / `applySearchAdGroupUtmSuffixes`.
+
+   **Blokada 2026-08-08:** Ads OAuth zwraca `invalid_grant` — odśwież `GOOGLE_ADS_REFRESH_TOKEN` (patrz §6), potem wywołaj expand + UTM.
+
+4. **Cron:** po deployzie sprawdź *Logs* pod tagiem `[MARKETING_INGEST]` — powinny pojawić się linie `GA4` / `Ads` z liczbą wierszy.
+
+### PMax listing groups — fallback UI (gdy API niedostępne)
+
+1. Google Ads → **Epir_Forest-Dark** → Asset group → **Listing groups**
+2. Usuń wąskie UNIT_INCLUDED po item ID / typach
+3. Subdivision by **Brand**: **Kazka** → Excluded; **Everything else** → Subdivision by **Custom label 2**:
+   - **Srebro** → Included
+   - **Zloto** → Included
+   - **Everything else** → Excluded
+4. Kampania → Settings → **Final URL suffix**: `utm_source=google&utm_medium=cpc&utm_campaign=forest_premium`
+5. Final URL Ads: `https://l.epirbizuteria.pl/` (host landingu Worker; nie apex)
+
+**Kontrakt feedu (Shopify → GMC):** `status:active`, stock > 0, bez `sprzedane`/Kazka, `templateSuffix` = `nowy-szablon` **lub** `pierscionek-zloto-turmali` (złoto), kanały **Online Store** + **Google & YouTube**, `custom_label_2` = `Srebro`|`Zloto` (`scripts/sync-metal-custom-label-2.mjs`, `scripts/audit-epir-shopping-eligibility.mjs`).
 
 ---
 
@@ -106,7 +133,7 @@ Jeśli deployujesz z innym środowiskiem Wrangler (`--env production` itd.), prz
 |--------|----------------------|
 | GA4: HTTP 403 / permission denied | E-mail SA nie dodany w GA4 Property albo wyłączone **Google Analytics Data API** w GCP. |
 | GA4: HTTP 404 / invalid property | Zły `GA4_PROPERTY_ID` (np. Measurement ID zamiast Property ID). |
-| Ads: token refresh failed | Zły `GOOGLE_ADS_CLIENT_ID` / `CLIENT_SECRET` / `REFRESH_TOKEN` albo scope bez `adwords`. |
+| Ads: token refresh failed / `invalid_grant` | Odśwież OAuth: Playground scope `adwords` → nowy refresh → `npx wrangler secret put GOOGLE_ADS_REFRESH_TOKEN`. Sprawdź zgodność Client ID/Secret. |
 | Ads: HTTP 401 / PERMISSION_DENIED | Developer token nieakceptowany albo brak `GOOGLE_ADS_LOGIN_CUSTOMER_ID` przy dostępie pod MCC. |
 | Ingest: brak wierszy w Iceberg | Brak / zły `MARKETING_PIPELINE_INGEST_URL`; worker celowo **pomija** ingest, jeśli URL jest pusty (log: `MARKETING_PIPELINE_INGEST_URL not set, skip`). |
 

@@ -1,19 +1,18 @@
 #!/usr/bin/env node
 /**
- * Publikuje aktywne produkty z niepustym templateSuffix do Google & YouTube.
+ * Publikuje aktywne produkty EPIR do Google & YouTube (kontrakt PMax).
  *
  * Filtry serwera (Shopify Search):
  *   status:active inventory_total:>0 -tag:sprzedane -tag:kazka
  * Filtry klienta:
- *   templateSuffix IS NOT NULL AND templateSuffix != ""
+ *   templateSuffix in (nowy-szablon, pierscionek-zloto-turmali)
+ *   publishedOnPublication(Online Store) === true
  *   publishedOnPublication(Google & YouTube) === false
  *
  * Operacja na sklepie Liquid (epir-art-silver-jewellery) — Admin API aplikacji epir_ai.
  * Nie używa tokenów Hydrogen (apps/kazka, apps/zareczyny).
  *
- * Wymaga: SHOPIFY_ADMIN_TOKEN (scope: read_products, write_publications)
- *   Alias: SHOPIFY_ADMIN_ACCESS_TOKEN, SHOPIFY_ACCESS_TOKEN
- *   Opcjonalnie root .dev.vars / scripts/.dev.vars (bez apps/*)
+ * Wymaga: SHOPIFY_ADMIN_TOKEN (scope: read_products, write_publications, read_publications)
  * Uruchom:
  *   node scripts/publish-products-google-youtube.mjs --dry-run
  *   node scripts/publish-products-google-youtube.mjs
@@ -22,11 +21,17 @@
 import { readFileSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import {
+  GY_PUBLICATION_ID,
+  REQUIRED_TEMPLATE_SUFFIX,
+  GOLD_TEMPLATE_SUFFIX,
+  isFeedEligibleTemplate,
+} from './lib/epir-metal-label.mjs';
 
 /** Zgodnie z `shopify.app.toml` → `[webhooks] api_version = "2026-04"` */
 const API_VERSION = '2026-04';
 const DEFAULT_SHOP = 'epir-art-silver-jewellery.myshopify.com';
-const PUBLICATION_ID = 'gid://shopify/Publication/44911067241';
+const PUBLICATION_ID = GY_PUBLICATION_ID;
 const PRODUCTS_QUERY_STRING =
   'status:active inventory_total:>0 -tag:sprzedane -tag:kazka';
 const PAGE_SIZE = 50;
@@ -107,7 +112,7 @@ if (!TOKEN) {
   console.error(
     'Ustaw env lub root/.dev.vars — nie używaj tokenów z apps/kazka ani apps/zareczyny.',
   );
-  console.error('Wymagane scope: read_products, write_publications');
+  console.error('Wymagane scope: read_products, write_publications, read_publications');
   process.exit(1);
 }
 
@@ -115,11 +120,6 @@ const endpoint = `https://${SHOP}/admin/api/${API_VERSION}/graphql.json`;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** templateSuffix IS NOT NULL AND templateSuffix != "" */
-function hasTemplateSuffix(s) {
-  return s != null && String(s).trim() !== '';
 }
 
 async function gql(query, variables = {}) {
@@ -142,8 +142,25 @@ async function gql(query, variables = {}) {
   return json.data;
 }
 
+const PUBLICATIONS_QUERY = `#graphql
+  query PublicationsForPublish {
+    publications(first: 50) {
+      nodes {
+        id
+        name
+        app { handle }
+      }
+    }
+  }
+`;
+
 const PRODUCTS_QUERY = `#graphql
-  query ProductsForGooglePublish($cursor: String, $query: String!, $publicationId: ID!) {
+  query ProductsForGooglePublish(
+    $cursor: String
+    $query: String!
+    $gyId: ID!
+    $osId: ID!
+  ) {
     products(first: ${PAGE_SIZE}, after: $cursor, query: $query) {
       pageInfo {
         hasNextPage
@@ -153,7 +170,8 @@ const PRODUCTS_QUERY = `#graphql
         id
         title
         templateSuffix
-        publishedOnPublication(publicationId: $publicationId)
+        publishedOnGy: publishedOnPublication(publicationId: $gyId)
+        publishedOnOs: publishedOnPublication(publicationId: $osId)
       }
     }
   }
@@ -176,12 +194,26 @@ const PUBLISH_MUTATION = `#graphql
   }
 `;
 
+function resolveOnlineStorePublicationId(nodes) {
+  for (const n of nodes || []) {
+    const name = String(n.name || '').toLowerCase();
+    const handle = String(n.app?.handle || '').toLowerCase();
+    if (handle === 'online_store' || name.includes('online store')) {
+      return n.id;
+    }
+  }
+  return null;
+}
+
 /**
  * Paginacja + filtr klienta. Zwraca { toPublish, skipped }.
  */
-async function collectCandidates() {
+async function collectCandidates(osPublicationId) {
   const toPublish = [];
   let skipped = 0;
+  let skippedWrongTemplate = 0;
+  let skippedNotOnOs = 0;
+  let skippedAlreadyGy = 0;
   let cursor = null;
   let page = 0;
 
@@ -190,7 +222,8 @@ async function collectCandidates() {
     const data = await gql(PRODUCTS_QUERY, {
       cursor,
       query: PRODUCTS_QUERY_STRING,
-      publicationId: PUBLICATION_ID,
+      gyId: PUBLICATION_ID,
+      osId: osPublicationId,
     });
     const conn = data?.products;
     if (!conn) {
@@ -201,22 +234,39 @@ async function collectCandidates() {
     console.log(`Strona ${page}: pobrano ${nodes.length} produktów`);
 
     for (const node of nodes) {
-      if (!hasTemplateSuffix(node.templateSuffix)) {
+      if (!isFeedEligibleTemplate(node.templateSuffix)) {
         skipped += 1;
+        skippedWrongTemplate += 1;
         continue;
       }
-      if (node.publishedOnPublication === true) {
+      if (node.publishedOnOs !== true) {
         skipped += 1;
+        skippedNotOnOs += 1;
         continue;
       }
-      toPublish.push({ id: node.id, title: node.title, templateSuffix: node.templateSuffix });
+      if (node.publishedOnGy === true) {
+        skipped += 1;
+        skippedAlreadyGy += 1;
+        continue;
+      }
+      toPublish.push({
+        id: node.id,
+        title: node.title,
+        templateSuffix: node.templateSuffix,
+      });
     }
 
     if (!conn.pageInfo?.hasNextPage) break;
     cursor = conn.pageInfo.endCursor;
   }
 
-  return { toPublish, skipped };
+  return {
+    toPublish,
+    skipped,
+    skippedWrongTemplate,
+    skippedNotOnOs,
+    skippedAlreadyGy,
+  };
 }
 
 async function publishProduct(product) {
@@ -239,17 +289,32 @@ async function publishProduct(product) {
 
 async function main() {
   console.log(`Shop: ${SHOP}`);
-  console.log(`Publication: ${PUBLICATION_ID}`);
+  console.log(`Publication G&YT: ${PUBLICATION_ID}`);
+  console.log(`Required templates: ${REQUIRED_TEMPLATE_SUFFIX}, ${GOLD_TEMPLATE_SUFFIX}`);
   console.log(`API: ${API_VERSION}`);
   console.log(`Tryb: ${DRY_RUN ? 'DRY-RUN (bez mutacji)' : 'PUBLIKACJA'}`);
   console.log(`Query: ${PRODUCTS_QUERY_STRING}`);
   console.log('');
 
-  const { toPublish, skipped } = await collectCandidates();
+  const pubData = await gql(PUBLICATIONS_QUERY);
+  const osId = resolveOnlineStorePublicationId(pubData?.publications?.nodes);
+  if (!osId) {
+    console.error('Nie znaleziono publication Online Store (wymagane do kontraktu EPIR).');
+    process.exit(1);
+  }
+  console.log(`Online Store publication: ${osId}`);
+
+  const {
+    toPublish,
+    skipped,
+    skippedWrongTemplate,
+    skippedNotOnOs,
+    skippedAlreadyGy,
+  } = await collectCandidates(osId);
 
   console.log('');
   console.log(
-    `Kandydaci do publikacji: ${toPublish.length} (pominięto wcześniej: ${skipped})`,
+    `Kandydaci do publikacji: ${toPublish.length} (pominięto wcześniej: ${skipped}; wrong_template=${skippedWrongTemplate}, not_on_os=${skippedNotOnOs}, already_gy=${skippedAlreadyGy})`,
   );
 
   let published = 0;
@@ -282,11 +347,11 @@ async function main() {
   console.log('');
   if (DRY_RUN) {
     console.log(
-      `Podsumowanie (dry-run): kandydaci=${toPublish.length}, pominięto=${skipped} (już opublikowane / brak templateSuffix), błędy=0`,
+      `Podsumowanie (dry-run): kandydaci=${toPublish.length}, pominięto=${skipped} (nie nowy-szablon / nie Online Store / już G&YT), błędy=0`,
     );
   } else {
     console.log(
-      `Podsumowanie: opublikowano=${published}, błędy=${errors}, pominięto=${skipped} (już opublikowane / brak templateSuffix)`,
+      `Podsumowanie: opublikowano=${published}, błędy=${errors}, pominięto=${skipped}`,
     );
   }
 
