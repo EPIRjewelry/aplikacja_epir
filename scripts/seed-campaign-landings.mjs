@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Seed campaign landing metaobjects + shop.metafields.app.campaign_mapping (KAZKA).
+ * Seed campaign landing metaobjects + shop.metafields.app.campaign_mapping.
  *
  * Wymaga: SHOPIFY_ADMIN_TOKEN lub SHOPIFY_ADMIN_ACCESS_TOKEN
  *   SHOP lub PUBLIC_STORE_DOMAIN / SHOPIFY_SHOP_DOMAIN
@@ -9,11 +9,16 @@
  *   node scripts/seed-campaign-landings.mjs
  *
  * Opcje:
+ *   --apex-only      tor Apex (epirbizuteria.pl): merge kluczy Ads, upsert landingów
+ *                    Apex; nie nadpisuje kluczy kazka_* ani istniejących landingów Kazka
+ *   --migrate-organic-art  rename wiecznosc_art→organic_art, handle landingu,
+ *                    product_ids z kolekcji kolekcja-galazki (EPIR, bez Kazka/sprzedane)
  *   --skip-invalid   pomiń brakujące product GID zamiast failować
- *   --product-limit=N  ile produktów Kazka pobrać do product_ids (domyślnie 8)
+ *   --product-limit=N  ile produktów Kazka pobrać do product_ids (domyślnie 8; ignorowane w --apex-only)
  *
  * product_ids: jeśli SEED_LANDINGS ma puste tablice, skrypt auto-pobiera GID-y
- * produktów z kolekcji/tagu kazka przez Admin API.
+ * produktów z kolekcji/tagu kazka przez Admin API (tryb domyślny / Kazka).
+ * W --apex-only: puste product_ids zostają puste (placeholder do ręcznego uzupełnienia).
  */
 
 import {existsSync, readFileSync} from 'fs';
@@ -25,18 +30,32 @@ const DEFAULT_SHOP = 'epir-art-silver-jewellery.myshopify.com';
 const CAMPAIGN_LANDING_TYPE = '$app:campaign_landing';
 
 const argv = process.argv.slice(2);
+const APEX_ONLY = argv.includes('--apex-only');
+const MIGRATE_ORGANIC_ART = argv.includes('--migrate-organic-art');
 const SKIP_INVALID = argv.includes('--skip-invalid');
 const productLimitArg = argv.find((a) => a.startsWith('--product-limit='));
 const PRODUCT_LIMIT = productLimitArg
   ? Math.max(1, Number(productLimitArg.split('=')[1]) || 8)
   : 8;
 
+/** Tor Kazka (Hydrogen) — pełny overwrite tylko bez --apex-only. */
 const SEED_MAPPING = {
   kazka_b2b: 'b2b-landing',
   kazka_wiecznosc: 'wiecznosc-landing',
   kazka_lab_grown: 'lab-grown-landing',
   default: 'default-landing',
 };
+
+/** Tor Apex (Liquid + HTMLRewriter) — merge do istniejącego mappingu. */
+const APEX_MAPPING_REMOVED_KEYS = ['wiecznosc_art'];
+const APEX_MAPPING = {
+  organic_art: 'organic-art-landing',
+  forest_premium: 'forest-premium-landing',
+};
+
+const ORGANIC_ART_METAOBJECT_GID = 'gid://shopify/Metaobject/3041383743820';
+const ORGANIC_ART_COLLECTION_HANDLE = 'kolekcja-galazki';
+const ORGANIC_ART_PRODUCT_LIMIT = 8;
 
 /** productIds: [] → auto-fill z katalogu Kazka (patrz fetchKazkaProductGids). */
 const SEED_LANDINGS = [
@@ -72,6 +91,33 @@ const SEED_LANDINGS = [
     productIds: [],
     ctaLabel: 'Zobacz produkty',
     ctaUrl: '/collections/kazka',
+  },
+];
+
+/**
+ * Tor Apex — osobne handlere od Kazki (nie współdzielą metaobiektów).
+ * productIds puste → uzupełnić ręcznie przed startem Ads.
+ */
+const APEX_LANDINGS = [
+  {
+    handle: 'organic-art-landing',
+    skipIfExists: false,
+    heroTitle: 'Biżuteria artystyczna',
+    heroSubtitle:
+      'Ręcznie tworzona biżuteria z polskiej pracowni — forma, materiał, symbolika wieczności.',
+    productIds: [],
+    ctaLabel: 'Odkryj kolekcję',
+    ctaUrl: '/collections/kolekcja-galazki',
+  },
+  {
+    handle: 'forest-premium-landing',
+    skipIfExists: false,
+    heroTitle: 'Rzemiosło premium',
+    heroSubtitle:
+      'Ekskluzywna biżuteria artystyczna — ciemny las, forma i praca rąk.',
+    productIds: [],
+    ctaLabel: 'Zobacz kolekcję',
+    ctaUrl: '/collections/all',
   },
 ];
 
@@ -168,6 +214,9 @@ const SHOP_ID_QUERY = `#graphql
   query {
     shop {
       id
+      campaignMapping: metafield(namespace: "app", key: "campaign_mapping") {
+        value
+      }
     }
   }
 `;
@@ -175,6 +224,11 @@ const SHOP_ID_QUERY = `#graphql
 const METAFIELDS_SET = `#graphql
   mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
     metafieldsSet(metafields: $metafields) {
+      metafields {
+        key
+        namespace
+        value
+      }
       userErrors {
         field
         message
@@ -197,6 +251,56 @@ const METAOBJECT_UPSERT = `#graphql
     }
   }
 `;
+
+const METAOBJECT_UPDATE = `#graphql
+  mutation metaobjectUpdate($id: ID!, $metaobject: MetaobjectUpdateInput!) {
+    metaobjectUpdate(id: $id, metaobject: $metaobject) {
+      metaobject {
+        id
+        handle
+      }
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+`;
+
+const COLLECTION_PRODUCTS_QUERY = `#graphql
+  query CollectionProductsForApex($query: String!, $first: Int!) {
+    collections(first: 1, query: $query) {
+      nodes {
+        id
+        handle
+        products(first: $first) {
+          nodes {
+            id
+            title
+            vendor
+            tags
+            status
+          }
+        }
+      }
+    }
+  }
+`;
+
+function parseMappingJson(raw) {
+  if (!raw?.trim()) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === 'string' && v.trim()) out[k] = v.trim();
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 const PRODUCTS_BY_IDS = `#graphql
   query ValidateProductIds($ids: [ID!]!) {
@@ -298,9 +402,191 @@ async function resolveProductIds(landing, autoGids) {
   return valid;
 }
 
+function applyApexMappingPatch(existingMapping) {
+  const merged = {...existingMapping};
+  for (const key of APEX_MAPPING_REMOVED_KEYS) {
+    delete merged[key];
+  }
+  return {...merged, ...APEX_MAPPING};
+}
+
+async function fetchEpirCollectionProductGids(
+  collectionHandle,
+  {limit = 8, excludeVendor = 'Kazka', excludeTag = 'sprzedane'} = {},
+) {
+  const data = await gql(COLLECTION_PRODUCTS_QUERY, {
+    query: `handle:${collectionHandle}`,
+    first: 50,
+  });
+  const nodes = data.collections?.nodes?.[0]?.products?.nodes ?? [];
+  const vendorNeedle = excludeVendor.trim().toLowerCase();
+  const filtered = nodes.filter((node) => {
+    if (!node?.id || node.status !== 'ACTIVE') return false;
+    const vendor = (node.vendor ?? '').trim().toLowerCase();
+    if (vendorNeedle && vendor === vendorNeedle) return false;
+    const tags = (node.tags ?? []).map((t) => String(t).toLowerCase());
+    if (excludeTag && tags.includes(excludeTag.toLowerCase())) return false;
+    return true;
+  });
+  const picked = filtered.slice(0, limit).map((n) => n.id);
+  console.log(
+    `[seed-campaign-landings] collection=${collectionHandle} products=${picked.length} (excl vendor=${excludeVendor}, tag=${excludeTag})`,
+  );
+  for (const node of filtered.slice(0, limit)) {
+    console.log(`  - ${node.title} (${node.id})`);
+  }
+  return picked;
+}
+
+async function updateMetaobjectById(id, {handle, fields}) {
+  const metaobject = {redirectNewHandle: true};
+  if (handle) metaobject.handle = handle;
+  if (fields?.length) metaobject.fields = fields;
+
+  const result = await gql(METAOBJECT_UPDATE, {id, metaobject});
+  const errors = result.metaobjectUpdate?.userErrors ?? [];
+  if (errors.length) {
+    throw new Error(`metaobjectUpdate ${id}: ${JSON.stringify(errors)}`);
+  }
+  return result.metaobjectUpdate?.metaobject;
+}
+
+const METAOBJECT_BY_HANDLE = `#graphql
+  query MetaobjectByHandle($handle: MetaobjectHandleInput!) {
+    metaobjectByHandle(handle: $handle) {
+      id
+      handle
+    }
+  }
+`;
+
+async function migrateOrganicArt(shopId, existingMapping) {
+  const productIds = await fetchEpirCollectionProductGids(
+    ORGANIC_ART_COLLECTION_HANDLE,
+    {limit: ORGANIC_ART_PRODUCT_LIMIT},
+  );
+  const {valid: validProductIds} = await validateProductGids(productIds);
+
+  const organicLanding = APEX_LANDINGS.find(
+    (l) => l.handle === 'organic-art-landing',
+  );
+  if (!organicLanding) {
+    throw new Error('organic-art-landing definition missing');
+  }
+
+  const fields = landingFields({
+    ...organicLanding,
+    productIds: validProductIds,
+  });
+
+  const meta = await updateMetaobjectById(ORGANIC_ART_METAOBJECT_GID, {
+    handle: 'organic-art-landing',
+    fields,
+  });
+  console.log(
+    `[seed-campaign-landings] metaobject rename/update → ${meta?.handle} (${meta?.id}) products=${validProductIds.length}`,
+  );
+
+  const merged = applyApexMappingPatch(existingMapping);
+  await setCampaignMapping(shopId, merged);
+  console.log('[seed-campaign-landings] campaign_mapping (after organic_art)', merged);
+  return merged;
+}
+
+async function setCampaignMapping(shopId, mapping) {
+  const mappingResult = await gql(METAFIELDS_SET, {
+    metafields: [
+      {
+        ownerId: shopId,
+        namespace: 'app',
+        key: 'campaign_mapping',
+        type: 'json',
+        value: JSON.stringify(mapping),
+      },
+    ],
+  });
+  const mappingErrors = mappingResult.metafieldsSet?.userErrors ?? [];
+  if (mappingErrors.length) {
+    throw new Error(`metafieldsSet: ${JSON.stringify(mappingErrors)}`);
+  }
+  return mapping;
+}
+
+async function upsertLanding(landing, productIds) {
+  const result = await gql(METAOBJECT_UPSERT, {
+    handle: {type: CAMPAIGN_LANDING_TYPE, handle: landing.handle},
+    metaobject: {fields: landingFields({...landing, productIds})},
+  });
+  const errors = result.metaobjectUpsert?.userErrors ?? [];
+  if (errors.length) {
+    throw new Error(
+      `metaobjectUpsert ${landing.handle}: ${JSON.stringify(errors)}`,
+    );
+  }
+  return result.metaobjectUpsert?.metaobject;
+}
+
+async function metaobjectExists(handle) {
+  const data = await gql(METAOBJECT_BY_HANDLE, {
+    handle: {type: CAMPAIGN_LANDING_TYPE, handle},
+  });
+  return Boolean(data?.metaobjectByHandle?.id);
+}
+
+async function seedApexOnly(shopId, existingMapping) {
+  const merged = applyApexMappingPatch(existingMapping);
+  await setCampaignMapping(shopId, merged);
+  console.log('[seed-campaign-landings] campaign_mapping (merged Apex)', merged);
+
+  for (const landing of APEX_LANDINGS) {
+    if (landing.skipIfExists) {
+      const exists = await metaobjectExists(landing.handle);
+      if (exists) {
+        console.log(
+          `[seed-campaign-landings] skip ${landing.handle} (już istnieje — tor Kazka nienaruszony)`,
+        );
+        continue;
+      }
+    }
+
+    // Apex: nie auto-fill z Kazka — product_ids puste / ręczne.
+    const productIds = await resolveProductIds(landing, []);
+    const meta = await upsertLanding(landing, productIds);
+    console.log(
+      `[seed-campaign-landings] upsert ${landing.handle} → ${meta?.id} products=${productIds.length}`,
+    );
+  }
+
+  return merged;
+}
+
+async function seedKazkaFull(shopId) {
+  const needsAuto = SEED_LANDINGS.some((l) => !l.productIds?.length);
+  const autoGids = needsAuto ? await fetchKazkaProductGids(PRODUCT_LIMIT) : [];
+
+  await setCampaignMapping(shopId, SEED_MAPPING);
+  console.log('[seed-campaign-landings] campaign_mapping OK', SEED_MAPPING);
+
+  for (const landing of SEED_LANDINGS) {
+    const productIds = await resolveProductIds(landing, autoGids);
+    const meta = await upsertLanding(landing, productIds);
+    console.log(
+      `[seed-campaign-landings] upsert ${landing.handle} → ${meta?.id} products=${productIds.length}`,
+    );
+  }
+
+  return SEED_MAPPING;
+}
+
 async function main() {
   console.log(
-    `[seed-campaign-landings] shop=${SHOP} skipInvalid=${SKIP_INVALID} productLimit=${PRODUCT_LIMIT}`,
+    `[seed-campaign-landings] shop=${SHOP} mode=${
+      MIGRATE_ORGANIC_ART
+        ? 'migrate-organic-art'
+        : APEX_ONLY
+          ? 'apex-only'
+          : 'kazka-full'
+    } skipInvalid=${SKIP_INVALID} productLimit=${PRODUCT_LIMIT}`,
   );
 
   const {shop} = await gql(SHOP_ID_QUERY);
@@ -310,45 +596,17 @@ async function main() {
   }
   console.log(`[seed-campaign-landings] shop.id=${shopId}`);
 
-  const needsAuto = SEED_LANDINGS.some((l) => !l.productIds?.length);
-  const autoGids = needsAuto ? await fetchKazkaProductGids(PRODUCT_LIMIT) : [];
+  const existingMapping = parseMappingJson(shop?.campaignMapping?.value);
+  console.log('[seed-campaign-landings] campaign_mapping (before)', existingMapping);
 
-  const mappingResult = await gql(METAFIELDS_SET, {
-    metafields: [
-      {
-        ownerId: shopId,
-        namespace: 'app',
-        key: 'campaign_mapping',
-        type: 'json',
-        value: JSON.stringify(SEED_MAPPING),
-      },
-    ],
-  });
-  const mappingErrors = mappingResult.metafieldsSet?.userErrors ?? [];
-  if (mappingErrors.length) {
-    throw new Error(`metafieldsSet: ${JSON.stringify(mappingErrors)}`);
-  }
-  console.log('[seed-campaign-landings] campaign_mapping OK', SEED_MAPPING);
-
-  for (const landing of SEED_LANDINGS) {
-    const productIds = await resolveProductIds(landing, autoGids);
-    const result = await gql(METAOBJECT_UPSERT, {
-      handle: {type: CAMPAIGN_LANDING_TYPE, handle: landing.handle},
-      metaobject: {fields: landingFields({...landing, productIds})},
-    });
-    const errors = result.metaobjectUpsert?.userErrors ?? [];
-    if (errors.length) {
-      throw new Error(
-        `metaobjectUpsert ${landing.handle}: ${JSON.stringify(errors)}`,
-      );
-    }
-    const id = result.metaobjectUpsert?.metaobject?.id;
-    console.log(
-      `[seed-campaign-landings] upsert ${landing.handle} → ${id} products=${productIds.length}`,
-    );
-  }
+  const finalMapping = MIGRATE_ORGANIC_ART
+    ? await migrateOrganicArt(shopId, existingMapping)
+    : APEX_ONLY
+      ? await seedApexOnly(shopId, existingMapping)
+      : await seedKazkaFull(shopId);
 
   console.log('[seed-campaign-landings] done');
+  console.log('[seed-campaign-landings] campaign_mapping (after)', finalMapping);
 }
 
 main().catch((err) => {
