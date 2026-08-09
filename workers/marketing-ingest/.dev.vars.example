@@ -18,4 +18,8 @@
 # GOOGLE_ADS_LOGIN_CUSTOMER_ID=   # opcjonalnie MCC (CID menedżera, bez myślników)
 
 # --- Ops (podgląd JSON bez ingestu) ---
+# Losowy token — ustaw na CF: npx wrangler secret put MARKETING_OPS_PREVIEW_KEY --env=""
+# Lokalnie w root .dev.vars + origin workera:
+# MARKETING_INGEST_ORIGIN=https://epir-marketing-ingest.<account>.workers.dev
 # MARKETING_OPS_PREVIEW_KEY=
+# CLI (bez ręcznego curl): node scripts/marketing-ops.mjs audit

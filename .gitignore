@@ -51,4 +51,7 @@ apps/*/app/styles/tailwind-build.css
 # Playwright / lokalne artefakty testów E2E (nie commitować)
 test-results/
 
+# Ads ops baseline / dry-run snapshots (lokalne)
+scripts/_tmp-ads-ops/
+
 !.cursor/index.mdc
