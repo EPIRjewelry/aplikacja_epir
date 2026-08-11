@@ -131,9 +131,12 @@ Kolekcje typu **Gałązki**, **Planety**, sortowanie **według kamienia** itd. =
 
 ### Archiwum Inspiracji
 
-- Produkty **sprzedane**.
+- Produkty **sprzedane** (`tag:sprzedane`).
 - Powodują bałagan w sklepie; służą jako **inspiracja do zamówień**.
-- Ewentualna osobna strona + link — **odrębny temat**, nierozstrzygnięty.
+- **Decyzja (wdrożenie w toku):** osobna galeria Hydrogen na `inspiracje.epirbizuteria.pl` (`apps/inspiracje`), snapshot Admin API bez cen, CTA → `https://epirbizuteria.pl/pages/kontakt`.
+- Link ze sklepu: snippet `themes/epir-online-store/snippets/archive-inspirations-link.liquid` + Navigation (po theme pull).
+- **Nie** Ads / GMC. Deploy Pages + DNS tylko po OK operatora.
+- Eksport: `node scripts/export-archive-inspirations.mjs`; CI: `.github/workflows/deploy-inspiracje-archive.yml`.
 
 ### Kierunek roboczy (feed / Ads)
 

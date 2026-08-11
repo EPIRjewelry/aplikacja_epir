@@ -2,7 +2,7 @@
 
 Ten katalog jest **wyłącznie** dla głównego sklepu Shopify na `epirbizuteria.pl` (motyw OS 2.0).
 
-Hydrogen (Zaręczyny, Kazka) na subdomenach Cloudflare Pages — patrz [`docs/EPIR_STOREFRONT_DOMAIN_STRATEGY.md`](../../docs/EPIR_STOREFRONT_DOMAIN_STRATEGY.md).
+Hydrogen (Zaręczyny, Kazka, Archiwum Inspiracji) na subdomenach Cloudflare Pages — patrz [`docs/EPIR_STOREFRONT_DOMAIN_STRATEGY.md`](../../docs/EPIR_STOREFRONT_DOMAIN_STRATEGY.md).
 
 Theme App Extension (czat Gemma) jest w `extensions/asystent-klienta` — deploy przez `shopify app deploy`, **nie** `theme push`.
 
@@ -59,7 +59,22 @@ Worker [`workers/dynamic-landing-liquid`](../../workers/dynamic-landing-liquid) 
 
 Selektywny push sekcji po zmianie. Bez tych atrybutów worker pass-through działa, ale HTML nie zmienia się widocznie.
 
+## Archiwum Inspiracji (link poza sklepem)
+
+Galeria sprzedanych wyrobów jest na **`https://inspiracje.epirbizuteria.pl`** (Hydrogen Pages), nie w kolekcji sklepu.
+
+1. Po `theme pull` podepnij snippet w footerze / menu:
+   ```liquid
+   {% render 'archive-inspirations-link' %}
+   ```
+   Plik: [`snippets/archive-inspirations-link.liquid`](snippets/archive-inspirations-link.liquid)
+2. W **Online Store → Navigation** dodaj pozycję „Archiwum inspiracji” → `https://inspiracje.epirbizuteria.pl`.
+3. Ukryj kolekcję archiwum (jeśli istnieje) z menu głównego; produkty `tag:sprzedane` pozostają wykluczone z GMC.
+4. Selektywny push snippeta: `shopify theme push --only snippets/archive-inspirations-link.liquid`
+
+App Hydrogen: [`apps/inspiracje`](../../apps/inspiracje).
+
 ## Pliki w repo
 
 Po `theme pull` pojawią się m.in. `layout/`, `sections/`, `templates/`, `config/`.  
-`shopify.theme.toml` identyfikuje projekt dla CLI.
+`shopify.theme.toml` identyfikuje projekt dla CLI. Snippet `archive-inspirations-link.liquid` jest utrzymywany w repo nawet gdy pełny motyw nie jest zaciągnięty.

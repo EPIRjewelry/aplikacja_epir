@@ -1,6 +1,6 @@
 ---
-description: Hydrogen kazka/zareczyny — BFF, chat proxy, brand-specific UI tylko w apps
-globs: apps/kazka/**/*,apps/zareczyny/**/*
+description: Hydrogen kazka/zareczyny/inspiracje — BFF, chat proxy, brand-specific UI tylko w apps
+globs: apps/kazka/**/*,apps/zareczyny/**/*,apps/inspiracje/**/*
 alwaysApply: false
 ---
 

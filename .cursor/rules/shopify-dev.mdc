@@ -1,6 +1,6 @@
 ---
 description: Shopify plugin workflow (Liquid/Hydrogen) — thin pointer
-globs: "**/*.liquid, extensions/**/*, themes/**/*, apps/kazka/**/*, apps/zareczyny/**/*, shopify.app*.toml"
+globs: "**/*.liquid, extensions/**/*, themes/**/*, apps/kazka/**/*, apps/zareczyny/**/*, apps/inspiracje/**/*, shopify.app*.toml"
 alwaysApply: false
 ---
 
@@ -19,6 +19,7 @@ alwaysApply: false
 | Główny sklep + ADS marki | `epirbizuteria.pl` → Shopify (motyw w `themes/epir-online-store/`) |
 | Zaręczyny | `zareczyny.epirbizuteria.pl` → Pages (`apps/zareczyny`) |
 | Kazka | `kazka.epirbizuteria.pl` → Pages (`apps/kazka`) |
+| Archiwum Inspiracji | `inspiracje.epirbizuteria.pl` → Pages (`apps/inspiracje`) |
 | Czat TAE | `extensions/asystent-klienta` |
 
 **Zakaz:** workerów proxy na apex `epirbizuteria.pl`. Marka/Liquid: [`epir-brand-growth.mdc`](epir-brand-growth.mdc). Gemma runtime: nie ruszaj `workers/chat` MCP_ENDPOINT.
