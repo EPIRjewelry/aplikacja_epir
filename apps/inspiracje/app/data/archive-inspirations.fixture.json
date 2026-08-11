@@ -1,0 +1,73 @@
+{
+  "exportedAt": "2026-08-11T00:00:00.000Z",
+  "shop": "epir-art-silver-jewellery.myshopify.com",
+  "source": {
+    "type": "fixture",
+    "query": "local-smoke-only"
+  },
+  "count": 3,
+  "ctaUrl": "https://epirbizuteria.pl/pages/kontakt",
+  "ctaLabel": "Zaprojektuj swój model",
+  "items": [
+    {
+      "id": "gid://shopify/Product/fixture-1",
+      "handle": "fixture-lesny-pierscionek",
+      "title": "Pierścionek leśny (fixture)",
+      "status": "ARCHIVED",
+      "productType": "Pierścionek",
+      "vendor": "EPIR",
+      "tags": ["sprzedane", "fixture"],
+      "descriptionHtml": "<p>Lokalny fixture do smoke UI — zastąp eksportem Admin API (<code>tag:sprzedane</code>).</p>",
+      "publishedAt": null,
+      "updatedAt": "2026-08-11T00:00:00.000Z",
+      "featuredImage": {
+        "url": "https://cdn.shopify.com/s/files/1/0551/4566/0472/files/placeholder.png",
+        "altText": "Pierścionek leśny (fixture)",
+        "width": 800,
+        "height": 800
+      },
+      "images": [],
+      "metafields": {}
+    },
+    {
+      "id": "gid://shopify/Product/fixture-2",
+      "handle": "fixture-kolczyki-galazki",
+      "title": "Kolczyki gałązki (fixture)",
+      "status": "ARCHIVED",
+      "productType": "Kolczyki",
+      "vendor": "EPIR",
+      "tags": ["sprzedane", "fixture"],
+      "descriptionHtml": "<p>Drugi fixture galerii — bez ceny, z CTA do współtworzenia.</p>",
+      "publishedAt": null,
+      "updatedAt": "2026-08-10T00:00:00.000Z",
+      "featuredImage": {
+        "url": "https://cdn.shopify.com/s/files/1/0551/4566/0472/files/placeholder.png",
+        "altText": "Kolczyki gałązki (fixture)",
+        "width": 800,
+        "height": 800
+      },
+      "images": [],
+      "metafields": {}
+    },
+    {
+      "id": "gid://shopify/Product/fixture-3",
+      "handle": "fixture-wisior-zloto",
+      "title": "Wisior złoty (fixture)",
+      "status": "ARCHIVED",
+      "productType": "Wisior",
+      "vendor": "EPIR",
+      "tags": ["sprzedane", "fixture"],
+      "descriptionHtml": "<p>Trzeci fixture — strona szczegółu i okruszki nawigacji.</p>",
+      "publishedAt": null,
+      "updatedAt": "2026-08-09T00:00:00.000Z",
+      "featuredImage": {
+        "url": "https://cdn.shopify.com/s/files/1/0551/4566/0472/files/placeholder.png",
+        "altText": "Wisior złoty (fixture)",
+        "width": 800,
+        "height": 800
+      },
+      "images": [],
+      "metafields": {}
+    }
+  ]
+}

@@ -20,11 +20,16 @@ cp apps/inspiracje/.dev.vars.example apps/inspiracje/.dev.vars
 # opcjonalnie: wypełnij archiwum (wymaga SHOPIFY_ADMIN_TOKEN)
 node scripts/export-archive-inspirations.mjs
 
+# albo smoke UI na fixture (bez Admin API):
+# cp apps/inspiracje/app/data/archive-inspirations.fixture.json \
+#    apps/inspiracje/app/data/archive-inspirations.json
+
 cd apps/inspiracje
 npm run build
-npm run wrangler   # pages dev ./public --local
+npm run wrangler   # pages dev ./public --local  (domyślnie :8788 jeśli wolny port)
 ```
 
+**Smoke zweryfikowany (cloud):** `GET /` → 200, `GET /inspiracje/:handle` → 200, nieistniejący handle → 404; brak UI koszyka/cen.
 ## Eksport
 
 ```bash
