@@ -1,0 +1,12 @@
+{
+  "exportedAt": null,
+  "shop": "epir-art-silver-jewellery.myshopify.com",
+  "source": {
+    "type": "productQuery",
+    "query": "tag:sprzedane"
+  },
+  "count": 0,
+  "ctaUrl": "https://epirbizuteria.pl/pages/kontakt",
+  "ctaLabel": "Zaprojektuj swój model",
+  "items": []
+}
