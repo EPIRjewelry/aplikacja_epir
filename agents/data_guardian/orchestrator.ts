@@ -143,13 +143,13 @@ function parseOrchestratorConfig(): OrchestratorConfig {
     if (args[i] === '--cursor-target' && args[i + 1]) targetArg = args[++i];
   }
 
-  const rawProvider = (providerArg ?? process.env.EDOG_LLM_PROVIDER ?? 'cursor')
+  const rawProvider = (providerArg ?? process.env.EDOG_LLM_PROVIDER ?? 'off')
     .trim()
     .toLowerCase();
   const llmProvider: LlmProvider =
     rawProvider === 'openrouter' || rawProvider === 'off' ? rawProvider : 'cursor';
 
-  const rawTarget = (targetArg ?? process.env.EDOG_CURSOR_TARGET ?? 'cloud')
+  const rawTarget = (targetArg ?? process.env.EDOG_CURSOR_TARGET ?? 'local')
     .trim()
     .toLowerCase();
   const cursorTarget: CursorTarget = rawTarget === 'local' ? 'local' : 'cloud';

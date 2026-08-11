@@ -34,6 +34,7 @@ Shopify opisuje ścieżki URL (`/fr`, `/es`) w ramach **jednego** storefrontu Hy
 ## Google Ads i analityka
 
 - Kampanie na **główną markę** → final URL na `https://epirbizuteria.pl/...` (motyw; opcjonalnie UTM personalizacja przez HTMLRewriter).
+- **Dynamic landing (Ads Tor Apex):** final URL **`https://l.epirbizuteria.pl/?utm_campaign=…`** (Worker standalone; apex zostaje na Shopify). Mapowanie: `forest_premium` / `artisan_rings` / `artisan_new` / `artisan_gold` / `organic_art` → metaobiekty `campaign_landing`.
 - Kampanie na **Zaręczyny / Kazka** → final URL **bezpośrednio** na subdomenę Hydrogen (`https://zareczyny.epirbizuteria.pl/...`) — **bez** łańcucha redirectów w feedzie (Google Merchant / feed rules w Shopify Admin).
 - Cross-domain w GA4 / HAM: osobne hosty w jednym property lub rekonsyliacja w [`EPIR_HAM_ATTRIBUTION.md`](EPIR_HAM_ATTRIBUTION.md).
 

@@ -1203,24 +1203,27 @@ export async function clonePmaxAssetGroup(
   const campaignRn =
     campaign.resourceName ?? `customers/${customerId}/campaigns/${campaign.id}`;
   const newAgTempRn = `customers/${customerId}/assetGroups/-1`;
-  const finalUrls = sourceAg.finalUrls?.length
-    ? sourceAg.finalUrls
-    : ['https://l.epirbizuteria.pl/'];
-  const finalMobileUrls = sourceAg.finalMobileUrls?.length
-    ? sourceAg.finalMobileUrls
-    : finalUrls;
+  const finalUrls = (sourceAg.finalUrls ?? []).filter(
+    (u) => !/l\.epirbizuteria\.pl/i.test(u),
+  );
+  const finalMobileUrls = (sourceAg.finalMobileUrls ?? []).filter(
+    (u) => !/l\.epirbizuteria\.pl/i.test(u),
+  );
+  const agCreate: Record<string, unknown> = {
+    resourceName: newAgTempRn,
+    name: newName,
+    campaign: campaignRn,
+    status: 'ENABLED',
+  };
+  if (finalUrls.length) {
+    agCreate.finalUrls = finalUrls;
+    agCreate.finalMobileUrls = finalMobileUrls.length ? finalMobileUrls : finalUrls;
+  }
 
   const mutateOperations: unknown[] = [
     {
       assetGroupOperation: {
-        create: {
-          resourceName: newAgTempRn,
-          name: newName,
-          campaign: campaignRn,
-          finalUrls,
-          finalMobileUrls,
-          status: 'ENABLED',
-        },
+        create: agCreate,
       },
     },
     ...links.map((link) => ({
@@ -1350,6 +1353,14 @@ export function planSearchAdGroupSuffixes(
     const n = ag.name.toLowerCase();
     let key = 'organic_art';
     if (
+      n.includes('złot') ||
+      n.includes('zlot') ||
+      n.includes('gold') ||
+      n.includes('epir_zloto') ||
+      n.includes('epir zloto')
+    ) {
+      key = 'artisan_gold';
+    } else if (
       n.includes('pierścion') ||
       n.includes('pierscion') ||
       n.includes('ring') ||
@@ -1441,4 +1452,94 @@ export async function applySearchAdGroupUtmSuffixes(
     mutateResults.push({ plan, mutate: mutated });
   }
   return { ok: true, dryRun: false, plans, mutateResults };
+}
+
+const LANDING_HOST_PATTERN = /l\.epirbizuteria\.pl/i;
+
+/**
+ * Stop PMax traffic to campaign landings: clear final_url_suffix and asset-group final_urls
+ * pointing at l.epirbizuteria.pl so Shopping uses GMC product URLs only.
+ */
+export async function disablePmaxLandings(
+  env: AdsEnv,
+  opts?: { campaignName?: string; dryRun?: boolean },
+): Promise<Record<string, unknown>> {
+  const campaignName = opts?.campaignName ?? DEFAULT_PMAX_CAMPAIGN;
+  const dryRun = opts?.dryRun === true;
+  const escaped = campaignName.replace(/'/g, "\\'");
+
+  const agSearch = await adsSearch(
+    env,
+    `
+    SELECT
+      asset_group.id,
+      asset_group.name,
+      asset_group.resource_name,
+      asset_group.final_urls
+    FROM asset_group
+    WHERE campaign.name = '${escaped}'
+      AND asset_group.status != 'REMOVED'
+  `.trim(),
+  );
+  if (!agSearch.ok) return { ok: false, error: agSearch.error };
+
+  const assetGroups = agSearch.results.map((row) => {
+    const ag = row.assetGroup as {
+      id?: string;
+      name?: string;
+      resourceName?: string;
+      finalUrls?: string[];
+    };
+    return {
+      id: String(ag.id ?? ''),
+      name: String(ag.name ?? ''),
+      resourceName: String(ag.resourceName ?? ''),
+      finalUrls: ag.finalUrls ?? [],
+    };
+  });
+
+  const toClear = assetGroups.filter(
+    (ag) => ag.finalUrls.length > 0 && ag.finalUrls.some((u) => LANDING_HOST_PATTERN.test(u)),
+  );
+
+  const suffixResult = await setCampaignFinalUrlSuffix(env, {
+    campaignName,
+    finalUrlSuffix: '',
+    dryRun,
+  });
+
+  if (dryRun) {
+    return {
+      ok: true,
+      dryRun: true,
+      campaignName,
+      campaignSuffix: suffixResult,
+      assetGroupsToClear: toClear,
+    };
+  }
+
+  const mutateResults: unknown[] = [];
+  for (const ag of toClear) {
+    const mutated = await adsMutate(env, 'assetGroups:mutate', {
+      operations: [
+        {
+          update: {
+            resourceName: ag.resourceName,
+            finalUrls: [],
+          },
+          updateMask: 'finalUrls',
+        },
+      ],
+    });
+    mutateResults.push({ assetGroupId: ag.id, assetGroupName: ag.name, mutate: mutated });
+  }
+
+  return {
+    ok: true,
+    dryRun: false,
+    campaignName,
+    campaignSuffix: suffixResult,
+    clearedAssetGroups: toClear.map((a) => ({ id: a.id, name: a.name })),
+    mutateResults,
+  };
 }

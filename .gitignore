@@ -53,5 +53,6 @@ test-results/
 
 # Ads ops baseline / dry-run snapshots (lokalne)
 scripts/_tmp-ads-ops/
+workers/dynamic-landing-liquid/.preview-html/
 
 !.cursor/index.mdc

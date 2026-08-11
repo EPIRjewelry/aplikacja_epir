@@ -12,6 +12,7 @@ import {
   expandPmaxListingGroupsSingleMetal,
   FOREST_UTM_SUFFIX,
   clonePmaxAssetGroup,
+  disablePmaxLandings,
   parseMetalLabel,
   renamePmaxAssetGroup,
   setAssetGroupStatus,
@@ -77,7 +78,8 @@ async function handlePmaxOps(req: Request, env: Env): Promise<Response | null> {
     path === '/ops/customer-match-sync' ||
     path === '/ops/crm-lists-audit' ||
     path === '/ops/pmax-audience-signals-audit' ||
-    path === '/ops/pmax-audience-signals-apply';
+    path === '/ops/pmax-audience-signals-apply' ||
+    path === '/ops/pmax-landings-disable';
   if (!isOps) return null;
   const key = (env.MARKETING_OPS_PREVIEW_KEY ?? '').trim();
   if (!key) return new Response('Not Found', { status: 404 });
@@ -194,6 +196,16 @@ async function handlePmaxOps(req: Request, env: Env): Promise<Response | null> {
       await setCampaignFinalUrlSuffix(env, {
         campaignName: u.searchParams.get('campaign') ?? 'Epir_Forest-Dark',
         finalUrlSuffix: FOREST_UTM_SUFFIX,
+        dryRun,
+      }),
+    );
+  }
+
+  if (path === '/ops/pmax-landings-disable' && (req.method === 'POST' || req.method === 'GET')) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    return opsJson(
+      await disablePmaxLandings(env, {
+        campaignName: u.searchParams.get('campaign') ?? 'Epir_Forest-Dark',
         dryRun,
       }),
     );

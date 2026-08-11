@@ -1,0 +1,9 @@
+name = "epir-pmax-ops-once"
+main = "src/index.ts"
+compatibility_date = "2025-09-30"
+workers_dev = true
+
+[[services]]
+binding = "MARKETING"
+service = "epir-marketing-ingest"
+entrypoint = "MarketingIngestS2SRpc"

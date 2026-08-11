@@ -1,0 +1,5 @@
+{
+  "defaultSink": "r2",
+  "localCsvBackup": true,
+  "sheetsEnabled": false
+}

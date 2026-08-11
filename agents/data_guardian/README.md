@@ -6,10 +6,10 @@ Programistyczny orkiestrator audytu przepływu danych EPIR: **auto-naprawa** (`t
 
 | `EDOG_LLM_PROVIDER` | `EDOG_CURSOR_TARGET` | Wymaga |
 |---------------------|----------------------|--------|
-| `cursor` (domyślnie) | `cloud` (domyślnie) | `CURSOR_API_KEY` — subagent **dataFlowAuditor** w chmurze |
+| `off` (domyślnie) | `local` (domyślnie) | tylko rdzeń deterministyczny (bez LLM, bez Cursor API) |
 | `cursor` | `local` | `CURSOR_API_KEY` — subagent lokalnie + MCP |
+| `cursor` | `cloud` | `CURSOR_API_KEY` — subagent **dataFlowAuditor** w chmurze (opcjonalnie) |
 | `openrouter` | — | `OPENROUTER_API_KEY`, `EDOG_OPENROUTER_MODEL` |
-| `off` | — | tylko rdzeń (bez LLM) |
 
 **Gotcha Cloud Runtime:** `EDOG_CURSOR_TARGET=cloud` uruchamia agenta w podstawowym VM — **nie** uruchamia `tsc` ani stdio MCP w subagencie (`UnsupportedRunOperationError`). Orkiestrator v2 uruchamia **`tsc` i MCP zawsze lokalnie** w procesie `npm run audit`; chmura służy wyłącznie opcjonalnemu audytowi jakościowemu (async API).
 
@@ -56,7 +56,7 @@ Gdy `pending_pixel_events >= 1000` i pipeline skonfigurowany, orkiestrator wywo�
 ## Przykłady trybów
 
 ```powershell
-# Domyślnie: auto-naprawa + tsc/MCP lokalnie + Cursor cloud (data flow)
+# Domyślnie: auto-naprawa + tsc/MCP lokalnie (LLM off — bez Cursor Cloud API)
 npm run audit
 
 # Bez LLM (najszybszy smoke remediacji)

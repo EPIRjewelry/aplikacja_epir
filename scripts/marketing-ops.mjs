@@ -12,6 +12,7 @@
  *   node scripts/marketing-ops.mjs expand-metal --asset-group EPIR_Srebro --metal Srebro [--dry-run]
  *   node scripts/marketing-ops.mjs asset-group-status --asset-group Walentynki --status PAUSED [--dry-run]
  *   node scripts/marketing-ops.mjs forest-utm [--dry-run]
+ *   node scripts/marketing-ops.mjs landings-off [--campaign Epir_Forest-Dark] [--dry-run]
  *   node scripts/marketing-ops.mjs search-utm [--dry-run]
  *   node scripts/marketing-ops.mjs search-themes audit|apply --asset-group EPIR_Srebro [--dry-run]
  *   node scripts/marketing-ops.mjs search-terms [--days 14] [--campaign Epir_Forest-Dark]
@@ -62,7 +63,7 @@ function usage() {
   console.error(`Użycie: node scripts/marketing-ops.mjs <komenda> [opcje]
 
 Komendy:
-  audit | expand | expand-metal | asset-group-status | asset-group-rename | asset-group-clone | forest-utm | search-utm | preview
+  audit | expand | expand-metal | asset-group-status | asset-group-rename | asset-group-clone | forest-utm | landings-off | search-utm | preview
   search-themes audit|apply
   search-terms
   search-negatives audit|apply
@@ -302,6 +303,7 @@ if (cmd === 'customer-match') {
     audit: `/ops/pmax-listing-audit?campaign=${encodeURIComponent(campaign)}`,
     expand: `/ops/pmax-listing-expand?dryRun=${dryRun ? '1' : '0'}&campaign=${encodeURIComponent(campaign)}`,
     'forest-utm': `/ops/pmax-forest-utm?dryRun=${dryRun ? '1' : '0'}&campaign=${encodeURIComponent(campaign)}`,
+    'landings-off': `/ops/pmax-landings-disable?dryRun=${dryRun ? '1' : '0'}&campaign=${encodeURIComponent(campaign)}`,
     'search-utm': `/ops/search-utm-suffixes?dryRun=${dryRun ? '1' : '0'}`,
     preview: `/ops/marketing-preview${date ? `?date=${encodeURIComponent(date)}` : ''}`,
   };
