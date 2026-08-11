@@ -9,9 +9,29 @@ import {
   applySearchAdGroupUtmSuffixes,
   auditPmaxListingGroups,
   expandPmaxListingGroups,
+  expandPmaxListingGroupsSingleMetal,
   FOREST_UTM_SUFFIX,
+  clonePmaxAssetGroup,
+  disablePmaxLandings,
+  parseMetalLabel,
+  renamePmaxAssetGroup,
+  setAssetGroupStatus,
   setCampaignFinalUrlSuffix,
 } from './pmax-listing';
+import {
+  applyPmaxSearchThemes,
+  auditPmaxSearchThemes,
+} from './pmax-search-themes';
+import { auditSearchTerms } from './ads-search-terms-audit';
+import { uploadCustomerMatchList, auditCrmUserLists } from './customer-match';
+import { syncCustomerMatch, auditPmaxAudienceSignals } from './customer-match-sync';
+import {
+  applyPmaxAudienceSignals,
+} from './pmax-audience-signals';
+import {
+  applySearchNegatives,
+  auditSearchNegatives,
+} from './search-negatives';
 
 export { MarketingAnalystAgent } from './marketing-analyst-agent';
 export { MarketingIngestS2SRpc } from './rpc';
@@ -45,13 +65,22 @@ function opsJson(body: unknown, status = 200): Response {
   });
 }
 
-/** Bearer-gated PMax / Search UTM ops (reuse MARKETING_OPS_PREVIEW_KEY). */
+/** Bearer-gated PMax / Search UTM / Search Themes ops (reuse MARKETING_OPS_PREVIEW_KEY). */
 async function handlePmaxOps(req: Request, env: Env): Promise<Response | null> {
   const u = new URL(req.url);
   const path = u.pathname;
-  if (!path.startsWith('/ops/pmax-') && path !== '/ops/search-utm-suffixes') {
-    return null;
-  }
+  const isOps =
+    path.startsWith('/ops/pmax-') ||
+    path === '/ops/search-utm-suffixes' ||
+    path === '/ops/search-terms-audit' ||
+    path.startsWith('/ops/search-negatives') ||
+    path === '/ops/customer-match-upload' ||
+    path === '/ops/customer-match-sync' ||
+    path === '/ops/crm-lists-audit' ||
+    path === '/ops/pmax-audience-signals-audit' ||
+    path === '/ops/pmax-audience-signals-apply' ||
+    path === '/ops/pmax-landings-disable';
+  if (!isOps) return null;
   const key = (env.MARKETING_OPS_PREVIEW_KEY ?? '').trim();
   if (!key) return new Response('Not Found', { status: 404 });
   if (!verifyMarketingOpsBearer(req, env)) return opsUnauthorized();
@@ -73,6 +102,94 @@ async function handlePmaxOps(req: Request, env: Env): Promise<Response | null> {
     );
   }
 
+  if (
+    path === '/ops/pmax-listing-expand-metal' &&
+    (req.method === 'POST' || req.method === 'GET')
+  ) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    const assetGroup = u.searchParams.get('assetGroup') ?? '';
+    const metalRaw = u.searchParams.get('metal') ?? '';
+    const metal = parseMetalLabel(metalRaw);
+    if (!assetGroup.trim()) {
+      return opsJson({ ok: false, error: 'assetGroup required' }, 400);
+    }
+    if (!metal) {
+      return opsJson({ ok: false, error: 'metal required (Srebro|Zloto)' }, 400);
+    }
+    return opsJson(
+      await expandPmaxListingGroupsSingleMetal(env, {
+        campaignName: u.searchParams.get('campaign') ?? undefined,
+        assetGroupName: assetGroup,
+        metal,
+        dryRun,
+        excludeBrand: u.searchParams.get('excludeBrand') ?? undefined,
+      }),
+    );
+  }
+
+  if (
+    path === '/ops/pmax-asset-group-status' &&
+    (req.method === 'POST' || req.method === 'GET')
+  ) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    const assetGroup = u.searchParams.get('assetGroup') ?? '';
+    const statusRaw = (u.searchParams.get('status') ?? '').toUpperCase();
+    if (!assetGroup.trim()) {
+      return opsJson({ ok: false, error: 'assetGroup required' }, 400);
+    }
+    if (statusRaw !== 'ENABLED' && statusRaw !== 'PAUSED') {
+      return opsJson({ ok: false, error: 'status required (ENABLED|PAUSED)' }, 400);
+    }
+    return opsJson(
+      await setAssetGroupStatus(env, {
+        campaignName: u.searchParams.get('campaign') ?? undefined,
+        assetGroupName: assetGroup,
+        status: statusRaw,
+        dryRun,
+      }),
+    );
+  }
+
+  if (
+    path === '/ops/pmax-asset-group-rename' &&
+    (req.method === 'POST' || req.method === 'GET')
+  ) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    const assetGroup = u.searchParams.get('assetGroup') ?? '';
+    const newName = u.searchParams.get('newName') ?? '';
+    if (!assetGroup.trim() || !newName.trim()) {
+      return opsJson({ ok: false, error: 'assetGroup and newName required' }, 400);
+    }
+    return opsJson(
+      await renamePmaxAssetGroup(env, {
+        campaignName: u.searchParams.get('campaign') ?? undefined,
+        assetGroupName: assetGroup,
+        newName,
+        dryRun,
+      }),
+    );
+  }
+
+  if (
+    path === '/ops/pmax-asset-group-clone' &&
+    (req.method === 'POST' || req.method === 'GET')
+  ) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    const source = u.searchParams.get('source') ?? '';
+    const newName = u.searchParams.get('newName') ?? '';
+    if (!source.trim() || !newName.trim()) {
+      return opsJson({ ok: false, error: 'source and newName required' }, 400);
+    }
+    return opsJson(
+      await clonePmaxAssetGroup(env, {
+        campaignName: u.searchParams.get('campaign') ?? undefined,
+        sourceAssetGroupName: source,
+        newAssetGroupName: newName,
+        dryRun,
+      }),
+    );
+  }
+
   if (path === '/ops/pmax-forest-utm' && (req.method === 'POST' || req.method === 'GET')) {
     const dryRun = u.searchParams.get('dryRun') !== '0';
     return opsJson(
@@ -84,9 +201,145 @@ async function handlePmaxOps(req: Request, env: Env): Promise<Response | null> {
     );
   }
 
+  if (path === '/ops/pmax-landings-disable' && (req.method === 'POST' || req.method === 'GET')) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    return opsJson(
+      await disablePmaxLandings(env, {
+        campaignName: u.searchParams.get('campaign') ?? 'Epir_Forest-Dark',
+        dryRun,
+      }),
+    );
+  }
+
   if (path === '/ops/search-utm-suffixes' && (req.method === 'POST' || req.method === 'GET')) {
     const dryRun = u.searchParams.get('dryRun') !== '0';
     return opsJson(await applySearchAdGroupUtmSuffixes(env, { dryRun }));
+  }
+
+  if (path === '/ops/pmax-search-themes-audit' && req.method === 'GET') {
+    const campaignName = u.searchParams.get('campaign') ?? undefined;
+    const assetGroupName = u.searchParams.get('assetGroup') ?? undefined;
+    return opsJson(await auditPmaxSearchThemes(env, { campaignName, assetGroupName }));
+  }
+
+  if (
+    path === '/ops/pmax-search-themes-apply' &&
+    (req.method === 'POST' || req.method === 'GET')
+  ) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    const campaignName = u.searchParams.get('campaign') ?? undefined;
+    const assetGroupName = u.searchParams.get('assetGroup') ?? undefined;
+    return opsJson(
+      await applyPmaxSearchThemes(env, { campaignName, assetGroupName, dryRun }),
+    );
+  }
+
+  if (path === '/ops/search-terms-audit' && req.method === 'GET') {
+    const days = Number.parseInt(u.searchParams.get('days') ?? '14', 10);
+    const campaign = u.searchParams.get('campaign') ?? undefined;
+    const limit = Number.parseInt(u.searchParams.get('limit') ?? '200', 10);
+    return opsJson(
+      await auditSearchTerms(env, {
+        days: Number.isFinite(days) ? days : 14,
+        campaignNameContains: campaign,
+        limit: Number.isFinite(limit) ? limit : 200,
+      }),
+    );
+  }
+
+  if (path === '/ops/search-negatives-audit' && req.method === 'GET') {
+    const campaignFilter = u.searchParams.get('campaignFilter') ?? undefined;
+    return opsJson(await auditSearchNegatives(env, { campaignFilter }));
+  }
+
+  if (
+    path === '/ops/search-negatives-apply' &&
+    (req.method === 'POST' || req.method === 'GET')
+  ) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    const campaignFilter = u.searchParams.get('campaignFilter') ?? undefined;
+    return opsJson(await applySearchNegatives(env, { campaignFilter, dryRun }));
+  }
+
+  if (path === '/ops/customer-match-upload' && req.method === 'POST') {
+    let body: {
+      listName?: string;
+      description?: string;
+      hashedEmails?: string[];
+      dryRun?: boolean;
+    };
+    try {
+      body = (await req.json()) as typeof body;
+    } catch {
+      return opsJson({ error: 'invalid JSON body' }, 400);
+    }
+    const listName = (body.listName ?? '').trim();
+    const hashedEmails = Array.isArray(body.hashedEmails) ? body.hashedEmails : [];
+    if (!listName || hashedEmails.length === 0) {
+      return opsJson({ error: 'listName and hashedEmails required' }, 400);
+    }
+    const dryRun = body.dryRun !== false;
+    return opsJson(
+      await uploadCustomerMatchList(env, {
+        listName,
+        description: body.description,
+        hashedEmails,
+        dryRun,
+      }),
+    );
+  }
+
+  if (path === '/ops/crm-lists-audit' && req.method === 'GET') {
+    return opsJson(await auditCrmUserLists(env));
+  }
+
+  if (path === '/ops/customer-match-sync' && req.method === 'POST') {
+    let body: {
+      dryRun?: boolean;
+      segment?: string;
+      attachSignals?: boolean;
+      campaign?: string;
+    } = {};
+    try {
+      const text = await req.text();
+      if (text.trim()) body = JSON.parse(text) as typeof body;
+    } catch {
+      return opsJson({ error: 'invalid JSON body' }, 400);
+    }
+    const dryRun = body.dryRun !== false;
+    return opsJson(
+      await syncCustomerMatch(env, {
+        dryRun,
+        segment: body.segment,
+        attachSignals: body.attachSignals,
+        campaignName: body.campaign ?? u.searchParams.get('campaign') ?? undefined,
+      }),
+    );
+  }
+
+  if (path === '/ops/pmax-audience-signals-audit' && req.method === 'GET') {
+    const assetGroupName = u.searchParams.get('assetGroup') ?? undefined;
+    return opsJson(
+      await auditPmaxAudienceSignals(env, {
+        campaignName: u.searchParams.get('campaign') ?? undefined,
+        assetGroupName,
+      }),
+    );
+  }
+
+  if (
+    path === '/ops/pmax-audience-signals-apply' &&
+    (req.method === 'POST' || req.method === 'GET')
+  ) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    const assetGroupName = u.searchParams.get('assetGroup') ?? undefined;
+    return opsJson(
+      await applyPmaxAudienceSignals(env, {
+        campaignName: u.searchParams.get('campaign') ?? undefined,
+        assetGroupName,
+        dryRun,
+      }),
+    );
   }
 
   return new Response('Not Found', { status: 404 });

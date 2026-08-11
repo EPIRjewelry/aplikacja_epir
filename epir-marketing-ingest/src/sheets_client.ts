@@ -1,3 +1,7 @@
+/**
+ * LEGACY: Google Sheets API client — wyłączony domyślnie (config/output.json).
+ * Docelowy sink: R2 → GMC Scheduled fetch. Re-enable: sheets_sink.legacy.ts + --sheets
+ */
 import { readFileSync } from 'node:fs';
 import { GoogleAuth } from 'google-auth-library';
 import type { GmcFeedRow, SheetsConfig } from './types.js';

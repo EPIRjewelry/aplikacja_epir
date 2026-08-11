@@ -19,6 +19,9 @@ export interface Env {
   GOOGLE_ADS_LOGIN_CUSTOMER_ID?: string;
   /** Bearer do GET /ops/marketing-preview oraz do `/ops/marketing-analyst/*` (Durable Object). Brak sekretu → 404. */
   MARKETING_OPS_PREVIEW_KEY?: string;
+  /** Shopify Admin API — pull klientów do Customer Match (ten sam token co w root .dev.vars). */
+  SHOPIFY_ADMIN_TOKEN?: string;
+  SHOP?: string;
   /** Durable Object — stanowy podgląd GA4+Ads (ten sam kod co preview, bez npm `agents`). */
   MarketingAnalystAgent: DurableObjectNamespace;
 }

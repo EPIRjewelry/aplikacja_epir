@@ -1,0 +1,61 @@
+{
+  "name": "inspiracje",
+  "private": true,
+  "sideEffects": false,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:css && remix build",
+    "build:css": "npx postcss-cli app/styles/tailwind.css -o app/styles/tailwind-build.css --env production",
+    "dev": "npm run build:css && concurrently -g -r npm:dev:wrangler npm:dev:css \"remix watch\"",
+    "dev:css": "npx postcss-cli app/styles/tailwind.css -o app/styles/tailwind-build.css -w",
+    "dev:wrangler": "cross-env NODE_ENV=development npm run wrangler",
+    "preview": "npm run build && shopify hydrogen preview",
+    "lint": "eslint --no-error-on-unmatched-pattern --ext .js,.ts,.jsx,.tsx .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "wrangler": "node ../../node_modules/wrangler/bin/wrangler.js pages dev ./public --local",
+    "deploy": "npm run build && node ../../node_modules/wrangler/bin/wrangler.js pages deploy public --project-name=inspiracje-hydrogen-pages --branch=main",
+    "export:archive": "node ../../scripts/export-archive-inspirations.mjs"
+  },
+  "prettier": "@shopify/prettier-config",
+  "dependencies": {
+    "@epir/ui": "*",
+    "@epir/utils": "*",
+    "@remix-run/cloudflare": "^2.15.0",
+    "@remix-run/cloudflare-pages": "^2.15.0",
+    "@remix-run/react": "^2.15.0",
+    "@shopify/cli": "3.91.0",
+    "@shopify/cli-hydrogen": "^5.0.1",
+    "@shopify/hydrogen": "^2024.10.0",
+    "clsx": "^1.2.1",
+    "cross-env": "^7.0.3",
+    "isbot": "^3.8.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tiny-invariant": "^1.2.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251117.0",
+    "@epir/config": "*",
+    "@remix-run/dev": "^2.15.0",
+    "@shopify/prettier-config": "^1.1.2",
+    "@types/eslint": "^8.4.10",
+    "@types/react": "^18.2.22",
+    "@types/react-dom": "^18.2.7",
+    "autoprefixer": "^10.4.14",
+    "concurrently": "^8.2.0",
+    "eslint": "^8.20.0",
+    "eslint-plugin-hydrogen": "0.12.2",
+    "postcss": "^8.4.24",
+    "postcss-cli": "^10.1.0",
+    "prettier": "^2.8.4",
+    "tailwindcss": "^3.3.2",
+    "typescript": "^5.4.0",
+    "vitest": "^2.1.0",
+    "wrangler": "4.46.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

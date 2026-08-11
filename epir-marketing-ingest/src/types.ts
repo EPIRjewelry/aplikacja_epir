@@ -90,6 +90,18 @@ export interface SheetsConfig {
   writeRange: string;
 }
 
+export interface R2Config {
+  bucket: string;
+  objectKey: string;
+  publicFeedUrl: string;
+}
+
+export interface OutputConfig {
+  defaultSink: 'r2' | 'csv' | 'sheets';
+  localCsvBackup: boolean;
+  sheetsEnabled: boolean;
+}
+
 export interface MappingConfig {
   gmcColumns: string[];
   shopifyToInternal: Record<string, string>;
@@ -143,7 +155,8 @@ export interface PipelineResult {
   durationMs: number;
   productsFetched: number;
   rowsWritten: number;
-  outputTarget: 'sheets' | 'csv' | 'none';
+  outputTarget: 'sheets' | 'csv' | 'r2' | 'r2+csv' | 'none';
   outputPath?: string;
+  publicFeedUrl?: string;
   errors: string[];
 }

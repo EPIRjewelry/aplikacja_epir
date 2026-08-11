@@ -1,0 +1,20 @@
+{%- comment -%}
+  Archiwum Inspiracji — link do subdomeny Hydrogen (poza katalogiem sklepu / GMC).
+
+  Użycie (po theme pull), np. w footerze lub menu:
+    {% render 'archive-inspirations-link' %}
+    {% render 'archive-inspirations-link', label: 'Archiwum inspiracji', class: 'footer__link' %}
+
+  Operator: dodaj też pozycję w Online Store → Navigation wskazującą na
+  https://inspiracje.epirbizuteria.pl — i usuń / ukryj kolekcję archiwum
+  z menu głównego sklepu (produkty tag:sprzedane nie powinny być w nawigacji sprzedaży).
+{%- endcomment -%}
+{%- assign archive_url = 'https://inspiracje.epirbizuteria.pl' -%}
+{%- assign archive_label = label | default: 'Archiwum inspiracji' -%}
+<a
+  href="{{ archive_url }}"
+  class="{{ class }}"
+  rel="noopener"
+>
+  {{ archive_label }}
+</a>

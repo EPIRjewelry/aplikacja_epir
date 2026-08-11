@@ -1,10 +1,17 @@
 /**
  * PMax listing groups audit + expand for Tor Apex (Epir_Forest-Dark).
- * Target tree per asset group:
+ *
+ * Dual-metal tree (legacy expand):
  *   ROOT SUBDIVISION (brand)
  *     → UNIT_EXCLUDED brand Kazka
  *     → SUBDIVISION other brands → custom_label_2:
  *         UNIT_INCLUDED Srebro | UNIT_INCLUDED Zloto | UNIT_EXCLUDED rest
+ *
+ * Single-metal tree (preferred per asset group):
+ *   ROOT SUBDIVISION (brand)
+ *     → UNIT_EXCLUDED brand Kazka
+ *     → SUBDIVISION other brands → custom_label_2:
+ *         UNIT_INCLUDED <Srebro|Zloto> | UNIT_EXCLUDED rest
  */
 import type { AdsEnv } from './ads';
 import { adsCustomerId, adsMutate, adsSearch, type GaqlRow } from './ads-api';
@@ -16,6 +23,19 @@ export const SILVER_LABEL = 'Srebro';
 export const GOLD_LABEL = 'Zloto';
 export const FOREST_UTM_SUFFIX =
   'utm_source=google&utm_medium=cpc&utm_campaign=forest_premium';
+
+export type MetalLabel = typeof SILVER_LABEL | typeof GOLD_LABEL;
+
+export function parseMetalLabel(raw: string | null | undefined): MetalLabel | null {
+  const n = String(raw ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '');
+  if (n === 'srebro') return SILVER_LABEL;
+  if (n === 'zloto') return GOLD_LABEL;
+  return null;
+}
 
 export type ListingFilterNode = {
   resourceName: string;
@@ -40,6 +60,7 @@ export type PmaxListingAudit = {
   assetGroups: Array<{
     id: string;
     name: string;
+    status?: string | null;
     filters: ListingFilterNode[];
     includedCount: number;
     excludedCount: number;
@@ -114,8 +135,12 @@ function interpret(totals: PmaxListingAudit['totals'], filters: ListingFilterNod
       f.type.includes('EXCLUDED') &&
       (f.productBrand ?? '').toLowerCase() === 'kazka',
   );
+  if (metalIncludes.length === 1 && kazkaExclude) {
+    const label = metalIncludes[0]?.productCustomAttribute ?? '?';
+    return `Kontrakt single-metal: EXCLUDE Kazka + INCLUDE custom_label_2 ${label}.`;
+  }
   if (metalIncludes.length >= 2 && kazkaExclude) {
-    return `Docelowy kontrakt: EXCLUDE Kazka + INCLUDE custom_label_2 ${SILVER_LABEL}/${GOLD_LABEL} (${metalIncludes.length} węzłów metalu).`;
+    return `Kontrakt dual-metal (legacy): EXCLUDE Kazka + INCLUDE custom_label_2 ${SILVER_LABEL}/${GOLD_LABEL} (${metalIncludes.length} węzłów metalu).`;
   }
   const itemIncludes = filters.filter(
     (f) => f.type.includes('INCLUDED') && f.productItemId,
@@ -230,6 +255,79 @@ export function buildMetalListingCreateOps(
   ];
 }
 
+/** Build create ops for single-metal EPIR tree (temporary resource names). */
+export function buildSingleMetalListingCreateOps(
+  customerId: string,
+  assetGroupId: string,
+  metal: MetalLabel,
+  excludeBrand = EXCLUDE_BRAND,
+): unknown[] {
+  const assetGroupResource = `customers/${customerId}/assetGroups/${assetGroupId}`;
+  const filterRn = (tempId: number) =>
+    `customers/${customerId}/assetGroupListingGroupFilters/${assetGroupId}~${tempId}`;
+
+  const rootTemp = filterRn(-1);
+  const excludeKazkaTemp = filterRn(-2);
+  const metalSplitTemp = filterRn(-3);
+  const includeMetalTemp = filterRn(-4);
+  const restTemp = filterRn(-5);
+
+  return [
+    {
+      create: {
+        resourceName: rootTemp,
+        assetGroup: assetGroupResource,
+        type: 'SUBDIVISION',
+        listingSource: 'SHOPPING',
+      },
+    },
+    {
+      create: {
+        resourceName: excludeKazkaTemp,
+        assetGroup: assetGroupResource,
+        type: 'UNIT_EXCLUDED',
+        listingSource: 'SHOPPING',
+        parentListingGroupFilter: rootTemp,
+        caseValue: { productBrand: { value: excludeBrand } },
+      },
+    },
+    {
+      create: {
+        resourceName: metalSplitTemp,
+        assetGroup: assetGroupResource,
+        type: 'SUBDIVISION',
+        listingSource: 'SHOPPING',
+        parentListingGroupFilter: rootTemp,
+        caseValue: { productBrand: {} },
+      },
+    },
+    {
+      create: {
+        resourceName: includeMetalTemp,
+        assetGroup: assetGroupResource,
+        type: 'UNIT_INCLUDED',
+        listingSource: 'SHOPPING',
+        parentListingGroupFilter: metalSplitTemp,
+        caseValue: {
+          productCustomAttribute: { index: METAL_LABEL_INDEX, value: metal },
+        },
+      },
+    },
+    {
+      create: {
+        resourceName: restTemp,
+        assetGroup: assetGroupResource,
+        type: 'UNIT_EXCLUDED',
+        listingSource: 'SHOPPING',
+        parentListingGroupFilter: metalSplitTemp,
+        caseValue: {
+          productCustomAttribute: { index: METAL_LABEL_INDEX },
+        },
+      },
+    },
+  ];
+}
+
 /**
  * Create EPIR metal listing tree in one GoogleAdsService.Mutate call
  * (SUBDIVISION requires everything-else child in the same request).
@@ -322,6 +420,89 @@ async function createMetalListingTree(
   return { ok: true, created };
 }
 
+async function createSingleMetalListingTree(
+  env: AdsEnv,
+  customerId: string,
+  assetGroupId: string,
+  metal: MetalLabel,
+  excludeBrand: string,
+): Promise<{ ok: true; created: string[] } | { ok: false; error: string; created: string[] }> {
+  const assetGroupResource = `customers/${customerId}/assetGroups/${assetGroupId}`;
+  const filterRn = (tempId: number) =>
+    `customers/${customerId}/assetGroupListingGroupFilters/${assetGroupId}~${tempId}`;
+
+  const rootTemp = filterRn(-1);
+  const excludeKazkaTemp = filterRn(-2);
+  const metalSplitTemp = filterRn(-3);
+  const includeMetalTemp = filterRn(-4);
+  const restTemp = filterRn(-5);
+
+  const creates = [
+    {
+      resourceName: rootTemp,
+      assetGroup: assetGroupResource,
+      type: 'SUBDIVISION',
+      listingSource: 'SHOPPING',
+    },
+    {
+      resourceName: excludeKazkaTemp,
+      assetGroup: assetGroupResource,
+      type: 'UNIT_EXCLUDED',
+      listingSource: 'SHOPPING',
+      parentListingGroupFilter: rootTemp,
+      caseValue: { productBrand: { value: excludeBrand } },
+    },
+    {
+      resourceName: metalSplitTemp,
+      assetGroup: assetGroupResource,
+      type: 'SUBDIVISION',
+      listingSource: 'SHOPPING',
+      parentListingGroupFilter: rootTemp,
+      caseValue: { productBrand: {} },
+    },
+    {
+      resourceName: includeMetalTemp,
+      assetGroup: assetGroupResource,
+      type: 'UNIT_INCLUDED',
+      listingSource: 'SHOPPING',
+      parentListingGroupFilter: metalSplitTemp,
+      caseValue: {
+        productCustomAttribute: { index: METAL_LABEL_INDEX, value: metal },
+      },
+    },
+    {
+      resourceName: restTemp,
+      assetGroup: assetGroupResource,
+      type: 'UNIT_EXCLUDED',
+      listingSource: 'SHOPPING',
+      parentListingGroupFilter: metalSplitTemp,
+      caseValue: {
+        productCustomAttribute: { index: METAL_LABEL_INDEX },
+      },
+    },
+  ];
+
+  const mutateOperations = creates.map((create) => ({
+    assetGroupListingGroupFilterOperation: { create },
+  }));
+
+  const res = await adsMutate(env, 'googleAds:mutate', { mutateOperations });
+  if (!res.ok) return { ok: false, error: res.error, created: [] };
+
+  const results = (
+    res.data as {
+      mutateOperationResponses?: Array<{
+        assetGroupListingGroupFilterResult?: { resourceName?: string };
+      }>;
+    }
+  )?.mutateOperationResponses;
+  const created = (results ?? [])
+    .map((r) => r.assetGroupListingGroupFilterResult?.resourceName)
+    .filter((rn): rn is string => Boolean(rn));
+
+  return { ok: true, created };
+}
+
 export async function auditPmaxListingGroups(
   env: AdsEnv,
   campaignName = DEFAULT_PMAX_CAMPAIGN,
@@ -353,7 +534,31 @@ export async function auditPmaxListingGroups(
   const search = await adsSearch(env, query);
   if (!search.ok) return { error: search.error };
 
-  const filters = search.results.map(parseFilterRow);
+  const filtersAll = search.results.map(parseFilterRow);
+
+  // Drop orphan filters belonging to REMOVED asset groups.
+  const agStatusSearch = await adsSearch(
+    env,
+    `
+    SELECT asset_group.id, asset_group.name, asset_group.status
+    FROM asset_group
+    WHERE campaign.name = '${escaped}'
+    LIMIT 50
+  `.trim(),
+  );
+  const removedIds = new Set<string>();
+  const statusById = new Map<string, string>();
+  if (agStatusSearch.ok) {
+    for (const row of agStatusSearch.results) {
+      const ag = row.assetGroup as { id?: string; status?: string };
+      const id = String(ag.id ?? '');
+      const status = String(ag.status ?? '');
+      if (id) statusById.set(id, status);
+      if (id && status === 'REMOVED') removedIds.add(id);
+    }
+  }
+  const filters = filtersAll.filter((f) => !removedIds.has(f.assetGroupId));
+
   const byAg = new Map<string, ListingFilterNode[]>();
   for (const f of filters) {
     const key = f.assetGroupId || 'unknown';
@@ -369,6 +574,7 @@ export async function auditPmaxListingGroups(
     return {
       id,
       name: list[0]?.assetGroupName ?? '',
+      status: statusById.get(id) ?? null,
       filters: list,
       includedCount,
       excludedCount,
@@ -516,6 +722,562 @@ export async function expandPmaxListingGroups(
   };
 }
 
+/**
+ * Replace listing group tree for ONE asset group with single-metal INCLUDE.
+ * Prefer this over dual-metal expand when running EPIR_Srebro / EPIR_Zloto split.
+ */
+export async function expandPmaxListingGroupsSingleMetal(
+  env: AdsEnv,
+  opts: {
+    campaignName?: string;
+    assetGroupName: string;
+    metal: MetalLabel | string;
+    dryRun?: boolean;
+    excludeBrand?: string;
+  },
+): Promise<Record<string, unknown>> {
+  const campaignName = opts.campaignName ?? DEFAULT_PMAX_CAMPAIGN;
+  const dryRun = opts.dryRun === true;
+  const excludeBrand = opts.excludeBrand ?? EXCLUDE_BRAND;
+  const metal = parseMetalLabel(opts.metal);
+  if (!metal) {
+    return {
+      ok: false,
+      error: `invalid metal "${opts.metal}" — expected Srebro or Zloto`,
+    };
+  }
+  const assetGroupName = opts.assetGroupName?.trim();
+  if (!assetGroupName) {
+    return { ok: false, error: 'assetGroupName required' };
+  }
+
+  const audit = await auditPmaxListingGroups(env, campaignName);
+  if ('error' in audit) return { ok: false, error: audit.error };
+
+  const customerId = adsCustomerId(env);
+  let target = audit.assetGroups.find(
+    (ag) => ag.name.toLowerCase() === assetGroupName.toLowerCase(),
+  );
+
+  if (!target) {
+    const escapedCampaign = campaignName.replace(/'/g, "\\'");
+    const escapedAg = assetGroupName.replace(/'/g, "\\'");
+    const agSearch = await adsSearch(
+      env,
+      `
+      SELECT asset_group.id, asset_group.name, asset_group.status, campaign.name
+      FROM asset_group
+      WHERE campaign.name = '${escapedCampaign}'
+        AND asset_group.name = '${escapedAg}'
+        AND asset_group.status != 'REMOVED'
+      LIMIT 5
+    `.trim(),
+    );
+    if (!agSearch.ok) return { ok: false, error: agSearch.error, audit };
+    const row = agSearch.results[0];
+    const ag = row?.assetGroup as { id?: string; name?: string } | undefined;
+    if (!ag?.id) {
+      return {
+        ok: false,
+        error: `asset group not found: ${assetGroupName}`,
+        available: audit.assetGroups.map((a) => a.name),
+      };
+    }
+    target = {
+      id: String(ag.id),
+      name: String(ag.name ?? assetGroupName),
+      filters: [],
+      includedCount: 0,
+      excludedCount: 0,
+      subdivisionCount: 0,
+    };
+  }
+
+  const byRn = new Map(target.filters.map((f) => [f.resourceName, f]));
+  const sortedRemove = [...target.filters].sort(
+    (a, b) => depthScore(b, byRn) - depthScore(a, byRn),
+  );
+  const removeOps = sortedRemove
+    .filter((f) => f.resourceName)
+    .map((f) => ({ remove: f.resourceName }));
+  const createOpsPreview = buildSingleMetalListingCreateOps(
+    customerId,
+    target.id,
+    metal,
+    excludeBrand,
+  );
+
+  if (dryRun) {
+    return {
+      ok: true,
+      dryRun: true,
+      campaignName,
+      assetGroupId: target.id,
+      assetGroupName: target.name,
+      metal,
+      excludeBrand,
+      removeCount: removeOps.length,
+      createCount: createOpsPreview.length,
+      operationsPreview: [...removeOps, ...createOpsPreview],
+      before: {
+        includedCount: target.includedCount,
+        excludedCount: target.excludedCount,
+        filters: target.filters.length,
+      },
+    };
+  }
+
+  let removeMutate: unknown = null;
+  if (removeOps.length) {
+    removeMutate = await adsMutate(env, 'assetGroupListingGroupFilters:mutate', {
+      operations: removeOps,
+    });
+    if (!(removeMutate as { ok?: boolean }).ok) {
+      return {
+        ok: false,
+        phase: 'remove',
+        assetGroupId: target.id,
+        assetGroupName: target.name,
+        metal,
+        mutate: removeMutate,
+      };
+    }
+  }
+
+  const createRes = await createSingleMetalListingTree(
+    env,
+    customerId,
+    target.id,
+    metal,
+    excludeBrand,
+  );
+  const after = await auditPmaxListingGroups(env, campaignName);
+  return {
+    ok: createRes.ok,
+    dryRun: false,
+    campaignName,
+    assetGroupId: target.id,
+    assetGroupName: target.name,
+    metal,
+    excludeBrand,
+    removeMutate,
+    mutate: createRes,
+    after,
+  };
+}
+
+export async function setAssetGroupStatus(
+  env: AdsEnv,
+  opts: {
+    campaignName?: string;
+    assetGroupName: string;
+    status: 'ENABLED' | 'PAUSED';
+    dryRun?: boolean;
+  },
+): Promise<Record<string, unknown>> {
+  const campaignName = opts.campaignName ?? DEFAULT_PMAX_CAMPAIGN;
+  const dryRun = opts.dryRun === true;
+  const assetGroupName = opts.assetGroupName?.trim();
+  if (!assetGroupName) return { ok: false, error: 'assetGroupName required' };
+  if (opts.status !== 'ENABLED' && opts.status !== 'PAUSED') {
+    return { ok: false, error: 'status must be ENABLED or PAUSED' };
+  }
+
+  const escapedCampaign = campaignName.replace(/'/g, "\\'");
+  // List all non-removed AGs in campaign, then match name (GAQL name= can miss edge cases).
+  const search = await adsSearch(
+    env,
+    `
+    SELECT asset_group.id, asset_group.name, asset_group.status, asset_group.resource_name, campaign.name
+    FROM asset_group
+    WHERE campaign.name = '${escapedCampaign}'
+    LIMIT 50
+  `.trim(),
+  );
+  if (!search.ok) return { ok: false, error: search.error };
+
+  const rows = search.results.map((row) => {
+    const ag = row.assetGroup as {
+      id?: string;
+      name?: string;
+      status?: string;
+      resourceName?: string;
+    };
+    return {
+      id: String(ag.id ?? ''),
+      name: String(ag.name ?? ''),
+      status: String(ag.status ?? ''),
+      resourceName: ag.resourceName,
+    };
+  });
+
+  let match = rows.find((r) => r.name.toLowerCase() === assetGroupName.toLowerCase());
+
+  // Orphan / REMOVED AG may still appear only via listing filters (not in asset_group SELECT).
+  if (!match) {
+    const escapedAg = assetGroupName.replace(/'/g, "\\'");
+    const listingLookup = await adsSearch(
+      env,
+      `
+      SELECT asset_group.id, asset_group.name
+      FROM asset_group_listing_group_filter
+      WHERE campaign.name = '${escapedCampaign}'
+        AND asset_group.name = '${escapedAg}'
+      LIMIT 1
+    `.trim(),
+    );
+    if (listingLookup.ok && listingLookup.results[0]) {
+      const ag = listingLookup.results[0].assetGroup as { id?: string; name?: string };
+      if (ag?.id) {
+        match = {
+          id: String(ag.id),
+          name: String(ag.name ?? assetGroupName),
+          status: 'REMOVED',
+          resourceName: undefined,
+        };
+      }
+    }
+  }
+
+  if (!match?.id) {
+    return {
+      ok: false,
+      error: `asset group not found: ${assetGroupName}`,
+      available: rows.map((r) => ({ id: r.id, name: r.name, status: r.status })),
+    };
+  }
+
+  if (match.status === 'REMOVED') {
+    return {
+      ok: true,
+      dryRun,
+      campaignName,
+      assetGroupId: match.id,
+      assetGroupName: match.name,
+      currentStatus: 'REMOVED',
+      nextStatus: opts.status,
+      note: 'Asset group already REMOVED — traktuj jako nieaktywną (pause zbędny).',
+      available: rows.map((r) => ({ id: r.id, name: r.name, status: r.status })),
+    };
+  }
+
+  const customerId = adsCustomerId(env);
+  const resourceName =
+    match.resourceName ?? `customers/${customerId}/assetGroups/${match.id}`;
+
+  if (dryRun) {
+    return {
+      ok: true,
+      dryRun: true,
+      campaignName,
+      assetGroupId: match.id,
+      assetGroupName: match.name,
+      currentStatus: match.status || null,
+      nextStatus: opts.status,
+      available: rows.map((r) => ({ id: r.id, name: r.name, status: r.status })),
+    };
+  }
+
+  const mutated = await adsMutate(env, 'assetGroups:mutate', {
+    operations: [
+      {
+        update: {
+          resourceName,
+          status: opts.status,
+        },
+        updateMask: 'status',
+      },
+    ],
+  });
+  return {
+    ok: mutated.ok,
+    dryRun: false,
+    campaignName,
+    assetGroupId: match.id,
+    assetGroupName: match.name,
+    previousStatus: match.status || null,
+    nextStatus: opts.status,
+    mutate: mutated,
+  };
+}
+
+export async function renamePmaxAssetGroup(
+  env: AdsEnv,
+  opts: {
+    campaignName?: string;
+    assetGroupName: string;
+    newName: string;
+    dryRun?: boolean;
+  },
+): Promise<Record<string, unknown>> {
+  const campaignName = opts.campaignName ?? DEFAULT_PMAX_CAMPAIGN;
+  const dryRun = opts.dryRun === true;
+  const assetGroupName = opts.assetGroupName?.trim();
+  const newName = opts.newName?.trim();
+  if (!assetGroupName || !newName) {
+    return { ok: false, error: 'assetGroupName and newName required' };
+  }
+
+  const escapedCampaign = campaignName.replace(/'/g, "\\'");
+  const search = await adsSearch(
+    env,
+    `
+    SELECT asset_group.id, asset_group.name, asset_group.resource_name, campaign.name
+    FROM asset_group
+    WHERE campaign.name = '${escapedCampaign}'
+      AND asset_group.status != 'REMOVED'
+    LIMIT 50
+  `.trim(),
+  );
+  if (!search.ok) return { ok: false, error: search.error };
+
+  const match = search.results
+    .map((row) => {
+      const ag = row.assetGroup as { id?: string; name?: string; resourceName?: string };
+      return {
+        id: String(ag.id ?? ''),
+        name: String(ag.name ?? ''),
+        resourceName: ag.resourceName,
+      };
+    })
+    .find((r) => r.name.toLowerCase() === assetGroupName.toLowerCase());
+
+  if (!match?.id) {
+    return { ok: false, error: `asset group not found: ${assetGroupName}` };
+  }
+
+  const customerId = adsCustomerId(env);
+  const resourceName =
+    match.resourceName ?? `customers/${customerId}/assetGroups/${match.id}`;
+
+  if (dryRun) {
+    return {
+      ok: true,
+      dryRun: true,
+      campaignName,
+      assetGroupId: match.id,
+      previousName: match.name,
+      nextName: newName,
+    };
+  }
+
+  const mutated = await adsMutate(env, 'assetGroups:mutate', {
+    operations: [
+      {
+        update: {
+          resourceName,
+          name: newName,
+        },
+        updateMask: 'name',
+      },
+    ],
+  });
+  return {
+    ok: mutated.ok,
+    dryRun: false,
+    campaignName,
+    assetGroupId: match.id,
+    previousName: match.name,
+    nextName: newName,
+    mutate: mutated,
+  };
+}
+
+/**
+ * Clone PMax asset group creatives from source → new AG (same campaign).
+ * Links existing Asset resources; does not duplicate binary assets.
+ */
+export async function clonePmaxAssetGroup(
+  env: AdsEnv,
+  opts: {
+    campaignName?: string;
+    sourceAssetGroupName: string;
+    newAssetGroupName: string;
+    dryRun?: boolean;
+  },
+): Promise<Record<string, unknown>> {
+  const campaignName = opts.campaignName ?? DEFAULT_PMAX_CAMPAIGN;
+  const dryRun = opts.dryRun === true;
+  const sourceName = opts.sourceAssetGroupName?.trim();
+  const newName = opts.newAssetGroupName?.trim();
+  if (!sourceName || !newName) {
+    return { ok: false, error: 'sourceAssetGroupName and newAssetGroupName required' };
+  }
+
+  const escapedCampaign = campaignName.replace(/'/g, "\\'");
+  const escapedSource = sourceName.replace(/'/g, "\\'");
+
+  const existing = await adsSearch(
+    env,
+    `
+    SELECT asset_group.id, asset_group.name
+    FROM asset_group
+    WHERE campaign.name = '${escapedCampaign}'
+      AND asset_group.name = '${newName.replace(/'/g, "\\'")}'
+      AND asset_group.status != 'REMOVED'
+    LIMIT 1
+  `.trim(),
+  );
+  if (existing.ok && existing.results.length) {
+    const ag = existing.results[0].assetGroup as { id?: string; name?: string };
+    return {
+      ok: true,
+      alreadyExists: true,
+      assetGroupId: String(ag.id ?? ''),
+      assetGroupName: String(ag.name ?? newName),
+    };
+  }
+
+  const sourceSearch = await adsSearch(
+    env,
+    `
+    SELECT
+      asset_group.id,
+      asset_group.name,
+      asset_group.resource_name,
+      asset_group.final_urls,
+      asset_group.final_mobile_urls,
+      asset_group.status,
+      campaign.resource_name,
+      campaign.id
+    FROM asset_group
+    WHERE campaign.name = '${escapedCampaign}'
+      AND asset_group.name = '${escapedSource}'
+      AND asset_group.status != 'REMOVED'
+    LIMIT 1
+  `.trim(),
+  );
+  if (!sourceSearch.ok) return { ok: false, error: sourceSearch.error };
+  if (!sourceSearch.results.length) {
+    return { ok: false, error: `source asset group not found: ${sourceName}` };
+  }
+
+  const sourceRow = sourceSearch.results[0];
+  const sourceAg = sourceRow.assetGroup as {
+    id?: string;
+    name?: string;
+    resourceName?: string;
+    finalUrls?: string[];
+    finalMobileUrls?: string[];
+    status?: string;
+  };
+  const campaign = sourceRow.campaign as { resourceName?: string; id?: string };
+
+  const assetsSearch = await adsSearch(
+    env,
+    `
+    SELECT
+      asset_group_asset.field_type,
+      asset_group_asset.asset,
+      asset_group_asset.status
+    FROM asset_group_asset
+    WHERE asset_group.name = '${escapedSource}'
+      AND asset_group_asset.status != 'REMOVED'
+    LIMIT 200
+  `.trim(),
+  );
+  if (!assetsSearch.ok) return { ok: false, error: assetsSearch.error };
+
+  const SKIP_FIELD_TYPES = new Set([
+    'UBERVERSAL',
+    'AD_IMAGE',
+    'UNKNOWN',
+    'UNSPECIFIED',
+  ]);
+
+  const links = assetsSearch.results
+    .map((row) => {
+      const aga = row.assetGroupAsset as {
+        fieldType?: string;
+        asset?: string;
+        status?: string;
+      };
+      return {
+        fieldType: String(aga.fieldType ?? ''),
+        asset: String(aga.asset ?? ''),
+      };
+    })
+    .filter((l) => l.fieldType && l.asset && !SKIP_FIELD_TYPES.has(l.fieldType));
+
+  const customerId = adsCustomerId(env);
+  const campaignRn =
+    campaign.resourceName ?? `customers/${customerId}/campaigns/${campaign.id}`;
+  const newAgTempRn = `customers/${customerId}/assetGroups/-1`;
+  const finalUrls = (sourceAg.finalUrls ?? []).filter(
+    (u) => !/l\.epirbizuteria\.pl/i.test(u),
+  );
+  const finalMobileUrls = (sourceAg.finalMobileUrls ?? []).filter(
+    (u) => !/l\.epirbizuteria\.pl/i.test(u),
+  );
+  const agCreate: Record<string, unknown> = {
+    resourceName: newAgTempRn,
+    name: newName,
+    campaign: campaignRn,
+    status: 'ENABLED',
+  };
+  if (finalUrls.length) {
+    agCreate.finalUrls = finalUrls;
+    agCreate.finalMobileUrls = finalMobileUrls.length ? finalMobileUrls : finalUrls;
+  }
+
+  const mutateOperations: unknown[] = [
+    {
+      assetGroupOperation: {
+        create: agCreate,
+      },
+    },
+    ...links.map((link) => ({
+      assetGroupAssetOperation: {
+        create: {
+          assetGroup: newAgTempRn,
+          asset: link.asset,
+          fieldType: link.fieldType,
+        },
+      },
+    })),
+  ];
+
+  if (dryRun) {
+    return {
+      ok: true,
+      dryRun: true,
+      campaignName,
+      sourceAssetGroupId: sourceAg.id,
+      sourceAssetGroupName: sourceAg.name,
+      newAssetGroupName: newName,
+      linkedAssets: links.length,
+      mutateOperationsCount: mutateOperations.length,
+    };
+  }
+
+  const res = await adsMutate(env, 'googleAds:mutate', { mutateOperations });
+  if (!res.ok) return { ok: false, error: res.error, linkedAssets: links.length };
+
+  const responses = (
+    res.data as {
+      mutateOperationResponses?: Array<{
+        assetGroupResult?: { resourceName?: string };
+      }>;
+    }
+  )?.mutateOperationResponses;
+  const createdRn = responses?.find((r) => r.assetGroupResult?.resourceName)?.assetGroupResult
+    ?.resourceName;
+  const newId = createdRn?.split('/').pop();
+
+  return {
+    ok: true,
+    dryRun: false,
+    campaignName,
+    sourceAssetGroupId: sourceAg.id,
+    sourceAssetGroupName: sourceAg.name,
+    newAssetGroupName: newName,
+    newAssetGroupId: newId ?? null,
+    newAssetGroupResourceName: createdRn ?? null,
+    linkedAssets: links.length,
+    mutate: res.data,
+  };
+}
+
 export async function setCampaignFinalUrlSuffix(
   env: AdsEnv,
   opts: { campaignName: string; finalUrlSuffix: string; dryRun?: boolean },
@@ -591,6 +1353,14 @@ export function planSearchAdGroupSuffixes(
     const n = ag.name.toLowerCase();
     let key = 'organic_art';
     if (
+      n.includes('złot') ||
+      n.includes('zlot') ||
+      n.includes('gold') ||
+      n.includes('epir_zloto') ||
+      n.includes('epir zloto')
+    ) {
+      key = 'artisan_gold';
+    } else if (
       n.includes('pierścion') ||
       n.includes('pierscion') ||
       n.includes('ring') ||
@@ -682,4 +1452,94 @@ export async function applySearchAdGroupUtmSuffixes(
     mutateResults.push({ plan, mutate: mutated });
   }
   return { ok: true, dryRun: false, plans, mutateResults };
+}
+
+const LANDING_HOST_PATTERN = /l\.epirbizuteria\.pl/i;
+
+/**
+ * Stop PMax traffic to campaign landings: clear final_url_suffix and asset-group final_urls
+ * pointing at l.epirbizuteria.pl so Shopping uses GMC product URLs only.
+ */
+export async function disablePmaxLandings(
+  env: AdsEnv,
+  opts?: { campaignName?: string; dryRun?: boolean },
+): Promise<Record<string, unknown>> {
+  const campaignName = opts?.campaignName ?? DEFAULT_PMAX_CAMPAIGN;
+  const dryRun = opts?.dryRun === true;
+  const escaped = campaignName.replace(/'/g, "\\'");
+
+  const agSearch = await adsSearch(
+    env,
+    `
+    SELECT
+      asset_group.id,
+      asset_group.name,
+      asset_group.resource_name,
+      asset_group.final_urls
+    FROM asset_group
+    WHERE campaign.name = '${escaped}'
+      AND asset_group.status != 'REMOVED'
+  `.trim(),
+  );
+  if (!agSearch.ok) return { ok: false, error: agSearch.error };
+
+  const assetGroups = agSearch.results.map((row) => {
+    const ag = row.assetGroup as {
+      id?: string;
+      name?: string;
+      resourceName?: string;
+      finalUrls?: string[];
+    };
+    return {
+      id: String(ag.id ?? ''),
+      name: String(ag.name ?? ''),
+      resourceName: String(ag.resourceName ?? ''),
+      finalUrls: ag.finalUrls ?? [],
+    };
+  });
+
+  const toClear = assetGroups.filter(
+    (ag) => ag.finalUrls.length > 0 && ag.finalUrls.some((u) => LANDING_HOST_PATTERN.test(u)),
+  );
+
+  const suffixResult = await setCampaignFinalUrlSuffix(env, {
+    campaignName,
+    finalUrlSuffix: '',
+    dryRun,
+  });
+
+  if (dryRun) {
+    return {
+      ok: true,
+      dryRun: true,
+      campaignName,
+      campaignSuffix: suffixResult,
+      assetGroupsToClear: toClear,
+    };
+  }
+
+  const mutateResults: unknown[] = [];
+  for (const ag of toClear) {
+    const mutated = await adsMutate(env, 'assetGroups:mutate', {
+      operations: [
+        {
+          update: {
+            resourceName: ag.resourceName,
+            finalUrls: [],
+          },
+          updateMask: 'finalUrls',
+        },
+      ],
+    });
+    mutateResults.push({ assetGroupId: ag.id, assetGroupName: ag.name, mutate: mutated });
+  }
+
+  return {
+    ok: true,
+    dryRun: false,
+    campaignName,
+    campaignSuffix: suffixResult,
+    clearedAssetGroups: toClear.map((a) => ({ id: a.id, name: a.name })),
+    mutateResults,
+  };
 }

@@ -1,0 +1,37 @@
+Cloudflare Agent Setup (official prompt)
+=========================================
+Source: https://developers.cloudflare.com/agent-setup/prompt.md
+
+Skills (global)
+---------------
+Installed via:
+  npx -y skills add cloudflare/skills --skill '*' --yes --global
+
+Also available via Cursor plugin "cloudflare" (marketplace).
+
+MCP servers (global ~/.cursor/mcp.json)
+----------------------------------------
+Official remote HTTP MCP (OAuth on first use except docs):
+  - cloudflare              https://mcp.cloudflare.com/mcp
+  - cloudflare-docs         https://docs.mcp.cloudflare.com/mcp  (no auth)
+  - cloudflare-bindings     https://bindings.mcp.cloudflare.com/mcp
+  - cloudflare-builds       https://builds.mcp.cloudflare.com/mcp
+  - cloudflare-observability https://observability.mcp.cloudflare.com/mcp
+
+Extra (token via ~/.cursor/mcp.secrets.env):
+  - cloudflare-dns          @thelord/mcp-cloudflare
+
+EPIR workspace MCP (.cursor/mcp.json) — separate, not replaced:
+  - epir-data-ops           warehouse / D1 / worker ops (CLOUDFLARE_ACCOUNT_ID + API token)
+  - epir-gworkspace         Google Workspace (stdio)
+
+After config change
+-------------------
+1. Restart Cursor (or reload window) to load MCP servers.
+2. Cursor Settings → MCP → Authenticate for cloudflare, cloudflare-bindings,
+   cloudflare-builds, cloudflare-observability (browser OAuth).
+3. cloudflare-dns: set CLOUDFLARE_API_TOKEN (+ zone) in mcp.secrets.env if not already.
+
+Verify
+------
+Ask agent to search Cloudflare docs (cloudflare-docs) or list Workers (cloudflare, after OAuth).

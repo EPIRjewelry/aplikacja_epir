@@ -52,6 +52,10 @@ const PAGES = [
       'PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID',
     ],
   },
+  {
+    project: 'inspiracje-hydrogen-pages',
+    required: ['SESSION_SECRET'],
+  },
 ];
 
 function listWorkerSecrets(cwd) {

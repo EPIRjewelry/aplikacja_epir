@@ -131,3 +131,30 @@ export async function adsMutate(
   }
   return { ok: true, data };
 }
+
+/** POST to a full resource path after API version, e.g. customers/123/offlineUserDataJobs/456:run */
+export async function adsPostResource(
+  env: AdsEnv,
+  resourcePath: string,
+  body: unknown,
+): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
+  const accessRes = await refreshAdsAccessToken(env);
+  if (!accessRes.ok) return { ok: false, error: accessRes.error };
+  const url = `https://googleads.googleapis.com/${ADS_API}/${resourcePath}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: adsHeaders(env, accessRes.token),
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  let data: unknown = text;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    /* keep text */
+  }
+  if (!res.ok) {
+    return { ok: false, error: `HTTP ${res.status}: ${text.slice(0, 1200)}` };
+  }
+  return { ok: true, data };
+}

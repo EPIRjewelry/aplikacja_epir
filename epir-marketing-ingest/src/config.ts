@@ -2,7 +2,7 @@ import { readFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bootstrapEnv, resolveShopDomain } from './credentials.js';
-import type { MappingConfig, ShopifyConfig, SheetsConfig } from './types.js';
+import type { MappingConfig, OutputConfig, R2Config, ShopifyConfig, SheetsConfig } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, '..');
@@ -47,6 +47,19 @@ export function loadSheetsConfig(): SheetsConfig | null {
 
 export function loadMappingConfig(): MappingConfig {
   return readJson<MappingConfig>('mapping.json');
+}
+
+export function loadOutputConfig(): OutputConfig {
+  return readJson<OutputConfig>('output.json');
+}
+
+export function loadR2Config(): R2Config | null {
+  bootstrapEnv();
+  const config = readJson<R2Config>('r2.json');
+  if (!config.bucket || config.bucket === 'YOUR_R2_BUCKET') {
+    return null;
+  }
+  return config;
 }
 
 export function defaultCsvOutputPath(): string {

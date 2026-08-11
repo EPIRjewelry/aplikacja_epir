@@ -4,6 +4,8 @@ import {
   defaultCsvOutputPath,
   ensureParentDir,
   loadMappingConfig,
+  loadOutputConfig,
+  loadR2Config,
   loadSheetsConfig,
   loadShopifyConfig,
 } from './config.js';
@@ -12,6 +14,7 @@ import {
   hasGoogleSheetsCredentials,
   resolveShopifyAdminToken,
 } from './credentials.js';
+import { isR2Configured, uploadFeedToR2 } from './r2_client.js';
 import { fetchAllProducts } from './shopify_client.js';
 import { transformProducts } from './transform.js';
 import type { GmcFeedRow, PipelineResult } from './types.js';
@@ -36,12 +39,23 @@ export type RunOptions = {
   productLimit?: number;
 };
 
+type SinkMode = 'r2' | 'csv' | 'sheets';
+
+function resolveSinkMode(): SinkMode {
+  const output = loadOutputConfig();
+  if (process.argv.includes('--sheets')) return 'sheets';
+  if (process.argv.includes('--r2')) return 'r2';
+  if (process.argv.includes('--csv') || readArg('--csv') !== null) return 'csv';
+  return output.defaultSink;
+}
+
 export async function runPipeline(options: RunOptions = {}): Promise<PipelineResult> {
   const startedAt = new Date();
   const errors: string[] = [];
 
   const shopifyConfig = loadShopifyConfig();
   const mappingConfig = loadMappingConfig();
+  const outputConfig = loadOutputConfig();
   const token = resolveShopifyAdminToken();
 
   log('Fetching products from Shopify', {
@@ -56,7 +70,7 @@ export async function runPipeline(options: RunOptions = {}): Promise<PipelineRes
       : products;
   log('Products fetched', { count: limited.length, total: products.length });
 
-  const variantCount = products.reduce((n, p) => n + p.variants.length, 0);
+  const variantCount = limited.reduce((n, p) => n + p.variants.length, 0);
   log('Variants total', { count: variantCount });
 
   const useAi =
@@ -80,63 +94,67 @@ export async function runPipeline(options: RunOptions = {}): Promise<PipelineRes
   let rowsWritten = 0;
   let outputTarget: PipelineResult['outputTarget'] = 'none';
   let outputPath: string | undefined;
+  let publicFeedUrl: string | undefined;
 
   if (options.dryRun) {
     log('Dry run — skipping output');
   } else {
-    const sheetsConfig = loadSheetsConfig();
-    const csvPath = options.csvPath ?? readArg('--csv');
-    const forceSheets = process.argv.includes('--sheets');
+    const sink = resolveSinkMode();
+    const r2Config = loadR2Config();
+    const csvTarget =
+      options.csvPath === '' || options.csvPath === 'auto' || readArg('--csv') === 'auto'
+        ? defaultCsvOutputPath()
+        : options.csvPath ?? readArg('--csv') ?? defaultCsvOutputPath();
 
-    if (csvPath !== null && csvPath !== undefined && !forceSheets) {
-      const target =
-        csvPath === '' || csvPath === 'auto'
-          ? defaultCsvOutputPath()
-          : csvPath;
-      ensureParentDir(target);
-      rowsWritten = writeFeedCsv(target, mappingConfig.gmcColumns, feedRows);
-      outputTarget = 'csv';
-      outputPath = target;
-      log('Wrote CSV feed', { path: target, rows: rowsWritten });
-    } else if (sheetsConfig && hasGoogleSheetsCredentials()) {
-      const { writeFeedRows } = await import('./sheets_client.js');
-      log('Writing to Google Sheets', {
-        spreadsheetId: sheetsConfig.spreadsheetId,
-        tab: sheetsConfig.tabName,
+    const writeLocalCsv = (): string => {
+      ensureParentDir(csvTarget);
+      rowsWritten = writeFeedCsv(csvTarget, mappingConfig.gmcColumns, feedRows);
+      outputPath = csvTarget;
+      return csvTarget;
+    };
+
+    if (sink === 'r2' && isR2Configured(r2Config)) {
+      const localPath =
+        outputConfig.localCsvBackup || !isR2Configured(r2Config)
+          ? writeLocalCsv()
+          : (() => {
+              const tmp = defaultCsvOutputPath();
+              ensureParentDir(tmp);
+              writeFeedCsv(tmp, mappingConfig.gmcColumns, feedRows);
+              return tmp;
+            })();
+      if (!outputConfig.localCsvBackup) {
+        rowsWritten = feedRows.length;
+      }
+      publicFeedUrl = await uploadFeedToR2(localPath, r2Config!);
+      outputTarget = outputConfig.localCsvBackup ? 'r2+csv' : 'r2';
+      log('Uploaded feed to R2', {
+        bucket: r2Config!.bucket,
+        key: r2Config!.objectKey,
+        publicFeedUrl,
+        localBackup: outputConfig.localCsvBackup ? localPath : undefined,
       });
-      rowsWritten = await writeFeedRows(
-        sheetsConfig,
-        mappingConfig.gmcColumns,
-        feedRows,
+    } else if (sink === 'csv' || !isR2Configured(r2Config)) {
+      writeLocalCsv();
+      outputTarget = 'csv';
+      log('Wrote CSV feed', { path: csvTarget, rows: rowsWritten });
+      if (sink === 'r2' && !isR2Configured(r2Config)) {
+        log('R2 not configured — fallback CSV only (set config/r2.json)');
+      }
+    } else if (sink === 'sheets' && outputConfig.sheetsEnabled) {
+      await writeToGoogleSheets(mappingConfig, feedRows, (count) => {
+        rowsWritten = count;
+        outputTarget = 'sheets';
+      });
+    } else if (sink === 'sheets' && !outputConfig.sheetsEnabled) {
+      log(
+        'Google Sheets sink disabled (config/output.json sheetsEnabled:false). Using CSV.',
       );
-      outputTarget = 'sheets';
-    } else if (csvPath !== null) {
-      const target =
-        csvPath === '' || csvPath === 'auto'
-          ? defaultCsvOutputPath()
-          : csvPath;
-      ensureParentDir(target);
-      rowsWritten = writeFeedCsv(target, mappingConfig.gmcColumns, feedRows);
+      writeLocalCsv();
       outputTarget = 'csv';
-      outputPath = target;
-      log('Wrote CSV feed', { path: target, rows: rowsWritten });
-    } else if (sheetsConfig && !hasGoogleSheetsCredentials()) {
-      const target = defaultCsvOutputPath();
-      ensureParentDir(target);
-      rowsWritten = writeFeedCsv(target, mappingConfig.gmcColumns, feedRows);
-      outputTarget = 'csv';
-      outputPath = target;
-      log('Sheets credentials missing — fallback CSV', {
-        path: target,
-        rows: rowsWritten,
-      });
     } else {
-      const target = defaultCsvOutputPath();
-      ensureParentDir(target);
-      rowsWritten = writeFeedCsv(target, mappingConfig.gmcColumns, feedRows);
+      writeLocalCsv();
       outputTarget = 'csv';
-      outputPath = target;
-      log('Default CSV output', { path: target, rows: rowsWritten });
     }
   }
 
@@ -149,11 +167,40 @@ export async function runPipeline(options: RunOptions = {}): Promise<PipelineRes
     rowsWritten,
     outputTarget,
     outputPath,
+    publicFeedUrl,
     errors,
   };
 
   log('Pipeline complete', summarizeResult(result, feedRows));
   return result;
+}
+
+/**
+ * Google Sheets — legacy sink (wyłączony domyślnie).
+ * Zobacz: src/sheets_sink.legacy.ts
+ */
+async function writeToGoogleSheets(
+  mappingConfig: ReturnType<typeof loadMappingConfig>,
+  feedRows: GmcFeedRow[],
+  onSuccess: (rowsWritten: number) => void,
+): Promise<void> {
+  const sheetsConfig = loadSheetsConfig();
+  if (!sheetsConfig || !hasGoogleSheetsCredentials()) {
+    throw new Error(
+      'Sheets sink requested but missing sheets.json or Google credentials',
+    );
+  }
+  const { writeFeedRows } = await import('./sheets_sink.legacy.js');
+  log('Writing to Google Sheets (legacy)', {
+    spreadsheetId: sheetsConfig.spreadsheetId,
+    tab: sheetsConfig.tabName,
+  });
+  const count = await writeFeedRows(
+    sheetsConfig,
+    mappingConfig.gmcColumns,
+    feedRows,
+  );
+  onSuccess(count);
 }
 
 function summarizeResult(

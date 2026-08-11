@@ -1,0 +1,5 @@
+{
+  "bucket": "epir-gmc-feed",
+  "objectKey": "gmc_feed.csv",
+  "publicFeedUrl": "https://pub-f080e952e3a24b6ab2c47e356ec1a28e.r2.dev/gmc_feed.csv"
+}

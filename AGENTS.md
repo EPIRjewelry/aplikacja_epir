@@ -120,7 +120,7 @@ Przeczytaj cztery pliki z sekcji „Czytaj najpierw”, a dopiero potem przechod
 
 Te ustawienia **nie** są w repozytorium — operator konfiguruje je w Cursorze:
 
-- **Settings → Agent:** wyłącz Auto-Run / YOLO; wymagaj zatwierdzenia komend terminala (human-in-the-loop).
+- **Cursor Settings → Agents → Approvals & Execution:** ustaw **Run Mode** na **Allowlist** (pusty allowlist = prompt przy każdej komendzie), nie **Run Everything** (stare YOLO). Domyślny **Auto-review** uruchamia wiele komend bez kliknięcia — to nie błąd.
 - **User settings (opcjonalnie):** `"json.schemaDownload.enable": false` globalnie dla nieufnych projektów; w tym repo workspace ma `true` w [`.vscode/settings.json`](.vscode/settings.json).
 
 ### Package manager
