@@ -1,0 +1,65 @@
+/* Archiwum Inspiracji — jasny klimat EPIR (DESIGN_TOKENS v1) */
+:root {
+  --color-primary: 34 34 34; /* #222222 */
+  --color-contrast: 241 241 241; /* #f1f1f1 */
+  --color-accent: 44 104 78; /* #2c684e */
+  --font-family-brand: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --font-size-fine: 0.75rem;
+  --font-size-copy: 1rem;
+  --font-size-lead: 1.125rem;
+  --font-size-heading: 2rem;
+  --font-size-display: 3rem;
+  --height-nav: 3.5rem;
+  --screen-height: 100vh;
+  --epir-cream: #f0ebe0;
+  --epir-muted: #666666;
+}
+
+@media (min-width: 32em) {
+  :root {
+    --height-nav: 4.5rem;
+  }
+}
+
+@media (min-width: 48em) {
+  :root {
+    --height-nav: 5.5rem;
+    --font-size-heading: 2.25rem;
+    --font-size-display: 3.5rem;
+  }
+}
+
+* {
+  font-variant-ligatures: none;
+}
+
+html {
+  scroll-padding-top: 6rem;
+}
+
+html,
+body {
+  font-family: var(--font-family-brand);
+  background: linear-gradient(
+    165deg,
+    #f1f1f1 0%,
+    #f0ebe0 42%,
+    #f5f5f5 100%
+  );
+  color: #222222;
+  min-height: 100%;
+}
+
+a.active {
+  border-bottom-width: 1px;
+}
+
+.prose-archive p {
+  margin-bottom: 0.85em;
+  line-height: 1.65;
+  color: var(--epir-muted);
+}
+
+.prose-archive p:first-child {
+  color: #222222;
+}

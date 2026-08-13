@@ -1,0 +1,14 @@
+# Cloudflare Workers — lokalne (kopiuj do .dev.vars)
+# .dev.vars jest w .gitignore
+
+SESSION_SECRET=dev-inspiracje-session-secret
+BRAND=inspiracje
+PUBLIC_STORE_DOMAIN=epir-art-silver-jewellery.myshopify.com
+PUBLIC_STOREFRONT_URL=https://inspiracje.epirbizuteria.pl
+PUBLIC_CHECKOUT_DOMAIN=checkout.shopify.com
+PUBLIC_STOREFRONT_ID=1000013955
+PUBLIC_CTA_URL=https://epirbizuteria.pl/pages/zaprojektuj-swoj-model
+PUBLIC_MAIN_SHOP_URL=https://epirbizuteria.pl
+
+# Eksport archiwum (skrypt w root/scripts) — Admin API, nie Storefront:
+# SHOPIFY_ADMIN_TOKEN=shpat_xxx

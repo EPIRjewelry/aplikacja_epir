@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [kazka, zareczyny]
+        app: [kazka, zareczyny, inspiracje]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,7 +59,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [kazka, zareczyny]
+        app: [kazka, zareczyny, inspiracje]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -103,7 +103,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [kazka, zareczyny]
+        app: [kazka, zareczyny, inspiracje]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

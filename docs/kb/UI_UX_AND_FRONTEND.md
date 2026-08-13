@@ -26,14 +26,14 @@ Moduł wiedzy dla Hydrogen, Theme App Extension, widgetu czatu, Liquid i warstwy
 
 - Wstrzykiwanie `X-EPIR-*` ani shared secret do kodu klienta.
 
-## Hydrogen (kazka, zareczyny)
+## Hydrogen (kazka, zareczyny, inspiracje)
 
-- **Kanon Shopify (hosting poza Oxygen):** subdomeny `zareczyny.epirbizuteria.pl`, `kazka.epirbizuteria.pl` → Cloudflare Pages; apex `epirbizuteria.pl` → motyw Shopify. Opcjonalny wyjątek po Gate 0 DNS: worker `epir-dynamic-landing-liquid` (HTMLRewriter, bez redirectów) — [`EPIR_STOREFRONT_DOMAIN_STRATEGY.md`](../EPIR_STOREFRONT_DOMAIN_STRATEGY.md).
-- Dwa brandy, jeden backend — osobne `storefrontId`, env, persona.
-- **Ingress czatu:** przeglądarka → same-origin `POST /api/chat` (Remix) → S2S `POST https://asystent.epirbizuteria.pl/chat` z `X-EPIR-SHARED-SECRET`, `X-EPIR-STOREFRONT-ID`, `X-EPIR-CHANNEL`.
+- **Kanon Shopify (hosting poza Oxygen):** subdomeny `zareczyny.epirbizuteria.pl`, `kazka.epirbizuteria.pl`, `inspiracje.epirbizuteria.pl` → Cloudflare Pages; apex `epirbizuteria.pl` → motyw Shopify. Opcjonalny wyjątek po Gate 0 DNS: worker `epir-dynamic-landing-liquid` (HTMLRewriter, bez redirectów) — [`EPIR_STOREFRONT_DOMAIN_STRATEGY.md`](../EPIR_STOREFRONT_DOMAIN_STRATEGY.md).
+- Dwa brandy sklepowe + Archiwum Inspiracji — osobne `storefrontId` / `BRAND` / env; Archiwum jest galerią read-only (snapshot JSON, bez koszyka).
+- **Ingress czatu:** przeglądarka → same-origin `POST /api/chat` (Remix) → S2S `POST https://asystent.epirbizuteria.pl/chat` z `X-EPIR-SHARED-SECRET`, `X-EPIR-STOREFRONT-ID`, `X-EPIR-CHANNEL` (Kazka/Zaręczyny; Archiwum MVP bez czatu).
 - Wspólna logika: preferuj `packages/utils` (`hydrogen.ts`) — nie duplikuj `app/lib/*.ts`.
 - W aplikacji zostaje: Header/Footer/Hero, kolory, `NAV_HANDLE_ORDER`, `INFO_LINKS`, copy marki, env per app.
-- Default `BRAND` w kazka = **`kazka`**, nie `zareczyny`.
+- Default `BRAND` w kazka = **`kazka`**, nie `zareczyny`; Archiwum = **`inspiracje`**.
 
 ## Liquid / Online Store 2.0
 

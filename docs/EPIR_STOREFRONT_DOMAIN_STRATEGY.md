@@ -9,6 +9,7 @@
 | `epirbizuteria.pl` | Shopify Online Store (+ opcjonalny worker HTMLRewriter) | Motyw Liquid + TAE; po Gate 0: `epir-dynamic-landing-liquid` |
 | `zareczyny.epirbizuteria.pl` | **Cloudflare Pages** | Hydrogen (`apps/zareczyny`) |
 | `kazka.epirbizuteria.pl` | **Cloudflare Pages** | Hydrogen (`apps/kazka`) |
+| `inspiracje.epirbizuteria.pl` | **Cloudflare Pages** | Hydrogen (`apps/inspiracje`) — Archiwum Inspiracji (galeria `tag:sprzedane`, bez cen/koszyka) |
 | Checkout | Shopify (subdomena lub `checkout.shopify.com`) | `PUBLIC_CHECKOUT_DOMAIN` w Hydrogen |
 
 **Domyślnie:** apex idzie do Shopify. **Nie wdrażaj** ogólnego `storefront-apex-router` ani workerów, które robią redirecty między storefrontami.
@@ -34,7 +35,9 @@ Shopify opisuje ścieżki URL (`/fr`, `/es`) w ramach **jednego** storefrontu Hy
 ## Google Ads i analityka
 
 - Kampanie na **główną markę** → final URL na `https://epirbizuteria.pl/...` (motyw; opcjonalnie UTM personalizacja przez HTMLRewriter).
+- **Dynamic landing (Ads Tor Apex):** final URL **`https://l.epirbizuteria.pl/?utm_campaign=…`** (Worker standalone; apex zostaje na Shopify). Mapowanie: `forest_premium` / `artisan_rings` / `artisan_new` / `artisan_gold` / `organic_art` → metaobiekty `campaign_landing`.
 - Kampanie na **Zaręczyny / Kazka** → final URL **bezpośrednio** na subdomenę Hydrogen (`https://zareczyny.epirbizuteria.pl/...`) — **bez** łańcucha redirectów w feedzie (Google Merchant / feed rules w Shopify Admin).
+- **Archiwum Inspiracji** (`inspiracje.epirbizuteria.pl`) — **nie** jest celem Ads / GMC; link organiczny ze sklepu (footer / Navigation). Snapshot produktów `tag:sprzedane` bez cen.
 - Cross-domain w GA4 / HAM: osobne hosty w jednym property lub rekonsyliacja w [`EPIR_HAM_ATTRIBUTION.md`](EPIR_HAM_ATTRIBUTION.md).
 
 ## Deploy (operator)
@@ -43,6 +46,10 @@ Shopify opisuje ścieżki URL (`/fr`, `/es`) w ramach **jednego** storefrontu Hy
 # Hydrogen — osobne subdomeny w Cloudflare Pages (custom domains)
 npm run pages:deploy:zareczyny
 npm run pages:deploy:kazka
+npm run pages:deploy:inspiracje
+
+# Archiwum — eksport snapshotu (Admin API) przed buildem / CI
+# node scripts/export-archive-inspirations.mjs
 
 # Motyw główny — pull/push
 # themes/epir-online-store/README.md
@@ -54,6 +61,14 @@ npm run pages:deploy:kazka
 shopify app deploy
 ```
 
+### DNS — Archiwum Inspiracji (operator, po OK)
+
+1. Cloudflare Pages: utwórz projekt `inspiracje-hydrogen-pages` (pierwszy `pages deploy` może go założyć).
+2. Pages → Custom domains: dodaj `inspiracje.epirbizuteria.pl`.
+3. DNS strefy `epirbizuteria.pl`: CNAME `inspiracje` → `<projekt>.pages.dev` (Proxied), zgodnie z wzorcem Kazka/Zaręczyny.
+4. Pages secrets: minimum `SESSION_SECRET`; vars z [`apps/inspiracje/wrangler.toml`](../apps/inspiracje/wrangler.toml).
+
+**Bez zgody operatora nie wdrażaj** subdomeny ani nie zmieniaj Ads.
 ## Metafieldy i treść
 
 Wspólne dane w Adminie: [`EPIR_ADMIN_METAFIELDS_CHECKLIST.md`](EPIR_ADMIN_METAFIELDS_CHECKLIST.md).
