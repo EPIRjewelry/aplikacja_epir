@@ -2,8 +2,10 @@ name = "epir-dynamic-landing-liquid"
 main = "src/index.ts"
 compatibility_date = "2025-09-30"
 compatibility_flags = ["nodejs_compat"]
-# Apex route only after Gate 0 (DNS proxied). Do not enable until operator confirms.
 workers_dev = true
+
+# Apex DNS: CNAME → this Worker (asystent pattern). Routes not required when Worker is origin.
+# Shopify HTML via fetch + cf.resolveOverride(SHOPIFY_ORIGIN_IPV4).
 
 [build]
 command = ""
@@ -18,9 +20,22 @@ SHOPIFY_STOREFRONT_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
 SHOPIFY_PUBLIC_DOMAIN = "epirbizuteria.pl"
 SHOPIFY_STOREFRONT_API_VERSION = "2024-10"
 CAMPAIGN_LANDING_TYPE = "app--280344821761--campaign_landing"
+SHOPIFY_ORIGIN_IPV4 = "23.227.38.65"
+ADS_LANDING_HOST = "l.epirbizuteria.pl"
+# Landings off until operator re-enables (PMax → product URLs). Editorial ready in code.
+LANDINGS_ENABLED = "true"
+# Ads final URL (Search): https://l.epirbizuteria.pl/?utm_campaign=forest_premium
+# PMax Shopping → PDP z feedu (link w GMC), nie l.
+EPIR_PIXEL_ORIGIN = "https://asystent.epirbizuteria.pl"
+# GA4 + GTM — te same ID co epirbizuteria.pl (wyciągnięte ze storefront 2026-08-11)
+GA4_MEASUREMENT_ID = "G-RXRHQDWF4K"
+GTM_CONTAINER_ID = "GTM-NQZ5QCG"
+GOOGLE_ADS_TAG_ID = "AW-17821070797"
 
 # Reuse existing secret name only (no new secret names):
 #   npx wrangler secret put SHOPIFY_STOREFRONT_TOKEN --env=""
+#   npx wrangler secret put EPIR_OPERATOR_PANEL_SECRET --env=""   # podgląd operatora (ten sam co workers/chat)
+#   # lub MARKETING_OPS_PREVIEW_KEY (ten sam co marketing-ingest)
 # Value = same Storefront token as workers/chat (online-store fallback).
 
 # Phase A (workers.dev): KV optional — uncomment after `wrangler kv namespace create CAMPAIGN_CACHE`
@@ -28,9 +43,6 @@ CAMPAIGN_LANDING_TYPE = "app--280344821761--campaign_landing"
 # binding = "CAMPAIGN_CACHE"
 # id = "REPLACE_AFTER_KV_CREATE"
 # preview_id = "REPLACE_AFTER_KV_CREATE"
-
-# Gate 0 must pass before enabling:
-# routes = [{ pattern = "epirbizuteria.pl/*", zone_name = "epirbizuteria.pl" }]
 
 [observability]
 enabled = true

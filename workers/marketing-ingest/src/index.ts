@@ -4,14 +4,33 @@ import type { Env } from './env';
 import { fetchAdsMarketingRows } from './ads';
 import { fetchGa4MarketingRows, yesterdayUtcDate } from './ga4';
 import { handleMarketingPreview } from './ops-preview';
+import { fetchGmcDiagnostics } from './gmc';
+import { buildGmcSnapshotRecords } from './gmc-snapshot';
 import { postPipelineIngestBatch } from './pipeline-post';
 import {
   applySearchAdGroupUtmSuffixes,
   auditPmaxListingGroups,
+  countShoppingProductsForPmax,
   expandPmaxListingGroups,
+  expandPmaxListingGroupsSingleMetal,
   FOREST_UTM_SUFFIX,
+  clonePmaxAssetGroup,
+  disablePmaxLandings,
+  parseMetalLabel,
+  renamePmaxAssetGroup,
+  setAssetGroupStatus,
   setCampaignFinalUrlSuffix,
 } from './pmax-listing';
+import {
+  applyPmaxSearchThemes,
+  auditPmaxSearchThemes,
+} from './pmax-search-themes';
+import { auditSearchTerms } from './ads-search-terms-audit';
+import {
+  applySearchNegatives,
+  auditSearchNegatives,
+} from './search-negatives';
+import { auditSharedNegativeCoverage, applySharedNegativeAttachments } from './shared-negatives-audit';
 
 export { MarketingAnalystAgent } from './marketing-analyst-agent';
 export { MarketingIngestS2SRpc } from './rpc';
@@ -45,20 +64,36 @@ function opsJson(body: unknown, status = 200): Response {
   });
 }
 
-/** Bearer-gated PMax / Search UTM ops (reuse MARKETING_OPS_PREVIEW_KEY). */
+/** Bearer-gated PMax / Search UTM / Search Themes ops (reuse MARKETING_OPS_PREVIEW_KEY). */
 async function handlePmaxOps(req: Request, env: Env): Promise<Response | null> {
   const u = new URL(req.url);
   const path = u.pathname;
-  if (!path.startsWith('/ops/pmax-') && path !== '/ops/search-utm-suffixes') {
-    return null;
-  }
+  const isOps =
+    path.startsWith('/ops/pmax-') ||
+    path === '/ops/gmc-diagnostics' ||
+    path === '/ops/search-utm-suffixes' ||
+    path === '/ops/search-terms-audit' ||
+    path.startsWith('/ops/search-negatives') ||
+    path === '/ops/shared-negatives-audit' ||
+    path === '/ops/shared-negatives-apply' ||
+    path === '/ops/pmax-landings-disable';
+  if (!isOps) return null;
   const key = (env.MARKETING_OPS_PREVIEW_KEY ?? '').trim();
   if (!key) return new Response('Not Found', { status: 404 });
   if (!verifyMarketingOpsBearer(req, env)) return opsUnauthorized();
 
+  if (path === '/ops/gmc-diagnostics' && req.method === 'GET') {
+    return opsJson(await fetchGmcDiagnostics(env));
+  }
+
   if (path === '/ops/pmax-listing-audit' && req.method === 'GET') {
     const campaignName = u.searchParams.get('campaign') ?? undefined;
     return opsJson(await auditPmaxListingGroups(env, campaignName ?? undefined));
+  }
+
+  if (path === '/ops/pmax-shopping-product-count' && req.method === 'GET') {
+    const campaignName = u.searchParams.get('campaign') ?? undefined;
+    return opsJson(await countShoppingProductsForPmax(env, { campaignName }));
   }
 
   if (path === '/ops/pmax-listing-expand' && (req.method === 'POST' || req.method === 'GET')) {
@@ -69,6 +104,94 @@ async function handlePmaxOps(req: Request, env: Env): Promise<Response | null> {
         campaignName,
         dryRun,
         excludeBrand: u.searchParams.get('excludeBrand') ?? undefined,
+      }),
+    );
+  }
+
+  if (
+    path === '/ops/pmax-listing-expand-metal' &&
+    (req.method === 'POST' || req.method === 'GET')
+  ) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    const assetGroup = u.searchParams.get('assetGroup') ?? '';
+    const metalRaw = u.searchParams.get('metal') ?? '';
+    const metal = parseMetalLabel(metalRaw);
+    if (!assetGroup.trim()) {
+      return opsJson({ ok: false, error: 'assetGroup required' }, 400);
+    }
+    if (!metal) {
+      return opsJson({ ok: false, error: 'metal required (Srebro|Zloto)' }, 400);
+    }
+    return opsJson(
+      await expandPmaxListingGroupsSingleMetal(env, {
+        campaignName: u.searchParams.get('campaign') ?? undefined,
+        assetGroupName: assetGroup,
+        metal,
+        dryRun,
+        excludeBrand: u.searchParams.get('excludeBrand') ?? undefined,
+      }),
+    );
+  }
+
+  if (
+    path === '/ops/pmax-asset-group-status' &&
+    (req.method === 'POST' || req.method === 'GET')
+  ) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    const assetGroup = u.searchParams.get('assetGroup') ?? '';
+    const statusRaw = (u.searchParams.get('status') ?? '').toUpperCase();
+    if (!assetGroup.trim()) {
+      return opsJson({ ok: false, error: 'assetGroup required' }, 400);
+    }
+    if (statusRaw !== 'ENABLED' && statusRaw !== 'PAUSED') {
+      return opsJson({ ok: false, error: 'status required (ENABLED|PAUSED)' }, 400);
+    }
+    return opsJson(
+      await setAssetGroupStatus(env, {
+        campaignName: u.searchParams.get('campaign') ?? undefined,
+        assetGroupName: assetGroup,
+        status: statusRaw,
+        dryRun,
+      }),
+    );
+  }
+
+  if (
+    path === '/ops/pmax-asset-group-rename' &&
+    (req.method === 'POST' || req.method === 'GET')
+  ) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    const assetGroup = u.searchParams.get('assetGroup') ?? '';
+    const newName = u.searchParams.get('newName') ?? '';
+    if (!assetGroup.trim() || !newName.trim()) {
+      return opsJson({ ok: false, error: 'assetGroup and newName required' }, 400);
+    }
+    return opsJson(
+      await renamePmaxAssetGroup(env, {
+        campaignName: u.searchParams.get('campaign') ?? undefined,
+        assetGroupName: assetGroup,
+        newName,
+        dryRun,
+      }),
+    );
+  }
+
+  if (
+    path === '/ops/pmax-asset-group-clone' &&
+    (req.method === 'POST' || req.method === 'GET')
+  ) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    const source = u.searchParams.get('source') ?? '';
+    const newName = u.searchParams.get('newName') ?? '';
+    if (!source.trim() || !newName.trim()) {
+      return opsJson({ ok: false, error: 'source and newName required' }, 400);
+    }
+    return opsJson(
+      await clonePmaxAssetGroup(env, {
+        campaignName: u.searchParams.get('campaign') ?? undefined,
+        sourceAssetGroupName: source,
+        newAssetGroupName: newName,
+        dryRun,
       }),
     );
   }
@@ -84,9 +207,76 @@ async function handlePmaxOps(req: Request, env: Env): Promise<Response | null> {
     );
   }
 
+  if (path === '/ops/pmax-landings-disable' && (req.method === 'POST' || req.method === 'GET')) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    return opsJson(
+      await disablePmaxLandings(env, {
+        campaignName: u.searchParams.get('campaign') ?? 'Epir_Forest-Dark',
+        dryRun,
+      }),
+    );
+  }
+
   if (path === '/ops/search-utm-suffixes' && (req.method === 'POST' || req.method === 'GET')) {
     const dryRun = u.searchParams.get('dryRun') !== '0';
     return opsJson(await applySearchAdGroupUtmSuffixes(env, { dryRun }));
+  }
+
+  if (path === '/ops/pmax-search-themes-audit' && req.method === 'GET') {
+    const campaignName = u.searchParams.get('campaign') ?? undefined;
+    const assetGroupName = u.searchParams.get('assetGroup') ?? undefined;
+    return opsJson(await auditPmaxSearchThemes(env, { campaignName, assetGroupName }));
+  }
+
+  if (
+    path === '/ops/pmax-search-themes-apply' &&
+    (req.method === 'POST' || req.method === 'GET')
+  ) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    const campaignName = u.searchParams.get('campaign') ?? undefined;
+    const assetGroupName = u.searchParams.get('assetGroup') ?? undefined;
+    return opsJson(
+      await applyPmaxSearchThemes(env, { campaignName, assetGroupName, dryRun }),
+    );
+  }
+
+  if (path === '/ops/search-terms-audit' && req.method === 'GET') {
+    const days = Number.parseInt(u.searchParams.get('days') ?? '14', 10);
+    const campaign = u.searchParams.get('campaign') ?? undefined;
+    const limit = Number.parseInt(u.searchParams.get('limit') ?? '200', 10);
+    return opsJson(
+      await auditSearchTerms(env, {
+        days: Number.isFinite(days) ? days : 14,
+        campaignNameContains: campaign,
+        limit: Number.isFinite(limit) ? limit : 200,
+      }),
+    );
+  }
+
+  if (path === '/ops/search-negatives-audit' && req.method === 'GET') {
+    const campaignFilter = u.searchParams.get('campaignFilter') ?? undefined;
+    return opsJson(await auditSearchNegatives(env, { campaignFilter }));
+  }
+
+  if (path === '/ops/shared-negatives-audit' && req.method === 'GET') {
+    return opsJson(await auditSharedNegativeCoverage(env));
+  }
+
+  if (
+    path === '/ops/shared-negatives-apply' &&
+    (req.method === 'POST' || req.method === 'GET')
+  ) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    return opsJson(await applySharedNegativeAttachments(env, { dryRun }));
+  }
+
+  if (
+    path === '/ops/search-negatives-apply' &&
+    (req.method === 'POST' || req.method === 'GET')
+  ) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    const campaignFilter = u.searchParams.get('campaignFilter') ?? undefined;
+    return opsJson(await applySearchNegatives(env, { campaignFilter, dryRun }));
   }
 
   return new Response('Not Found', { status: 404 });
@@ -166,6 +356,23 @@ export default {
         const ads = await fetchAdsMarketingRows(env, date);
         const r = pipelineUrl ? await sendBatches(env, ads as unknown as Record<string, unknown>[]) : { ok: true, sent: 0 };
         console.log('[MARKETING_INGEST] Ads', { date, rows: ads.length, sent: r.sent, ok: r.ok, pipelineUrlSet: !!pipelineUrl });
+      })(),
+    );
+
+    // GMC snapshot — osobny kształt (source=google_merchant), nie MarketingStreamRecord kampanii.
+    ctx.waitUntil(
+      (async () => {
+        const gmcRows = await buildGmcSnapshotRecords(env, date);
+        const r = pipelineUrl
+          ? await sendBatches(env, gmcRows as unknown as Record<string, unknown>[])
+          : { ok: true, sent: 0 };
+        console.log('[MARKETING_INGEST] GMC snapshot', {
+          date,
+          rows: gmcRows.length,
+          sent: r.sent,
+          ok: r.ok,
+          pipelineUrlSet: !!pipelineUrl,
+        });
       })(),
     );
   },

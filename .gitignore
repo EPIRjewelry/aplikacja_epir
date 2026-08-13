@@ -52,3 +52,79 @@ apps/*/app/styles/tailwind-build.css
 test-results/
 
 !.cursor/index.mdc
+
+# Snapshot Archiwum Inspiracji (build-time, bez cen) — nie gubić przez regułę data/
+!apps/inspiracje/app/data/
+!apps/inspiracje/app/data/**
+
+# Ads ops / landing preview (lokalne)
+scripts/_tmp-ads-ops/
+scripts/_tmp-*
+workers/dynamic-landing-liquid/.preview-html/
+.preview-gold.html
+themes/epir-online-store/.preview-gold.html
+docs/working/*.bak-local
+
+# Feed CSV dumps — lokalne, nie w git
+marketing/csv/*.csv
+
+# Agent / MCP staging junk
+.tmp/
+epir-marketing-ingest/.tmp*
+epir-marketing-ingest/.upload-chunks-b64/
+epir-marketing-ingest/.upload-chunks/
+epir-marketing-ingest/.upload-b64.txt
+
+# One-off R2/MCP upload helpers (local). Tracked mcp-upload-batches.mjs stays.
+epir-marketing-ingest/scripts/mcp-stdio-*.mjs
+epir-marketing-ingest/scripts/mcp-inspect-*.mjs
+epir-marketing-ingest/scripts/mcp-list-*.mjs
+epir-marketing-ingest/scripts/mcp-binary-*.mjs
+epir-marketing-ingest/scripts/mcp-combine-*.mjs
+epir-marketing-ingest/scripts/mcp-delete-*.mjs
+epir-marketing-ingest/scripts/mcp-run-*.mjs
+epir-marketing-ingest/scripts/mcp-upload-part*.mjs
+epir-marketing-ingest/scripts/upload-*.mjs
+epir-marketing-ingest/scripts/gen-*.mjs
+epir-marketing-ingest/scripts/prepare-*.mjs
+epir-marketing-ingest/scripts/split-*.mjs
+epir-marketing-ingest/scripts/inspect-*.mjs
+epir-marketing-ingest/scripts/extract-*.mjs
+epir-marketing-ingest/scripts/decode-*.mjs
+epir-marketing-ingest/scripts/check-part-*.mjs
+epir-marketing-ingest/scripts/analyze-batch.mjs
+epir-marketing-ingest/scripts/invoke-mcp-*.mjs
+epir-marketing-ingest/scripts/run-mcp-*.mjs
+
+# Session one-off Admin probes (keep scripts/debug/cf-*.mjs)
+scripts/debug/ensure-zaprojektuj-page.mjs
+scripts/debug/list-menus-archiwum.mjs
+scripts/debug/qa-gold-*.mjs
+scripts/debug/query-gold-*.mjs
+scripts/debug/update-gold-*.mjs
+scripts/debug/relink-archiwum-*.mjs
+scripts/debug/rename-archiwum-*.mjs
+scripts/debug/set-inspiracje-*.mjs
+
+# Motyw: bundlowane minifikaty (edytuj .css / .js)
+*.aio.min.css
+*.aio.min.js
+
+# Vendor theme pull — README + shopify.theme.toml + EPIR Liquid only
+themes/epir-online-store/assets/
+themes/epir-online-store/blocks/
+themes/epir-online-store/config/
+themes/epir-online-store/layout/
+themes/epir-online-store/locales/
+themes/epir-online-store/scripts/
+themes/epir-online-store/snippets/
+themes/epir-online-store/sections/*
+!themes/epir-online-store/sections/collection-gold-manifesto.liquid
+!themes/epir-online-store/sections/collection-gold-realizations.liquid
+!themes/epir-online-store/sections/collection-workshop-proof.liquid
+!themes/epir-online-store/sections/collection-cocreate-teaser.liquid
+!themes/epir-online-store/sections/zaprojektuj-swoj-model.liquid
+themes/epir-online-store/templates/*
+!themes/epir-online-store/templates/collection.zloto.json
+!themes/epir-online-store/templates/collection.zlota.json
+!themes/epir-online-store/templates/page.zaprojektuj.json

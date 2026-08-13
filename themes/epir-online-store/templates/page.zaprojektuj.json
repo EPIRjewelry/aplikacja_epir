@@ -1,0 +1,23 @@
+/*
+ * ------------------------------------------------------------
+ * IMPORTANT: The contents of this file are auto-generated.
+ *
+ * This file may be updated by the Shopify admin theme editor
+ * or related systems. Please exercise caution as any changes
+ * made to this file may be overwritten.
+ * ------------------------------------------------------------
+ */
+{
+  "sections": {
+    "main": {
+      "type": "zaprojektuj-swoj-model",
+      "settings": {
+        "eyebrow": "EPIR Art Jewellery · Wrocławska Pracownia Biżuterii Artystycznej",
+        "hero_cta_label": "Przejdź do opisu",
+        "step2_text": "Tłumaczymy wizję na cyfrowy model 3D lub rzeźbę w wosku — idealne dla biżuterii organicznej, asymetrycznej. Przeglądasz i korygujesz go razem z nami, zanim ruszy metal.",
+        "submit_label": "Wyślij zapytanie"
+      }
+    }
+  },
+  "order": ["main"]
+}

@@ -9,3 +9,12 @@
 specs/
 agents/
 .github/agents/
+
+# Agent / MCP staging junk
+epir-marketing-ingest/.tmp*
+epir-marketing-ingest/.upload-chunks-b64/
+epir-marketing-ingest/.upload-chunks/
+.tmp/
+
+# Feed / dump marketing — duże CSV; @ gdy zadanie tego wymaga
+marketing/csv/

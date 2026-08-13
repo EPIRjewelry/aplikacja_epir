@@ -1,0 +1,209 @@
+/*
+ * Kolekcja BIŻUTERIA ZŁOTA — templateSuffix: zloto
+ * Handle: zlota-bizuteria
+ * Filtry wyłączone (show_filter: false) — eliminacja Metal + CLS.
+ * Czysty lejek EPIR. CTA → /pages/zaprojektuj-swoj-model
+ */
+{
+  "sections": {
+    "gold_manifesto": {
+      "type": "collection-gold-manifesto",
+      "settings": {
+        "eyebrow": "Pracownia Biżuterii Artystycznej EPIR Art Jewellery",
+        "heading": "Biżuteria złota",
+        "body": "<p>Projektujemy i wykonujemy złotą biżuterię we wrocławskiej pracowni: pierścionki, obrączki, kolczyki. Formy inspirowane naturą, kamienie szlachetne, złoto próby 585 i 750.</p><p>Każda sztuka powstaje na miejscu — od rysunku i modelu 3D po wykończenie. Jeśli szukasz własnej formy, zaprojektujemy ją razem.</p>",
+        "primary_label": "",
+        "primary_anchor": "#CollectionProductGrid",
+        "secondary_label": "Zaprojektuj swój model",
+        "secondary_url": "shopify://pages/zaprojektuj-swoj-model"
+      }
+    },
+    "main": {
+      "type": "main-collection-product-grid",
+      "blocks": {
+        "banner_promotion_KppNc9": {
+          "type": "banner_promotion",
+          "disabled": true,
+          "settings": {
+            "color_scheme": "dark",
+            "text_size": "medium",
+            "text_color": "white",
+            "link": "",
+            "content_position": "bottom_center",
+            "content_alignment": "center",
+            "title": "SALE UP TO 25% OFF",
+            "subtitle": "Online Exclusive",
+            "button_label": "Shop The Sale",
+            "button_style": "m-button--primary",
+            "button_size": "",
+            "button_fixed": false
+          }
+        }
+      },
+      "block_order": [
+        "banner_promotion_KppNc9"
+      ],
+      "custom_css": [
+        ".m-banner-promotion {order: 3 !important; margin-top: 30px; margin-bottom: 0;}",
+        ".m-collection-filters-form {display: none !important;}",
+        ".m-collection-toolbar__filter {display: none !important;}",
+        ".m-sidebar {display: none !important;}",
+        ".avada-collection {display: none !important;}"
+      ],
+      "settings": {
+        "container": "container-full",
+        "grid_layout": "grid",
+        "grid_columns": "4",
+        "show_columns_switcher": true,
+        "pagination_limit": 16,
+        "paginate_type": "paginate",
+        "show_sorting": true,
+        "show_filter": false,
+        "filters_type": "storefront_filters",
+        "sidebar": "fixed",
+        "sidebar_title": "Filters",
+        "limit_height_widget": true,
+        "limit_height": 300,
+        "change_product_variant_on_fitlering": true,
+        "show_product_count": true,
+        "collapsed_groups": "Product type, Brand, Vendor, Size",
+        "color_swatches": "color,colour,couleur,farbe",
+        "color_swatches_design": "list"
+      }
+    },
+    "gold_workshop": {
+      "type": "collection-workshop-proof",
+      "blocks": {
+        "proof_odlew": {
+          "type": "proof",
+          "settings": {
+            "label": "Odlew",
+            "note": "Złoto próby 585 i 750"
+          }
+        },
+        "proof_tekstura": {
+          "type": "proof",
+          "settings": {
+            "label": "Projekt",
+            "note": "Rysunek i model 3D"
+          }
+        },
+        "proof_kamien": {
+          "type": "proof",
+          "settings": {
+            "label": "Kamień",
+            "note": "Osadzamy ręcznie"
+          }
+        }
+      },
+      "block_order": [
+        "proof_tekstura",
+        "proof_odlew",
+        "proof_kamien"
+      ],
+      "settings": {
+        "eyebrow": "Pracownia Biżuterii Artystycznej EPIR Art Jewellery",
+        "heading": "Jak powstaje biżuteria",
+        "intro": "Pracownia we Wrocławiu. Projekt, model 3D, odlew i ręczne wykończenie."
+      }
+    },
+    "gold_cocreate": {
+      "type": "collection-cocreate-teaser",
+      "settings": {
+        "eyebrow": "Projekt indywidualny",
+        "heading": "Szukasz własnego projektu? Zrobimy go razem.",
+        "body": "Napisz, czego szukasz, albo prześlij szkic. Przygotujemy model 3D i po Twojej akceptacji wykonamy biżuterię w pracowni.",
+        "cta_label": "Zaprojektuj swój model",
+        "cta_url": "shopify://pages/zaprojektuj-swoj-model"
+      }
+    },
+    "gold_realizations": {
+      "type": "collection-gold-realizations",
+      "blocks": {
+        "real_tanzanit": {
+          "type": "realization",
+          "settings": {
+            "image": "shopify://shop_images/DSC06734.jpg",
+            "title": "Komplet biżuterii złotej z tanzanitami",
+            "text": "<p>Komplet ze złota i tanzanitów. Ciepłe złoto i głęboki błękit kamienia — wykonany na zamówienie w pracowni.</p>"
+          }
+        }
+      },
+      "block_order": [
+        "real_tanzanit"
+      ],
+      "settings": {
+        "eyebrow": "Pracownia Biżuterii Artystycznej EPIR Art Jewellery",
+        "heading": "Wybrane realizacje",
+        "intro": "Wzory z kolekcji i projekty według Twojego szkicu. Wszystko powstaje we Wrocławiu.",
+        "cta_label": "Zaprojektuj swój model",
+        "cta_url": "shopify://pages/zaprojektuj-swoj-model",
+        "footnote": "W razie wątpliwości: +48 698 718 564"
+      }
+    },
+    "apps_avada": {
+      "type": "apps",
+      "blocks": {
+        "avada_seo_suite_avada_after_collection_block_WjpdeW": {
+          "type": "shopify://apps/avada-seo-suite/blocks/avada-after-collection-block/15507c6e-1aa3-45d3-b698-7e175e033440",
+          "settings": {}
+        }
+      },
+      "block_order": [
+        "avada_seo_suite_avada_after_collection_block_WjpdeW"
+      ],
+      "settings": {
+        "heading": "",
+        "heading_size": "h3",
+        "subheading": "",
+        "header_alignment": "center",
+        "container": "container",
+        "background_color": "",
+        "padding_top": 0,
+        "padding_bottom": 0,
+        "custom_class": ""
+      }
+    },
+    "apps_gemma": {
+      "type": "apps",
+      "blocks": {
+        "epir_ai_assistant_section_qbWfmc": {
+          "type": "shopify://apps/epir_ai/blocks/assistant-section/019ca105-383c-7881-a0ce-813c2c58586f",
+          "settings": {
+            "title": "Czat z Gemmą",
+            "greeting_message": "Witaj. Jestem Gemmą z pracowni EPIR. Pomogę dobrać złoto i kamień albo zaplanować projekt.",
+            "input_placeholder": "Napisz wiadomość, np. „Pokaż pierścionki zaręczynowe z szafirem”",
+            "start_closed": true,
+            "accent_color": "#8B7D6A",
+            "worker_endpoint": "/apps/assistant/chat",
+            "storefront_id": "epir-liquid",
+            "channel": "online-store"
+          }
+        }
+      },
+      "block_order": [
+        "epir_ai_assistant_section_qbWfmc"
+      ],
+      "settings": {
+        "heading": "",
+        "heading_size": "h3",
+        "subheading": "",
+        "header_alignment": "center",
+        "container": "container",
+        "background_color": "",
+        "padding_top": 0,
+        "padding_bottom": 0,
+        "custom_class": ""
+      }
+    }
+  },
+  "order": [
+    "gold_manifesto",
+    "main",
+    "gold_workshop",
+    "gold_cocreate",
+    "gold_realizations",
+    "apps_avada",
+    "apps_gemma"
+  ]
+}

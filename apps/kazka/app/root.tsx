@@ -53,6 +53,7 @@ import {
 } from '~/lib/collection-filters';
 import {Footer} from '~/components/Footer';
 import {Header} from '~/components/Header';
+import {OrganicEpirBridge} from '~/components/OrganicEpirBridge';
 
 function privacyPolicyUrlFromShop(domain: string | undefined): string | undefined {
   if (!domain?.trim()) return undefined;
@@ -394,7 +395,12 @@ export default function App() {
         title={data.layout.shop.name}
         collections={data.collections?.nodes ?? []}
         cart={data.cart}
-        footer={<Footer />}
+        footer={
+          <>
+            <OrganicEpirBridge />
+            <Footer />
+          </>
+        }
         renderHeader={({brandName, collections, cartQuantity, openDrawer}) => (
           <Header
             brandName={brandName}

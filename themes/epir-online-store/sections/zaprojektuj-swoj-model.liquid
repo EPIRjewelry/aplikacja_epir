@@ -1,0 +1,733 @@
+{% comment %}
+  Kanoniczna strona współtworzenia — https://epirbizuteria.pl/pages/zaprojektuj-swoj-model
+  Tokeny: docs/kb/DESIGN_TOKENS.md (CTA #2c684e). Załącznik: base64 w FormData (App Proxy nie przekazuje binarnych multipart).
+{% endcomment %}
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+
+<section id="zaprojektuj" class="epir-zaprojektuj" aria-labelledby="zaprojektuj-hero-heading">
+  <div class="epir-z__hero">
+    <div class="epir-z__inner">
+      <p class="epir-z__eyebrow">{{ section.settings.eyebrow }}</p>
+      <h1 id="zaprojektuj-hero-heading" class="epir-z__title">{{ section.settings.heading }}</h1>
+      <p class="epir-z__lead">{{ section.settings.lead }}</p>
+      <a href="#brief" class="epir-z__btn-outline">{{ section.settings.hero_cta_label }}</a>
+    </div>
+  </div>
+
+  <div class="epir-z__process">
+    <div class="epir-z__inner">
+      <ol class="epir-z__steps">
+        <li class="epir-z__step">
+          <span class="epir-z__step-num" aria-hidden="true">1</span>
+          <h2 class="epir-z__step-title">{{ section.settings.step1_title }}</h2>
+          <p class="epir-z__step-text">{{ section.settings.step1_text }}</p>
+        </li>
+        <li class="epir-z__step">
+          <span class="epir-z__step-num" aria-hidden="true">2</span>
+          <h2 class="epir-z__step-title">{{ section.settings.step2_title }}</h2>
+          <p class="epir-z__step-text">{{ section.settings.step2_text }}</p>
+        </li>
+        <li class="epir-z__step">
+          <span class="epir-z__step-num" aria-hidden="true">3</span>
+          <h2 class="epir-z__step-title">{{ section.settings.step3_title }}</h2>
+          <p class="epir-z__step-text">{{ section.settings.step3_text }}</p>
+        </li>
+      </ol>
+    </div>
+  </div>
+
+  <div id="brief" class="epir-z__brief">
+    <div class="epir-z__inner epir-z__inner--narrow">
+      <div class="epir-z__brief-head">
+        <p class="epir-z__eyebrow">{{ section.settings.form_eyebrow }}</p>
+        <h2 class="epir-z__brief-title">{{ section.settings.form_heading }}</h2>
+        <p class="epir-z__lead epir-z__lead--sm">{{ section.settings.form_lead }}</p>
+      </div>
+
+      <div id="cocreate-form-wrap">
+        <form id="cocreate-form" class="epir-z__form" novalidate data-cocreate-endpoint="/apps/assistant/cocreate">
+          <div
+            id="upload-zone"
+            class="epir-z__upload"
+            role="button"
+            tabindex="0"
+            aria-label="Strefa przesyłania pliku"
+          >
+            <input type="file" id="file-input" name="attachment" accept="image/png,image/jpeg,image/jpg" class="epir-z__sr-only">
+            <svg class="epir-z__upload-icon" fill="none" stroke="currentColor" stroke-width="1.25" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 20h16"/></svg>
+            <p class="epir-z__upload-title">Upuść swój szkic lub zdjęcie inspiracji tutaj</p>
+            <p class="epir-z__upload-hint">PNG, JPG — max 10 MB</p>
+            <p id="file-name" class="epir-z__file-name" hidden></p>
+          </div>
+
+          <div class="epir-z__grid">
+            <div class="epir-z__field">
+              <label for="z-jewelry-type">Typ biżuterii</label>
+              <select id="z-jewelry-type" name="jewelry_type">
+                <option value="">Wybierz…</option>
+                <option value="pierścionek">Pierścionek</option>
+                <option value="naszyjnik">Naszyjnik</option>
+                <option value="kolczyki">Kolczyki</option>
+                <option value="bransoletka">Bransoletka</option>
+                <option value="inne">Inne</option>
+              </select>
+            </div>
+            <div class="epir-z__field">
+              <label for="z-metal">Metal</label>
+              <select id="z-metal" name="metal">
+                <option value="">Wybierz…</option>
+                <option value="złoto 14k">Złoto 14k</option>
+                <option value="złoto 18k">Złoto 18k</option>
+                <option value="srebro">Srebro</option>
+                <option value="nie wiem">Nie wiem</option>
+              </select>
+            </div>
+            <div class="epir-z__field">
+              <label for="z-budget">Budżet (orientacyjnie)</label>
+              <select id="z-budget" name="budget_band">
+                <option value="">Wybierz…</option>
+                <option value="do 5k">Do 5 000 zł</option>
+                <option value="5-15k">5 000 – 15 000 zł</option>
+                <option value="15k+">Powyżej 15 000 zł</option>
+                <option value="omówię">Omówię z złotnikiem</option>
+              </select>
+            </div>
+            <div class="epir-z__field">
+              <label for="z-timeline">Termin</label>
+              <select id="z-timeline" name="timeline">
+                <option value="">Wybierz…</option>
+                <option value="elastyczny">Elastyczny</option>
+                <option value="do 6 tyg.">Do 6 tygodni</option>
+                <option value="pilne">Pilne</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="epir-z__field">
+            <label for="z-name">Imię</label>
+            <input type="text" id="z-name" name="name" required autocomplete="given-name" placeholder="Twoje imię">
+          </div>
+          <div class="epir-z__field">
+            <label for="z-email">E-mail</label>
+            <input type="email" id="z-email" name="email" required autocomplete="email" placeholder="twoj@email.pl">
+          </div>
+          <div class="epir-z__field">
+            <label for="z-phone">Telefon <span class="epir-z__optional">(opcjonalnie)</span></label>
+            <input type="tel" id="z-phone" name="phone" autocomplete="tel" placeholder="+48 …">
+          </div>
+          <div class="epir-z__field">
+            <label for="z-vision">Opis Twojej wizji</label>
+            <textarea id="z-vision" name="vision" required rows="4" placeholder="Opisz formę, kamień, okazję — im więcej detali, tym lepiej."></textarea>
+          </div>
+
+          <div class="epir-z__consent">
+            <label class="epir-z__checkbox">
+              <input type="checkbox" id="z-consent-project" name="consent_project" value="1" required>
+              <span>Wyrażam zgodę na kontakt w sprawie mojego projektu (wymagane).</span>
+            </label>
+            <label class="epir-z__checkbox">
+              <input type="checkbox" id="z-consent-marketing" name="consent_marketing" value="1">
+              <span>Chcę otrzymywać inspiracje i nowości EPIR (opcjonalnie).</span>
+            </label>
+          </div>
+
+          <p id="form-error" class="epir-z__error" role="alert" hidden></p>
+          <button type="submit" class="epir-z__btn-cta" id="cocreate-submit">{{ section.settings.submit_label }}</button>
+        </form>
+
+        <div id="success-panel" class="epir-z__success" role="status" hidden>
+          <svg class="epir-z__success-icon" fill="none" stroke="currentColor" stroke-width="1.25" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <h3>{{ section.settings.success_title }}</h3>
+          <p id="success-text">{{ section.settings.success_text }}</p>
+          <p id="success-reference" class="epir-z__reference" hidden></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .epir-zaprojektuj {
+    --epir-bg: #f1f1f1;
+    --epir-bg2: #f5f5f5;
+    --epir-cream: #f0ebe0;
+    --epir-ink: #222222;
+    --epir-muted: #666666;
+    --epir-accent: #2c684e;
+    --epir-accent-hover: #3c5629;
+    --epir-on: #ffffff;
+    --epir-field: #f2f2f1;
+    font-family: Montserrat, system-ui, sans-serif;
+    color: var(--epir-ink);
+    background: var(--epir-bg);
+  }
+  .epir-zaprojektuj h1,
+  .epir-zaprojektuj h2,
+  .epir-zaprojektuj h3 {
+    font-family: "Playfair Display", Georgia, serif;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  .epir-z__inner {
+    max-width: 72rem;
+    margin: 0 auto;
+    padding: 0 1.25rem;
+  }
+  .epir-z__inner--narrow { max-width: 40rem; }
+  @media (min-width: 768px) {
+    .epir-z__inner { padding: 0 2rem; }
+  }
+
+  .epir-z__hero {
+    background:
+      radial-gradient(ellipse at 20% 0%, rgba(44,104,78,0.10), transparent 55%),
+      radial-gradient(ellipse at 90% 40%, rgba(240,235,224,0.95), transparent 50%),
+      var(--epir-bg);
+    padding: 4rem 0 3.5rem;
+    text-align: center;
+    border-bottom: 1px solid rgba(34,34,34,0.08);
+  }
+  @media (min-width: 768px) {
+    .epir-z__hero { padding: 5.5rem 0 4.5rem; }
+  }
+  .epir-z__eyebrow {
+    margin: 0 0 0.75rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--epir-accent);
+  }
+  .epir-z__title {
+    margin: 0 auto;
+    max-width: 18ch;
+    font-size: clamp(2rem, 4.5vw, 3.25rem);
+    line-height: 1.15;
+    color: var(--epir-ink);
+  }
+  .epir-z__lead {
+    margin: 1.25rem auto 0;
+    max-width: 36rem;
+    font-size: 1.05rem;
+    line-height: 1.65;
+    color: var(--epir-muted);
+  }
+  .epir-z__lead--sm { font-size: 0.95rem; margin-top: 0.75rem; }
+  .epir-z__btn-outline {
+    display: inline-flex;
+    margin-top: 1.75rem;
+    padding: 0.85rem 1.75rem;
+    border: 1px solid rgba(44,104,78,0.35);
+    color: var(--epir-ink);
+    text-decoration: none;
+    font-size: 0.875rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    transition: border-color 0.2s ease, background 0.2s ease;
+  }
+  .epir-z__btn-outline:hover {
+    border-color: var(--epir-accent);
+    background: rgba(44,104,78,0.06);
+  }
+
+  .epir-z__process {
+    background: var(--epir-bg2);
+    padding: 3.5rem 0;
+  }
+  @media (min-width: 768px) {
+    .epir-z__process { padding: 4.5rem 0; }
+  }
+  .epir-z__steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 2rem;
+  }
+  @media (min-width: 768px) {
+    .epir-z__steps { grid-template-columns: repeat(3, 1fr); gap: 2.5rem; }
+  }
+  .epir-z__step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--epir-accent);
+    color: var(--epir-accent);
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+  .epir-z__step-title {
+    margin: 0 0 0.5rem;
+    font-size: 1.15rem;
+    color: var(--epir-ink);
+  }
+  .epir-z__step-text {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: var(--epir-muted);
+  }
+
+  .epir-z__brief {
+    background: var(--epir-cream);
+    padding: 3.5rem 0 4.5rem;
+    border-top: 1px solid rgba(44,104,78,0.1);
+  }
+  @media (min-width: 768px) {
+    .epir-z__brief { padding: 4.5rem 0 5.5rem; }
+  }
+  .epir-z__brief-head { text-align: center; margin-bottom: 2.5rem; }
+  .epir-z__brief-title {
+    margin: 0 auto;
+    max-width: 22ch;
+    font-size: clamp(1.6rem, 3vw, 2.25rem);
+    line-height: 1.2;
+  }
+
+  .epir-z__form { display: grid; gap: 1.25rem; }
+  .epir-z__upload {
+    border: 1px dashed rgba(44,104,78,0.35);
+    background: rgba(255,255,255,0.55);
+    padding: 2rem 1.25rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease;
+  }
+  .epir-z__upload.drag-over,
+  .epir-z__upload:hover {
+    border-color: var(--epir-accent);
+    background: rgba(44,104,78,0.05);
+  }
+  .epir-z__upload-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    margin: 0 auto 0.75rem;
+    color: rgba(44,104,78,0.55);
+  }
+  .epir-z__upload-title { margin: 0; font-size: 0.9rem; color: var(--epir-ink); }
+  .epir-z__upload-hint { margin: 0.35rem 0 0; font-size: 0.75rem; color: var(--epir-muted); }
+  .epir-z__file-name { margin: 0.75rem 0 0; font-size: 0.85rem; color: var(--epir-accent); }
+  .epir-z__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    border: 0;
+  }
+
+  .epir-z__field label {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--epir-accent);
+  }
+  .epir-z__field input,
+  .epir-z__field textarea,
+  .epir-z__field select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.85rem 1rem;
+    border: 1px solid rgba(34,34,34,0.12);
+    background: var(--epir-field);
+    color: var(--epir-ink);
+    font: inherit;
+    font-size: 0.95rem;
+    border-radius: 0.35rem;
+  }
+  .epir-z__field input:focus,
+  .epir-z__field textarea:focus,
+  .epir-z__field select:focus {
+    outline: 2px solid rgba(44,104,78,0.35);
+    outline-offset: 1px;
+  }
+  .epir-z__field textarea { resize: vertical; min-height: 7rem; }
+  .epir-z__optional { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--epir-muted); }
+  .epir-z__grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 640px) {
+    .epir-z__grid { grid-template-columns: 1fr 1fr; }
+  }
+  .epir-z__consent { display: grid; gap: 0.75rem; }
+  .epir-z__checkbox {
+    display: flex;
+    gap: 0.65rem;
+    align-items: flex-start;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    color: var(--epir-muted);
+    cursor: pointer;
+  }
+  .epir-z__checkbox input { margin-top: 0.2rem; flex-shrink: 0; }
+  .epir-z__reference {
+    margin-top: 1rem !important;
+    font-weight: 600;
+    color: var(--epir-accent) !important;
+  }
+  .epir-z__btn-cta:disabled {
+    opacity: 0.65;
+    cursor: wait;
+    transform: none;
+  }
+
+  .epir-z__error {
+    margin: 0;
+    color: #b42318;
+    font-size: 0.875rem;
+  }
+  .epir-z__btn-cta {
+    justify-self: start;
+    border: 0;
+    cursor: pointer;
+    background: var(--epir-accent);
+    color: var(--epir-on);
+    padding: 1rem 2.25rem;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    transition: background 0.2s ease, transform 0.2s ease;
+  }
+  .epir-z__btn-cta:hover {
+    background: var(--epir-accent-hover);
+    transform: translateY(-1px);
+  }
+  @media (max-width: 640px) {
+    .epir-z__btn-cta { width: 100%; justify-self: stretch; }
+  }
+
+  .epir-z__success {
+    text-align: center;
+    padding: 3rem 0.5rem;
+  }
+  .epir-z__success[hidden],
+  .epir-z__form[hidden],
+  .epir-z__error[hidden],
+  .epir-z__file-name[hidden] { display: none !important; }
+  .epir-z__success-icon {
+    width: 3.5rem;
+    height: 3.5rem;
+    margin: 0 auto 1.25rem;
+    color: var(--epir-accent);
+  }
+  .epir-z__success h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1.5rem;
+  }
+  .epir-z__success p {
+    margin: 0 auto;
+    max-width: 28rem;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: var(--epir-muted);
+  }
+</style>
+
+<script>
+  (function () {
+    var root = document.getElementById('zaprojektuj');
+    if (!root) return;
+    var uploadZone = root.querySelector('#upload-zone');
+    var fileInput = root.querySelector('#file-input');
+    var fileName = root.querySelector('#file-name');
+    var form = root.querySelector('#cocreate-form');
+    var successPanel = root.querySelector('#success-panel');
+    var formError = root.querySelector('#form-error');
+    var selectedFile = null;
+    var MAX_BYTES = 10 * 1024 * 1024;
+
+    function validateFile(file) {
+      if (!file) return null;
+      var okType = /^image\/(png|jpeg|jpg)$/i.test(file.type) || /\.(png|jpe?g)$/i.test(file.name);
+      if (!okType) return 'Dozwolone formaty: PNG, JPG.';
+      if (file.size > MAX_BYTES) return 'Plik jest za duży (max 10 MB).';
+      return null;
+    }
+
+    function syncFileInput(file) {
+      if (!fileInput) return;
+      try {
+        var dt = new DataTransfer();
+        if (file) dt.items.add(file);
+        fileInput.files = dt.files;
+      } catch (e) {
+        /* starsze przeglądarki — selectedFile wystarczy przy wysyłce */
+      }
+    }
+
+    function fileToBase64(file) {
+      return new Promise(function (resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function () {
+          var result = String(reader.result || '');
+          var comma = result.indexOf(',');
+          resolve(comma >= 0 ? result.slice(comma + 1) : result);
+        };
+        reader.onerror = function () { reject(new Error('read_failed')); };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function setFile(file) {
+      var err = validateFile(file);
+      if (err) {
+        formError.textContent = err;
+        formError.hidden = false;
+        selectedFile = null;
+        fileName.hidden = true;
+        return;
+      }
+      formError.hidden = true;
+      selectedFile = file;
+      syncFileInput(file);
+      if (file) {
+        fileName.textContent = file.name;
+        fileName.hidden = false;
+      } else {
+        fileName.hidden = true;
+      }
+    }
+
+    if (uploadZone && fileInput) {
+      uploadZone.addEventListener('click', function () { fileInput.click(); });
+      uploadZone.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+      });
+      fileInput.addEventListener('change', function () {
+        setFile(fileInput.files && fileInput.files[0] ? fileInput.files[0] : null);
+      });
+      ['dragenter', 'dragover'].forEach(function (ev) {
+        uploadZone.addEventListener(ev, function (e) {
+          e.preventDefault();
+          uploadZone.classList.add('drag-over');
+        });
+      });
+      ['dragleave', 'drop'].forEach(function (ev) {
+        uploadZone.addEventListener(ev, function (e) {
+          e.preventDefault();
+          uploadZone.classList.remove('drag-over');
+        });
+      });
+      uploadZone.addEventListener('drop', function (e) {
+        var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (file) setFile(file);
+      });
+    }
+
+    if (form) {
+      var submitBtn = root.querySelector('#cocreate-submit');
+      var successReference = root.querySelector('#success-reference');
+      var endpoint = form.getAttribute('data-cocreate-endpoint') || '/apps/assistant/cocreate';
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        formError.hidden = true;
+
+        var consentProject = root.querySelector('#z-consent-project');
+        if (!consentProject || !consentProject.checked) {
+          formError.textContent = 'Wymagana zgoda na kontakt w sprawie projektu.';
+          formError.hidden = false;
+          return;
+        }
+
+        if (selectedFile) {
+          var fileErr = validateFile(selectedFile);
+          if (fileErr) {
+            formError.textContent = fileErr;
+            formError.hidden = false;
+            return;
+          }
+        }
+
+        var formData = new FormData(form);
+        formData.delete('attachment');
+        formData.set('source_url', window.location.href);
+
+        if (submitBtn) submitBtn.disabled = true;
+
+        function submitBrief(payload) {
+          fetch(endpoint, { method: 'POST', body: payload, credentials: 'same-origin' })
+            .then(function (res) {
+              return res.json().then(function (data) {
+                return { ok: res.ok, status: res.status, data: data };
+              }).catch(function () {
+                return { ok: false, status: res.status, data: {} };
+              });
+            })
+            .then(function (result) {
+              if (!result.ok || !result.data || !result.data.ok) {
+                var msg = 'Nie udało się wysłać briefu. Spróbuj ponownie.';
+                if (result.data && result.data.message) {
+                  msg = result.data.message;
+                } else if (result.status === 401) {
+                  msg = 'Błąd autoryzacji formularza. Odśwież stronę i spróbuj ponownie.';
+                } else if (result.status === 404) {
+                  msg = 'Usługa briefu jest chwilowo niedostępna. Napisz na epir@epirbizuteria.pl.';
+                } else if (result.status === 429) {
+                  msg = 'Zbyt wiele prób — poczekaj chwilę i spróbuj ponownie.';
+                }
+                formError.textContent = msg;
+                formError.hidden = false;
+                if (submitBtn) submitBtn.disabled = false;
+                return;
+              }
+              form.hidden = true;
+              successPanel.hidden = false;
+              if (successReference && result.data.referenceId) {
+                successReference.textContent = 'Numer sprawy: ' + result.data.referenceId;
+                successReference.hidden = false;
+              }
+            })
+            .catch(function () {
+              formError.textContent = 'Błąd połączenia. Sprawdź internet i spróbuj ponownie.';
+              formError.hidden = false;
+              if (submitBtn) submitBtn.disabled = false;
+            });
+        }
+
+        if (selectedFile) {
+          fileToBase64(selectedFile)
+            .then(function (base64) {
+              formData.set('attachment_base64', base64);
+              formData.set('attachment_filename', selectedFile.name || 'upload.jpg');
+              submitBrief(formData);
+            })
+            .catch(function () {
+              formError.textContent = 'Nie udało się odczytać pliku. Spróbuj ponownie.';
+              formError.hidden = false;
+              if (submitBtn) submitBtn.disabled = false;
+            });
+          return;
+        }
+
+        submitBrief(formData);
+      });
+    }
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "Zaprojektuj swój model",
+  "tag": "section",
+  "class": "section-zaprojektuj",
+  "settings": [
+    {
+      "type": "text",
+      "id": "eyebrow",
+      "label": "Hero eyebrow",
+      "default": "EPIR Art Jewellery · Wrocławska Pracownia Biżuterii Artystycznej"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Hero heading",
+      "default": "Zaprojektuj swój model"
+    },
+    {
+      "type": "textarea",
+      "id": "lead",
+      "label": "Hero lead",
+      "default": "Twój pomysł. Nasz ogień. Współtworzymy biżuterię na zamówienie — od szkicu i kamienia po ręczny odlew we wrocławskiej pracowni."
+    },
+    {
+      "type": "text",
+      "id": "hero_cta_label",
+      "label": "Hero secondary CTA",
+      "default": "Przejdź do opisu"
+    },
+    {
+      "type": "text",
+      "id": "step1_title",
+      "label": "Step 1 title",
+      "default": "Twój krok: szkic lub myśl"
+    },
+    {
+      "type": "textarea",
+      "id": "step1_text",
+      "label": "Step 1 text",
+      "default": "Prześlij surowy szkic, zdjęcie inspiracji albo opisz wizję słowami — nie musisz mieć gotowego projektu."
+    },
+    {
+      "type": "text",
+      "id": "step2_title",
+      "label": "Step 2 title",
+      "default": "Nasz krok: rzeźba 3D"
+    },
+    {
+      "type": "textarea",
+      "id": "step2_text",
+      "label": "Step 2 text",
+      "default": "Tłumaczymy wizję na cyfrowy model 3D lub rzeźbę w wosku — idealne dla biżuterii organicznej, asymetrycznej. Przeglądasz i korygujesz go razem z nami, zanim ruszy metal."
+    },
+    {
+      "type": "text",
+      "id": "step3_title",
+      "label": "Step 3 title",
+      "default": "Wspólny finał: trwały odlew"
+    },
+    {
+      "type": "textarea",
+      "id": "step3_text",
+      "label": "Step 3 text",
+      "default": "Po Twojej akceptacji odlewamy i ręcznie wykańczamy w srebrze lub złocie we wrocławskiej pracowni."
+    },
+    {
+      "type": "text",
+      "id": "form_eyebrow",
+      "label": "Form eyebrow",
+      "default": "Brief współtworzenia"
+    },
+    {
+      "type": "text",
+      "id": "form_heading",
+      "label": "Form heading",
+      "default": "Opowiedz nam o swoim wyrobie"
+    },
+    {
+      "type": "textarea",
+      "id": "form_lead",
+      "label": "Form lead",
+      "default": "Im więcej detali (forma, kamień, okazja, styl życia), tym lepiej poprowadzimy pierwszą rozmowę."
+    },
+    {
+      "type": "text",
+      "id": "submit_label",
+      "label": "Submit button",
+      "default": "Wyślij zapytanie"
+    },
+    {
+      "type": "text",
+      "id": "success_title",
+      "label": "Success title",
+      "default": "Dziękujemy — Twoja wizja dotarła do pracowni"
+    },
+    {
+      "type": "textarea",
+      "id": "success_text",
+      "label": "Success text",
+      "default": "Nasz złotnik przejrzy przesłane materiały i odezwie się w ciągu 2–3 dni roboczych, aby omówić kolejne kroki współtworzenia."
+    }
+  ],
+  "presets": [
+    {
+      "name": "Zaprojektuj swój model"
+    }
+  ]
+}
+{% endschema %}

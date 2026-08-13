@@ -8,6 +8,8 @@
     "price",
     "availability",
     "brand",
+    "identifier_exists",
+    "color",
     "google_product_category",
     "custom_label_0",
     "custom_label_1",
@@ -65,16 +67,13 @@
   "availabilityRules": {
     "defaultLeadTime": "4-7 dni",
     "labels": {
-      "ship24h": "Wysylka_24h",
       "ship3to5": "Wysylka_4_7_dni",
       "madeToOrder": "Na_zamowienie_7_dni"
     },
     "leadTimePatterns": {
-      "24h": ["24h", "24 h", "1 dzień", "1 dzien", "natychmiast", "od ręki", "od reki"],
-      "3to5": ["3-5", "3–5", "4-7", "4–7", "4 do 7", "2-4", "48h", "72h", "do 5 dni", "do 7 dni"],
-      "7plus": ["7 dni", "7-14", "na zamówienie", "na zamowienie", "indywidualnie", "custom"]
-    },
-    "inventoryThreshold24h": 1
+      "3to5": ["3-5", "3–5", "4-7", "4–7", "4 do 7", "2-4", "48h", "72h", "do 5 dni", "do 7 dni", "24h", "24 h", "1 dzień", "1 dzien", "natychmiast", "od ręki", "od reki"],
+      "7plus": ["7 dni", "7-14", "10 dni", "14 dni", "2 tygodnie", "3 tygodnie", "3 tyg", "21 dni", "na zamówienie", "na zamowienie", "indywidualnie", "custom", "magiczny ogród", "magiczny ogrod"]
+    }
   },
   "titleEnrichment": {
     "craftsmanshipSuffix": "ręcznie kuty rzemieślniczy",

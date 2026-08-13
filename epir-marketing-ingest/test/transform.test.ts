@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildGmcVariantLink,
   classifyAvailabilityLabel,
   classifyMarginLabel,
   enrichTitleRules,
   resolveGoogleProductCategory,
+  transformProductToGmcRows,
 } from '../src/transform.js';
 import { classifyMetalLabel } from '../src/metal-label.js';
-import type { InternalProductRow, MappingConfig } from '../src/types.js';
+import type { InternalProductRow, MappingConfig, ShopifyConfig, ShopifyProduct } from '../src/types.js';
 
 const mapping: MappingConfig = {
   gmcColumns: [],
@@ -33,16 +35,13 @@ const mapping: MappingConfig = {
   availabilityRules: {
     defaultLeadTime: '4-7 dni',
     labels: {
-      ship24h: 'Wysylka_24h',
       ship3to5: 'Wysylka_4_7_dni',
       madeToOrder: 'Na_zamowienie_7_dni',
     },
     leadTimePatterns: {
-      '24h': ['24h', 'od reki'],
-      '3to5': ['3-5', '4-7', 'do 5 dni'],
-      '7plus': ['na zamowienie', '7 dni'],
+      '3to5': ['3-5', '4-7', 'do 5 dni', '24h', 'od reki'],
+      '7plus': ['na zamowienie', '7 dni', '3 tygodnie'],
     },
-    inventoryThreshold24h: 1,
   },
   titleEnrichment: {
     craftsmanshipSuffix: 'ręcznie kuty rzemieślniczy',
@@ -103,10 +102,16 @@ describe('classifyMarginLabel', () => {
 });
 
 describe('classifyAvailabilityLabel', () => {
-  it('detects 24h shipping from lead time', () => {
+  it('maps legacy 24h lead time to standard 4-7 days label', () => {
     expect(classifyAvailabilityLabel(baseRow({ leadTime: '24h' }), mapping)).toBe(
-      'Wysylka_24h',
+      'Wysylka_4_7_dni',
     );
+  });
+
+  it('maps 3 weeks lead time to made-to-order label', () => {
+    expect(
+      classifyAvailabilityLabel(baseRow({ leadTime: '3 tygodnie' }), mapping),
+    ).toBe('Na_zamowienie_7_dni');
   });
 
   it('defaults to 4-7 days when lead time empty', () => {
@@ -165,5 +170,110 @@ describe('classifyMetalLabel', () => {
         'Pierścionek złoty z turmalinem',
       ),
     ).toBe('Zloto');
+  });
+});
+
+describe('buildGmcVariantLink', () => {
+  it('appends ?variant= to clean PDP URL', () => {
+    expect(
+      buildGmcVariantLink('https://epirbizuteria.pl/products/foo', '12345'),
+    ).toBe('https://epirbizuteria.pl/products/foo?variant=12345');
+  });
+
+  it('replaces existing variant query param', () => {
+    expect(
+      buildGmcVariantLink(
+        'https://epirbizuteria.pl/products/foo?variant=1',
+        '99',
+      ),
+    ).toBe('https://epirbizuteria.pl/products/foo?variant=99');
+  });
+});
+
+describe('transformProductToGmcRows', () => {
+  const shopifyConfig = {
+    brand: 'EPIR',
+    storefrontBaseUrl: 'https://epirbizuteria.pl',
+  } as ShopifyConfig;
+
+  it('sets identifier_exists=no and variant deep-link', async () => {
+    const product: ShopifyProduct = {
+      id: '1',
+      handle: 'forest',
+      title: 'Pierścionek Forest',
+      descriptionHtml: '<p>Opis</p>',
+      onlineStoreUrl: 'https://epirbizuteria.pl/products/forest',
+      featuredImageUrl: 'https://cdn.shopify.com/image.jpg',
+      vendor: 'EPIR Art Silver Jewellery',
+      productType: 'Pierścionek',
+      tags: [],
+      collections: ['Forest'],
+      metafields: {},
+      variants: [
+        {
+          id: '51952469049676',
+          sku: null,
+          price: '3200.00',
+          compareAtPrice: null,
+          unitCost: null,
+          inventoryQuantity: 1,
+          availableForSale: true,
+          imageUrl: null,
+          metafields: {},
+        },
+      ],
+    };
+
+    const rows = await transformProductToGmcRows(
+      product,
+      shopifyConfig,
+      mapping,
+      { useAi: false },
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].identifier_exists).toBe('no');
+    expect(rows[0].link).toBe(
+      'https://epirbizuteria.pl/products/forest?variant=51952469049676',
+    );
+    expect(rows[0].id).toBe('shopify_PL_51952469049676');
+    expect(rows[0].custom_label_2).toBe('Srebro');
+    expect(rows[0].color).toBe('Silver');
+  });
+
+  it('maps gold metal to GMC color Gold', async () => {
+    const product: ShopifyProduct = {
+      id: '2',
+      handle: 'zloto',
+      title: 'Pierścionek żółte złoto 14k',
+      descriptionHtml: '<p>Opis</p>',
+      onlineStoreUrl: 'https://epirbizuteria.pl/products/zloto',
+      featuredImageUrl: 'https://cdn.shopify.com/image.jpg',
+      vendor: 'EPIR Art Gold',
+      productType: 'Pierścionek',
+      tags: [],
+      collections: [],
+      metafields: {},
+      variants: [
+        {
+          id: '111',
+          sku: null,
+          price: '5000.00',
+          compareAtPrice: null,
+          unitCost: null,
+          inventoryQuantity: 1,
+          availableForSale: true,
+          imageUrl: null,
+          metafields: {},
+        },
+      ],
+    };
+    const rows = await transformProductToGmcRows(
+      product,
+      shopifyConfig,
+      mapping,
+      { useAi: false },
+    );
+    expect(rows[0].custom_label_2).toBe('Zloto');
+    expect(rows[0].color).toBe('Gold');
   });
 });

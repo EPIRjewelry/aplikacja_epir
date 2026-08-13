@@ -1,0 +1,80 @@
+{% comment %}
+  Teaser współtworzenia — wyłącznie link do /pages/zaprojektuj-swoj-model.
+  Nie edytuje zamrożonego formularza cocreate.
+{% endcomment %}
+
+<section id="gold-cocreate" class="epir-gold-coll epir-gold-coll--cocreate" aria-labelledby="gold-cocreate-heading">
+  <div class="epir-gc__inner">
+    <p class="epir-gc__eyebrow">{{ section.settings.eyebrow }}</p>
+    <h2 id="gold-cocreate-heading" class="epir-gc__heading">{{ section.settings.heading }}</h2>
+    {% if section.settings.body != blank %}
+      <p class="epir-gc__intro">{{ section.settings.body }}</p>
+    {% endif %}
+    {% assign cta_href = section.settings.cta_url | default: pages['zaprojektuj-swoj-model'].url %}
+    {% if cta_href == blank %}
+      {% assign cta_href = '/pages/zaprojektuj-swoj-model' %}
+    {% endif %}
+    <a href="{{ cta_href }}" class="epir-gc__btn-cta">
+      {{ section.settings.cta_label }}
+    </a>
+  </div>
+</section>
+
+<style>
+  .epir-gold-coll--cocreate {
+    background: #F5F0E8;
+    padding: 3.75rem 0;
+    border-top: 1px solid rgba(34,34,34,0.06);
+    text-align: center;
+  }
+  .epir-gold-coll--cocreate .epir-gc__heading {
+    max-width: 22ch;
+  }
+  .epir-gold-coll--cocreate .epir-gc__btn-cta {
+    margin-top: 0.5rem;
+  }
+</style>
+
+{% schema %}
+{
+  "name": "Gold cocreate teaser",
+  "tag": "section",
+  "class": "section-gold-cocreate",
+  "settings": [
+    {
+      "type": "text",
+      "id": "eyebrow",
+      "label": "Eyebrow",
+      "default": "Projekt indywidualny"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Nagłówek",
+      "default": "Szukasz własnego projektu? Zrobimy go razem."
+    },
+    {
+      "type": "textarea",
+      "id": "body",
+      "label": "Opis",
+      "default": "Napisz, czego szukasz, albo prześlij szkic. Przygotujemy model 3D i po Twojej akceptacji wykonamy biżuterię w pracowni."
+    },
+    {
+      "type": "text",
+      "id": "cta_label",
+      "label": "CTA",
+      "default": "Zaprojektuj swój model"
+    },
+    {
+      "type": "url",
+      "id": "cta_url",
+      "label": "URL CTA (domyślnie: zaprojektuj-swoj-model)"
+    }
+  ],
+  "presets": [
+    {
+      "name": "Gold cocreate teaser"
+    }
+  ]
+}
+{% endschema %}

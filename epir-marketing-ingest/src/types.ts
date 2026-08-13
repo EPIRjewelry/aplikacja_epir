@@ -62,6 +62,10 @@ export interface GmcFeedRow {
   price: string;
   availability: 'in stock' | 'out of stock' | 'preorder';
   brand: string;
+  /** Hand-made: no GTIN — GMC expects `no` when identifiers are absent */
+  identifier_exists: 'yes' | 'no';
+  /** GMC color — Silver/Gold from metal classification; empty if unknown */
+  color: string;
   google_product_category: string;
   custom_label_0: string;
   custom_label_1: string;
@@ -88,6 +92,18 @@ export interface SheetsConfig {
   tabName: string;
   clearRange: string;
   writeRange: string;
+}
+
+export interface R2Config {
+  bucket: string;
+  objectKey: string;
+  publicFeedUrl: string;
+}
+
+export interface OutputConfig {
+  defaultSink: 'r2' | 'csv' | 'sheets';
+  localCsvBackup: boolean;
+  sheetsEnabled: boolean;
 }
 
 export interface MappingConfig {
@@ -117,16 +133,13 @@ export interface MappingConfig {
   availabilityRules: {
     defaultLeadTime?: string;
     labels: {
-      ship24h: string;
       ship3to5: string;
       madeToOrder: string;
     };
     leadTimePatterns: {
-      '24h': string[];
       '3to5': string[];
       '7plus': string[];
     };
-    inventoryThreshold24h: number;
   };
   titleEnrichment: {
     craftsmanshipSuffix: string;
@@ -143,7 +156,8 @@ export interface PipelineResult {
   durationMs: number;
   productsFetched: number;
   rowsWritten: number;
-  outputTarget: 'sheets' | 'csv' | 'none';
+  outputTarget: 'sheets' | 'csv' | 'r2' | 'r2+csv' | 'none';
   outputPath?: string;
+  publicFeedUrl?: string;
   errors: string[];
 }

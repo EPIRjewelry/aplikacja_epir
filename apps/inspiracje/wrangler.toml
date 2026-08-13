@@ -1,0 +1,29 @@
+# Inspiracje – EPIR Art Jewellery (Archiwum Inspiracji)
+# Custom domain: inspiracje.epirbizuteria.pl → Cloudflare Pages
+# Deploy: npm run deploy (lub root: npm run pages:deploy:inspiracje)
+#
+# Galeria read-only: dane z app/data/archive-inspirations.json
+# (node scripts/export-archive-inspirations.mjs). Bez koszyka / cen.
+
+name = "inspiracje-hydrogen-pages"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+pages_build_output_dir = "public"
+
+[vars]
+BRAND = "inspiracje"
+NODE_ENV = "production"
+PUBLIC_STORE_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
+PUBLIC_STOREFRONT_URL = "https://inspiracje.epirbizuteria.pl"
+PUBLIC_CHECKOUT_DOMAIN = "checkout.shopify.com"
+PUBLIC_STOREFRONT_ID = "1000013955"
+SHOP_ID = "55145660472"
+PUBLIC_STOREFRONT_API_VERSION = "2025-10"
+# URL CTA współtworzenia (apex Liquid)
+PUBLIC_CTA_URL = "https://epirbizuteria.pl/pages/zaprojektuj-swoj-model"
+PUBLIC_MAIN_SHOP_URL = "https://epirbizuteria.pl"
+
+# Secrets (Cloudflare Pages → Settings → Variables and Secrets):
+# SESSION_SECRET
+# Opcjonalnie (jeśli kiedyś włączysz Storefront API): PUBLIC/PRIVATE_STOREFRONT_API_TOKEN

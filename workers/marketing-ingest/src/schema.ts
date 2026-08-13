@@ -3,6 +3,7 @@
  * Tabela docelowa Iceberg (namespace `marketing.*`) definiuje się w konfiguracji Pipeline SQL;
  * ten kształt jest zgodny z typowym schematem streamu (źródło, dzień, kampania, metryki).
  */
+/** Dzienne metryki kampanii (GA4 / Ads). Snapshot GMC → `gmc-snapshot.ts` (source google_merchant). */
 export type MarketingSource = 'google_analytics' | 'google_ads';
 
 export interface MarketingStreamRecord {
