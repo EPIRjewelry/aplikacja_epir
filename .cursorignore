@@ -45,3 +45,24 @@ apps/zareczyny/public/**/*.svg
 *.dae
 
 # specs/, agents/, .github/agents/, .notes/ -> .cursorindexingignore (dostep przez @, bez auto-indeksu)
+
+# Motyw: bundlowane minifikaty (edytuj .css / .js bez .aio.min.*)
+**/*.aio.min.css
+**/*.aio.min.js
+
+# Vendor theme pull + feed dumps (token budget)
+themes/epir-online-store/assets/
+themes/epir-online-store/blocks/
+themes/epir-online-store/config/
+themes/epir-online-store/layout/
+themes/epir-online-store/locales/
+themes/epir-online-store/scripts/
+themes/epir-online-store/snippets/
+
+# Agent / MCP staging junk (token burn)
+epir-marketing-ingest/.tmp*
+epir-marketing-ingest/.upload-chunks-b64/
+epir-marketing-ingest/.upload-chunks/
+.tmp/shopping-audit*.json
+
+# specs/, agents/, .github/agents/, .notes/, marketing/csv/ -> .cursorindexingignore (@ bez auto-indeksu)

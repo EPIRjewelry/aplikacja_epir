@@ -1,0 +1,100 @@
+name: Deploy Archiwum Inspiracji
+
+# Eksport Admin API (tag:sprzedane) → build apps/inspiracje → Cloudflare Pages.
+# Nie blokuje landingów Apex ani deployu Kazka/Zaręczyny.
+# Deploy Pages wymaga wcześniejszego utworzenia projektu + DNS (operator).
+on:
+  schedule:
+    # Cotygodniowy odśwież snapshotu (poniedziałek 05:00 UTC)
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run_export:
+        description: 'Tylko raport eksportu (bez zapisu JSON / bez deploy)'
+        required: false
+        type: boolean
+        default: false
+      skip_deploy:
+        description: 'Eksport + build, bez pages deploy'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-inspiracje-archive
+  cancel-in-progress: false
+
+jobs:
+  export-build-deploy:
+    name: export-build-deploy-inspiracje
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SHOPIFY_ADMIN_TOKEN: ${{ secrets.SHOPIFY_ADMIN_TOKEN }}
+      SHOP: epir-art-silver-jewellery.myshopify.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install monorepo dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Validate Admin token
+        run: |
+          if [ -z "${SHOPIFY_ADMIN_TOKEN}" ]; then
+            echo "Missing SHOPIFY_ADMIN_TOKEN (scope read_products)."
+            exit 1
+          fi
+
+      - name: Export archive snapshot
+        run: |
+          if [ "${{ github.event.inputs.dry_run_export }}" = "true" ]; then
+            node scripts/export-archive-inspirations.mjs --dry-run
+          else
+            node scripts/export-archive-inspirations.mjs
+          fi
+
+      - name: Stop after dry-run export
+        if: github.event.inputs.dry_run_export == true
+        run: echo "Dry-run export complete — skipping build/deploy."
+
+      - name: Build inspiracje
+        if: github.event.inputs.dry_run_export != true
+        working-directory: apps/inspiracje
+        run: npm run build
+
+      - name: Upload snapshot artifact
+        if: github.event.inputs.dry_run_export != true
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-inspirations-json
+          path: apps/inspiracje/app/data/archive-inspirations.json
+          if-no-files-found: error
+
+      - name: Validate Cloudflare secrets
+        if: >
+          github.event.inputs.dry_run_export != true &&
+          github.event.inputs.skip_deploy != true
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
+            echo "Missing CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID."
+            exit 1
+          fi
+
+      - name: Deploy to Cloudflare Pages
+        if: >
+          github.event.inputs.dry_run_export != true &&
+          github.event.inputs.skip_deploy != true
+        working-directory: apps/inspiracje
+        run: |
+          node ../../node_modules/wrangler/bin/wrangler.js pages deploy public \
+            --project-name=inspiracje-hydrogen-pages \
+            --branch=main

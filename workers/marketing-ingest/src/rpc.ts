@@ -8,10 +8,23 @@ import {
   applySearchAdGroupUtmSuffixes,
   auditPmaxListingGroups,
   expandPmaxListingGroups,
+  expandPmaxListingGroupsSingleMetal,
   FOREST_UTM_SUFFIX,
+  setAssetGroupStatus,
   setCampaignFinalUrlSuffix,
+  type MetalLabel,
   type PmaxListingAudit,
 } from './pmax-listing';
+import {
+  applyPmaxSearchThemes,
+  auditPmaxSearchThemes,
+  type SearchThemesAudit,
+} from './pmax-search-themes';
+import { auditSearchTerms, type SearchTermsAudit } from './ads-search-terms-audit';
+import {
+  applySearchNegatives,
+  auditSearchNegatives,
+} from './search-negatives';
 
 /** S2S RPC — podgląd marketingu + ops PMax/Search bez HTTP Bearer między workerami. */
 export class MarketingIngestS2SRpc extends WorkerEntrypoint<Env> {
@@ -140,6 +153,25 @@ export class MarketingIngestS2SRpc extends WorkerEntrypoint<Env> {
     return expandPmaxListingGroups(this.env, args);
   }
 
+  async expandPmaxListingGroupsSingleMetal(args: {
+    campaignName?: string;
+    assetGroupName: string;
+    metal: MetalLabel | string;
+    dryRun?: boolean;
+    excludeBrand?: string;
+  }): Promise<Record<string, unknown>> {
+    return expandPmaxListingGroupsSingleMetal(this.env, args);
+  }
+
+  async setAssetGroupStatus(args: {
+    campaignName?: string;
+    assetGroupName: string;
+    status: 'ENABLED' | 'PAUSED';
+    dryRun?: boolean;
+  }): Promise<Record<string, unknown>> {
+    return setAssetGroupStatus(this.env, args);
+  }
+
   async setForestPremiumCampaignSuffix(args?: {
     campaignName?: string;
     dryRun?: boolean;
@@ -158,6 +190,42 @@ export class MarketingIngestS2SRpc extends WorkerEntrypoint<Env> {
     return applySearchAdGroupUtmSuffixes(this.env, args);
   }
 
+  async auditPmaxSearchThemes(args?: {
+    campaignName?: string;
+    assetGroupName?: string;
+  }): Promise<SearchThemesAudit | { error: string }> {
+    return auditPmaxSearchThemes(this.env, args);
+  }
+
+  async applyPmaxSearchThemes(args?: {
+    campaignName?: string;
+    assetGroupName?: string;
+    dryRun?: boolean;
+  }): Promise<Record<string, unknown>> {
+    return applyPmaxSearchThemes(this.env, args);
+  }
+
+  async auditSearchTerms(args?: {
+    days?: number;
+    campaignNameContains?: string;
+    limit?: number;
+  }): Promise<SearchTermsAudit | { error: string }> {
+    return auditSearchTerms(this.env, args);
+  }
+
+  async auditSearchNegatives(args?: {
+    campaignFilter?: string;
+  }): Promise<Record<string, unknown>> {
+    return auditSearchNegatives(this.env, args);
+  }
+
+  async applySearchNegatives(args?: {
+    campaignFilter?: string;
+    dryRun?: boolean;
+  }): Promise<Record<string, unknown>> {
+    return applySearchNegatives(this.env, args);
+  }
+
   /** Diagnostics — lengths only, no secret values. */
   async probeAdsEnv(): Promise<Record<string, unknown>> {
     const e = this.env;
@@ -174,6 +242,10 @@ export class MarketingIngestS2SRpc extends WorkerEntrypoint<Env> {
       clientIdHasAppsDomain: (e.GOOGLE_ADS_CLIENT_ID ?? '').includes(
         '.apps.googleusercontent.com',
       ),
+      merchantIdDigits: (e.GOOGLE_MERCHANT_ID ?? '').replace(/\D/g, '').trim().length,
+      merchantClientIdLen: (e.GOOGLE_MERCHANT_CLIENT_ID ?? '').trim().length,
+      merchantClientSecretLen: (e.GOOGLE_MERCHANT_CLIENT_SECRET ?? '').trim().length,
+      merchantRefreshLen: (e.GOOGLE_MERCHANT_REFRESH_TOKEN ?? '').trim().length,
     };
   }
 }

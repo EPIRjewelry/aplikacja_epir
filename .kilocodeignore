@@ -39,4 +39,22 @@ audit_report.json
 apps/kazka/public/build/
 apps/zareczyny/public/build/
 
-# specs/, agents/, .github/agents/, .notes/ — w Cursor: .cursorindexingignore (@ dostępny)
+**/*.aio.min.css
+**/*.aio.min.js
+
+# Vendor theme pull (lustro .cursorignore)
+themes/epir-online-store/assets/
+themes/epir-online-store/blocks/
+themes/epir-online-store/config/
+themes/epir-online-store/layout/
+themes/epir-online-store/locales/
+themes/epir-online-store/scripts/
+themes/epir-online-store/snippets/
+
+# Agent / MCP staging junk (token burn)
+epir-marketing-ingest/.tmp*
+epir-marketing-ingest/.upload-chunks-b64/
+epir-marketing-ingest/.upload-chunks/
+.tmp/shopping-audit*.json
+
+# specs/, agents/, .github/agents/, .notes/, marketing/csv/ — w Cursor: .cursorindexingignore (@ dostępny)

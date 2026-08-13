@@ -1,0 +1,8 @@
+node_modules
+.cache
+.wrangler
+.dev.vars
+functions
+public/build
+dist
+*.log

@@ -2,8 +2,10 @@ import type { AdsEnv } from './ads';
 import { fetchAdsMarketingRows } from './ads';
 import type { Ga4Env } from './ga4';
 import { fetchGa4MarketingRows, yesterdayUtcDate } from './ga4';
+import type { GmcEnv } from './gmc';
+import { fetchGmcPreviewSummary } from './gmc';
 
-export type MarketingPreviewEnv = Ga4Env & AdsEnv & { MARKETING_OPS_PREVIEW_KEY?: string };
+export type MarketingPreviewEnv = Ga4Env & AdsEnv & GmcEnv & { MARKETING_OPS_PREVIEW_KEY?: string };
 
 const PREVIEW_PATH = '/ops/marketing-preview';
 
@@ -30,13 +32,44 @@ export type MarketingPreviewBody = {
       revenue: number;
     }>;
   };
+  google_merchant: {
+    skipped: boolean;
+    skipReason?: string;
+    merchantId: string | null;
+    /** Headline slice: SHOPPING_ADS + PL */
+    reportingContext: string;
+    country: string;
+    accountIssueCount: number;
+    productsScanned: number;
+    productsWithIssues: number;
+    /** SHOPPING_ADS + PL only */
+    approvedTotal: number;
+    pendingTotal: number;
+    disapprovedTotal: number;
+    /** Full codes from aggregateProductStatuses for the headline slice */
+    issueCodes: Array<{
+      code: string;
+      attribute: string;
+      severity: string;
+      productCount: number;
+    }>;
+    topAccountIssues: Array<{ title: string; severity: string }>;
+    topProductIssues: Array<{
+      offerId: string;
+      title: string;
+      severity: string;
+      attribute: string;
+      code: string;
+    }>;
+  };
 };
 
 /** Wspólna logika z GET /ops/marketing-preview — używana też przez Agents SDK (bez drugiego workera). */
 export async function buildMarketingPreviewBody(env: MarketingPreviewEnv, date: string): Promise<MarketingPreviewBody> {
-  const [adsRows, gaRows] = await Promise.all([
+  const [adsRows, gaRows, gmc] = await Promise.all([
     fetchAdsMarketingRows(env, date),
     fetchGa4MarketingRows(env, date),
+    fetchGmcPreviewSummary(env),
   ]);
 
   const adsSorted = [...adsRows].sort((a, b) => (b.metric_impressions ?? 0) - (a.metric_impressions ?? 0));
@@ -61,6 +94,7 @@ export async function buildMarketingPreviewBody(env: MarketingPreviewEnv, date: 
     date,
     google_ads: { rowCount: adsRows.length, topCampaigns: topAds },
     google_analytics: { rowCount: gaRows.length, topRows: topGa },
+    google_merchant: gmc,
   };
 }
 
@@ -91,7 +125,13 @@ export async function handleMarketingPreview(req: Request, env: MarketingPreview
   const date = parseIsoDate(u.searchParams.get('date')) ?? yesterdayUtcDate();
   console.log('[MARKETING_INGEST] preview request', { date, previewKeyConfigured: true });
   const body = await buildMarketingPreviewBody(env, date);
-  console.log('[MARKETING_INGEST] preview response', { date, adsRows: body.google_ads.rowCount, gaRows: body.google_analytics.rowCount });
+  console.log('[MARKETING_INGEST] preview response', {
+    date,
+    adsRows: body.google_ads.rowCount,
+    gaRows: body.google_analytics.rowCount,
+    gmcSkipped: body.google_merchant.skipped,
+    gmcIssues: body.google_merchant.productsWithIssues,
+  });
 
   return new Response(JSON.stringify(body), {
     status: 200,

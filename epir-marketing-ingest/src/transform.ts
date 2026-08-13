@@ -7,7 +7,18 @@ import type {
 } from './types.js';
 import { buildProductUrl } from './shopify_client.js';
 import { openRouterChat, resolveOpenRouterModels } from './openrouter.js';
-import { classifyMetalLabel } from './metal-label.js';
+import {
+  classifyMetalLabel,
+  GOLD_LABEL,
+  SILVER_LABEL,
+} from './metal-label.js';
+
+/** GMC `color` from metal line — never invent a colour when metal is unknown. */
+export function metalLabelToGmcColor(metalLabel: string): string {
+  if (metalLabel === SILVER_LABEL) return 'Silver';
+  if (metalLabel === GOLD_LABEL) return 'Gold';
+  return '';
+}
 
 function stripHtml(html: string): string {
   return html
@@ -124,12 +135,6 @@ export function classifyAvailabilityLabel(
   }
   if (matchesAnyPattern(leadTime, rules.leadTimePatterns['7plus'])) {
     return rules.labels.madeToOrder;
-  }
-  if (matchesAnyPattern(leadTime, rules.leadTimePatterns['24h'])) {
-    return rules.labels.ship24h;
-  }
-  if (row.inventoryQty >= rules.inventoryThreshold24h && row.availableForSale) {
-    return rules.labels.ship24h;
   }
   if (!row.availableForSale || row.inventoryQty <= 0) {
     return rules.labels.madeToOrder;
@@ -280,6 +285,21 @@ export function toInternalRow(
   };
 }
 
+/** Shopify storefront deep-link to a specific variant. */
+export function buildGmcVariantLink(productUrl: string, variantId: string): string {
+  const base = productUrl.trim();
+  const vid = String(variantId).trim();
+  if (!base || !vid) return base;
+  try {
+    const url = new URL(base);
+    url.searchParams.set('variant', vid);
+    return url.toString();
+  } catch {
+    const sep = base.includes('?') ? '&' : '?';
+    return `${base}${sep}variant=${encodeURIComponent(vid)}`;
+  }
+}
+
 function formatGmcPrice(amount: string, currency = 'PLN'): string {
   const value = Number.parseFloat(amount);
   if (Number.isNaN(value)) return `0.00 ${currency}`;
@@ -293,13 +313,6 @@ function gmcAvailability(
   const availabilityLabel = classifyAvailabilityLabel(row, mapping);
   if (availabilityLabel === mapping.availabilityRules.labels.madeToOrder) {
     return 'preorder';
-  }
-  if (
-    availabilityLabel === mapping.availabilityRules.labels.ship24h &&
-    row.inventoryQty >= mapping.availabilityRules.inventoryThreshold24h &&
-    row.availableForSale
-  ) {
-    return 'in stock';
   }
   if (
     availabilityLabel === mapping.availabilityRules.labels.ship3to5 &&
@@ -330,15 +343,21 @@ export async function transformProductToGmcRows(
       if (aiTitle) title = aiTitle;
     }
 
+    const metalLabel =
+      internal.existingCustomLabel2 ||
+      classifyMetalLabel(internal.brand, internal.title);
+
     rows.push({
       id: `shopify_PL_${internal.variantId}`,
       title,
       description: enrichDescription(internal, mapping),
-      link: internal.productUrl,
+      link: buildGmcVariantLink(internal.productUrl, internal.variantId),
       image_link: internal.imageUrl,
       price: formatGmcPrice(internal.price),
       availability: gmcAvailability(internal, mapping),
       brand: internal.brand,
+      identifier_exists: 'no',
+      color: metalLabelToGmcColor(metalLabel),
       google_product_category: resolveGoogleProductCategory(internal, mapping),
       custom_label_0:
         internal.existingCustomLabel0 ||
@@ -346,9 +365,7 @@ export async function transformProductToGmcRows(
       custom_label_1:
         internal.existingCustomLabel1 ||
         classifyAvailabilityLabel(internal, mapping),
-      custom_label_2:
-        internal.existingCustomLabel2 ||
-        classifyMetalLabel(internal.brand, internal.title),
+      custom_label_2: metalLabel,
     });
   }
 

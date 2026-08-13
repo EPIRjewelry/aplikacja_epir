@@ -1,7 +1,8 @@
 name: Deploy (Cloudflare)
 
-# Push na main → deploy workerów (workers/**) i storefrontów (apps/kazka, apps/zareczyny).
+# Push na main → deploy workerów (workers/**) i storefrontów (apps/kazka, apps/zareczyny, apps/inspiracje).
 # Pełny deploy ze smoke: workflow_dispatch.
+# Archiwum z pełnym eksportem Admin API: deploy-inspiracje-archive.yml (cron / dispatch).
 on:
   push:
     branches: [main]
@@ -9,6 +10,7 @@ on:
       - 'workers/**'
       - 'apps/kazka/**'
       - 'apps/zareczyny/**'
+      - 'apps/inspiracje/**'
       - 'packages/ui/**'
       - 'packages/utils/**'
       - 'apps/operator-studio/**'
@@ -153,6 +155,8 @@ jobs:
             project: kazka-hydrogen-pages
           - app: zareczyny
             project: zareczyny-hydrogen-pages
+          - app: inspiracje
+            project: inspiracje-hydrogen-pages
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
