@@ -17,8 +17,24 @@ export interface Env {
   GOOGLE_ADS_CUSTOMER_ID?: string;
   /** CID MCC bez myślników — nagłówek login-customer-id (Ads API). */
   GOOGLE_ADS_LOGIN_CUSTOMER_ID?: string;
+  /**
+   * Merchant Center account id (cyfry). Merchant API read-only.
+   */
+  GOOGLE_MERCHANT_ID?: string;
+  /** OAuth client ID — osobny klient GCP pod Merchant (nie Ads). */
+  GOOGLE_MERCHANT_CLIENT_ID?: string;
+  /** OAuth client secret tego klienta Merchant. */
+  GOOGLE_MERCHANT_CLIENT_SECRET?: string;
+  /**
+   * OAuth refresh ze scope `https://www.googleapis.com/auth/content`.
+   * Osobny od GOOGLE_ADS_REFRESH_TOKEN.
+   */
+  GOOGLE_MERCHANT_REFRESH_TOKEN?: string;
   /** Bearer do GET /ops/marketing-preview oraz do `/ops/marketing-analyst/*` (Durable Object). Brak sekretu → 404. */
   MARKETING_OPS_PREVIEW_KEY?: string;
+  /** Shopify Admin API — pull klientów do Customer Match (ten sam token co w root .dev.vars). */
+  SHOPIFY_ADMIN_TOKEN?: string;
+  SHOP?: string;
   /** Durable Object — stanowy podgląd GA4+Ads (ten sam kod co preview, bez npm `agents`). */
   MarketingAnalystAgent: DurableObjectNamespace;
 }
