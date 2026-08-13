@@ -64,13 +64,6 @@
       "id": "channel",
       "label": "Kanał (kontekst workera)",
       "default": "online-store"
-    },
-    {
-      "type": "text",
-      "id": "shopify_client_id",
-      "label": "Shopify Client ID (Sign in with Shop)",
-      "info": "Client ID aplikacji epir_ai — shopify.app.toml",
-      "default": "80a9878cfb29c901c987bf0046a36238"
     }
   ]
 }
@@ -89,7 +82,6 @@
   data-storefront-id="{{ block.settings.storefront_id | default: 'epir-liquid' }}"
   data-channel="{{ block.settings.channel | default: 'online-store' }}"
   data-brand="epir"
-  data-shopify-client-id="{{ block.settings.shopify_client_id | default: '80a9878cfb29c901c987bf0046a36238' }}"
   data-start-closed="{{ block.settings.start_closed | default: default_start_closed }}"
   data-stream-render="dots"
 >
@@ -151,7 +143,6 @@
     >
       <div class="assistant-header" role="heading" aria-level="3">
         <h3>{{ block.settings.title | default: default_title }}</h3>
-        <div id="epir-shop-sign-in-mount" class="epir-shop-sign-in-mount"></div>
         <button id="assistant-close-button" type="button" class="assistant-close-btn" aria-label="Zamknij panel czatu">
           ✕
         </button>

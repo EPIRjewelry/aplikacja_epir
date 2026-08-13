@@ -263,7 +263,7 @@ export const TOOL_SCHEMAS = {
   fetch_marketing_preview: {
     name: 'fetch_marketing_preview',
     description:
-      'Pobiera z serwera epir-marketing-ingest agregowany podgląd GA4 + Google Ads (GET /ops/marketing-preview, Bearer). Dostępne TYLKO dla kanału operator. Wynik ma pole source=marketing_preview; cytuj liczby wyłącznie z payloadu.',
+      'Pobiera z serwera epir-marketing-ingest agregowany podgląd GA4 + Google Ads + Google Merchant (GMC issues/statusy) (GET /ops/marketing-preview). Dostępne TYLKO dla kanału operator. Wynik ma pole source=marketing_preview; cytuj liczby wyłącznie z payloadu (w tym google_merchant).',
     parameters: {
       type: 'object',
       properties: {
@@ -660,7 +660,7 @@ export const TOOL_SCHEMAS_SLIM = {
   fetch_marketing_preview: {
     name: 'fetch_marketing_preview',
     description:
-      'GA4+Ads preview z epir-marketing-ingest (/ops/marketing-preview). operator channel only.',
+      'GA4+Ads+GMC preview z epir-marketing-ingest (/ops/marketing-preview). operator channel only.',
     parameters: {
       type: 'object',
       properties: {
