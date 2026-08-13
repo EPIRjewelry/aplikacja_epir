@@ -1,8 +1,10 @@
 # `epir-marketing-ingest`
 
-Worker **pulluje** dane marketingowe z **Google Analytics 4 (Data API)** oraz **Google Ads (Search API / GAQL)** i wysyła **agregaty** na HTTP ingest Cloudflare Pipelines → Iceberg (namespace `marketing`, ten sam bucket co hurtownia pixeli).
+Worker **pulluje** dane marketingowe z **Google Analytics 4 (Data API)**, **Google Ads (Search API / GAQL)** oraz **Google Merchant API (read-only diagnostyka)** i wysyła **agregaty** na HTTP ingest Cloudflare Pipelines → Iceberg (namespace `marketing`, ten sam bucket co hurtownia pixeli).
 
 Szerszy kontekst deployu: [`docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md`](../../docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md) (sekcja `workers/marketing-ingest`).
+
+**Uwaga:** pipeline feedu CSV Shopify → R2 → GMC Scheduled fetch to osobny katalog [`epir-marketing-ingest/`](../../epir-marketing-ingest/) — ten worker **nie** zastępuje feedu; czyta statusy/issues z Merchant API.
 
 ---
 
@@ -12,15 +14,21 @@ Szerszy kontekst deployu: [`docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md`](../../docs/
 |--------|---------|---------------|--------|
 | GA4 | `GA4_PROPERTY_ID` | `[vars]` w `wrangler.toml` lub Dashboard **Variables** | **Numeryczne** Property ID z GA4 → *Admin* → *Property settings* (np. `435783047`). **Nie** używaj Measurement ID (`G-…`). Dozwolony też format `properties/123456789`. |
 | GA4 | `GA4_SERVICE_ACCOUNT_JSON` | **Secret** (`wrangler secret put`) | Cały plik JSON konta usługi (jedna linia albo wklej przez stdin — patrz §4). |
-| Google Ads | `GOOGLE_ADS_CLIENT_ID` | **Variable** (nie-sekret) lub `.dev.vars` | OAuth 2.0 Client ID (typ *Desktop* lub *Web* w Google Cloud Console). |
+| Google Ads | `GOOGLE_ADS_CLIENT_ID` | **Variable** (nie-sekret) lub `.dev.vars` | OAuth 2.0 Client ID Ads (Desktop/Web). **Nie** używany do Merchant. |
 | Google Ads | `GOOGLE_ADS_CLIENT_SECRET` | **Secret** | OAuth client secret. |
 | Google Ads | `GOOGLE_ADS_REFRESH_TOKEN` | **Secret** | Refresh token użytkownika z dostępem do konta Ads (§3). |
 | Google Ads | `GOOGLE_ADS_DEVELOPER_TOKEN` | **Secret** | Token z Google Ads → *Tools & settings* → *API Center*. |
 | Google Ads | `GOOGLE_ADS_CUSTOMER_ID` | **Variable** | **10 cyfr bez myślników** (CID konta reklamowego). |
 | Google Ads | `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | **Secret** (opcjonalnie) | Tylko przy dostępie **przez MCC**: CID menedżera, bez myślników → nagłówek `login-customer-id`. |
+| GMC | `GOOGLE_MERCHANT_ID` | **Variable** | ID konta Merchant Center (cyfry; dopuszczalne `accounts/123`). |
+| GMC | `GOOGLE_MERCHANT_CLIENT_ID` | **Variable** | OAuth Client ID **osobnego** klienta GCP pod Merchant (nie Ads). |
+| GMC | `GOOGLE_MERCHANT_CLIENT_SECRET` | **Secret** | Secret tego klienta. |
+| GMC | `GOOGLE_MERCHANT_REFRESH_TOKEN` | **Secret** | OAuth refresh ze scope `https://www.googleapis.com/auth/content` (§3b). |
 | Pipelines | `MARKETING_PIPELINE_INGEST_URL` | **Secret** | URL HTTP ingest streamu marketingowego. |
 | Pipelines | `MARKETING_PIPELINE_INGEST_TOKEN` | **Secret** (opcjonalnie) | Jeśli ingest wymaga `Authorization: Bearer …`. |
-| Ops | `MARKETING_OPS_PREVIEW_KEY` | **Secret** (opcjonalnie) | Bearer do `GET /ops/marketing-preview` i tras DO `/ops/marketing-analyst/*`. |
+| Ops | `MARKETING_OPS_PREVIEW_KEY` | **Secret** (opcjonalnie) | Bearer do `GET /ops/marketing-preview`, `/ops/gmc-diagnostics` i tras DO `/ops/marketing-analyst/*`. |
+| Shopify | `SHOPIFY_ADMIN_TOKEN` | **Secret** | Admin API — pull klientów do Customer Match (`/ops/customer-match-sync`). Ten sam token co w root `.dev.vars`. |
+| Shopify | `SHOP` | **Variable** lub secret | Host sklepu, np. `epir-art-silver-jewellery.myshopify.com`. |
 
 Lokalnie: skopiuj [`.dev.vars.example`](./.dev.vars.example) → `.dev.vars` (plik jest ignorowany przez git).
 
@@ -52,6 +60,44 @@ Scope używany w kodzie: `https://www.googleapis.com/auth/analytics.readonly`.
 5. Jeśli API wołasz **w imieniu klienta pod MCC**: ustaw `GOOGLE_ADS_LOGIN_CUSTOMER_ID` na CID **menedżera** (bez myślników).
 
 Kod woła `googleads.googleapis.com/v17/.../googleAds:search` z GAQL z filtrem `segments.date` (dane dzienne).
+
+---
+
+## 3b. Google Merchant Center (Merchant API, read-only)
+
+Osobny klient OAuth (nie ten od Ads). Ads na Cloudflare zostaje nietknięty.
+
+1. **Google Cloud Console** — nowy projekt albo istniejący, byle nie mieszać z Ads:
+   - *APIs & Services* → *Library* → włącz **Merchant API**.
+   - *Credentials* → **Create credentials** → **OAuth client ID** → typ **Desktop**.
+   - Typ: Aplikacja komputerowa (Desktop). Redirect jest już `http://localhost` — skrypt używa `http://localhost:8766/`.
+2. Konto Google użyte do OAuth musi mieć dostęp do Merchant Center (min. odczyt).
+3. W root `.dev.vars`: `GOOGLE_MERCHANT_CLIENT_ID` + `GOOGLE_MERCHANT_CLIENT_SECRET`.
+4. Refresh token (scope **content**):
+
+   ```bash
+   node scripts/gmc-oauth-refresh.mjs
+   # opcjonalnie: node scripts/gmc-oauth-refresh.mjs --push-worker
+   ```
+
+5. Na workerze: `GOOGLE_MERCHANT_ID` (już w `[vars]`), plus sekrety:
+
+   ```powershell
+   npx wrangler secret put GOOGLE_MERCHANT_CLIENT_SECRET --env=""
+   npx wrangler secret put GOOGLE_MERCHANT_REFRESH_TOKEN --env=""
+   ```
+
+   `GOOGLE_MERCHANT_CLIENT_ID` → `[vars]` w `wrangler.toml` albo Dashboard Variables (plaintext).
+
+**Endpoints używane (read-only):** `accounts.issues.list`, `aggregateProductStatuses.list`, `products.list` (cap stron — top issues).
+
+**Ops:**
+
+```powershell
+curl.exe -s -H "Authorization: Bearer YOUR_PREVIEW_KEY" "https://<worker-host>/ops/gmc-diagnostics"
+```
+
+Preview (`/ops/marketing-preview`) zawiera sekcję `google_merchant`. Snapshot cron → rekordy `source=google_merchant` (osobny kształt od kampanii GA4/Ads; docelowa tabela Iceberg np. `marketing.gmc_product_status_daily`).
 
 ---
 
@@ -94,23 +140,75 @@ Jeśli deployujesz z innym środowiskiem Wrangler (`--env production` itd.), prz
    curl.exe -s -H "Authorization: Bearer YOUR_PREVIEW_KEY" "https://<worker-host>/ops/marketing-preview?date=2026-01-15"
    ```
 
-   Oczekujesz JSON z polami zawierającymi wiersze GA4 i Ads (puste tablice, jeśli dany dzień nie ma danych lub brakuje uprawnień — wtedy sprawdź logi workera w Dashboard).
+   Oczekujesz JSON z polami `google_analytics`, `google_ads` oraz `google_merchant` (przy braku credentials GMC: `google_merchant.skipped=true`).
+
+   ```powershell
+   curl.exe -s -H "Authorization: Bearer YOUR_PREVIEW_KEY" "https://<worker-host>/ops/gmc-diagnostics"
+   ```
 
 3. **PMax / Search UTM ops** (ten sam Bearer; wymaga ważnego `GOOGLE_ADS_REFRESH_TOKEN`):
+
+   **Skrót lokalny** (root `.dev.vars`: `MARKETING_INGEST_ORIGIN` + `MARKETING_OPS_PREVIEW_KEY`):
+
+   ```bash
+   node scripts/marketing-ops.mjs audit
+   node scripts/marketing-ops.mjs expand --dry-run
+   node scripts/marketing-ops.mjs expand-metal --asset-group "Grupa plików 1" --metal Srebro --dry-run
+   node scripts/marketing-ops.mjs expand-metal --asset-group EPIR_Zloto --metal Zloto --dry-run
+   node scripts/marketing-ops.mjs asset-group-status --asset-group Walentynki --status PAUSED --dry-run
+   node scripts/marketing-ops.mjs forest-utm --dry-run
+   node scripts/marketing-ops.mjs search-utm --dry-run
+   node scripts/marketing-ops.mjs search-themes audit --asset-group "Grupa plików 1"
+   node scripts/marketing-ops.mjs search-themes apply --asset-group "Grupa plików 1" --dry-run
+   node scripts/marketing-ops.mjs search-themes apply --asset-group EPIR_Zloto --dry-run
+   node scripts/marketing-ops.mjs search-terms --days 14
+   node scripts/marketing-ops.mjs search-negatives audit
+   node scripts/marketing-ops.mjs search-negatives apply --dry-run
+   node scripts/marketing-ops.mjs customer-match sync --dry-run
+   node scripts/marketing-ops.mjs audience-signals audit --asset-group EPIR_Srebro
+   node scripts/marketing-ops.mjs audience-signals apply --asset-group EPIR_Srebro --dry-run
+   ```
+
+   **Customer Match (Shopify → listy CRM → sygnały PMax):**
+
+   1. Jednorazowo (scope `datamanager` na refresh token): `node scripts/ads-oauth-refresh.mjs --push-worker`
+   2. Sekrety Shopify na worker: `node scripts/sync-marketing-worker-secrets.mjs`
+   3. `node scripts/marketing-ops.mjs customer-match sync --dry-run` → bez `--dry-run` po weryfikacji
+   4. Sygnały: `audience-signals apply --asset-group EPIR_Srebro` (jedna składana Audience per AG)
 
    | Ścieżka | Opis |
    |---------|------|
    | `GET /ops/pmax-listing-audit?campaign=Epir_Forest-Dark` | Audyt listing groups |
-   | `GET /ops/pmax-listing-expand?dryRun=1` | Dry-run: EXCLUDE brand Kazka + INCLUDE reszta |
-   | `GET /ops/pmax-listing-expand?dryRun=0` | Wykonaj przebudowę drzewa |
-   | `GET /ops/pmax-forest-utm?dryRun=0` | `final_url_suffix` = `utm_…&utm_campaign=forest_premium` |
-   | `GET /ops/search-utm-suffixes?dryRun=0` | Sufiksy per ad group Search `*27.04.2026*` |
+   | `GET /ops/pmax-listing-expand?dryRun=1` | Dry-run dual-metal (legacy) |
+   | `GET /ops/pmax-listing-expand?dryRun=0` | Wykonaj dual-metal (legacy) |
+   | `GET /ops/pmax-listing-expand-metal?assetGroup=EPIR_Srebro&metal=Srebro&dryRun=1` | Listing single-metal per AG |
+   | `GET /ops/pmax-asset-group-status?assetGroup=Walentynki&status=PAUSED&dryRun=1` | Pause / enable asset group |
+   | `GET /ops/pmax-forest-utm?dryRun=0` | UTM `forest_premium` |
+   | `GET /ops/search-utm-suffixes?dryRun=0` | UTM per ad group Search |
+   | `GET /ops/pmax-search-themes-audit?assetGroup=EPIR_Srebro` | Audyt Search Themes per AG |
+   | `GET /ops/pmax-search-themes-apply?assetGroup=EPIR_Srebro&dryRun=1` | Plan zmian Search Themes |
+   | `GET /ops/pmax-search-themes-apply?assetGroup=EPIR_Zloto&dryRun=0` | Apply Search Themes (HITL) |
+   | `GET /ops/search-terms-audit?days=14&campaign=…` | Audyt fraz wyszukiwania (read-only) |
+   | `GET /ops/search-negatives-audit` | Audyt negatywów Search |
+   | `GET /ops/search-negatives-apply?dryRun=0` | Dodaj brakujące negatywy z blocklisty |
+   | `POST /ops/customer-match-sync` | Shopify → segmenty CRM → Data Manager ingest |
+   | `GET /ops/pmax-audience-signals-audit?assetGroup=EPIR_Srebro` | Audyt sygnałów odbiorców |
+   | `GET /ops/pmax-audience-signals-apply?assetGroup=EPIR_Srebro&dryRun=0` | Podłącz składaną Audience CRM |
+   | `GET /ops/gmc-diagnostics` | Merchant API: account issues + aggregate statuses + top product issues |
 
-   RPC (bez Bearer, między workerami): `MarketingIngestS2SRpc.auditPmaxListingGroups` / `expandPmaxListingGroups` / `setForestPremiumCampaignSuffix` / `applySearchAdGroupUtmSuffixes`.
+   RPC (bez Bearer, między workerami): `MarketingIngestS2SRpc.auditPmaxListingGroups` / `expandPmaxListingGroups` / `expandPmaxListingGroupsSingleMetal` / `setAssetGroupStatus` / `auditPmaxSearchThemes` / `applyPmaxSearchThemes` / `auditSearchTerms` / `auditSearchNegatives` / `applySearchNegatives` / `setForestPremiumCampaignSuffix` / `applySearchAdGroupUtmSuffixes`.
+
+   Kontrakt Search Themes (allowlist per AG Srebro/Złoto): [`src/pmax-search-themes-config.ts`](src/pmax-search-themes-config.ts).
+
+   **Migracja Srebro + Złoto (kolejność HITL):**
+   1. `asset-group-status --asset-group Walentynki --status PAUSED` — jeśli AG już `REMOVED`, pause zbędny
+   2. W UI: utwórz **EPIR_Zloto** (klon kreacji z Srebro), rename **Grupa plików 1** → **EPIR_Srebro**
+   3. `expand-metal` Srebro + Zloto (dry-run → live)
+   4. `search-themes apply` per AG (dry-run → live)
 
    **Blokada 2026-08-08:** Ads OAuth zwraca `invalid_grant` — odśwież `GOOGLE_ADS_REFRESH_TOKEN` (patrz §6), potem wywołaj expand + UTM.
 
-4. **Cron:** po deployzie sprawdź *Logs* pod tagiem `[MARKETING_INGEST]` — powinny pojawić się linie `GA4` / `Ads` z liczbą wierszy.
+4. **Cron:** po deployzie sprawdź *Logs* pod tagiem `[MARKETING_INGEST]` — powinny pojawić się linie `GA4` / `Ads` / `GMC snapshot` z liczbą wierszy.
 
 ### PMax listing groups — fallback UI (gdy API niedostępne)
 
