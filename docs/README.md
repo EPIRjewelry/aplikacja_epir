@@ -44,6 +44,9 @@ Ten katalog jest częścią jedynego kanonicznego pakietu dokumentacji EPIR. Ten
 Te pliki **muszą** być w tym samym drzewie co NotebookLM (mirror 1:1), ale **nie** równają się kanonowi: to syntezy, Q&A i kompas z research — przed decyzją produkcyjną obowiązuje weryfikacja w **aktualnych** dokumentach dostawców oraz w kodzie `aplikacja_epir`.
 
 - [`working/KUSTOSZ_BRIEF_LATEST.md`](working/KUSTOSZ_BRIEF_LATEST.md) — ostatni brief Cursor Kustosza (ops desk); niewiążący, odnawiany przy audycie.
+- [`working/LANDINGS_APEX_HANDOFF.md`](working/LANDINGS_APEX_HANDOFF.md) — handoff landingów Ads Apex (routing UTM, paleta, stan deploy, otwarte); start nowego wątku Cursor.
+- [`working/GENIALNY_PLAN_CURSOR_GROKA_4_5.md`](working/GENIALNY_PLAN_CURSOR_GROKA_4_5.md) — decyzja robocza: 3 aktywne landingu Apex + mosty EPIR↔Kazka; niewiążący.
+- [`working/LANDINGS_DEPLOY_AUDIT.md`](working/LANDINGS_DEPLOY_AUDIT.md) — procedura audytowa pre/post deploy (PMax PDP, tracking `l.`, ingest, checklist).
 - [`working/FEED_AND_STORE_STRUCTURE.md`](working/FEED_AND_STORE_STRUCTURE.md) — zestawienie reguł feedu GMC (`epir-marketing-ingest`) z modelem sklepu operatora; niewiążący.
 - [`Architektura AI Analityka w Ekosystemie Cloudflare i Google Ads.md`](Architektura%20AI%20Analityka%20w%20Ekosystemie%20Cloudflare%20i%20Google%20Ads.md) — synteza (np. NotebookLM / deep research): hipotezy, linki, ryzyka; nie zastępuje `EPIR_*` ani wdrożenia.
 - [`EPIR_CLOUDFLARE_AGENT_SERVICE_PLAN.md`](EPIR_CLOUDFLARE_AGENT_SERVICE_PLAN.md) — plan warstwy „agent jako usługa” (Agents SDK obok monorepo, bramki ESOG, publiczne repo); nie zastępuje kanonu ani kontraktu danych w `EPIR_*`.
@@ -74,6 +77,7 @@ Pliki startowe dla narzędzi AI:
 Moduły domenowe (nie zastępują kontraktów technicznych powyżej — uzupełniają routing z Biblii):
 
 - [`kb/UI_UX_AND_FRONTEND.md`](kb/UI_UX_AND_FRONTEND.md) — Hydrogen, Theme, widget, Gemma, Liquid
+- [`kb/DESIGN_TOKENS.md`](kb/DESIGN_TOKENS.md) — tokeny wizualne landingów Apex Ads (SSOT roboczy)
 - [`kb/DATA_AND_ANALYTICS.md`](kb/DATA_AND_ANALYTICS.md) — pixel, hurtownia, EDCG/EDOG/EAA
 - [`kb/WORKERS_AND_EDGE.md`](kb/WORKERS_AND_EDGE.md) — workers, deploy, ingress, ESOG/EFA/OQAG
 

@@ -1,0 +1,225 @@
+{% comment %}
+  Kolekcja złota — manifesto / hero (EPIR lejek sprzedażowy).
+  Tokeny: docs/kb/DESIGN_TOKENS.md — CTA #2c684e, detal złota #C9A227.
+  Bez linków do Kazki.
+{% endcomment %}
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+
+<section id="gold-manifesto" class="epir-gold-coll epir-gold-coll--manifesto" aria-labelledby="gold-manifesto-heading">
+  <div class="epir-gc__inner">
+    <p class="epir-gc__eyebrow">{{ section.settings.eyebrow }}</p>
+    <h1 id="gold-manifesto-heading" class="epir-gc__title">
+      {% if section.settings.heading != blank %}
+        {{ section.settings.heading }}
+      {% else %}
+        {{ collection.title }}
+      {% endif %}
+    </h1>
+    <div class="epir-gc__lead">
+      {% if section.settings.body != blank %}
+        {{ section.settings.body }}
+      {% elsif collection.description != blank %}
+        {{ collection.description }}
+      {% endif %}
+    </div>
+    <div class="epir-gc__actions">
+      {% if section.settings.primary_label != blank %}
+        <a href="{{ section.settings.primary_anchor | default: '#CollectionProductGrid' }}" class="epir-gc__btn-cta">
+          {{ section.settings.primary_label }}
+        </a>
+      {% endif %}
+      {% if section.settings.secondary_label != blank %}
+        {% assign secondary_href = section.settings.secondary_url | default: pages['zaprojektuj-swoj-model'].url %}
+        {% if secondary_href == blank %}
+          {% assign secondary_href = '/pages/zaprojektuj-swoj-model' %}
+        {% endif %}
+        <a href="{{ secondary_href }}" class="epir-gc__btn-cta">
+          {{ section.settings.secondary_label }}
+        </a>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<style>
+  .epir-gold-coll {
+    --epir-bg: #F5F0E8;
+    --epir-bg2: #F5F0E8;
+    --epir-cream: #F5F0E8;
+    --epir-ink: #222222;
+    --epir-muted: #666666;
+    --epir-accent: #2c684e;
+    --epir-accent-hover: #3c5629;
+    --epir-stone: #C9A227;
+    --epir-on: #ffffff;
+    font-family: Montserrat, system-ui, sans-serif;
+    color: var(--epir-ink);
+  }
+  .epir-gold-coll h1,
+  .epir-gold-coll h2,
+  .epir-gold-coll h3 {
+    font-family: "Playfair Display", Georgia, serif;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  .epir-gc__inner {
+    max-width: 48rem;
+    margin: 0 auto;
+    padding: 0 1.25rem;
+    text-align: center;
+  }
+  @media (min-width: 768px) {
+    .epir-gc__inner { padding: 0 2rem; }
+  }
+  .epir-gold-coll--manifesto {
+    background: var(--epir-bg);
+    padding: 3.5rem 0 3rem;
+    border-bottom: 1px solid rgba(34,34,34,0.08);
+  }
+  body:has(#gold-manifesto),
+  body:has(#gold-manifesto) main,
+  body:has(#gold-manifesto) .shopify-section,
+  #CollectionProductGrid,
+  .m-collection {
+    background: #F5F0E8 !important;
+    background-image: none !important;
+  }
+  #CollectionProductGrid .m-product-card .m-product-card__media,
+  #CollectionProductGrid .m-product-card .m-image,
+  #CollectionProductGrid .m-product-card img {
+    aspect-ratio: 1 / 1 !important;
+    width: 100%;
+    height: auto;
+    object-fit: cover;
+  }
+  @media (min-width: 768px) {
+    .epir-gold-coll--manifesto { padding: 4.5rem 0 3.75rem; }
+  }
+  .epir-gc__eyebrow {
+    margin: 0 0 0.75rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    color: var(--epir-accent);
+  }
+  .epir-gold-coll--manifesto .epir-gc__eyebrow,
+  .epir-gold-coll--workshop .epir-gc__eyebrow,
+  .epir-gold-coll--realizations .epir-gc__eyebrow {
+    font-size: clamp(0.9rem, 1.8vw, 1.15rem);
+    letter-spacing: 0.02em;
+  }
+  .epir-gc__title {
+    margin: 0 auto;
+    max-width: 20ch;
+    font-size: clamp(2rem, 4.5vw, 3.1rem);
+    line-height: 1.15;
+  }
+  .epir-gc__lead {
+    margin: 1.25rem auto 0;
+    max-width: 38rem;
+    font-size: 1.05rem;
+    line-height: 1.65;
+    color: var(--epir-muted);
+  }
+  .epir-gc__lead p { margin: 0 0 0.85rem; }
+  .epir-gc__lead p:last-child { margin-bottom: 0; }
+  .epir-gc__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: center;
+    margin-top: 1.75rem;
+  }
+  .epir-gc__btn-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.85rem 1.75rem;
+    background: var(--epir-accent);
+    color: var(--epir-on);
+    text-decoration: none;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    border-radius: 999px;
+    transition: background 0.2s ease;
+  }
+  .epir-gc__btn-cta:hover { background: var(--epir-accent-hover); color: var(--epir-on); }
+  .epir-gc__btn-outline {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.85rem 1.75rem;
+    border: 1px solid rgba(44,104,78,0.35);
+    color: var(--epir-ink);
+    text-decoration: none;
+    font-size: 0.875rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    border-radius: 999px;
+    transition: border-color 0.2s ease, background 0.2s ease;
+  }
+  .epir-gc__btn-outline:hover {
+    border-color: var(--epir-accent);
+    background: rgba(44,104,78,0.06);
+  }
+</style>
+
+{% schema %}
+{
+  "name": "Gold manifesto",
+  "tag": "section",
+  "class": "section-gold-manifesto",
+  "settings": [
+    {
+      "type": "text",
+      "id": "eyebrow",
+      "label": "Eyebrow",
+      "default": "Pracownia Biżuterii Artystycznej EPIR Art Jewellery"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Nagłówek (puste = tytuł kolekcji)",
+      "default": "Biżuteria złota"
+    },
+    {
+      "type": "richtext",
+      "id": "body",
+      "label": "Manifesto",
+      "default": "<p>Projektujemy i wykonujemy złotą biżuterię we wrocławskiej pracowni: pierścionki, obrączki, kolczyki. Formy inspirowane naturą, kamienie szlachetne, złoto próby 585 i 750.</p><p>Każda sztuka powstaje na miejscu — od rysunku i modelu 3D po wykończenie. Jeśli szukasz własnej formy, zaprojektujemy ją razem.</p>"
+    },
+    {
+      "type": "text",
+      "id": "primary_label",
+      "label": "CTA primary"
+    },
+    {
+      "type": "text",
+      "id": "primary_anchor",
+      "label": "Anchor siatki",
+      "default": "#CollectionProductGrid"
+    },
+    {
+      "type": "text",
+      "id": "secondary_label",
+      "label": "CTA secondary",
+      "default": "Zaprojektuj swój model"
+    },
+    {
+      "type": "url",
+      "id": "secondary_url",
+      "label": "URL secondary (domyślnie: zaprojektuj-swoj-model)"
+    }
+  ],
+  "presets": [
+    {
+      "name": "Gold manifesto"
+    }
+  ]
+}
+{% endschema %}

@@ -5,7 +5,7 @@ Moduł wiedzy dla Hydrogen, Theme App Extension, widgetu czatu, Liquid i warstwy
 ## Marka i design system (skrót)
 
 - **Art Jewellery** — unikat, rzemiosło + projektowanie 3D; UI wspiera transparentność procesu.
-- **Paleta:** ziemiste beże, ecru, ciepłe szarości; akcent per kolekcja (HEX, np. `#2c684e`).
+- **Paleta:** ziemiste beże, ecru, ciepłe szarości; akcent per kolekcja (HEX, np. `#2c684e`). Tokeny landingów Ads: [`kb/DESIGN_TOKENS.md`](DESIGN_TOKENS.md).
 - **Layout:** dużo negative space; ciepłe/neutralne światło w CSS; bez zimnych, przesyconych tonów.
 - **Media:** 2048×2048 px; lifestyle bez czystego białego tła; `stone_profile` na karcie produktu.
 - **Collection enhanced:** metafields — Hero Video, Texture Overlay, Process Image, Lookbook, Artist Photo, Accent Color.

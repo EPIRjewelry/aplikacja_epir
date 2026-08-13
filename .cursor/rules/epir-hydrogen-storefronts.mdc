@@ -1,7 +1,17 @@
 ---
-description: Hydrogen kazka/zareczyny — BFF, chat proxy, brand-specific UI tylko w apps
-globs: apps/kazka/**/*,apps/zareczyny/**/*
+description: Hydrogen kazka/zareczyny/inspiracje — BFF, chat proxy, brand-specific UI tylko w apps
+globs: apps/kazka/**/*,apps/zareczyny/**/*,apps/inspiracje/**/*
 alwaysApply: false
 ---
 
 ⚠️ SSOT ROUTING: Nie parsuj własnych założeń. Twoim jedynym punktem wejścia do wiedzy jest /EPIR_AI_BIBLE.md. Sprawdź w nim, z jakich modułów domenowych masz skorzystać.
+
+## Copy — Kazka vs EPIR (override)
+
+Gdy pracujesz w **`apps/kazka`** lub użytkownik wyraźnie mówi o **Kazka Jewelry**:
+
+- **Nie** stosuj 5 zasad / haptyki organicznej z [`epir-copywriting.mdc`](epir-copywriting.mdc) ani pełnego DNA z [`docs/working/EPIR_COPY_PHILOSOPHY.md`](docs/working/EPIR_COPY_PHILOSOPHY.md).
+- Kazka ToV: ostry minimalizm, geometryczny spokój, lśniący blask, złoto i brylanty. Zero organicznego szumu.
+- Most → kolekcja złota EPIR (`OrganicEpirBridge`) bez słowa „niedoskonałość” i bez linku na home.
+
+Wszędzie indziej (w tym Zaręczyny, Inspiracje): obowiązuje język marki EPIR Art Jewellery (default total).

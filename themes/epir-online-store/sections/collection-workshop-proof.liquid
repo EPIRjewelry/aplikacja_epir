@@ -1,0 +1,153 @@
+{% comment %}
+  Dowody pracowni — odlew, oksydacja, kamień. Media z settings (image_url + image_tag).
+{% endcomment %}
+
+<section id="gold-workshop" class="epir-gold-coll epir-gold-coll--workshop" aria-labelledby="gold-workshop-heading">
+  <div class="epir-gc__inner epir-gc__inner--wide">
+    <p class="epir-gc__eyebrow">{{ section.settings.eyebrow }}</p>
+    <h2 id="gold-workshop-heading" class="epir-gc__heading">{{ section.settings.heading }}</h2>
+    {% if section.settings.intro != blank %}
+      <p class="epir-gc__intro">{{ section.settings.intro }}</p>
+    {% endif %}
+
+    <div class="epir-gc__proof-grid">
+      {% for block in section.blocks %}
+        <figure class="epir-gc__proof" {{ block.shopify_attributes }}>
+          {% if block.settings.image != blank %}
+            {{
+              block.settings.image
+              | image_url: width: 1200
+              | image_tag:
+                loading: 'lazy',
+                widths: '400, 600, 800, 1200',
+                sizes: '(min-width: 768px) 33vw, 90vw',
+                alt: block.settings.label
+            }}
+          {% else %}
+            <div class="epir-gc__proof-ph" aria-hidden="true"></div>
+          {% endif %}
+          <figcaption>
+            <p class="epir-gc__proof-label">{{ block.settings.label }}</p>
+            {% if block.settings.note != blank %}
+              <p class="epir-gc__proof-note">{{ block.settings.note }}</p>
+            {% endif %}
+          </figcaption>
+        </figure>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<style>
+  .epir-gold-coll--workshop {
+    background: var(--epir-cream, #F5F0E8);
+    padding: 3.5rem 0;
+    border-top: 1px solid rgba(34,34,34,0.06);
+  }
+  .epir-gc__inner--wide { max-width: 72rem; }
+  .epir-gc__heading {
+    margin: 0 auto 0.75rem;
+    font-size: clamp(1.75rem, 3vw, 2.35rem);
+    line-height: 1.2;
+  }
+  .epir-gc__intro {
+    margin: 0 auto 2rem;
+    max-width: 36rem;
+    color: var(--epir-muted, #666);
+    line-height: 1.6;
+    font-size: 0.98rem;
+  }
+  .epir-gc__proof-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+  @media (min-width: 640px) {
+    .epir-gc__proof-grid { grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+  }
+  .epir-gc__proof {
+    margin: 0;
+    border: 1px solid rgba(201,162,39,0.28);
+    border-radius: 0.75rem;
+    overflow: hidden;
+    background: #fff;
+  }
+  .epir-gc__proof img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+  }
+  .epir-gc__proof-ph {
+    aspect-ratio: 1 / 1;
+    background:
+      linear-gradient(135deg, rgba(201,162,39,0.15), rgba(44,104,78,0.12)),
+      #e8e4dc;
+  }
+  .epir-gc__proof figcaption {
+    padding: 0.85rem 1rem 1.1rem;
+    text-align: left;
+  }
+  .epir-gc__proof-label {
+    margin: 0;
+    font-family: "Playfair Display", Georgia, serif;
+    font-size: 1rem;
+    color: var(--epir-ink, #222);
+  }
+  .epir-gc__proof-note {
+    margin: 0.35rem 0 0;
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--epir-muted, #666);
+  }
+</style>
+
+{% schema %}
+{
+  "name": "Gold workshop proof",
+  "tag": "section",
+  "class": "section-gold-workshop",
+  "settings": [
+    {
+      "type": "text",
+      "id": "eyebrow",
+      "label": "Eyebrow",
+      "default": "Pracownia Biżuterii Artystycznej EPIR Art Jewellery"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Nagłówek",
+      "default": "Jak powstaje biżuteria"
+    },
+    {
+      "type": "textarea",
+      "id": "intro",
+      "label": "Wstęp",
+      "default": "Pracownia we Wrocławiu. Projekt, model 3D, odlew i ręczne wykończenie."
+    }
+  ],
+  "blocks": [
+    {
+      "type": "proof",
+      "name": "Dowód",
+      "settings": [
+        { "type": "image_picker", "id": "image", "label": "Zdjęcie" },
+        { "type": "text", "id": "label", "label": "Etykieta", "default": "Odlew" },
+        { "type": "text", "id": "note", "label": "Notatka", "default": "Złoto próby 585 i 750" }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Gold workshop proof",
+      "blocks": [
+        { "type": "proof", "settings": { "label": "Projekt", "note": "Rysunek i model 3D" } },
+        { "type": "proof", "settings": { "label": "Odlew", "note": "Złoto próby 585 i 750" } },
+        { "type": "proof", "settings": { "label": "Kamień", "note": "Osadzamy ręcznie" } }
+      ]
+    }
+  ]
+}
+{% endschema %}
