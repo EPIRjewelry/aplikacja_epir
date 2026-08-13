@@ -1,0 +1,108 @@
+/*
+ * Alias planowy collection.zlota — ten sam lejek co collection.zloto.json.
+ * Live kolekcja zlota-bizuteria używa templateSuffix "zloto".
+ * Ten plik istnieje, gdyby Admin przełączył suffix na "zlota".
+ */
+{
+  "sections": {
+    "gold_manifesto": {
+      "type": "collection-gold-manifesto",
+      "settings": {
+        "eyebrow": "Pracownia Biżuterii Artystycznej EPIR Art Jewellery",
+        "heading": "Biżuteria złota",
+        "body": "<p>Projektujemy i wykonujemy złotą biżuterię we wrocławskiej pracowni: pierścionki, obrączki, kolczyki. Formy inspirowane naturą, kamienie szlachetne, złoto próby 585 i 750.</p><p>Każda sztuka powstaje na miejscu — od rysunku i modelu 3D po wykończenie. Jeśli szukasz własnej formy, zaprojektujemy ją razem.</p>",
+        "primary_label": "",
+        "primary_anchor": "#CollectionProductGrid",
+        "secondary_label": "Zaprojektuj swój model",
+        "secondary_url": "shopify://pages/zaprojektuj-swoj-model"
+      }
+    },
+    "main": {
+      "type": "main-collection-product-grid",
+      "custom_css": [
+        ".m-collection-filters-form {display: none !important;}",
+        ".m-collection-toolbar__filter {display: none !important;}",
+        ".m-sidebar {display: none !important;}",
+        ".avada-collection {display: none !important;}"
+      ],
+      "settings": {
+        "container": "container-full",
+        "grid_layout": "grid",
+        "grid_columns": "4",
+        "show_columns_switcher": true,
+        "pagination_limit": 16,
+        "paginate_type": "paginate",
+        "show_sorting": true,
+        "show_filter": false,
+        "filters_type": "storefront_filters",
+        "sidebar": "fixed",
+        "sidebar_title": "Filters",
+        "show_product_count": true,
+        "color_swatches": "color,colour,couleur,farbe",
+        "color_swatches_design": "list"
+      }
+    },
+    "gold_workshop": {
+      "type": "collection-workshop-proof",
+      "blocks": {
+        "proof_odlew": {
+          "type": "proof",
+          "settings": { "label": "Odlew", "note": "Złoto próby 585 i 750" }
+        },
+        "proof_tekstura": {
+          "type": "proof",
+          "settings": { "label": "Projekt", "note": "Rysunek i model 3D" }
+        },
+        "proof_kamien": {
+          "type": "proof",
+          "settings": { "label": "Kamień", "note": "Osadzamy ręcznie" }
+        }
+      },
+      "block_order": ["proof_tekstura", "proof_odlew", "proof_kamien"],
+      "settings": {
+        "eyebrow": "Pracownia Biżuterii Artystycznej EPIR Art Jewellery",
+        "heading": "Jak powstaje biżuteria",
+        "intro": "Pracownia we Wrocławiu. Projekt, model 3D, odlew i ręczne wykończenie."
+      }
+    },
+    "gold_cocreate": {
+      "type": "collection-cocreate-teaser",
+      "settings": {
+        "eyebrow": "Projekt indywidualny",
+        "heading": "Szukasz własnego projektu? Zrobimy go razem.",
+        "body": "Napisz, czego szukasz, albo prześlij szkic. Przygotujemy model 3D i po Twojej akceptacji wykonamy biżuterię w pracowni.",
+        "cta_label": "Zaprojektuj swój model",
+        "cta_url": "shopify://pages/zaprojektuj-swoj-model"
+      }
+    },
+    "gold_realizations": {
+      "type": "collection-gold-realizations",
+      "blocks": {
+        "real_tanzanit": {
+          "type": "realization",
+          "settings": {
+            "image": "shopify://shop_images/DSC06734.jpg",
+            "title": "Komplet biżuterii złotej z tanzanitami",
+            "text": "<p>Komplet ze złota i tanzanitów. Ciepłe złoto i głęboki błękit kamienia — wykonany na zamówienie w pracowni.</p>"
+          }
+        }
+      },
+      "block_order": ["real_tanzanit"],
+      "settings": {
+        "eyebrow": "Pracownia Biżuterii Artystycznej EPIR Art Jewellery",
+        "heading": "Wybrane realizacje",
+        "intro": "Wzory z kolekcji i projekty według Twojego szkicu. Wszystko powstaje we Wrocławiu.",
+        "cta_label": "Zaprojektuj swój model",
+        "cta_url": "shopify://pages/zaprojektuj-swoj-model",
+        "footnote": "W razie wątpliwości: +48 698 718 564"
+      }
+    }
+  },
+  "order": [
+    "gold_manifesto",
+    "main",
+    "gold_workshop",
+    "gold_cocreate",
+    "gold_realizations"
+  ]
+}

@@ -18,7 +18,7 @@
  *
  * product_ids: jeśli SEED_LANDINGS ma puste tablice, skrypt auto-pobiera GID-y
  * produktów z kolekcji/tagu kazka przez Admin API (tryb domyślny / Kazka).
- * W --apex-only: puste product_ids zostają puste (placeholder do ręcznego uzupełnienia).
+ * W --apex-only: CURATED_HANDLES (handle Shopify) → resolve GID; fallback collection/query.
  */
 
 import {existsSync, readFileSync} from 'fs';
@@ -47,15 +47,74 @@ const SEED_MAPPING = {
 };
 
 /** Tor Apex (Liquid + HTMLRewriter) — merge do istniejącego mappingu. */
-const APEX_MAPPING_REMOVED_KEYS = ['wiecznosc_art'];
+const APEX_MAPPING_REMOVED_KEYS = ['wiecznosc_art', 'artisan_new'];
 const APEX_MAPPING = {
   organic_art: 'organic-art-landing',
+  artisan_rings: 'artisan-rings-landing',
   forest_premium: 'forest-premium-landing',
+  artisan_gold: 'artisan-gold-landing',
 };
 
 const ORGANIC_ART_METAOBJECT_GID = 'gid://shopify/Metaobject/3041383743820';
 const ORGANIC_ART_COLLECTION_HANDLE = 'kolekcja-galazki';
 const ORGANIC_ART_PRODUCT_LIMIT = 8;
+
+/**
+ * Kurowane bestsellery (handle Shopify) — źródło prawdy przed collection/query fallback.
+ * Operator: edytuj listę i uruchom `node scripts/seed-campaign-landings.mjs --apex-only`.
+ */
+const CURATED_HANDLES = {
+  'forest-premium-landing': [
+    'pierscionek-galazki-z-czarnym-turmalinem',
+    'nowe-galazki-rafa-koralowa-z-czarnym-turmalinem',
+    'pierscionek-srebrny-z-topazem-1',
+    'pierscionek-pozlacany-galazki-z-topazem-sky-blue',
+    'kolczyki-z-czarnymi-perlami',
+    'pierscionek-srebrny-z-ametystem-kora-drzewa',
+    'obraczka-srebrna-z-granatem-kora-drzewa',
+    'pierscionek-srebrny-fale-wody-z-szafirem',
+  ],
+  'organic-art-landing': [
+    'pierscionek-galazki-z-czarnym-turmalinem',
+    'pierscionek-pozlacany-z-owalnym-granatem-galazka',
+    'pierscionek-srebrny-z-topazem-london-blue',
+    'kolczyki-galazki-z-topazami-london-blue',
+    'pierscionek-srebrny-z-duzym-szmaragdem-z-kolekcji-galazki',
+    'pierscionek-srebrny-z-ametystem-z-kolekcji-galazki',
+    'pozlacany-zloty-pierscionek-galazka-z-granatem',
+    'srebrny-pierscionek-z-granatem',
+  ],
+  'artisan-rings-landing': [
+    'pierscionek-galazki-z-czarnym-turmalinem',
+    'nowe-galazki-rafa-koralowa-z-czarnym-turmalinem',
+    'pierscionek-galazki-z-granatem',
+    'pierscionek-srebrny-galazki-z-czarnym-opalem',
+    'pierscionek-galazki-z-topazem-swiss-blue',
+    'pierscionek-glazki-z-ametystem',
+    'pierscionek-srebrny-z-topazem-london-blue',
+    'pierscionek-srebrny-fale-wody-z-szafirem',
+  ],
+  'artisan-new-landing': [
+    'pierscionek-zloty-galazki-z-kwarcem-turmalinowym',
+    'pierscionek-srebrny-z-topazem-london-blue',
+    'kolczyki-galazki-z-topazami-london-blue',
+    'obraczki-zlote-mlotkowane-1',
+    'pierscionek-z-bialego-zlota-sploty-galezi-z-rubinem',
+    'pierscionek-srebrny-fale-wody-z-szafirem',
+    'pierscionek-srebrny-z-topazem-sky-blue',
+    'pierscionek-pozlacany-z-ametystem',
+  ],
+  'artisan-gold-landing': [
+    'zloty-pierscionek-z-naturalnym-szafirem',
+    'pierscionek-zloty-galazki-z-kwarcem-turmalinowym',
+    'zlota-obraczka-galazka',
+    'kolczyki-zlote-z-tanzanitami',
+    'zloty-pierscionek-z-ametystem-epir',
+    'zloty-pierscionek-galazka-z-topazem-swiss-blue',
+    'zloty-pierscionek-z-moissanitem-z-kolekcji-galazki',
+    'pierscionek-z-bialego-zlota-sploty-galezi-z-rubinem',
+  ],
+};
 
 /** productIds: [] → auto-fill z katalogu Kazka (patrz fetchKazkaProductGids). */
 const SEED_LANDINGS = [
@@ -102,6 +161,7 @@ const APEX_LANDINGS = [
   {
     handle: 'organic-art-landing',
     skipIfExists: false,
+    collectionHandle: 'kolekcja-galazki',
     heroTitle: 'Biżuteria artystyczna',
     heroSubtitle:
       'Ręcznie tworzona biżuteria z polskiej pracowni — forma, materiał, symbolika wieczności.',
@@ -110,14 +170,49 @@ const APEX_LANDINGS = [
     ctaUrl: '/collections/kolekcja-galazki',
   },
   {
+    handle: 'artisan-rings-landing',
+    skipIfExists: false,
+    productQuery: 'product_type:Pierścionek -vendor:Kazka -tag:sprzedane status:active',
+    heroTitle: 'Pierścionki artystyczne',
+    heroSubtitle:
+      'Srebrne pierścionki z polskiej pracowni — unikalne formy i kamienie naturalne.',
+    productIds: [],
+    ctaLabel: 'Zobacz pierścionki',
+    ctaUrl: '/collections/pierscionki-obraczki',
+  },
+  {
+    handle: 'artisan-new-landing',
+    skipIfExists: false,
+    collectionHandle: 'nowosci-1',
+    heroTitle: 'Nowości w pracowni',
+    heroSubtitle:
+      'Świeże projekty EPIR — biżuteria artystyczna dopiero opuszczająca warsztat.',
+    productIds: [],
+    ctaLabel: 'Zobacz nowości',
+    ctaUrl: '/collections/nowosci-1',
+  },
+  {
     handle: 'forest-premium-landing',
     skipIfExists: false,
+    collectionHandle: 'bestsellery',
     heroTitle: 'Rzemiosło premium',
     heroSubtitle:
       'Ekskluzywna biżuteria artystyczna — ciemny las, forma i praca rąk.',
     productIds: [],
     ctaLabel: 'Zobacz kolekcję',
-    ctaUrl: '/collections/all',
+    ctaUrl: '/collections/bestsellery',
+  },
+  {
+    handle: 'artisan-gold-landing',
+    skipIfExists: false,
+    productQuery:
+      '(title:złot* OR title:zlot* OR tag:złoto OR tag:zloto) -vendor:Kazka -tag:sprzedane status:active',
+    heroTitle: 'Biżuteria ze złota',
+    heroSubtitle:
+      'Złoto formowane jak gałąź — ciepły metal, ręczny odlew i wykończenie we wrocławskiej pracowni.',
+    productIds: [],
+    ctaLabel: 'Zobacz złoto',
+    ctaUrl: '/collections/zlota-bizuteria',
   },
 ];
 
@@ -312,6 +407,21 @@ const PRODUCTS_BY_IDS = `#graphql
   }
 `;
 
+const PRODUCTS_BY_HANDLES = `#graphql
+  query ProductsByHandles($q: String!, $first: Int!) {
+    products(first: $first, query: $q) {
+      nodes {
+        id
+        handle
+        title
+        status
+        vendor
+        tags
+      }
+    }
+  }
+`;
+
 const KAZKA_PRODUCTS_QUERY = `#graphql
   query KazkaProductsForCampaignSeed($first: Int!, $query: String!) {
     products(first: $first, query: $query) {
@@ -320,6 +430,8 @@ const KAZKA_PRODUCTS_QUERY = `#graphql
         title
         handle
         status
+        vendor
+        tags
       }
     }
   }
@@ -410,6 +522,51 @@ function applyApexMappingPatch(existingMapping) {
   return {...merged, ...APEX_MAPPING};
 }
 
+async function fetchEpirProductGidsByHandles(
+  handles,
+  {excludeVendor = 'Kazka', excludeTag = 'sprzedane'} = {},
+) {
+  const list = [...new Set((handles || []).map((h) => String(h).trim()).filter(Boolean))];
+  if (!list.length) return [];
+
+  const vendorNeedle = excludeVendor.trim().toLowerCase();
+  const byHandle = new Map();
+  // Shopify product search by handle: — batch in chunks of 8.
+  for (let i = 0; i < list.length; i += 8) {
+    const chunk = list.slice(i, i + 8);
+    const q = chunk.map((h) => `handle:${h}`).join(' OR ');
+    const data = await gql(PRODUCTS_BY_HANDLES, {q, first: 50});
+    for (const node of data.products?.nodes ?? []) {
+      if (!node?.id || node.status !== 'ACTIVE') continue;
+      const vendor = (node.vendor ?? '').trim().toLowerCase();
+      if (vendorNeedle && vendor === vendorNeedle) continue;
+      const tags = (node.tags ?? []).map((t) => String(t).toLowerCase());
+      if (excludeTag && tags.includes(excludeTag.toLowerCase())) continue;
+      if (node.handle) byHandle.set(node.handle, node);
+    }
+  }
+
+  const ordered = [];
+  const missing = [];
+  for (const h of list) {
+    const node = byHandle.get(h);
+    if (node) ordered.push(node);
+    else missing.push(h);
+  }
+  if (missing.length) {
+    console.warn(
+      `[seed-campaign-landings] curated handles missing: ${missing.join(', ')}`,
+    );
+  }
+  console.log(
+    `[seed-campaign-landings] curated handles resolved=${ordered.length}/${list.length}`,
+  );
+  for (const node of ordered) {
+    console.log(`  - ${node.title} (${node.handle})`);
+  }
+  return ordered.map((n) => n.id);
+}
+
 async function fetchEpirCollectionProductGids(
   collectionHandle,
   {limit = 8, excludeVendor = 'Kazka', excludeTag = 'sprzedane'} = {},
@@ -431,6 +588,31 @@ async function fetchEpirCollectionProductGids(
   const picked = filtered.slice(0, limit).map((n) => n.id);
   console.log(
     `[seed-campaign-landings] collection=${collectionHandle} products=${picked.length} (excl vendor=${excludeVendor}, tag=${excludeTag})`,
+  );
+  for (const node of filtered.slice(0, limit)) {
+    console.log(`  - ${node.title} (${node.id})`);
+  }
+  return picked;
+}
+
+async function fetchEpirProductGidsByQuery(
+  query,
+  {limit = 8, excludeVendor = 'Kazka', excludeTag = 'sprzedane'} = {},
+) {
+  const data = await gql(KAZKA_PRODUCTS_QUERY, {first: 50, query});
+  const nodes = data.products?.nodes ?? [];
+  const vendorNeedle = excludeVendor.trim().toLowerCase();
+  const filtered = nodes.filter((node) => {
+    if (!node?.id || node.status !== 'ACTIVE') return false;
+    const vendor = (node.vendor ?? '').trim().toLowerCase();
+    if (vendorNeedle && vendor === vendorNeedle) return false;
+    const tags = (node.tags ?? []).map((t) => String(t).toLowerCase());
+    if (excludeTag && tags.includes(excludeTag.toLowerCase())) return false;
+    return true;
+  });
+  const picked = filtered.slice(0, limit).map((n) => n.id);
+  console.log(
+    `[seed-campaign-landings] query="${query}" products=${picked.length} (excl vendor=${excludeVendor}, tag=${excludeTag})`,
   );
   for (const node of filtered.slice(0, limit)) {
     console.log(`  - ${node.title} (${node.id})`);
@@ -549,8 +731,23 @@ async function seedApexOnly(shopId, existingMapping) {
       }
     }
 
-    // Apex: nie auto-fill z Kazka — product_ids puste / ręczne.
-    const productIds = await resolveProductIds(landing, []);
+    // Apex: 1) CURATED_HANDLES 2) collection/query fallback (EPIR, bez Kazka/sprzedane).
+    const curated = CURATED_HANDLES[landing.handle] || [];
+    let autoGids = curated.length
+      ? await fetchEpirProductGidsByHandles(curated)
+      : [];
+    if (!autoGids.length) {
+      autoGids = landing.productQuery
+        ? await fetchEpirProductGidsByQuery(landing.productQuery, {
+            limit: ORGANIC_ART_PRODUCT_LIMIT,
+          })
+        : landing.collectionHandle
+          ? await fetchEpirCollectionProductGids(landing.collectionHandle, {
+              limit: ORGANIC_ART_PRODUCT_LIMIT,
+            })
+          : [];
+    }
+    const productIds = await resolveProductIds(landing, autoGids);
     const meta = await upsertLanding(landing, productIds);
     console.log(
       `[seed-campaign-landings] upsert ${landing.handle} → ${meta?.id} products=${productIds.length}`,
