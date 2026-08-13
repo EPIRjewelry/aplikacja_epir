@@ -1,0 +1,37 @@
+---
+description: Język marki EPIR Art Jewellery — default total; wyjątek Kazka Jewelry
+alwaysApply: true
+---
+
+⚠️ SSOT: [`docs/working/EPIR_COPY_PHILOSOPHY.md`](docs/working/EPIR_COPY_PHILOSOPHY.md).
+
+# Język marki EPIR Art Jewellery (default)
+
+**Jeśli edytujesz `apps/kazka` albo użytkownik mówi wprost o Kazka Jewelry — STOP:** nie stosuj tego ToV; użyj ToV Kazki (geometria, blask, złoto+brylant) z [`epir-hydrogen-storefronts.mdc`](epir-hydrogen-storefronts.mdc).
+
+We **wszystkich innych** kontekstach (Gemma, motyw, landingu, Zaręczyny, Inspiracje, docs, agenci) obowiązują **5 zasad**:
+
+1. **Cień, nie figura** — przy niej, nie przed nią; intymność, nie status.
+2. **Żywa powierzchnia** — ślad procesu i opór materii; zakaz *niedoskonałość* (wada).
+3. **Warsztat na skórze** — ogień, młotek, chłód kamienia; haptyka zamiast klisz luksusu.
+4. **Organika tak samo szlachetna** — złoto, brylant i inne szlachetne w rzeźbie; nie tańsza linia vs Kazka.
+5. **Default EPIR totalnie** — Kazka tylko gdy ścieżka/wątek jest wprost o Kazce.
+
+## Zakaz w copy klienckim
+
+- `niedoskonałość` i synonimy wady produkcyjnej
+- `ekskluzywny` / `luksusowy` / `premium` / `prestiżowy`
+- `unikalny` / `jedyny w swoim rodzaju` / `wyjątkowy` (jako klisza)
+- `piękny` / `cudowny` / `zachwycający`
+- `perfekcyjny` / `idealny` / `doskonały`
+- `najwyższa jakość` / hit sezonu / must-have
+
+Zamiast wady: `żywa powierzchnia`, `ślad procesu`, `kontrolowany chaos`, `asymetria`, `rzeźbiarski kontur`, `materia, która stawia opór`.
+
+## Kotwice (PDP / editorial)
+
+- Haptyka: szorstki, młotkowany, kora, ślady ognia i młotka, odłamek w ruchu, ciężar, faktura, surowy, zimne srebro, szampańskie tony (złoto 18K)
+- Autorytet: próba 585/750, bezel — tylko gdy dane są prawdziwe
+- Relacja: gestoruch, bliskość ciała, raczej przy niej niż przed nią
+
+Landing Ads: 1 obraz + 1 obietnica; bez metafizyki. Most Kazka: `OrganicEpirBridge.tsx`.

@@ -403,7 +403,6 @@ function unlockChatUi(section) {
   });
   var fi = section.querySelector('#assistant-file-input-embed') || section.querySelector('#assistant-file-input-section');
   if (fi) fi.removeAttribute('disabled');
-  void mountEpirShopSignIn(section);
 }
 
 function initConsentGateForSection(section) {
@@ -715,7 +714,6 @@ function applyCommerceActionFromSse(parsed, actionsHolder) {
 }
 
 var EPIR_SHOP_SESSION_TOKEN_KEY = 'epir-shop-session-token';
-var EPIR_SHOP_SDK_LOADER = 'https://cdn.shopify.com/shopifycloud/shop-js/modules/v2/loader.sdk.esm.js';
 
 function getStoredShopSessionToken() {
   try {
@@ -724,16 +722,6 @@ function getStoredShopSessionToken() {
   } catch (e) {
     return undefined;
   }
-}
-
-function storeShopSessionToken(token) {
-  try {
-    if (token && String(token).trim()) {
-      sessionStorage.setItem(EPIR_SHOP_SESSION_TOKEN_KEY, String(token).trim());
-    } else {
-      sessionStorage.removeItem(EPIR_SHOP_SESSION_TOKEN_KEY);
-    }
-  } catch (e) {}
 }
 
 /**
@@ -770,46 +758,6 @@ async function applyStorefrontCommerceActionFromGemma(action) {
     }),
   );
   deferred.resolve({ cart: action.cart_id ? { id: action.cart_id } : undefined });
-}
-
-var epirShopSdkLoaderPromise = null;
-var epirShopLoginMountPromise = null;
-
-async function mountEpirShopSignIn(section) {
-  if (!section || typeof window === 'undefined') return;
-  var apiKey = (section.dataset && section.dataset.shopifyClientId) || '';
-  apiKey = String(apiKey).trim();
-  if (!apiKey) return;
-  var mount = section.querySelector('#epir-shop-sign-in-mount');
-  if (!mount) return;
-
-  if (!epirShopSdkLoaderPromise) {
-    epirShopSdkLoaderPromise = import(EPIR_SHOP_SDK_LOADER).then(function () {});
-  }
-  await epirShopSdkLoaderPromise;
-  if (!window.ShopSDK) return;
-
-  if (!epirShopLoginMountPromise) {
-    epirShopLoginMountPromise = (async function () {
-      var sdk = window.ShopSDK.initialize({
-        apiKey: apiKey,
-        locale: getShopLocale() || 'pl',
-        features: { login: true },
-      });
-      return sdk.create('login', {
-        attributes: { buttonType: 'continue', buttonLayout: 'standalone' },
-        onComplete: function (event) {
-          if (event && event.signedIn && event.customerAccessToken) {
-            storeShopSessionToken(event.customerAccessToken);
-          }
-        },
-      });
-    })();
-  }
-  var login = await epirShopLoginMountPromise;
-  if (!login || !login.element) return;
-  mount.innerHTML = '';
-  mount.appendChild(login.element);
 }
 
 /**

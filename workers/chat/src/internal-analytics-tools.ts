@@ -1,6 +1,6 @@
 /**
  * Narzędzia analityczne wyłącznie dla kanału `operator`.
- * Trzy jawne źródła: hurtownia EPIR (RPC), marketing-ingest (GA4+Ads preview), Shopify Admin (ShopifyQL presets).
+ * Trzy jawne źródła: hurtownia EPIR (RPC), marketing-ingest (GA4+Ads+GMC preview), Shopify Admin (ShopifyQL presets).
  */
 import type { Env } from './config/bindings';
 import { checkEdogGateForWarehouse } from './edog-gate';

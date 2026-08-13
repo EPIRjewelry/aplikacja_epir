@@ -20,7 +20,7 @@ const ROLE_SOURCES: Record<OperatorRoleId, string> = {
   analyst: `
 ŹRÓDŁA (rola Analityk):
 1. Hurtownia — run_analytics_query (Q1–Q10), source: epir_warehouse.
-2. GA4 + Ads — fetch_marketing_preview.
+2. GA4 + Ads + GMC — fetch_marketing_preview (pole google_merchant: issues/statusy).
 3. Shopify Analytics — run_shopify_shopifyql (S1–S6).
 4. Katalog (kontekst) — search_catalog, search_shop_policies_and_faqs.
 Raporty dzienne: panel Raporty w Studio (D1).`.trim(),

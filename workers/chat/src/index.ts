@@ -119,6 +119,7 @@ import {
   mergeSessionIntoPersonSummary,
 } from './person-memory';
 import { handleConsentAppProxy, handleConsentS2S } from './consent';
+import { handleCocreateAppProxy } from './cocreate/handler';
 import {
   MEMORY_EXTRACT_MESSAGE_VERSION,
   makeIdempotencyKey,
@@ -5029,6 +5030,26 @@ export default {
     // Consent Gate (App Proxy — auth jak wyżej dla /apps/assistant/*)
     if (url.pathname === '/apps/assistant/consent' && request.method === 'POST') {
       return handleConsentAppProxy(request, env);
+    }
+
+    // Brief współtworzenia (App Proxy — multipart + R2)
+    if (url.pathname === '/apps/assistant/cocreate') {
+      return handleCocreateAppProxy(request, env, ctx);
+    }
+
+    // Shopify App Proxy mapuje /apps/assistant/cocreate → /cocreate na backendzie (jak /chat).
+    if (url.pathname === '/cocreate' && request.method === 'POST') {
+      if (hasAppProxySignature(request, url)) {
+        const appProxyAuthError = await authorizeAppProxyRequest(request, env);
+        if (appProxyAuthError) {
+          return appProxyAuthError;
+        }
+        return handleCocreateAppProxy(request, env, ctx);
+      }
+      return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
     }
 
     // Historia czatu storefrontu (App Proxy)

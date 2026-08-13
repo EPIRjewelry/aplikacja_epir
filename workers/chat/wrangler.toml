@@ -75,6 +75,11 @@ binding = "POLICIES_CACHE"
 id = "79b8871d6e664440b648308ee9493d6d"
 preview_id = "6673996135e04c30a90f9f807d42391e"
 
+# Brief współtworzenia — załączniki (PNG/JPG). Utwórz: wrangler r2 bucket create epir-cocreate-uploads
+[[r2_buckets]]
+binding = "COCREATE_UPLOADS"
+bucket_name = "epir-cocreate-uploads"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SessionDO"]
@@ -177,6 +182,10 @@ SLIM_TOOL_SCHEMAS = "true"
 # `null` = literal Origin string from Shopify Web Pixel sandbox (opaque origin), not a TOML null
 ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://epir-art-silver-jewellery.myshopify.com,https://asystent.epirbizuteria.pl,https://kazka.epirbizuteria.pl,https://zareczyny.epirbizuteria.pl,null"
 SHOP_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
+# Brief współtworzenia — Resend (tylko wysyłka: DKIM + SPF w DNS; bez MX / Enable Receiving).
+# wrangler secret put RESEND_API_KEY
+COCREATE_NOTIFY_EMAIL = "epir@epirbizuteria.pl"
+COCREATE_FROM_EMAIL = "brief@epirbizuteria.pl"
 # Opcjonalnie: Client ID aplikacji (Partners) — walidacja claimu `aud` w Shopify Session Token (JWT).
 # SHOPIFY_CLIENT_ID = ""
 # MCP endpoint - zmienna konfiguracyjna (CHAT_SPEC: shopify-admin-mcp = {shop_domain}/api/mcp)

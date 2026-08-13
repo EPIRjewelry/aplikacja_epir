@@ -44,6 +44,8 @@ Ten katalog jest częścią jedynego kanonicznego pakietu dokumentacji EPIR. Ten
 Te pliki **muszą** być w tym samym drzewie co NotebookLM (mirror 1:1), ale **nie** równają się kanonowi: to syntezy, Q&A i kompas z research — przed decyzją produkcyjną obowiązuje weryfikacja w **aktualnych** dokumentach dostawców oraz w kodzie `aplikacja_epir`.
 
 - [`working/KUSTOSZ_BRIEF_LATEST.md`](working/KUSTOSZ_BRIEF_LATEST.md) — ostatni brief Cursor Kustosza (ops desk); niewiążący, odnawiany przy audycie.
+- [`working/EPIR_COPY_PHILOSOPHY.md`](working/EPIR_COPY_PHILOSOPHY.md) — **język marki EPIR Art Jewellery** (5 zasad; default total: Gemma, sklep, landingu, Zaręczyny, Inspiracje); wyjątek: Kazka Jewelry. Reguła: `.cursor/rules/epir-copywriting.mdc` (`alwaysApply`).
+- [`working/COCREATE_ORDER_FREEZE.md`](working/COCREATE_ORDER_FREEZE.md) — zamrożenie kolejności CoCreate (niewiążący, operacyjny).
 - [`working/LANDINGS_APEX_HANDOFF.md`](working/LANDINGS_APEX_HANDOFF.md) — handoff landingów Ads Apex (routing UTM, paleta, stan deploy, otwarte); start nowego wątku Cursor.
 - [`working/GENIALNY_PLAN_CURSOR_GROKA_4_5.md`](working/GENIALNY_PLAN_CURSOR_GROKA_4_5.md) — decyzja robocza: 3 aktywne landingu Apex + mosty EPIR↔Kazka; niewiążący.
 - [`working/LANDINGS_DEPLOY_AUDIT.md`](working/LANDINGS_DEPLOY_AUDIT.md) — procedura audytowa pre/post deploy (PMax PDP, tracking `l.`, ingest, checklist).

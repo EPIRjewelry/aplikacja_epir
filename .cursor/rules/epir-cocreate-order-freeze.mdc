@@ -1,0 +1,37 @@
+---
+description: Zamrożenie strony zamówienia indywidualnego (zaprojektuj/cocreate) — zakaz zmian bez wyraźnego polecenia operatora
+globs: themes/epir-online-store/sections/zaprojektuj-swoj-model.liquid,themes/epir-online-store/templates/page.zaprojektuj.json,workers/chat/src/cocreate/**,workers/chat/test/cocreate_*.test.ts
+alwaysApply: false
+---
+
+# Zamrożenie — zamówienie indywidualne (cocreate)
+
+**Status:** ZAMROŻONE od 2026-08-12 (decyzja operatora).
+
+**Zakres:** kanoniczna strona współtworzenia `https://epirbizuteria.pl/pages/zaprojektuj-swoj-model` oraz cały pipeline briefu App Proxy → worker → R2 → e-mail/CRM.
+
+## Nienegocjowalne
+
+- **Zakaz jakichkolwiek zmian** w zakresie zamrożonym — estetycznych (UI, copy, layout, CSS) **i** kodowych (Liquid, JS, worker `cocreate/*`, testy, kontrakt pól formularza) — **bez bardzo wyraźnego, jednoznacznego polecenia operatora** w bieżącej sesji.
+- Nie proponuj refaktoryzacji, „drobnych poprawek”, A/B copy, nowych pól ani zmian endpointu `/apps/assistant/cocreate`.
+- Nie zmieniaj transportu załącznika (`attachment_base64` + `attachment_filename`) — ustalony jako obejście limitów App Proxy dla plików binarnych.
+- Nie deployuj sekcji motywu ani workera `cocreate` bez wyraźnej prośby operatora.
+
+## Pliki objęte zamrożeniem
+
+| Warstwa | Ścieżki |
+|---------|---------|
+| Storefront | `themes/epir-online-store/sections/zaprojektuj-swoj-model.liquid`, `templates/page.zaprojektuj.json` |
+| Backend | `workers/chat/src/cocreate/**` |
+| Testy | `workers/chat/test/cocreate_*.test.ts` |
+
+## Architektura zamrożona (stan referencyjny)
+
+- Formularz POST → `/apps/assistant/cocreate` (Shopify App Proxy, HMAC).
+- Zdjęcie: base64 w `FormData` (nie binarny `multipart` plik).
+- Worker: walidacja PNG/JPG, max 10 MB, zapis R2 `COCREATE_UPLOADS`, D1 `cocreate_briefs`, powiadomienie Resend + Shopify Admin.
+- Deploy produkcyjny (2026-08-12): worker `epir-art-jewellery-worker` + live theme `#186221691212`.
+
+## Wyjątek
+
+Jedyny dopuszczalny powód edycji bez nowego polecenia: **awaria krytyczna** (formularz nie działa w ogóle) — wtedy minimalny hotfix i natychmiastowy raport operatorowi. Wszystko inne wymaga jawnej zgody operatora.

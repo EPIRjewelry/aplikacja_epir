@@ -26,9 +26,17 @@ describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
     expect(LUXURY_SYSTEM_PROMPT).not.toContain('wspominaj tylko wtedy');
   });
 
+  it('includes EPIR brand language principles as default', () => {
+    expect(LUXURY_SYSTEM_PROMPT).toContain('Język marki EPIR Art Jewellery');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('Cień, nie figura');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('Żywa powierzchnia');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('niedoskonałości');
+  });
+
   it('includes Kazka headless persona addon', () => {
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('Kazka Jewelry');
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('aktualny drop Kazka');
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('EPIR');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('geometryczny spokój');
   });
 });

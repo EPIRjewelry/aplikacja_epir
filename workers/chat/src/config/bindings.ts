@@ -141,6 +141,15 @@ export interface Env {
    */
   POLICIES_CACHE?: KVNamespace;
 
+  /** R2: załączniki briefów współtworzenia (`/apps/assistant/cocreate`). */
+  COCREATE_UPLOADS?: R2Bucket;
+  /** Adres e-mail pracowni (var, nie secret). */
+  COCREATE_NOTIFY_EMAIL?: string;
+  /** Nadawca Resend (var) — wymaga zweryfikowanej domeny w Resend. */
+  COCREATE_FROM_EMAIL?: string;
+  /** Klucz API Resend (secret) — powiadomienia briefów współtworzenia. */
+  RESEND_API_KEY?: string;
+
   /** Statyczne assety Operator Studio v2 (`operator-studio-dist`). Opcjonalne lokalnie bez buildu. */
   OPERATOR_ASSETS?: Fetcher;
 
@@ -238,6 +247,7 @@ export const OPTIONAL_SECRETS = [
   'AI_GATEWAY_TOKEN',
   'EPIR_OPERATOR_PANEL_SECRET',
   'OPENROUTER_API_KEY',
+  'RESEND_API_KEY',
 ] as const;
 
 export const REQUIRED_VARS = ['SHOP_DOMAIN', 'ALLOWED_ORIGIN'] as const;
@@ -247,6 +257,8 @@ export const OPTIONAL_VARS = [
   'DEV_BYPASS',
   'SHOPIFY_CUSTOMER_ACCOUNTS_MODE',
   'MARKETING_INGEST_ORIGIN',
+  'COCREATE_NOTIFY_EMAIL',
+  'COCREATE_FROM_EMAIL',
 ] as const;
 
 export function getEnvBinding<K extends keyof Env>(env: Env, key: K): NonNullable<Env[K]> {

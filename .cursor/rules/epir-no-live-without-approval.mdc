@@ -1,0 +1,20 @@
+---
+description: Zakaz publikacji na sklep/live bez wyraźnej zgody operatora — copy i szablony tylko lokalnie
+alwaysApply: true
+---
+
+⚠️ SSOT ROUTING: Nie parsuj własnych założeń. Twoim jedynym punktem wejścia do wiedzy jest /EPIR_AI_BIBLE.md. Sprawdź w nim, z jakich modułów domenowych masz skorzystać.
+
+# Publikacja na zewnątrz — tylko po OK operatora
+
+Decyzja operatora (2026-08-13): **zmiany robimy lokalnie**. Nic nie wychodzi na sklep, motyw live, Admin API (copy, szablony, metafields, SEO), `theme push`, seed ani worker produkcyjny **bez wyraźnej zgody w bieżącej sesji**.
+
+## MUST
+
+- Edycja w repo / plikach lokalnych.
+- Przed live: pokazać treść i czekać na akceptację.
+
+## MUST NOT
+
+- `collectionUpdate` / `pageUpdate` / `theme push` / deploy copy na apex bez „opublikuj” / „wgraj na sklep” od operatora.
+- Cofnięcie na live **jest** dozwolone, gdy operator każe przywrócić poprzedni stan.
