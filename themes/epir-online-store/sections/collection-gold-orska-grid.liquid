@@ -1,0 +1,183 @@
+{{ 'collection-gold-orska.css' | asset_url | stylesheet_tag }}
+
+{%- liquid
+  assign products_per_page = section.settings.products_per_page | default: 16
+  assign columns = section.settings.columns | default: 4
+  assign show_cart = section.settings.show_add_to_cart
+-%}
+
+<div class="gold-orska">
+  <section
+    id="gold-orska-grid"
+    class="gold-orska-grid"
+    aria-label="{{ section.settings.heading | default: 'Modele' | escape }}"
+  >
+    <div class="gold-orska-grid__inner">
+      {%- if section.settings.heading != blank or section.settings.eyebrow != blank -%}
+        <header class="gold-orska-grid__header">
+          {%- if section.settings.eyebrow != blank -%}
+            <p class="gold-orska-label">{{ section.settings.eyebrow }}</p>
+          {%- endif -%}
+          {%- if section.settings.heading != blank -%}
+            <h2 class="gold-orska-section-title">{{ section.settings.heading }}</h2>
+          {%- endif -%}
+        </header>
+      {%- endif -%}
+
+      {%- paginate collection.products by products_per_page -%}
+        {%- if collection.products.size == 0 -%}
+          <p class="gold-orska-grid__empty">{{ 'collections.general.no_matches' | t }}</p>
+        {%- else -%}
+          <ul
+            class="gold-orska-grid__list"
+            style="--orska-cols: {{ columns }};"
+            data-cols="{{ columns }}"
+          >
+            {%- for product in collection.products -%}
+              {%- liquid
+                assign primary = product.featured_media
+                if primary == blank
+                  assign primary = product.featured_image
+                endif
+                assign secondary = blank
+                if product.media.size > 1
+                  for media in product.media
+                    if media.id != primary.id and media.media_type == 'image'
+                      assign secondary = media
+                      break
+                    endif
+                  endfor
+                endif
+              -%}
+              <li class="gold-orska-card">
+                <a class="gold-orska-card__link" href="{{ product.url }}">
+                  <div class="gold-orska-card__media">
+                    {%- if primary != blank -%}
+                      {%- liquid
+                        assign primary_class = 'gold-orska-card__img--primary'
+                        if secondary != blank
+                          assign primary_class = primary_class | append: ' has-secondary'
+                        endif
+                        assign primary_alt = primary.alt | default: product.title
+                        assign secondary_alt = secondary.alt | default: product.title
+                      -%}
+                      {{
+                        primary
+                        | image_url: width: 1200
+                        | image_tag:
+                          class: primary_class,
+                          widths: '360, 540, 720, 900, 1200',
+                          sizes: '(min-width: 990px) 25vw, 50vw',
+                          loading: 'lazy',
+                          alt: primary_alt
+                      }}
+                      {%- if secondary != blank -%}
+                        {{
+                          secondary
+                          | image_url: width: 1200
+                          | image_tag:
+                            class: 'gold-orska-card__img--secondary',
+                            widths: '360, 540, 720, 900, 1200',
+                            sizes: '(min-width: 990px) 25vw, 50vw',
+                            loading: 'lazy',
+                            alt: secondary_alt
+                        }}
+                      {%- endif -%}
+                    {%- else -%}
+                      <div class="gold-orska-lookbook__placeholder" aria-hidden="true"></div>
+                    {%- endif -%}
+                  </div>
+                  <div class="gold-orska-card__meta">
+                    <h3 class="gold-orska-card__title">{{ product.title }}</h3>
+                    <p class="gold-orska-card__price">
+                      {%- if product.compare_at_price > product.price -%}
+                        <s>{{ product.compare_at_price | money }}</s>
+                      {%- endif -%}
+                      {{ product.price | money }}
+                    </p>
+                  </div>
+                </a>
+                {%- if show_cart and product.available and product.has_only_default_variant -%}
+                  <div class="gold-orska-card__cart">
+                    {%- form 'product', product, class: 'gold-orska-card__form' -%}
+                      <input type="hidden" name="id" value="{{ product.selected_or_first_available_variant.id }}">
+                      <button type="submit" name="add" class="gold-orska-btn">
+                        {{ 'products.product.add_to_cart' | t }}
+                      </button>
+                    {%- endform -%}
+                  </div>
+                {%- endif -%}
+              </li>
+            {%- endfor -%}
+          </ul>
+
+          {%- if paginate.pages > 1 -%}
+            <nav class="gold-orska-grid__pagination" aria-label="Pagination">
+              {%- if paginate.previous -%}
+                <a href="{{ paginate.previous.url }}">{{ 'general.pagination.previous' | t }}</a>
+              {%- endif -%}
+              {%- for part in paginate.parts -%}
+                {%- if part.is_link -%}
+                  <a href="{{ part.url }}">{{ part.title }}</a>
+                {%- else -%}
+                  <span>{{ part.title }}</span>
+                {%- endif -%}
+              {%- endfor -%}
+              {%- if paginate.next -%}
+                <a href="{{ paginate.next.url }}">{{ 'general.pagination.next' | t }}</a>
+              {%- endif -%}
+            </nav>
+          {%- endif -%}
+        {%- endif -%}
+      {%- endpaginate -%}
+    </div>
+  </section>
+</div>
+
+{% schema %}
+{
+  "name": "Gold Orska product grid",
+  "tag": "section",
+  "class": "section-gold-orska-grid",
+  "templates": ["collection"],
+  "settings": [
+    {
+      "type": "text",
+      "id": "eyebrow",
+      "label": "Eyebrow",
+      "default": "Kolekcja"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Modele"
+    },
+    {
+      "type": "range",
+      "id": "columns",
+      "min": 2,
+      "max": 4,
+      "step": 1,
+      "label": "Columns (desktop)",
+      "default": 4
+    },
+    {
+      "type": "range",
+      "id": "products_per_page",
+      "min": 8,
+      "max": 36,
+      "step": 4,
+      "label": "Products per page",
+      "default": 16
+    },
+    {
+      "type": "checkbox",
+      "id": "show_add_to_cart",
+      "label": "Show quiet add to cart (simple products only)",
+      "default": false
+    }
+  ],
+  "presets": [{ "name": "Gold Orska product grid" }]
+}
+{% endschema %}

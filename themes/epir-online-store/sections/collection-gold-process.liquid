@@ -1,0 +1,271 @@
+{% comment %}
+  Proces technologiczny — kafle image/video, bez przerw.
+  Nie zmienia zamrożonych sekcji Orska ani teasera cocreate (poza tym plikiem).
+{% endcomment %}
+
+<section id="gold-process" class="gold-process" aria-labelledby="gold-process-heading">
+  <div class="gold-process__inner">
+    {% if section.settings.eyebrow != blank %}
+      <p class="gold-process__eyebrow">{{ section.settings.eyebrow }}</p>
+    {% endif %}
+    <h2 id="gold-process-heading" class="gold-process__title">{{ section.settings.heading }}</h2>
+    {% if section.settings.intro != blank %}
+      <p class="gold-process__intro">{{ section.settings.intro }}</p>
+    {% endif %}
+  </div>
+
+  {% assign paths = section.blocks | where: 'type', 'path' %}
+  {% for block in paths %}
+    {% liquid
+      assign step_count = 0
+      if block.settings.step_1 != blank
+        assign step_count = step_count | plus: 1
+      endif
+      if block.settings.step_2 != blank
+        assign step_count = step_count | plus: 1
+      endif
+      if block.settings.step_3 != blank
+        assign step_count = step_count | plus: 1
+      endif
+      if block.settings.step_4 != blank
+        assign step_count = step_count | plus: 1
+      endif
+    %}
+    <article class="gold-process__path" data-steps="{{ step_count }}" {{ block.shopify_attributes }}>
+      {% if block.settings.label != blank %}
+        <h3 class="gold-process__path-label">{{ block.settings.label }}</h3>
+      {% endif %}
+      <ol class="gold-process__steps">
+        {% for i in (1..4) %}
+          {% liquid
+            assign step_text = ''
+            assign step_image = nil
+            assign step_video = nil
+            case i
+              when 1
+                assign step_text = block.settings.step_1
+                assign step_image = block.settings.image_1
+                assign step_video = block.settings.video_1
+              when 2
+                assign step_text = block.settings.step_2
+                assign step_image = block.settings.image_2
+                assign step_video = block.settings.video_2
+              when 3
+                assign step_text = block.settings.step_3
+                assign step_image = block.settings.image_3
+                assign step_video = block.settings.video_3
+              when 4
+                assign step_text = block.settings.step_4
+                assign step_image = block.settings.image_4
+                assign step_video = block.settings.video_4
+            endcase
+          %}
+          {% if step_text != blank %}
+            <li class="gold-process__step">
+              <div class="gold-process__tile">
+                {% if step_video != blank %}
+                  {{
+                    step_video
+                    | video_tag:
+                      image_size: '800x',
+                      autoplay: true,
+                      loop: true,
+                      muted: true,
+                      controls: false,
+                      playsinline: true
+                  }}
+                {% elsif step_image != blank %}
+                  {{
+                    step_image
+                    | image_url: width: 1200
+                    | image_tag:
+                      widths: '400, 600, 800, 1200',
+                      sizes: '(min-width: 750px) 25vw, 50vw',
+                      loading: 'lazy',
+                      alt: step_text
+                  }}
+                {% else %}
+                  <div class="gold-process__tile-ph" aria-hidden="true"></div>
+                {% endif %}
+                <span class="gold-process__step-text">{{ step_text }}</span>
+              </div>
+            </li>
+          {% endif %}
+        {% endfor %}
+      </ol>
+    </article>
+  {% endfor %}
+</section>
+
+<style>
+  #gold-process.gold-process {
+    --gp-bg: #ffffff;
+    --gp-ink: #2c3238;
+    --gp-muted: #666666;
+    --gp-line: #f2f2f2;
+    --gp-accent: #2c684e;
+    --gp-tile: 4 / 5;
+    background: var(--gp-bg);
+    color: var(--gp-ink);
+    padding: 3.5rem 0 0;
+    border-top: 1px solid var(--gp-line);
+    font-family: Montserrat, system-ui, sans-serif;
+    text-align: center;
+  }
+  #gold-process .gold-process__inner {
+    max-width: 56rem;
+    margin: 0 auto;
+    padding: 0 1.25rem 1.25rem;
+  }
+  #gold-process .gold-process__eyebrow {
+    margin: 0 0 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--gp-muted);
+  }
+  #gold-process .gold-process__title {
+    margin: 0 auto 0.85rem;
+    font-family: 'Playfair Display', Georgia, serif;
+    font-weight: 500;
+    font-size: clamp(1.6rem, 3vw, 2.25rem);
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    color: var(--gp-ink);
+  }
+  #gold-process .gold-process__intro {
+    margin: 0 auto;
+    max-width: 36rem;
+    font-size: 0.98rem;
+    line-height: 1.65;
+    color: var(--gp-muted);
+  }
+  #gold-process .gold-process__path {
+    margin: 0;
+    padding: 0;
+    text-align: left;
+  }
+  #gold-process .gold-process__path-label {
+    margin: 0;
+    padding: 1.25rem 1rem 0.75rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--gp-accent);
+    text-align: center;
+  }
+  #gold-process .gold-process__steps {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  @media (min-width: 750px) {
+    #gold-process .gold-process__steps {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    #gold-process .gold-process__path[data-steps='2'] .gold-process__steps {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  #gold-process .gold-process__step {
+    margin: 0;
+    padding: 0;
+  }
+  #gold-process .gold-process__tile {
+    position: relative;
+    aspect-ratio: var(--gp-tile);
+    overflow: hidden;
+    background: #f7f5f2;
+  }
+  #gold-process .gold-process__tile img,
+  #gold-process .gold-process__tile video,
+  #gold-process .gold-process__tile-ph {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  #gold-process .gold-process__tile-ph {
+    background: linear-gradient(145deg, #efe8dc 0%, #e0d6c8 100%);
+  }
+  #gold-process .gold-process__step-text {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1;
+    margin: 0;
+    padding: 0.65rem 0.5rem 0.55rem;
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #fff;
+    background: linear-gradient(to top, rgba(44, 50, 56, 0.72), rgba(44, 50, 56, 0));
+  }
+</style>
+
+{% schema %}
+{
+  "name": "Gold process",
+  "tag": "section",
+  "class": "section-gold-process",
+  "templates": ["collection"],
+  "settings": [
+    {
+      "type": "text",
+      "id": "eyebrow",
+      "label": "Eyebrow",
+      "default": "Proces"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Nagłówek",
+      "default": "Od ognia do wyrobu"
+    },
+    {
+      "type": "textarea",
+      "id": "intro",
+      "label": "Wstęp",
+      "default": "Dwie drogi w tej samej pracowni we Wrocławiu — klasyczna rzeźba w wosku albo model cyfrowy i odlew. Obie kończą się ręcznym wykończeniem."
+    }
+  ],
+  "blocks": [
+    {
+      "type": "path",
+      "name": "Ścieżka procesu",
+      "settings": [
+        { "type": "text", "id": "label", "label": "Nazwa ścieżki" },
+        { "type": "header", "content": "Krok 1" },
+        { "type": "text", "id": "step_1", "label": "Podpis" },
+        { "type": "image_picker", "id": "image_1", "label": "Zdjęcie" },
+        { "type": "video", "id": "video_1", "label": "Film (zastępuje zdjęcie)" },
+        { "type": "header", "content": "Krok 2" },
+        { "type": "text", "id": "step_2", "label": "Podpis" },
+        { "type": "image_picker", "id": "image_2", "label": "Zdjęcie" },
+        { "type": "video", "id": "video_2", "label": "Film (zastępuje zdjęcie)" },
+        { "type": "header", "content": "Krok 3" },
+        { "type": "text", "id": "step_3", "label": "Podpis" },
+        { "type": "image_picker", "id": "image_3", "label": "Zdjęcie" },
+        { "type": "video", "id": "video_3", "label": "Film (zastępuje zdjęcie)" },
+        { "type": "header", "content": "Krok 4" },
+        { "type": "text", "id": "step_4", "label": "Podpis" },
+        { "type": "image_picker", "id": "image_4", "label": "Zdjęcie" },
+        { "type": "video", "id": "video_4", "label": "Film (zastępuje zdjęcie)" }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Gold process"
+    }
+  ]
+}
+{% endschema %}

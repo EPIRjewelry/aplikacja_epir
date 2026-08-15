@@ -1,0 +1,149 @@
+{{ 'collection-gold-orska.css' | asset_url | stylesheet_tag }}
+
+{%- liquid
+  assign has_block_image = false
+  for block in section.blocks
+    if block.settings.image != blank
+      assign has_block_image = true
+      break
+    endif
+  endfor
+-%}
+
+<div class="gold-orska">
+  <section
+    class="gold-orska-lookbook"
+    aria-label="{{ section.settings.heading | default: 'Lookbook' | escape }}"
+  >
+    {%- if section.settings.heading != blank or section.settings.eyebrow != blank -%}
+      <header class="gold-orska-lookbook__header">
+        {%- if section.settings.eyebrow != blank -%}
+          <p class="gold-orska-label">{{ section.settings.eyebrow }}</p>
+        {%- endif -%}
+        {%- if section.settings.heading != blank -%}
+          <h2 class="gold-orska-section-title">{{ section.settings.heading }}</h2>
+        {%- endif -%}
+      </header>
+    {%- endif -%}
+
+    <div class="gold-orska-lookbook__grid">
+      {%- if section.blocks.size > 0 -%}
+        {%- for block in section.blocks -%}
+          {%- liquid
+            assign tile_image = block.settings.image
+            assign tile_class = 'gold-orska-lookbook__item'
+            if block.settings.wide
+              assign tile_class = tile_class | append: ' gold-orska-lookbook__item--wide'
+            endif
+          -%}
+          <figure class="{{ tile_class }}" {{ block.shopify_attributes }}>
+            {%- if tile_image != blank -%}
+              {{
+                tile_image
+                | image_url: width: 1800
+                | image_tag:
+                  widths: '600, 900, 1200, 1500, 1800',
+                  sizes: '(min-width: 750px) 50vw, 100vw',
+                  loading: 'lazy',
+                  alt: tile_image.alt | default: block.settings.caption | default: collection.title
+              }}
+            {%- elsif collection.image != blank and has_block_image == false -%}
+              {{
+                collection.image
+                | image_url: width: 1800
+                | image_tag:
+                  widths: '600, 900, 1200, 1500, 1800',
+                  sizes: '(min-width: 750px) 50vw, 100vw',
+                  loading: 'lazy',
+                  alt: collection.title
+              }}
+            {%- else -%}
+              <div class="gold-orska-lookbook__placeholder" role="img" aria-label="Placeholder"></div>
+            {%- endif -%}
+            {%- if block.settings.caption != blank -%}
+              <figcaption class="gold-orska-lookbook__caption">{{ block.settings.caption }}</figcaption>
+            {%- endif -%}
+          </figure>
+        {%- endfor -%}
+      {%- else -%}
+        {%- comment -%} Placeholder tiles until editorial photos arrive {%- endcomment -%}
+        {%- for i in (1..4) -%}
+          <figure class="gold-orska-lookbook__item{% if forloop.first %} gold-orska-lookbook__item--wide{% endif %}">
+            {%- if collection.image != blank and forloop.first -%}
+              {{
+                collection.image
+                | image_url: width: 1800
+                | image_tag:
+                  widths: '600, 900, 1200, 1500, 1800',
+                  sizes: '100vw',
+                  loading: 'lazy',
+                  alt: collection.title
+              }}
+            {%- else -%}
+              <div class="gold-orska-lookbook__placeholder" aria-hidden="true"></div>
+            {%- endif -%}
+          </figure>
+        {%- endfor -%}
+      {%- endif -%}
+    </div>
+  </section>
+</div>
+
+{% schema %}
+{
+  "name": "Gold Orska lookbook",
+  "tag": "section",
+  "class": "section-gold-orska-lookbook",
+  "templates": ["collection"],
+  "settings": [
+    {
+      "type": "text",
+      "id": "eyebrow",
+      "label": "Eyebrow",
+      "default": "Lookbook"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Złoto w kadrze"
+    }
+  ],
+  "blocks": [
+    {
+      "type": "tile",
+      "name": "Editorial tile",
+      "settings": [
+        {
+          "type": "image_picker",
+          "id": "image",
+          "label": "Image",
+          "info": "Lifestyle / editorial, ~4:5. Replace placeholders when ready."
+        },
+        {
+          "type": "text",
+          "id": "caption",
+          "label": "Caption (optional)"
+        },
+        {
+          "type": "checkbox",
+          "id": "wide",
+          "label": "Full-width band",
+          "default": false
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Gold Orska lookbook",
+      "blocks": [
+        { "type": "tile", "settings": { "wide": true } },
+        { "type": "tile" },
+        { "type": "tile" },
+        { "type": "tile" }
+      ]
+    }
+  ]
+}
+{% endschema %}

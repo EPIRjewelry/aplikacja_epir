@@ -113,7 +113,8 @@ scripts/debug/set-inspiracje-*.mjs
 *.aio.min.js
 
 # Vendor theme pull — README + shopify.theme.toml + EPIR Liquid only
-themes/epir-online-store/assets/
+themes/epir-online-store/assets/*
+!themes/epir-online-store/assets/collection-gold-orska.css
 themes/epir-online-store/blocks/
 themes/epir-online-store/config/
 themes/epir-online-store/layout/
@@ -129,6 +130,10 @@ themes/epir-online-store/sections/*
 !themes/epir-online-store/sections/collection-gold-realizations.liquid
 !themes/epir-online-store/sections/collection-workshop-proof.liquid
 !themes/epir-online-store/sections/collection-cocreate-teaser.liquid
+!themes/epir-online-store/sections/collection-gold-orska-hero.liquid
+!themes/epir-online-store/sections/collection-gold-orska-grid.liquid
+!themes/epir-online-store/sections/collection-gold-orska-lookbook.liquid
+!themes/epir-online-store/sections/collection-gold-process.liquid
 !themes/epir-online-store/sections/zaprojektuj-swoj-model.liquid
 !themes/epir-online-store/sections/main-product.liquid
 themes/epir-online-store/templates/*
