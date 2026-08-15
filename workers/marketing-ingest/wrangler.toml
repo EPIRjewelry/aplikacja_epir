@@ -57,6 +57,11 @@ bindings = [
 tag = "v1_marketing_analyst_agent"
 new_classes = ["MarketingAnalystAgent"]
 
+# Prebuilt product feed for GMC scheduled fetch (no Shopify Admin in this Worker).
+[[r2_buckets]]
+binding = "GMC_FEED"
+bucket_name = "epir-gmc-feed"
+
 [observability]
 enabled = true
 [observability.logs]

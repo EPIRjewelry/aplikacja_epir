@@ -78,7 +78,7 @@
   "titleEnrichment": {
     "craftsmanshipSuffix": "ręcznie kuty rzemieślniczy",
     "maxLength": 150,
-    "aiEnabled": true,
+    "aiEnabled": false,
     "aiModels": [
       "moonshotai/kimi-k3",
       "x-ai/grok-4.5"

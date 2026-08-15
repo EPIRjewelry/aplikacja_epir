@@ -37,4 +37,6 @@ export interface Env {
   SHOP?: string;
   /** Durable Object — stanowy podgląd GA4+Ads (ten sam kod co preview, bez npm `agents`). */
   MarketingAnalystAgent: DurableObjectNamespace;
+  /** Prebuilt GMC CSV (written by epir-marketing-ingest Node pipeline → R2). */
+  GMC_FEED?: R2Bucket;
 }

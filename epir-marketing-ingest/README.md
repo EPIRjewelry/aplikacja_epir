@@ -21,16 +21,12 @@ Custom labels z tego feedu (`custom_label_0`, `custom_label_1`) mogą być używ
 cd d:\aplikacja_epir\epir-marketing-ingest
 npm install
 # Token Shopify: automatycznie z repo root .dev.vars (SHOPIFY_ADMIN_TOKEN + SHOP)
-npm run ingest:dry      # podgląd bez zapisu
-npm run ingest:csv      # CSV → d:\marketing\csv\gmc_feed_YYYY-MM-DD.csv
-npm run ingest          # Sheets (gdy GOOGLE_SERVICE_ACCOUNT_JSON) lub fallback CSV
+npm run ingest:dry      # podgląd bez zapisu (tytuły z reguł, bez LLM)
+npm run ingest:csv      # CSV → epir-marketing-ingest/.output/gmc_feed.csv
+npm run ingest:upload   # PUT CSV → R2 epir-gmc-feed/gmc_feed.csv
 ```
 
-Tylko reguły (bez AI):
-
-```powershell
-npm run ingest -- --no-ai
-```
+LLM tytułów jest **wyłączony** (`mapping.json` → `titleEnrichment.aiEnabled: false`). Opt-in tylko: `npm run ingest -- --ai` (i wtedy `aiEnabled: true`).
 
 ## Wymagane zmienne środowiskowe
 
@@ -39,12 +35,6 @@ npm run ingest -- --no-ai
 | `SHOPIFY_ADMIN_TOKEN` | **Auto z repo root `.dev.vars`** (custom app `epir_ai`). Aliasy: `SHOPIFY_ADMIN_ACCESS_TOKEN`, `SHOPIFY_ACCESS_TOKEN` |
 | `SHOP` | **Auto z `.dev.vars`** — domyślnie `epir-art-silver-jewellery.myshopify.com` |
 | `SHOPIFY_PRODUCT_QUERY` | *(opcjonalnie)* Nadpisuje filtr produktów (domyślnie: aktywne, na stanie, bez Kazka/sprzedane — zgodnie z PMax) |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | JSON konta usługi (inline) **lub** `GA4_SERVICE_ACCOUNT_JSON` z `workers/marketing-ingest/.dev.vars` |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Ścieżka do pliku JSON konta usługi |
-| `OPENROUTER_API_KEY` | *(opcjonalnie)* Wzbogacanie tytułów przez LLM |
-| `OPENROUTER_MODEL` | *(opcjonalnie)* Domyślnie `openai/gpt-4o-mini` |
-| `SHEETS_SPREADSHEET_ID` | *(opcjonalnie)* Nadpisuje `config/sheets.json` |
-| `SHEETS_TAB_NAME` | *(opcjonalnie)* Nadpisuje nazwę zakładki |
 
 ### Google Sheets — uprawnienia
 
@@ -132,23 +122,17 @@ Preferencja: istniejący metafield `mm-google-shopping.custom_label_2` na warian
 
 Zmiana reguł: edytuj `mapping.json` (progi cen, wzorce tekstowe, etykiety) — bez zmiany kodu.
 
-## Wzbogacanie tytułów (AI + reguły)
+## Wzbogacanie tytułów
 
-1. **Reguły** (zawsze): łączenie tytułu, kamienia, materiału, stylu rzemiosła — max 150 znaków, bez spamu.
-2. **AI** (gdy `OPENROUTER_API_KEY`): jeden prompt na produkt; wynik zastępuje tytuł regułowy. Wyłącz: `--no-ai`.
+Tylko **reguły** (kamień, materiał, rzemiosło, max 150 znaków). Przykład: *„Pierścionek złoty z turmalinem Forest – ręcznie kuty rzemieślniczy”*.
 
-Przykład docelowy stylu: *„Pierścionek złoty z turmalinem Forest – ręcznie kuty rzemieślniczy”*.
+## Automatyczny ingest (GMC pull)
 
-## Harmonogram (cron)
+1. GitHub Action [`.github/workflows/gmc-feed.yml`](../.github/workflows/gmc-feed.yml) — cron `0 6,18 * * *` UTC: Shopify Admin → CSV (bez LLM) → R2 `epir-gmc-feed/gmc_feed.csv`.
+2. Worker `epir-marketing-ingest` serwuje **gotowy** plik: `GET /feed/gmc_feed.csv` (bez Admin API w requeście).
+3. GMC: źródło **`gmc_feed_scheduled`** (`10707020909`) — Scheduled fetch `GET https://epir-marketing-ingest.krzysztofdzugaj.workers.dev/feed/gmc_feed.csv` (codziennie 07:00 UTC). Stary upload `gmc_feed.csv` i Content API mają Shopping wyłączone.
 
-Pipeline jest idempotentny — każde uruchomienie czyści zakres i zapisuje pełny feed.
-
-Przykład Windows Task Scheduler / GitHub Actions (raz dziennie):
-
-```powershell
-cd d:\aplikacja_epir\epir-marketing-ingest
-npm run ingest
-```
+Sekrety GH (istniejące nazwy): `SHOPIFY_ADMIN_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
 
 ## Testy
 

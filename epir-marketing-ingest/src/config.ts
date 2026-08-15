@@ -50,8 +50,9 @@ export function loadMappingConfig(): MappingConfig {
 }
 
 export function defaultCsvOutputPath(): string {
-  const date = new Date().toISOString().slice(0, 10);
-  return join(REPO_ROOT, '..', 'marketing', 'csv', `gmc_feed_${date}.csv`);
+  const override = process.env.GMC_CSV_PATH?.trim();
+  if (override) return override;
+  return join(PACKAGE_ROOT, '.output', 'gmc_feed.csv');
 }
 
 export function ensureParentDir(filePath: string): void {

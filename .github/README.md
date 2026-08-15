@@ -230,6 +230,7 @@ W repozytorium przygotowano dodatkowe workflowy wspierające codzienną pracę z
 
 - `workflows/ci.yml` — pipeline CI z jobami `build`, `lint`, `typecheck`.
 - `workflows/deploy.yml` — automatyczny deploy Cloudflare na `main` (Workers + Pages) oraz `workflow_dispatch`.
+- `workflows/gmc-feed.yml` — 2×/dzień UTC: feed GMC (Shopify → CSV → R2). Wymaga `SHOPIFY_ADMIN_TOKEN` + sekrety Cloudflare.
 - `workflows/preview.yml` — preview deploy dla PR-ów na Cloudflare Pages.
 - `dependabot.yml` — automatyczne PR-y z aktualizacjami zależności.
 - `workflows/triage-labeler.yml` + `labeler.yml` — automatyczne etykietowanie PR-ów.
@@ -239,6 +240,7 @@ W repozytorium przygotowano dodatkowe workflowy wspierające codzienną pracę z
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
+- `SHOPIFY_ADMIN_TOKEN` — tylko dla `workflows/gmc-feed.yml` (ta sama nazwa co vault workera czatu)
 
 Plan wdrożeń kolejnych etapów (CD/preview/security/performance/release) znajduje się w:
 `AUTOMATION_ROADMAP.md`.

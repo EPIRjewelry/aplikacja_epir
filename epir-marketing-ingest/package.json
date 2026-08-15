@@ -6,8 +6,9 @@
   "type": "module",
   "scripts": {
     "ingest": "tsx src/runner.ts",
-    "ingest:dry": "tsx src/runner.ts --dry-run --no-ai",
-    "ingest:csv": "tsx src/runner.ts --no-ai --csv=auto",
+    "ingest:dry": "tsx src/runner.ts --dry-run",
+    "ingest:csv": "tsx src/runner.ts --csv=auto",
+    "ingest:upload": "node scripts/upload-r2.mjs",
     "build": "tsc --noEmit",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

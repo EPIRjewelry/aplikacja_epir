@@ -328,6 +328,23 @@ export default {
     if (preview) return preview;
     const pmaxOps = await handlePmaxOps(req, env);
     if (pmaxOps) return pmaxOps;
+    if (req.method === 'GET' && u.pathname === '/feed/gmc_feed.csv') {
+      const bucket = env.GMC_FEED;
+      if (!bucket) {
+        return new Response('GMC feed binding missing', { status: 503 });
+      }
+      const obj = await bucket.get('gmc_feed.csv');
+      if (!obj) {
+        return new Response('gmc_feed.csv not generated yet', { status: 404 });
+      }
+      return new Response(obj.body, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Cache-Control': 'public, max-age=300',
+        },
+      });
+    }
     if (req.method === 'GET' && (u.pathname === '/' || u.pathname === '/healthz')) {
       return new Response('ok', { status: 200 });
     }

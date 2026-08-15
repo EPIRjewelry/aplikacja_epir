@@ -59,8 +59,7 @@ export async function runPipeline(options: RunOptions = {}): Promise<PipelineRes
   const variantCount = products.reduce((n, p) => n + p.variants.length, 0);
   log('Variants total', { count: variantCount });
 
-  const useAi =
-    options.useAi ?? Boolean(process.env.OPENROUTER_API_KEY?.trim());
+  const useAi = options.useAi === true;
   log('Transforming to GMC feed rows', { useAi });
   const feedRows = await transformProducts(
     limited,
@@ -184,7 +183,7 @@ function countBy(
 }
 
 async function main(): Promise<void> {
-  const noAi = process.argv.includes('--no-ai');
+  const useAi = process.argv.includes('--ai');
   const dryRun = process.argv.includes('--dry-run');
   const csvArg = readArg('--csv');
   const previewArg = readArg('--preview');
@@ -194,7 +193,7 @@ async function main(): Promise<void> {
 
   try {
     await runPipeline({
-      useAi: !noAi,
+      useAi,
       dryRun,
       csvPath: csvArg,
       previewCount: Number.isFinite(previewCount) ? previewCount : 3,

@@ -338,7 +338,7 @@ export async function transformProductToGmcRows(
     const internal = toInternalRow(product, variant, shopifyConfig);
 
     let title = enrichTitleRules(internal, mapping);
-    if (options?.useAi !== false) {
+    if (options?.useAi === true && mapping.titleEnrichment.aiEnabled) {
       const aiTitle = await enrichTitleWithAi(internal, mapping);
       if (aiTitle) title = aiTitle;
     }
