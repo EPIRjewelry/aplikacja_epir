@@ -141,10 +141,13 @@ describe('Analytics Worker - /pixel endpoint', () => {
                         product: {
                             id: 'product-123',
                             title: 'Gold Ring',
+                            handle: 'gold-ring-galazki',
                             type: 'Ring',
                             vendor: 'EPIR Jewelry'
                         }
-                    }
+                    },
+                    product_handle: 'gold-ring-galazki',
+                    storefront_id: 'epir-liquid',
                 }
             })
         });
@@ -160,8 +163,10 @@ describe('Analytics Worker - /pixel endpoint', () => {
         
         expect(event).toBeTruthy();
         expect(event?.product_id).toBe('product-123');
+        expect(event?.product_handle).toBe('gold-ring-galazki');
         expect(event?.product_title).toBe('Gold Ring');
         expect(event?.product_variant_id).toBe('variant-789');
+        expect(event?.storefront_id).toBe('epir-liquid');
     });
 
     it('should accept cart_updated event', async () => {

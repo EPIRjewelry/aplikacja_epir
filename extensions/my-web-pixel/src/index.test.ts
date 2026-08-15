@@ -313,6 +313,43 @@ describe('web-pixel extension – event payload structure', () => {
         });
     });
 
+    it('enriches product_viewed with product_handle and epir-liquid storefront on apex', async () => {
+        const { subscriptions } = await invokePixelCallback({
+            init: {
+                context: {
+                    document: {
+                        location: { href: 'https://epirbizuteria.pl/products/pierscionek-test' },
+                    },
+                },
+            },
+        });
+
+        const handler = subscriptions.get('product_viewed');
+        await handler!(
+            withAnalyticsConsent({
+                context: {
+                    document: {
+                        location: { href: 'https://epirbizuteria.pl/products/pierscionek-test' },
+                    },
+                    customerPrivacy: { analyticsProcessingAllowed: true },
+                },
+                productVariant: {
+                    id: 'var-1',
+                    product: {
+                        id: 'prod-1',
+                        title: 'Ring',
+                        handle: 'pierscionek-test',
+                    },
+                },
+            }),
+        );
+
+        const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+        expect(body.data.product_handle).toBe('pierscionek-test');
+        expect(body.data.storefront_id).toBe('epir-liquid');
+        expect(body.data.channel).toBe('online-store');
+    });
+
     it('enriches event with customerId and sessionId', async () => {
         const sessionId = 'session_existing_123';
         const customerId = 'gid://shopify/Customer/99';

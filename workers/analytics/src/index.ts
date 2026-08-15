@@ -206,8 +206,10 @@ async function ensurePixelTable(db: D1Database): Promise<void> {
   try {
     await db.prepare('ALTER TABLE pixel_events ADD COLUMN click_id_type TEXT').run();
   } catch (_) { /* column may already exist */ }
-  
-  // Create indexes exactly as defined in SQL files (idempotent)
+  try {
+    await db.prepare('ALTER TABLE pixel_events ADD COLUMN product_handle TEXT').run();
+  } catch (_) { /* column may already exist */ }
+
   console.log('[ANALYTICS_WORKER] 🔧 Creating indexes...');
   try {
     await db.prepare(`CREATE INDEX IF NOT EXISTS idx_pixel_events_customer ON pixel_events(customer_id, created_at DESC)`).run();
@@ -839,6 +841,7 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
     let customerId: string | null = null;
     let sessionId: string | null = null;
     let productId: string | null = null;
+    let productHandle: string | null = null;
     let productTitle: string | null = null;
     let productVariantId: string | null = null;
     let productPrice: number | null = null;
@@ -868,6 +871,9 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
           const product = variant.product as Record<string, unknown>;
           productId = String(product.id || '');
           productTitle = String(product.title || product.untranslatedTitle || '');
+          if (typeof product.handle === 'string' && product.handle) {
+            productHandle = product.handle;
+          }
           if (product.price && typeof product.price === 'object') {
             const priceObj = product.price as Record<string, unknown>;
             productPrice = typeof priceObj.amount === 'number' ? priceObj.amount : productPrice;
@@ -904,6 +910,9 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
               const product = merch.product as Record<string, unknown>;
               productId = String(product.id || '');
               productTitle = String(product.title || '');
+              if (typeof product.handle === 'string' && product.handle) {
+                productHandle = product.handle;
+              }
             }
             if (merch.price && typeof merch.price === 'object') {
               const priceObj = merch.price as Record<string, unknown>;
@@ -935,6 +944,9 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
               const product = merch.product as Record<string, unknown>;
               productId = String(product.id || '');
               productTitle = String(product.title || '');
+              if (typeof product.handle === 'string' && product.handle) {
+                productHandle = product.handle;
+              }
             }
             if (merch.price && typeof merch.price === 'object') {
               const priceObj = merch.price as Record<string, unknown>;
@@ -1016,6 +1028,9 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
       // Storefront & channel (zgodnie z kanonicznym kontraktem danych EPIR)
       if (typeof data.storefront_id === 'string') {
         storefrontId = data.storefront_id;
+      }
+      if (typeof data.product_handle === 'string' && data.product_handle) {
+        productHandle = data.product_handle;
       }
       if (typeof data.channel === 'string') {
         channel = data.channel;
@@ -1239,7 +1254,7 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
         id, event_type, event_name, created_at,
         customer_id, session_id, storefront_id, channel,
         page_url, page_title, referrer, user_agent,
-        product_id, product_title, product_variant_id, product_price, product_quantity,
+        product_id, product_handle, product_title, product_variant_id, product_price, product_quantity,
         cart_total,
         raw_data,
         updated_at,
@@ -1258,8 +1273,7 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
         ?1, ?2, ?3, ?4,
         ?5, ?6, ?7, ?8,
         ?9, ?10, ?11, ?12,
-        ?13, ?14, ?15, ?16, ?17,
-        ?18,
+        ?13, ?14, ?15, ?16, ?17, ?18,
         ?19,
         ?20,
         ?21, ?22, ?23, ?24,
@@ -1272,14 +1286,14 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
         ?40, ?41,
         ?42, ?43,
         ?44, ?45, ?46, ?47, ?48,
-        ?49, ?50
+        ?49, ?50, ?51
       )`
     )
     .bind(
       eventId, eventType, eventType, createdAtIso,
       normalizedCustomerId, normalizedSessionId, storefrontId, channel,
       pageUrl, pageTitle, referrer, userAgent,
-      productId, productTitle, productVariantId, productPrice, productQuantity,
+      productId, productHandle, productTitle, productVariantId, productPrice, productQuantity,
       cartTotal,
       rawData,
       updatedAtIso,

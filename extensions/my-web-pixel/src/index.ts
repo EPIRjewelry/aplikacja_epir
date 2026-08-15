@@ -110,6 +110,9 @@ register(async (api) => {
       if (!url || typeof url !== 'string') return { storefront_id: 'unknown', channel: 'unknown' };
       if (url.includes('kazka')) return { storefront_id: 'kazka', channel: 'hydrogen-kazka' };
       if (url.includes('zareczyny')) return { storefront_id: 'zareczyny', channel: 'hydrogen-zareczyny' };
+      if (url.includes('epirbizuteria.pl') || url.includes('epir-art-silver-jewellery.myshopify.com')) {
+        return { storefront_id: 'epir-liquid', channel: 'online-store' };
+      }
       return { storefront_id: 'online-store', channel: 'online-store' };
     }
     async function getStorefrontContext(event: unknown): Promise<{ storefront_id: string; channel: string }> {
@@ -137,6 +140,97 @@ register(async (api) => {
         if (stored) return JSON.parse(stored);
       } catch (_) {}
       return fromEvent;
+    }
+
+    function inferAttributionFromClickIds(attr: AttributionPayload): AttributionPayload {
+      const out = { ...attr };
+      if (out.gclid && !out.traffic_source) {
+        out.traffic_source = 'google';
+        out.traffic_medium = out.traffic_medium ?? 'cpc';
+      }
+      if (out.fbclid && !out.traffic_source) {
+        out.traffic_source = 'facebook';
+        out.traffic_medium = out.traffic_medium ?? 'cpc';
+      }
+      if (out.msclkid && !out.traffic_source) {
+        out.traffic_source = 'bing';
+        out.traffic_medium = out.traffic_medium ?? 'cpc';
+      }
+      if (out.ttclid && !out.traffic_source) {
+        out.traffic_source = 'tiktok';
+        out.traffic_medium = out.traffic_medium ?? 'cpc';
+      }
+      return out;
+    }
+
+    async function persistAttribution(attr: AttributionPayload): Promise<void> {
+      const serialized = JSON.stringify(attr);
+      try {
+        await browser.sessionStorage.setItem('_epir_last_attribution', serialized);
+      } catch (_) {}
+      try {
+        const cookieApi = (browser as { cookie?: { set?: (name: string, value: string) => Promise<void> } }).cookie;
+        if (cookieApi?.set) {
+          await cookieApi.set('_epir_last_attribution', serialized);
+        }
+      } catch (_) {}
+    }
+
+    async function loadCachedAttribution(): Promise<AttributionPayload | null> {
+      try {
+        const cached = await browser.sessionStorage.getItem('_epir_last_attribution');
+        if (cached) return JSON.parse(cached) as AttributionPayload;
+      } catch (_) {}
+      try {
+        const getCookie = browserApi.cookie?.get;
+        if (typeof getCookie === 'function') {
+          const raw = await getCookie('_epir_last_attribution');
+          if (typeof raw === 'string' && raw.trim()) return JSON.parse(raw) as AttributionPayload;
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    function flattenCommerceFields(eventData: unknown): Record<string, unknown> {
+      if (!eventData || typeof eventData !== 'object') return {};
+      const data = eventData as Record<string, unknown>;
+      const flat: Record<string, unknown> = {};
+
+      const variant =
+        data.productVariant && typeof data.productVariant === 'object'
+          ? (data.productVariant as Record<string, unknown>)
+          : null;
+      const cartLine =
+        data.cartLine && typeof data.cartLine === 'object'
+          ? (data.cartLine as Record<string, unknown>)
+          : null;
+      const merchandise =
+        cartLine?.merchandise && typeof cartLine.merchandise === 'object'
+          ? (cartLine.merchandise as Record<string, unknown>)
+          : null;
+
+      const product =
+        (variant?.product && typeof variant.product === 'object'
+          ? (variant.product as Record<string, unknown>)
+          : null) ??
+        (merchandise?.product && typeof merchandise.product === 'object'
+          ? (merchandise.product as Record<string, unknown>)
+          : null);
+
+      if (product) {
+        if (product.id) flat.product_id = product.id;
+        if (product.handle) flat.product_handle = product.handle;
+        if (product.title) flat.product_title = product.title;
+        if (product.type) flat.product_type = product.type;
+        if (product.vendor) flat.product_vendor = product.vendor;
+      }
+      if (typeof data.product_handle === 'string' && data.product_handle) {
+        flat.product_handle = data.product_handle;
+      }
+      if (variant?.id) flat.variant_id = variant.id;
+      if (merchandise?.id) flat.variant_id = merchandise.id;
+
+      return flat;
     }
 
     function parseAttributionFromUrl(rawUrl: string | null | undefined): AttributionPayload {
@@ -179,25 +273,22 @@ register(async (api) => {
         referrer = ctx?.document?.referrer;
       }
       if (!pageUrl) pageUrl = init?.context?.document?.location?.href;
-      const fromUrl = parseAttributionFromUrl(pageUrl);
+      const fromUrl = inferAttributionFromClickIds(parseAttributionFromUrl(pageUrl));
       const hasCampaignSignal = Boolean(
         fromUrl.traffic_source ||
+        fromUrl.traffic_campaign ||
         fromUrl.gclid ||
         fromUrl.fbclid ||
         fromUrl.ttclid ||
         fromUrl.msclkid,
       );
       if (hasCampaignSignal) {
-        try {
-          await browser.sessionStorage.setItem('_epir_last_attribution', JSON.stringify(fromUrl));
-        } catch (_) {}
+        await persistAttribution(fromUrl);
         return fromUrl;
       }
-      try {
-        const cached = await browser.sessionStorage.getItem('_epir_last_attribution');
-        if (cached) return JSON.parse(cached) as AttributionPayload;
-      } catch (_) {}
-      return inferFromReferrer(referrer);
+      const cached = await loadCachedAttribution();
+      if (cached) return inferAttributionFromClickIds(cached);
+      return inferAttributionFromClickIds(inferFromReferrer(referrer));
     }
     /**
      * Przed sendPixelEvent: odczyt zgód wyłącznie z obiektu zdarzenia Web Pixel (context.customerPrivacy / customerPrivacy).
@@ -236,6 +327,7 @@ register(async (api) => {
         // Enrich event data with customer_id, session_id (cookie lub clientId), storefront_id, channel
         const enrichedData = {
           ...(typeof eventData === 'object' && eventData !== null ? eventData : {}),
+          ...flattenCommerceFields(eventData),
           customerId: customerId,
           sessionId: resolvedSessionId,
           session_id: resolvedSessionId,
