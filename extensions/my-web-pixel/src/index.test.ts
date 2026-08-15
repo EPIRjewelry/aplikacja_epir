@@ -350,6 +350,45 @@ describe('web-pixel extension – event payload structure', () => {
         expect(body.data.channel).toBe('online-store');
     });
 
+    it('derives product_handle from product.url when Shopify omits handle', async () => {
+        const { subscriptions } = await invokePixelCallback({
+            init: {
+                context: {
+                    document: {
+                        location: { href: 'https://epirbizuteria.pl/products/pierscionek-test' },
+                    },
+                },
+            },
+        });
+
+        const handler = subscriptions.get('product_viewed');
+        await handler!(
+            withAnalyticsConsent({
+                context: {
+                    document: {
+                        location: { href: 'https://epirbizuteria.pl/products/pierscionek-test?variant=1' },
+                    },
+                    customerPrivacy: { analyticsProcessingAllowed: true },
+                },
+                data: {
+                    productVariant: {
+                        id: 'var-1',
+                        product: {
+                            id: 'prod-1',
+                            title: 'Ring',
+                            url: '/products/pierscionek-test?variant=1',
+                        },
+                    },
+                },
+            }),
+        );
+
+        const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+        expect(body.data.product_handle).toBe('pierscionek-test');
+        expect(body.data.storefront_id).toBe('epir-liquid');
+        expect(body.data.channel).toBe('online-store');
+    });
+
     it('enriches event with customerId and sessionId', async () => {
         const sessionId = 'session_existing_123';
         const customerId = 'gid://shopify/Customer/99';

@@ -169,6 +169,43 @@ describe('Analytics Worker - /pixel endpoint', () => {
         expect(event?.storefront_id).toBe('epir-liquid');
     });
 
+    it('derives product_handle from product.url and storefront from Referer', async () => {
+        const response = await SELF.fetch('https://example.com/pixel', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Referer: 'https://epirbizuteria.pl/products/pierscionek-kora-drzewa-z-ametystem',
+            },
+            body: JSON.stringify({
+                type: 'product_viewed',
+                data: {
+                    customerId: 'test-customer-123',
+                    sessionId: 'test-session-456',
+                    productVariant: {
+                        id: 'variant-789',
+                        product: {
+                            id: '6980802904169',
+                            title: 'Pierścionek srebrny z ametystem "Kora drzewa"',
+                            url: '/products/pierscionek-kora-drzewa-z-ametystem',
+                            type: 'pierścionek',
+                            vendor: 'EPIR Art Jewellery&Gemstone',
+                        },
+                    },
+                },
+            }),
+        });
+
+        expect(response.status).toBe(200);
+        const event = await env.DB.prepare('SELECT * FROM pixel_events WHERE event_type = ? ORDER BY created_at DESC')
+            .bind('product_viewed')
+            .first();
+
+        expect(event?.product_id).toBe('6980802904169');
+        expect(event?.product_handle).toBe('pierscionek-kora-drzewa-z-ametystem');
+        expect(event?.storefront_id).toBe('epir-liquid');
+        expect(event?.channel).toBe('online-store');
+    });
+
     it('should accept cart_updated event', async () => {
         const response = await SELF.fetch('https://example.com/pixel', {
             method: 'POST',

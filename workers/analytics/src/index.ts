@@ -35,6 +35,48 @@ interface Env {
 
 // ============================================================================
 
+function productHandleFromUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  try {
+    const path = raw.includes('://') ? new URL(raw).pathname : raw.split('?')[0];
+    const m = path.match(/\/products\/([^/?#]+)/i);
+    return m?.[1] ? decodeURIComponent(m[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveProductHandle(product: Record<string, unknown> | null | undefined): string | null {
+  if (!product) return null;
+  if (typeof product.handle === 'string' && product.handle.trim()) return product.handle.trim();
+  return productHandleFromUrl(product.url) ?? productHandleFromUrl(product.productUrl);
+}
+
+function locationHrefFromUnknown(loc: unknown): string | null {
+  if (typeof loc === 'string' && loc.trim()) return loc.trim();
+  if (loc && typeof loc === 'object') {
+    const o = loc as Record<string, unknown>;
+    if (typeof o.href === 'string' && o.href.trim()) return o.href.trim();
+    if (typeof o.url === 'string' && o.url.trim()) return o.url.trim();
+  }
+  return null;
+}
+
+/** Apex Liquid + Hydrogen storefront inference (same rules as web pixel). */
+function inferStorefrontFromUrl(url: string | null | undefined): { storefront_id: string; channel: string } | null {
+  if (!url || typeof url !== 'string') return null;
+  const lower = url.toLowerCase();
+  if (lower.includes('kazka')) return { storefront_id: 'kazka', channel: 'hydrogen-kazka' };
+  if (lower.includes('zareczyny')) return { storefront_id: 'zareczyny', channel: 'hydrogen-zareczyny' };
+  if (
+    lower.includes('epirbizuteria.pl') ||
+    lower.includes('epir-art-silver-jewellery.myshopify.com')
+  ) {
+    return { storefront_id: 'epir-liquid', channel: 'online-store' };
+  }
+  return null;
+}
+
 function json(data: unknown, status = 200, extraHeaders?: Record<string, string>): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -871,9 +913,7 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
           const product = variant.product as Record<string, unknown>;
           productId = String(product.id || '');
           productTitle = String(product.title || product.untranslatedTitle || '');
-          if (typeof product.handle === 'string' && product.handle) {
-            productHandle = product.handle;
-          }
+          productHandle = resolveProductHandle(product);
           if (product.price && typeof product.price === 'object') {
             const priceObj = product.price as Record<string, unknown>;
             productPrice = typeof priceObj.amount === 'number' ? priceObj.amount : productPrice;
@@ -910,9 +950,7 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
               const product = merch.product as Record<string, unknown>;
               productId = String(product.id || '');
               productTitle = String(product.title || '');
-              if (typeof product.handle === 'string' && product.handle) {
-                productHandle = product.handle;
-              }
+              productHandle = resolveProductHandle(product);
             }
             if (merch.price && typeof merch.price === 'object') {
               const priceObj = merch.price as Record<string, unknown>;
@@ -944,9 +982,7 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
               const product = merch.product as Record<string, unknown>;
               productId = String(product.id || '');
               productTitle = String(product.title || '');
-              if (typeof product.handle === 'string' && product.handle) {
-                productHandle = product.handle;
-              }
+              productHandle = resolveProductHandle(product);
             }
             if (merch.price && typeof merch.price === 'object') {
               const priceObj = merch.price as Record<string, unknown>;
@@ -1026,15 +1062,71 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
         sessionId = String(data.sessionId);
       }
       // Storefront & channel (zgodnie z kanonicznym kontraktem danych EPIR)
-      if (typeof data.storefront_id === 'string') {
-        storefrontId = data.storefront_id;
+      if (typeof data.storefront_id === 'string' && data.storefront_id.trim()) {
+        storefrontId = data.storefront_id.trim();
       }
       if (typeof data.product_handle === 'string' && data.product_handle) {
         productHandle = data.product_handle;
       }
-      if (typeof data.channel === 'string') {
-        channel = data.channel;
+      if (typeof data.channel === 'string' && data.channel.trim()) {
+        channel = data.channel.trim();
       }
+
+      // Nested Shopify shape: body.data.data.productVariant (full pixel event forwarded)
+      if (
+        !productHandle &&
+        data.data &&
+        typeof data.data === 'object' &&
+        (data.data as Record<string, unknown>).productVariant &&
+        typeof (data.data as Record<string, unknown>).productVariant === 'object'
+      ) {
+        const nestedVariant = (data.data as Record<string, unknown>).productVariant as Record<string, unknown>;
+        if (nestedVariant.product && typeof nestedVariant.product === 'object') {
+          const product = nestedVariant.product as Record<string, unknown>;
+          if (!productId) productId = String(product.id || '');
+          if (!productTitle) productTitle = String(product.title || product.untranslatedTitle || '');
+          productHandle = resolveProductHandle(product);
+        }
+      }
+
+      // Handle from page / product URL when Shopify omits product.handle
+      if (!productHandle) {
+        productHandle =
+          productHandleFromUrl(pageUrl) ??
+          productHandleFromUrl(
+            data.productVariant && typeof data.productVariant === 'object'
+              ? ((data.productVariant as Record<string, unknown>).product as Record<string, unknown> | undefined)?.url
+              : null,
+          );
+      }
+
+      // Storefront fallback: page URL → context location → Referer/Origin
+      if (!storefrontId || storefrontId === 'unknown') {
+        const ctx =
+          data.context && typeof data.context === 'object'
+            ? (data.context as Record<string, unknown>)
+            : null;
+        const doc =
+          ctx?.document && typeof ctx.document === 'object'
+            ? (ctx.document as Record<string, unknown>)
+            : null;
+        const candidates = [
+          pageUrl,
+          locationHrefFromUnknown(doc?.location),
+          typeof doc?.url === 'string' ? doc.url : null,
+          referrer,
+          request.headers.get('Origin'),
+        ];
+        for (const c of candidates) {
+          const inferred = inferStorefrontFromUrl(c);
+          if (inferred) {
+            storefrontId = inferred.storefront_id;
+            if (!channel || channel === 'unknown') channel = inferred.channel;
+            break;
+          }
+        }
+      }
+
       const attribution = parseAttribution(data, pageUrl, referrer);
       trafficSource = attribution.source;
       trafficMedium = attribution.medium;

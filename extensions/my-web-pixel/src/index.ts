@@ -106,11 +106,46 @@ register(async (api) => {
     // STOREFRONT & CHANNEL (EPIR: kazka vs zareczyny vs online-store)
     // ============================================================================
     // Infer from URL (page.location from Web Pixels API init/event context)
+    function productHandleFromUrl(raw: unknown): string | null {
+      if (typeof raw !== 'string' || !raw.trim()) return null;
+      try {
+        const path = raw.includes('://') ? new URL(raw).pathname : raw.split('?')[0];
+        const m = path.match(/\/products\/([^/?#]+)/i);
+        return m?.[1] ? decodeURIComponent(m[1]) : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function resolveProductHandle(product: Record<string, unknown> | null | undefined): string | null {
+      if (!product) return null;
+      if (typeof product.handle === 'string' && product.handle.trim()) return product.handle.trim();
+      return productHandleFromUrl(product.url) ?? productHandleFromUrl(product.productUrl);
+    }
+
+    function locationHrefFromUnknown(loc: unknown): string | null {
+      if (typeof loc === 'string' && loc.trim()) return loc.trim();
+      if (loc && typeof loc === 'object') {
+        const o = loc as Record<string, unknown>;
+        if (typeof o.href === 'string' && o.href.trim()) return o.href.trim();
+        if (typeof o.url === 'string' && o.url.trim()) return o.url.trim();
+      }
+      return null;
+    }
+
     function inferStorefrontFromUrl(url: string | null | undefined): { storefront_id: string; channel: string } {
       if (!url || typeof url !== 'string') return { storefront_id: 'unknown', channel: 'unknown' };
-      if (url.includes('kazka')) return { storefront_id: 'kazka', channel: 'hydrogen-kazka' };
-      if (url.includes('zareczyny')) return { storefront_id: 'zareczyny', channel: 'hydrogen-zareczyny' };
-      if (url.includes('epirbizuteria.pl') || url.includes('epir-art-silver-jewellery.myshopify.com')) {
+      const lower = url.toLowerCase();
+      if (lower.includes('kazka')) return { storefront_id: 'kazka', channel: 'hydrogen-kazka' };
+      if (lower.includes('zareczyny')) return { storefront_id: 'zareczyny', channel: 'hydrogen-zareczyny' };
+      if (
+        lower.includes('epirbizuteria.pl') ||
+        lower.includes('epir-art-silver-jewellery.myshopify.com')
+      ) {
+        return { storefront_id: 'epir-liquid', channel: 'online-store' };
+      }
+      // Relative path on apex Liquid (sandbox sometimes omits host)
+      if (lower.startsWith('/') && !lower.includes('://')) {
         return { storefront_id: 'epir-liquid', channel: 'online-store' };
       }
       return { storefront_id: 'online-store', channel: 'online-store' };
@@ -119,10 +154,16 @@ register(async (api) => {
       let url: string | null = null;
       if (event && typeof event === 'object' && 'context' in event) {
         const ctx = (event as any).context;
-        if (ctx?.document?.location?.href) url = ctx.document.location.href;
+        url =
+          locationHrefFromUnknown(ctx?.document?.location) ??
+          locationHrefFromUnknown(ctx?.window?.location) ??
+          (typeof ctx?.document?.url === 'string' ? ctx.document.url : null);
       }
-      if (!url && init?.context?.document?.location?.href) {
-        url = init.context.document.location.href;
+      if (!url && init?.context?.document?.location) {
+        url = locationHrefFromUnknown(init.context.document.location);
+      }
+      if (!url && typeof (init as any)?.context?.document?.location?.href === 'string') {
+        url = (init as any).context.document.location.href;
       }
       const result = inferStorefrontFromUrl(url);
       if (result.storefront_id !== 'unknown') {
@@ -193,7 +234,11 @@ register(async (api) => {
 
     function flattenCommerceFields(eventData: unknown): Record<string, unknown> {
       if (!eventData || typeof eventData !== 'object') return {};
-      const data = eventData as Record<string, unknown>;
+      const outer = eventData as Record<string, unknown>;
+      // Shopify subscribe may nest commerce under .data; tests/legacy may put it at top level
+      const nested =
+        outer.data && typeof outer.data === 'object' ? (outer.data as Record<string, unknown>) : null;
+      const data = nested ?? outer;
       const flat: Record<string, unknown> = {};
 
       const variant =
@@ -219,13 +264,23 @@ register(async (api) => {
 
       if (product) {
         if (product.id) flat.product_id = product.id;
-        if (product.handle) flat.product_handle = product.handle;
+        const handle = resolveProductHandle(product);
+        if (handle) flat.product_handle = handle;
         if (product.title) flat.product_title = product.title;
         if (product.type) flat.product_type = product.type;
         if (product.vendor) flat.product_vendor = product.vendor;
       }
       if (typeof data.product_handle === 'string' && data.product_handle) {
         flat.product_handle = data.product_handle;
+      }
+      if (typeof outer.product_handle === 'string' && outer.product_handle) {
+        flat.product_handle = outer.product_handle;
+      }
+      if (!flat.product_handle) {
+        const fromPage =
+          productHandleFromUrl(product?.url) ??
+          productHandleFromUrl(locationHrefFromUnknown((outer.context as any)?.document?.location));
+        if (fromPage) flat.product_handle = fromPage;
       }
       if (variant?.id) flat.variant_id = variant.id;
       if (merchandise?.id) flat.variant_id = merchandise.id;
