@@ -14,12 +14,16 @@ alwaysApply: false
 
 ## Gdzie budować UX (kanon domen)
 
-| Powierzchnia | DNS / deploy |
+| Powierzchnia | DNS / kod stron |
 |--------------|----------------|
-| Główny sklep + ADS marki | `epirbizuteria.pl` → Shopify (motyw w `themes/epir-online-store/`) |
-| Zaręczyny | `zareczyny.epirbizuteria.pl` → Pages (`apps/zareczyny`) |
-| Kazka | `kazka.epirbizuteria.pl` → Pages (`apps/kazka`) |
+| Główny sklep (kolekcje, `/pages/…`, PDP, home) | `epirbizuteria.pl` → **Liquid** `themes/epir-online-store/templates/` + `sections/` |
+| Landing Ads | `l.epirbizuteria.pl?utm_campaign=` organic_art / forest_premium / artisan_rings / artisan_new / artisan_gold → `workers/dynamic-landing-liquid/` |
+| Zaręczyny | `zareczyny.epirbizuteria.pl` → Hydrogen `apps/zareczyny/app/routes/` |
+| Kazka | `kazka.epirbizuteria.pl` → Hydrogen `apps/kazka/app/routes/` |
+| Inspiracje | `inspiracje.epirbizuteria.pl` → Hydrogen `apps/inspiracje/app/routes/` |
 | Czat TAE | `extensions/asystent-klienta` |
+
+Nie szukaj stron apex w `apps/*`. Mapka: [`docs/kb/UI_UX_AND_FRONTEND.md`](../../docs/kb/UI_UX_AND_FRONTEND.md) § *Gdzie szukać stron*.
 
 **Zakaz:** workerów proxy na apex `epirbizuteria.pl`. Marka/Liquid: [`epir-brand-growth.mdc`](epir-brand-growth.mdc). Gemma runtime: nie ruszaj `workers/chat` MCP_ENDPOINT.
 

@@ -70,6 +70,7 @@ marketing/csv/*.csv
 
 # Agent / MCP staging junk
 .tmp/
+.tmp-kazka-review/
 epir-marketing-ingest/.tmp*
 epir-marketing-ingest/.upload-chunks-b64/
 epir-marketing-ingest/.upload-chunks/

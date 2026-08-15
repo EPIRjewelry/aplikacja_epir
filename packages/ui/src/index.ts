@@ -2,6 +2,7 @@ export {Drawer, useDrawer} from './Drawer';
 export {Layout, type LayoutProps, type NavCollection} from './Layout';
 export {default as ProductCard} from './product/ProductCard';
 export {ProductGallery} from './product/ProductGallery';
+export {hoverMedia} from './media/hoverMediaUrl';
 export {default as ProductGrid} from './product/ProductGrid';
 export {
   CollectionFilters,

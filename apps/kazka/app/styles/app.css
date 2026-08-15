@@ -44,3 +44,35 @@ body {
 a.active {
   border-bottom-width: 1px;
 }
+
+/* ORSKA-inspired editorial fill (homepage Kazka) */
+.kazka-editorial-bleed {
+  width: 100vw;
+  max-width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+}
+
+.kazka-editorial-label {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(var(--color-primary) / 0.75);
+}
+
+.kazka-editorial-cta {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  padding: 0.5rem 1.25rem;
+  border: 1px solid #f2f2f2;
+  color: rgb(var(--color-primary));
+  background: #fff;
+  transition: background-color 0.15s ease;
+}
+
+.kazka-editorial-cta:hover {
+  background: rgb(var(--color-primary) / 0.04);
+}

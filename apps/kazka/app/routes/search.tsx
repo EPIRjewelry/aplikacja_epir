@@ -4,6 +4,7 @@ import {getSeoMeta} from '@shopify/hydrogen';
 import type {Product} from '@shopify/hydrogen-react/storefront-api-types';
 import {ProductCard} from '@epir/ui';
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
+import {storefrontProductSearchQuery} from '~/lib/storefront-product-search-query';
 
 export const meta: MetaFunction<typeof loader> = ({data}) =>
   getSeoMeta({
@@ -87,6 +88,18 @@ const SEARCH_QUERY = `#graphql
             }
           }
         }
+        media(first: 20) {
+          nodes {
+            __typename
+            mediaContentType
+            ... on MediaImage {
+              image { url }
+            }
+            ... on Video {
+              sources { mimeType url format }
+            }
+          }
+        }
       }
     }
   }
@@ -111,7 +124,7 @@ export async function loader({request, context}: LoaderFunctionArgs) {
   }
 
   const data = await context.storefront.query<SearchQueryData>(SEARCH_QUERY, {
-    variables: {query: q},
+    variables: {query: storefrontProductSearchQuery(q)},
   });
 
   const products = data?.products?.nodes ?? [];

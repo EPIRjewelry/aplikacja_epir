@@ -104,6 +104,19 @@ const SECTION_FEATURED_PRODUCTS_FRAGMENT = `#graphql
                 }
               }
             }
+            media(first: 20) {
+              nodes {
+                __typename
+                mediaContentType
+                ... on MediaImage {
+                  image { url altText width height }
+                }
+                ... on Video {
+                  previewImage { url }
+                  sources { mimeType url format }
+                }
+              }
+            }
             priceRange {
               minVariantPrice {
                 amount

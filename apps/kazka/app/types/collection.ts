@@ -3,7 +3,9 @@ import type {Product} from '@shopify/hydrogen-react/storefront-api-types';
 export type CollectionProductNode = Pick<
   Product,
   'id' | 'title' | 'handle' | 'publishedAt' | 'variants'
->;
+> & {
+  media?: Product['media'];
+};
 
 export type CollectionPageInfo = {
   hasNextPage: boolean;

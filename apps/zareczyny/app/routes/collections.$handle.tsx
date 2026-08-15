@@ -587,6 +587,19 @@ const COLLECTION_QUERY = `#graphql
               }
             }
           }
+          media(first: 8) {
+            nodes {
+              __typename
+              mediaContentType
+              ... on MediaImage {
+                image { url altText width height }
+              }
+              ... on Video {
+                previewImage { url }
+                sources { mimeType url format }
+              }
+            }
+          }
         }
       }
     }

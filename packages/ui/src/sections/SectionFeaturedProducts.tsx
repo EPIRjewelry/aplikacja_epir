@@ -4,6 +4,8 @@ import type {
   CurrencyCode,
   Image as ShopifyImage,
 } from '@shopify/hydrogen-react/storefront-api-types';
+import {hoverMedia, type CardMediaNode} from '../media/hoverMediaUrl';
+import {useRef} from 'react';
 
 type ProductVariant = {
   image?: ShopifyImage | null;
@@ -15,6 +17,7 @@ type ProductNode = {
   handle?: string;
   productType?: string;
   variants?: {nodes?: ProductVariant[]};
+  media?: {nodes?: CardMediaNode[]};
   priceRange?: {
     minVariantPrice?: {amount?: string; currencyCode?: CurrencyCode} | null;
   };
@@ -42,7 +45,7 @@ export function SectionFeaturedProducts(props: SectionFeaturedProductsProps) {
   return (
     <section className="w-full gap-8 py-12">
       {heading?.value && (
-        <h2 className="text-3xl font-bold text-[rgb(var(--color-primary))] mb-4 text-center">
+        <h2 className="mb-4 text-center text-xs font-normal uppercase tracking-[0.08em] text-[rgb(var(--color-primary))]/75">
           {heading.value}
         </h2>
       )}
@@ -53,51 +56,95 @@ export function SectionFeaturedProducts(props: SectionFeaturedProductsProps) {
       )}
       {nodes.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-          {nodes.map((product, i) => {
-            const variant = product.variants?.nodes?.[0];
-            const price = product.priceRange?.minVariantPrice;
-            return (
-              <Link
-                to={`/products/${product.handle}`}
-                key={product.id ?? i}
-                className="group"
-              >
-                <div className="grid gap-4 fadeIn">
-                  <div className="card-image aspect-square bg-gray-100 overflow-hidden">
-                    {variant?.image ? (
-                      <Image
-                        data={variant.image}
-                        alt={product.title ?? ''}
-                        className="w-full h-full object-cover"
-                        sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw"
-                        width={400}
-                        height={400}
-                        loading={i < 4 ? 'eager' : 'lazy'}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-400">
-                        Brak zdjęcia
-                      </div>
-                    )}
-                  </div>
-                  <div className="grid gap-1">
-                    <h3 className="font-medium text-[rgb(var(--color-primary))] group-hover:opacity-80 transition-opacity truncate">
-                      {product.title}
-                    </h3>
-                    {showPrices && price && (
-                      <Money
-                        withoutTrailingZeros
-                        data={price}
-                        className="font-semibold"
-                      />
-                    )}
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
+          {nodes.map((product, i) => (
+            <FeaturedProductTile
+              key={product.id ?? i}
+              product={product}
+              index={i}
+              showPrices={showPrices}
+            />
+          ))}
         </div>
       )}
     </section>
   );
 }
+
+function FeaturedProductTile({
+  product,
+  index,
+  showPrices,
+}: {
+  product: ProductNode;
+  index: number;
+  showPrices: boolean;
+}) {
+  const variant = product.variants?.nodes?.[0];
+  const price = product.priceRange?.minVariantPrice;
+  const hover = hoverMedia(product.media?.nodes);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  return (
+    <Link
+      to={`/products/${product.handle}`}
+      className="group"
+      onMouseEnter={() => {
+        void videoRef.current?.play();
+      }}
+      onMouseLeave={() => {
+        videoRef.current?.pause();
+        if (videoRef.current) videoRef.current.currentTime = 0;
+      }}
+    >
+      <div className="grid gap-4 fadeIn">
+        <div className="card-image relative aspect-[4/5] overflow-hidden bg-[#f2f2f2]">
+          {variant?.image ? (
+            <Image
+              data={variant.image}
+              alt={product.title ?? ''}
+              className={`h-full w-full object-cover ${hover ? 'group-hover:opacity-0' : ''}`}
+              sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw"
+              width={400}
+              height={400}
+              loading={index < 4 ? 'eager' : 'lazy'}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-gray-400">
+              Brak zdjęcia
+            </div>
+          )}
+          {hover?.kind === 'video' ? (
+            <video
+              ref={videoRef}
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-0 group-hover:opacity-100"
+              src={hover.url}
+              muted
+              loop
+              playsInline
+              preload="metadata"
+            />
+          ) : hover?.kind === 'image' ? (
+            <img
+              src={hover.url}
+              alt=""
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-0 group-hover:opacity-100"
+            />
+          ) : null}
+        </div>
+        <div className="grid gap-1">
+          <h3 className="truncate text-sm font-medium text-[rgb(var(--color-primary))] group-hover:opacity-80 transition-opacity">
+            {product.title}
+          </h3>
+          {showPrices && price ? (
+            <Money
+              withoutTrailingZeros
+              data={price}
+              className="text-xs text-[rgb(var(--color-primary))]/75"
+            />
+          ) : null}
+        </div>
+      </div>
+    </Link>
+  );
+}
+

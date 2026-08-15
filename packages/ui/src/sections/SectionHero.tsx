@@ -2,6 +2,7 @@ import {Link} from '@remix-run/react';
 import {Image} from '@shopify/hydrogen';
 import {MediaFile} from '@shopify/hydrogen-react';
 import type {MediaContentType} from '@shopify/hydrogen-react/storefront-api-types';
+import {preferMp4VideoSources} from '../media/preferMp4VideoSources';
 
 type PreviewImage = {url?: string};
 
@@ -111,7 +112,7 @@ export function SectionHero(props: SectionHeroProps) {
       {isVideo ? (
         <div className="absolute inset-0 z-0">
           <MediaFile
-            data={mediaRef}
+            data={preferMp4VideoSources(mediaRef)}
             className="block object-cover w-full h-full"
             mediaOptions={{
               video: {

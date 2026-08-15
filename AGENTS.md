@@ -95,7 +95,7 @@ W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md
 
 ## Typowe rozróżnienia, których nie wolno gubić
 
-- Frontend (`Theme App Extension`, `Hydrogen`) to UI i klient API.
+- Frontend (`Theme App Extension`, `Hydrogen`) to UI i klient API. **Strony głównego sklepu** (`epirbizuteria.pl`: kolekcje, `/pages/…`, PDP) są w **`themes/epir-online-store/`** (Liquid), nie w `apps/*`. Hydrogen tylko subdomeny (`apps/zareczyny`, `apps/kazka`, `apps/inspiracje`). Landing Ads: `workers/dynamic-landing-liquid/`. Mapka: `docs/kb/UI_UX_AND_FRONTEND.md`.
 - Backend (`workers/chat`, `workers/rag-worker`, `workers/analytics`, `workers/bigquery-batch`, `workers/analyst-worker`, `workers/marketing-ingest`) utrzymuje logikę AI, sekrety, stan i integracje.
 - `storefrontId` i `channel` są pierwszoklasowym kontekstem routingu.
 - Buyer-facing `Gemma` i internal `Dev-asystent` to dwa różne konteksty pracy AI.
