@@ -1,0 +1,165 @@
+{% comment %}
+  EPIR InPost Geowidget - cart / cart drawer.
+  Token: Theme settings > Cart settings > InPost Geowidget token
+{% endcomment %}
+{%- liquid
+  assign epir_inpost_enabled = settings.inpost_geowidget_enable
+  assign epir_inpost_token = settings.inpost_geowidget_token | strip
+  if epir_inpost_enabled == nil
+    assign epir_inpost_enabled = false
+  endif
+-%}
+{%- if epir_inpost_enabled and epir_inpost_token != blank and cart.item_count > 0 -%}
+  {%- liquid
+    assign initial_code = cart.attributes['InPost Paczkomat'] | default: ''
+    assign initial_address = cart.attributes['InPost adres'] | default: ''
+    assign context = context | default: 'page'
+  -%}
+
+  <div
+    class="epir-inpost{% if context == 'drawer' %} epir-inpost--drawer{% endif %}"
+    data-epir-inpost-root
+    data-epir-inpost-context="{{ context }}"
+    data-epir-inpost-token="{{ epir_inpost_token | escape }}"
+    data-epir-inpost-initial-code="{{ initial_code | escape }}"
+    data-epir-inpost-initial-address="{{ initial_address | escape }}"
+  >
+    <p class="epir-inpost__eyebrow">Dostawa</p>
+    <h3 class="epir-inpost__title">Wybierz Paczkomat InPost</h3>
+    <p class="epir-inpost__hint">Punkt odbioru zapiszemy przy zamówieniu. Etykietę nadamy w pracowni.</p>
+
+    <div class="epir-inpost__summary" data-epir-inpost-summary {% if initial_code == blank %}hidden{% endif %}>
+      <p class="epir-inpost__summary-label">Wybrany Paczkomat</p>
+      <p class="epir-inpost__summary-code" data-epir-inpost-code>{{ initial_code }}</p>
+      <p class="epir-inpost__summary-address" data-epir-inpost-address {% if initial_address == blank %}hidden{% endif %}>{{ initial_address }}</p>
+      <button type="button" class="epir-inpost__change" data-epir-inpost-change>Zmień Paczkomat</button>
+    </div>
+
+    <div class="epir-inpost__map" data-epir-inpost-map {% if initial_code != blank %}hidden{% endif %}>
+      <inpost-geowidget
+        id="epir-inpost-geowidget-{{ context }}"
+        onpoint="epirInpostPointSelect"
+        token="{{ epir_inpost_token | escape }}"
+        language="pl"
+        config="parcelCollect"
+      ></inpost-geowidget>
+    </div>
+
+    <p class="epir-inpost__error" hidden data-epir-inpost-error>Nie udało się zapisać punktu. Spróbuj ponownie.</p>
+  </div>
+
+  <style>
+    .epir-inpost {
+      --epir-inpost-ink: #222222;
+      --epir-inpost-muted: #666666;
+      --epir-inpost-accent: #2c684e;
+      --epir-inpost-bg: #f1f1f1;
+      margin: 1.25rem 0;
+      padding: 1.25rem;
+      background: var(--epir-inpost-bg);
+      color: var(--epir-inpost-ink);
+    }
+    .epir-inpost__eyebrow {
+      margin: 0 0 0.35rem;
+      font-size: 0.7rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--epir-inpost-accent);
+    }
+    .epir-inpost__title {
+      margin: 0 0 0.5rem;
+      font-size: 1.1rem;
+      font-weight: 500;
+      line-height: 1.35;
+    }
+    .epir-inpost__hint {
+      margin: 0 0 1rem;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      color: var(--epir-inpost-muted);
+    }
+    .epir-inpost__summary-label {
+      margin: 0 0 0.25rem;
+      font-size: 0.75rem;
+      color: var(--epir-inpost-muted);
+    }
+    .epir-inpost__summary-code {
+      margin: 0 0 0.35rem;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+    .epir-inpost__summary-address {
+      margin: 0 0 0.75rem;
+      font-size: 0.9rem;
+      color: var(--epir-inpost-muted);
+    }
+    .epir-inpost__change {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      padding: 0.5rem 0.85rem;
+      border: 1px solid rgba(34, 34, 34, 0.25);
+      border-radius: 2px;
+      background: transparent;
+      color: var(--epir-inpost-ink);
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .epir-inpost__change:hover {
+      border-color: var(--epir-inpost-accent);
+      color: var(--epir-inpost-accent);
+    }
+    .epir-inpost__map {
+      min-height: 280px;
+      width: 100%;
+    }
+    .epir-inpost__map inpost-geowidget {
+      display: block;
+      width: 100%;
+      min-height: 320px;
+      height: 360px;
+    }
+    .epir-inpost--drawer {
+      margin: 0.75rem 0;
+      padding: 0.85rem;
+    }
+    .epir-inpost--drawer .epir-inpost__title {
+      font-size: 1rem;
+    }
+    .epir-inpost--drawer .epir-inpost__hint {
+      margin-bottom: 0.65rem;
+      font-size: 0.8rem;
+    }
+    .epir-inpost--drawer .epir-inpost__map {
+      min-height: 180px;
+      max-height: 220px;
+      overflow: auto;
+    }
+    .epir-inpost--drawer .epir-inpost__map inpost-geowidget {
+      min-height: 180px;
+      height: 200px;
+      max-height: 220px;
+    }
+    .epir-inpost--saving {
+      opacity: 0.7;
+      pointer-events: none;
+    }
+    .epir-inpost--error [data-epir-inpost-error] {
+      display: block !important;
+      margin-top: 0.75rem;
+      color: #8b1e1e;
+      font-size: 0.85rem;
+    }
+    button.epir-inpost--checkout-blocked,
+    [data-epir-inpost-checkout].epir-inpost--checkout-blocked {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+  </style>
+{%- elsif epir_inpost_enabled and epir_inpost_token == blank and request.design_mode -%}
+  <div class="epir-inpost epir-inpost--missing-token" data-epir-inpost-placeholder>
+    <p class="epir-inpost__eyebrow">Dostawa</p>
+    <h3 class="epir-inpost__title">Wybierz Paczkomat InPost</h3>
+    <p class="epir-inpost__hint">Brak tokena Geowidget. Ustawienia motywu > Cart settings > Geowidget public token (Manager InPost > API > Geowidget). Nie wklejaj sekretu ShipX.</p>
+  </div>
+{%- endif -%}
