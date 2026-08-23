@@ -16,36 +16,40 @@
     assign context = context | default: 'page'
   -%}
 
-  <div
-    class="epir-inpost{% if context == 'drawer' %} epir-inpost--drawer{% endif %}"
-    data-epir-inpost-root
-    data-epir-inpost-context="{{ context }}"
-    data-epir-inpost-token="{{ epir_inpost_token | escape }}"
-    data-epir-inpost-initial-code="{{ initial_code | escape }}"
-    data-epir-inpost-initial-address="{{ initial_address | escape }}"
-  >
+  <div class="epir-inpost{% if context == 'drawer' %} epir-inpost--drawer{% endif %}">
     <p class="epir-inpost__eyebrow">Dostawa</p>
     <h3 class="epir-inpost__title">Wybierz Paczkomat InPost</h3>
     <p class="epir-inpost__hint">Punkt odbioru zapiszemy przy zamówieniu. Etykietę nadamy w pracowni.</p>
 
-    <div class="epir-inpost__summary" data-epir-inpost-summary {% if initial_code == blank %}hidden{% endif %}>
-      <p class="epir-inpost__summary-label">Wybrany Paczkomat</p>
-      <p class="epir-inpost__summary-code" data-epir-inpost-code>{{ initial_code }}</p>
-      <p class="epir-inpost__summary-address" data-epir-inpost-address {% if initial_address == blank %}hidden{% endif %}>{{ initial_address }}</p>
-      <button type="button" class="epir-inpost__change" data-epir-inpost-change>Zmień Paczkomat</button>
-    </div>
+    <label class="epir-inpost__toggle">
+      <input type="checkbox" data-epir-inpost-toggle>
+      <span>Chcę dostawę do Paczkomatu InPost</span>
+    </label>
 
-    <div class="epir-inpost__map" data-epir-inpost-map {% if initial_code != blank %}hidden{% endif %}>
-      <inpost-geowidget
-        id="epir-inpost-geowidget-{{ context }}"
-        onpoint="epirInpostPointSelect"
-        token="{{ epir_inpost_token | escape }}"
-        language="pl"
-        config="parcelCollect"
-      ></inpost-geowidget>
-    </div>
+    <div id="inpost-widget" class="epir-inpost__widget" data-epir-inpost-root data-epir-inpost-context="{{ context }}" data-epir-inpost-token="{{ epir_inpost_token | escape }}" data-epir-inpost-initial-code="{{ initial_code | escape }}" data-epir-inpost-initial-address="{{ initial_address | escape }}" {% if initial_code == blank %}hidden{% endif %}>
+      <div class="epir-inpost__summary" data-epir-inpost-summary {% if initial_code == blank %}hidden{% endif %}>
+        <p class="epir-inpost__summary-label">Wybrany Paczkomat</p>
+        <p class="epir-inpost__summary-code" data-epir-inpost-code>{{ initial_code }}</p>
+        <p class="epir-inpost__summary-address" data-epir-inpost-address {% if initial_address == blank %}hidden{% endif %}>{{ initial_address }}</p>
+        {% if context == 'drawer' %}
+          <a href="/cart#inpost-widget" class="epir-inpost__change epir-inpost__change--link">Zmień paczkomat na stronie koszyka</a>
+        {% else %}
+          <button type="button" class="epir-inpost__change" data-epir-inpost-change>Zmień Paczkomat</button>
+        {% endif %}
+      </div>
 
-    <p class="epir-inpost__error" hidden data-epir-inpost-error>Nie udało się zapisać punktu. Spróbuj ponownie.</p>
+      <div class="epir-inpost__map" data-epir-inpost-map {% if initial_code != blank %}hidden{% endif %}>
+        <inpost-geowidget
+          id="epir-inpost-geowidget-{{ context }}"
+          onpoint="epirInpostPointSelect"
+          token="{{ epir_inpost_token | escape }}"
+          language="pl"
+          config="parcelCollect"
+        ></inpost-geowidget>
+      </div>
+
+      <p class="epir-inpost__error" hidden data-epir-inpost-error>Nie udało się zapisać punktu. Spróbuj ponownie.</p>
+    </div>
   </div>
 
   <style>
@@ -104,10 +108,15 @@
       color: var(--epir-inpost-ink);
       font-size: 0.85rem;
       cursor: pointer;
+      text-decoration: none;
     }
     .epir-inpost__change:hover {
       border-color: var(--epir-inpost-accent);
       color: var(--epir-inpost-accent);
+    }
+    .epir-inpost__change--link {
+      text-decoration: underline;
+      text-underline-offset: 0.15rem;
     }
     .epir-inpost__map {
       min-height: 280px;

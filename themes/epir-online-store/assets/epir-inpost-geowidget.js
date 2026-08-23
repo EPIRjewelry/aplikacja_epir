@@ -107,6 +107,34 @@
       });
   }
 
+  function bindToggle(root) {
+    var toggle = root && root.parentElement ? root.parentElement.querySelector('[data-epir-inpost-toggle]') : null;
+    if (!toggle || toggle.dataset.epirInpostBound === '1') return;
+
+    toggle.dataset.epirInpostBound = '1';
+
+    var initialCode = (root.dataset.epirInpostInitialCode || '').trim();
+    toggle.checked = !!initialCode;
+    root.hidden = !toggle.checked;
+
+    if (toggle.checked) {
+      var mapWrap = root.querySelector('[data-epir-inpost-map]');
+      if (mapWrap) mapWrap.hidden = !!initialCode;
+    }
+
+    toggle.addEventListener('change', function () {
+      if (toggle.checked) {
+        root.hidden = false;
+        var mapWrap = root.querySelector('[data-epir-inpost-map]');
+        if (mapWrap) mapWrap.hidden = !!(root.dataset.epirInpostInitialCode || '').trim();
+      } else {
+        root.hidden = true;
+        var mapWrap = root.querySelector('[data-epir-inpost-map]');
+        if (mapWrap) mapWrap.hidden = true;
+      }
+    });
+  }
+
   function bindRoot(root) {
     if (!root || root.dataset.epirInpostBound === '1') return;
     root.dataset.epirInpostBound = '1';
@@ -120,6 +148,8 @@
     } else {
       updateCheckoutButtons(false);
     }
+
+    bindToggle(root);
 
     var changeBtn = root.querySelector('[data-epir-inpost-change]');
     if (changeBtn) {
