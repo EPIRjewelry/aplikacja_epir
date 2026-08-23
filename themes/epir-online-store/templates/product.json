@@ -96,7 +96,7 @@
           }
         },
         "foxkit_sales_boost_product_bundle_hR9Ean": {
-          "type": "shopify://apps/foxkit-upsell-cross-sell/blocks/product-bundle/13f41957-6b79-47c1-99a2-e52431f06fff",
+          "type": "shopify://apps/foxkit-upsell-bundles/blocks/product-bundle/13f41957-6b79-47c1-99a2-e52431f06fff",
           "settings": {
             "product": ""
           }
@@ -465,7 +465,7 @@
       "type": "apps",
       "blocks": {
         "foxkit_sales_boost_related_products_k4DffJ": {
-          "type": "shopify://apps/foxkit-upsell-cross-sell/blocks/related-products/13f41957-6b79-47c1-99a2-e52431f06fff",
+          "type": "shopify://apps/foxkit-upsell-bundles/blocks/related-products/13f41957-6b79-47c1-99a2-e52431f06fff",
           "disabled": true,
           "settings": {
             "heading_size": "h2",

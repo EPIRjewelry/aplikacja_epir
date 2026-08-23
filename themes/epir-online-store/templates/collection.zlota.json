@@ -1,4 +1,13 @@
 /*
+ * ------------------------------------------------------------
+ * IMPORTANT: The contents of this file are auto-generated.
+ *
+ * This file may be updated by the Shopify admin theme editor
+ * or related systems. Please exercise caution as any changes
+ * made to this file may be overwritten.
+ * ------------------------------------------------------------
+ */
+/*
  * Alias planowy collection.zlota — ten sam lejek co collection.zloto.json.
  * Live kolekcja zlota-bizuteria używa templateSuffix "zloto".
  * Ten plik istnieje, gdyby Admin przełączył suffix na "zlota".
@@ -8,12 +17,12 @@
     "gold_manifesto": {
       "type": "collection-gold-manifesto",
       "settings": {
-        "eyebrow": "Pracownia Biżuterii Artystycznej EPIR Art Jewellery",
-        "heading": "Biżuteria złota",
-        "body": "<p>Projektujemy i wykonujemy złotą biżuterię we wrocławskiej pracowni: pierścionki, obrączki, kolczyki. Formy inspirowane naturą, kamienie szlachetne, złoto próby 585 i 750.</p><p>Każda sztuka powstaje na miejscu — od rysunku i modelu 3D po wykończenie. Jeśli szukasz własnej formy, zaprojektujemy ją razem.</p>",
-        "primary_label": "",
+        "eyebrow": "Ciepło metalu, nie fabryczny połysk",
+        "heading": "Złoto formowane jak gałąź",
+        "body": "<p>Złoto nie musi być gładkim lustrem z katalogu. Zachowuje żywą powierzchnię, ślady narzędzi i rzeźbiarski kontur — ślad procesu, nie wada.</p><p>Ten sam proces co w srebrze: inspiracja, model 3D, odlew i ręczne wykończenie we Wrocławiu. Tylko metal niesie inne ciepło. Złoto, brylant i inne szlachetne w rzeźbie — ta sama szlachetność, inna struktura.</p>",
+        "primary_label": "Zobacz złoto",
         "primary_anchor": "#CollectionProductGrid",
-        "secondary_label": "Zaprojektuj swój model",
+        "secondary_label": "Zaprojektuj z nami online",
         "secondary_url": "shopify://pages/zaprojektuj-swoj-model"
       }
     },
@@ -47,31 +56,31 @@
       "blocks": {
         "proof_odlew": {
           "type": "proof",
-          "settings": { "label": "Odlew", "note": "Złoto próby 585 i 750" }
+          "settings": { "label": "Odlew", "note": "Kruszec w tyglu" }
         },
         "proof_tekstura": {
           "type": "proof",
-          "settings": { "label": "Projekt", "note": "Rysunek i model 3D" }
+          "settings": { "label": "Tekstura", "note": "Młotek i kora" }
         },
         "proof_kamien": {
           "type": "proof",
-          "settings": { "label": "Kamień", "note": "Osadzamy ręcznie" }
+          "settings": { "label": "Kamień", "note": "Osadzenie ręczne" }
         }
       },
-      "block_order": ["proof_tekstura", "proof_odlew", "proof_kamien"],
+      "block_order": ["proof_odlew", "proof_tekstura", "proof_kamien"],
       "settings": {
-        "eyebrow": "Pracownia Biżuterii Artystycznej EPIR Art Jewellery",
-        "heading": "Jak powstaje biżuteria",
-        "intro": "Pracownia we Wrocławiu. Projekt, model 3D, odlew i ręczne wykończenie."
+        "eyebrow": "Wrocławska pracownia",
+        "heading": "Ogień, młotek, kamień",
+        "intro": "Każdy egzemplarz przechodzi odlew i ręczne wykończenie. Ślady narzędzi zostają świadomie — nie przypadkiem."
       }
     },
     "gold_cocreate": {
       "type": "collection-cocreate-teaser",
       "settings": {
-        "eyebrow": "Projekt indywidualny",
-        "heading": "Szukasz własnego projektu? Zrobimy go razem.",
-        "body": "Napisz, czego szukasz, albo prześlij szkic. Przygotujemy model 3D i po Twojej akceptacji wykonamy biżuterię w pracowni.",
-        "cta_label": "Zaprojektuj swój model",
+        "eyebrow": "Twój pomysł. Nasz ogień.",
+        "heading": "Nie ma tego w siatce? Zaprojektujmy formę razem online.",
+        "body": "Opisz wizję albo prześlij szkic — przełożymy ją na model 3D, a po Twojej akceptacji odlejemy i wykończymy ręcznie we Wrocławiu.",
+        "cta_label": "Rozpocznij projektowanie online",
         "cta_url": "shopify://pages/zaprojektuj-swoj-model"
       }
     },
@@ -83,16 +92,16 @@
           "settings": {
             "image": "shopify://shop_images/DSC06734.jpg",
             "title": "Komplet biżuterii złotej z tanzanitami",
-            "text": "<p>Komplet ze złota i tanzanitów. Ciepłe złoto i głęboki błękit kamienia — wykonany na zamówienie w pracowni.</p>"
+            "text": "<p>Komplet ze złota i tanzanitów: ciepło kruszcu przy kobaltowym kamieniu. Rzeźba przy skórze — na zamówienie we Wrocławiu.</p>"
           }
         }
       },
       "block_order": ["real_tanzanit"],
       "settings": {
-        "eyebrow": "Pracownia Biżuterii Artystycznej EPIR Art Jewellery",
-        "heading": "Wybrane realizacje",
-        "intro": "Wzory z kolekcji i projekty według Twojego szkicu. Wszystko powstaje we Wrocławiu.",
-        "cta_label": "Zaprojektuj swój model",
+        "eyebrow": "Pracownia EPIR",
+        "heading": "Najciekawsze realizacje w złocie",
+        "intro": "Wzory z pracowni i formy według Twojego szkicu — odlew i młotek we Wrocławiu.",
+        "cta_label": "Zamówienie indywidualne",
         "cta_url": "shopify://pages/zaprojektuj-swoj-model",
         "footnote": "W razie wątpliwości: +48 698 718 564"
       }

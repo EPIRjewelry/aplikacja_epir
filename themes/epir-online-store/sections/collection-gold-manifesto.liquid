@@ -36,7 +36,7 @@
         {% if secondary_href == blank %}
           {% assign secondary_href = '/pages/zaprojektuj-swoj-model' %}
         {% endif %}
-        <a href="{{ secondary_href }}" class="epir-gc__btn-cta">
+        <a href="{{ secondary_href }}" class="epir-gc__btn-outline">
           {{ section.settings.secondary_label }}
         </a>
       {% endif %}
@@ -46,9 +46,9 @@
 
 <style>
   .epir-gold-coll {
-    --epir-bg: #F5F0E8;
-    --epir-bg2: #F5F0E8;
-    --epir-cream: #F5F0E8;
+    --epir-bg: #f1f1f1;
+    --epir-bg2: #f5f5f5;
+    --epir-cream: #f0ebe0;
     --epir-ink: #222222;
     --epir-muted: #666666;
     --epir-accent: #2c684e;
@@ -75,25 +75,12 @@
     .epir-gc__inner { padding: 0 2rem; }
   }
   .epir-gold-coll--manifesto {
-    background: var(--epir-bg);
+    background:
+      radial-gradient(ellipse at 15% 0%, rgba(201,162,39,0.12), transparent 50%),
+      radial-gradient(ellipse at 90% 30%, rgba(44,104,78,0.08), transparent 55%),
+      var(--epir-bg);
     padding: 3.5rem 0 3rem;
     border-bottom: 1px solid rgba(34,34,34,0.08);
-  }
-  body:has(#gold-manifesto),
-  body:has(#gold-manifesto) main,
-  body:has(#gold-manifesto) .shopify-section,
-  #CollectionProductGrid,
-  .m-collection {
-    background: #F5F0E8 !important;
-    background-image: none !important;
-  }
-  #CollectionProductGrid .m-product-card .m-product-card__media,
-  #CollectionProductGrid .m-product-card .m-image,
-  #CollectionProductGrid .m-product-card img {
-    aspect-ratio: 1 / 1 !important;
-    width: 100%;
-    height: auto;
-    object-fit: cover;
   }
   @media (min-width: 768px) {
     .epir-gold-coll--manifesto { padding: 4.5rem 0 3.75rem; }
@@ -102,15 +89,9 @@
     margin: 0 0 0.75rem;
     font-size: 0.7rem;
     font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: none;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
     color: var(--epir-accent);
-  }
-  .epir-gold-coll--manifesto .epir-gc__eyebrow,
-  .epir-gold-coll--workshop .epir-gc__eyebrow,
-  .epir-gold-coll--realizations .epir-gc__eyebrow {
-    font-size: clamp(0.9rem, 1.8vw, 1.15rem);
-    letter-spacing: 0.02em;
   }
   .epir-gc__title {
     margin: 0 auto;
@@ -179,24 +160,25 @@
       "type": "text",
       "id": "eyebrow",
       "label": "Eyebrow",
-      "default": "Pracownia Biżuterii Artystycznej EPIR Art Jewellery"
+      "default": "Ciepło metalu, nie fabryczny połysk"
     },
     {
       "type": "text",
       "id": "heading",
       "label": "Nagłówek (puste = tytuł kolekcji)",
-      "default": "Biżuteria złota"
+      "default": "Złoto formowane jak gałąź"
     },
     {
       "type": "richtext",
       "id": "body",
       "label": "Manifesto",
-      "default": "<p>Projektujemy i wykonujemy złotą biżuterię we wrocławskiej pracowni: pierścionki, obrączki, kolczyki. Formy inspirowane naturą, kamienie szlachetne, złoto próby 585 i 750.</p><p>Każda sztuka powstaje na miejscu — od rysunku i modelu 3D po wykończenie. Jeśli szukasz własnej formy, zaprojektujemy ją razem.</p>"
+      "default": "<p>Złoto nie musi być gładkim lustrem z katalogu. Zachowuje żywą powierzchnię, ślady narzędzi i rzeźbiarski kontur — ślad procesu, nie wada.</p><p>Ten sam proces co w srebrze: inspiracja, model 3D, odlew i ręczne wykończenie we Wrocławiu. Tylko metal niesie inne ciepło.</p>"
     },
     {
       "type": "text",
       "id": "primary_label",
-      "label": "CTA primary"
+      "label": "CTA primary",
+      "default": "Zobacz złoto"
     },
     {
       "type": "text",
@@ -208,7 +190,7 @@
       "type": "text",
       "id": "secondary_label",
       "label": "CTA secondary",
-      "default": "Zaprojektuj swój model"
+      "default": "Zaprojektuj z nami online"
     },
     {
       "type": "url",
