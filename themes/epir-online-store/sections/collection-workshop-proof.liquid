@@ -40,7 +40,7 @@
 
 <style>
   .epir-gold-coll--workshop {
-    background: var(--epir-cream, #F5F0E8);
+    background: var(--epir-cream, #f0ebe0);
     padding: 3.5rem 0;
     border-top: 1px solid rgba(34,34,34,0.06);
   }
@@ -75,11 +75,11 @@
   .epir-gc__proof img {
     display: block;
     width: 100%;
-    aspect-ratio: 1 / 1;
+    aspect-ratio: 4 / 5;
     object-fit: cover;
   }
   .epir-gc__proof-ph {
-    aspect-ratio: 1 / 1;
+    aspect-ratio: 4 / 5;
     background:
       linear-gradient(135deg, rgba(201,162,39,0.15), rgba(44,104,78,0.12)),
       #e8e4dc;
@@ -113,19 +113,19 @@
       "type": "text",
       "id": "eyebrow",
       "label": "Eyebrow",
-      "default": "Pracownia Biżuterii Artystycznej EPIR Art Jewellery"
+      "default": "Wrocławska pracownia"
     },
     {
       "type": "text",
       "id": "heading",
       "label": "Nagłówek",
-      "default": "Jak powstaje biżuteria"
+      "default": "Ogień, młotek, kamień"
     },
     {
       "type": "textarea",
       "id": "intro",
       "label": "Wstęp",
-      "default": "Pracownia we Wrocławiu. Projekt, model 3D, odlew i ręczne wykończenie."
+      "default": "Każdy egzemplarz przechodzi odlew i ręczne wykończenie. Ślady narzędzi zostają świadomie — nie przypadkiem."
     }
   ],
   "blocks": [
@@ -135,7 +135,7 @@
       "settings": [
         { "type": "image_picker", "id": "image", "label": "Zdjęcie" },
         { "type": "text", "id": "label", "label": "Etykieta", "default": "Odlew" },
-        { "type": "text", "id": "note", "label": "Notatka", "default": "Złoto próby 585 i 750" }
+        { "type": "text", "id": "note", "label": "Notatka", "default": "Kruszec w tyglu" }
       ]
     }
   ],
@@ -143,9 +143,9 @@
     {
       "name": "Gold workshop proof",
       "blocks": [
-        { "type": "proof", "settings": { "label": "Projekt", "note": "Rysunek i model 3D" } },
-        { "type": "proof", "settings": { "label": "Odlew", "note": "Złoto próby 585 i 750" } },
-        { "type": "proof", "settings": { "label": "Kamień", "note": "Osadzamy ręcznie" } }
+        { "type": "proof", "settings": { "label": "Odlew", "note": "Kruszec w tyglu" } },
+        { "type": "proof", "settings": { "label": "Tekstura", "note": "Młotek i kora" } },
+        { "type": "proof", "settings": { "label": "Kamień", "note": "Osadzenie ręczne" } }
       ]
     }
   ]

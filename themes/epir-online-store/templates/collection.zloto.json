@@ -1,209 +1,163 @@
 /*
- * Kolekcja BIŻUTERIA ZŁOTA — templateSuffix: zloto
- * Handle: zlota-bizuteria
- * Filtry wyłączone (show_filter: false) — eliminacja Metal + CLS.
- * Czysty lejek EPIR. CTA → /pages/zaprojektuj-swoj-model
+ * ------------------------------------------------------------
+ * IMPORTANT: The contents of this file are auto-generated.
+ *
+ * This file may be updated by the Shopify admin theme editor
+ * or related systems. Please exercise caution as any changes
+ * made to this file may be overwritten.
+ * ------------------------------------------------------------
  */
 {
   "sections": {
-    "gold_manifesto": {
-      "type": "collection-gold-manifesto",
+    "gold-orska-hero": {
+      "type": "collection-gold-orska-hero",
       "settings": {
-        "eyebrow": "Pracownia Biżuterii Artystycznej EPIR Art Jewellery",
+        "image": "shopify://shop_images/DSC05614.jpg",
+        "eyebrow": "Pracownia biżuterii artystycznej",
         "heading": "Biżuteria złota",
-        "body": "<p>Projektujemy i wykonujemy złotą biżuterię we wrocławskiej pracowni: pierścionki, obrączki, kolczyki. Formy inspirowane naturą, kamienie szlachetne, złoto próby 585 i 750.</p><p>Każda sztuka powstaje na miejscu — od rysunku i modelu 3D po wykończenie. Jeśli szukasz własnej formy, zaprojektujemy ją razem.</p>",
-        "primary_label": "",
-        "primary_anchor": "#CollectionProductGrid",
-        "secondary_label": "Zaprojektuj swój model",
-        "secondary_url": "shopify://pages/zaprojektuj-swoj-model"
+        "text": "Ręcznie formowane złoto z wrocławskiej pracowni — żywa powierzchnia, kamienie naturalne, każdy egzemplarz jest niepowtarzalny.",
+        "use_collection_description": false,
+        "cta_label": "",
+        "cta_url": ""
       }
     },
-    "main": {
-      "type": "main-collection-product-grid",
+    "gold-orska-grid": {
+      "type": "collection-gold-orska-grid",
+      "settings": {
+        "eyebrow": "Kolekcja",
+        "heading": "Modele",
+        "columns": 4,
+        "products_per_page": 5,
+        "show_add_to_cart": false,
+        "load_more_label": "Pokaż więcej",
+        "load_less_label": "Pokaż mniej"
+      }
+    },
+    "gold-orska-lookbook": {
+      "type": "collection-gold-orska-lookbook",
       "blocks": {
-        "banner_promotion_KppNc9": {
-          "type": "banner_promotion",
+        "tile_wide": {
+          "type": "tile",
+          "settings": {
+            "image": "shopify://shop_images/DSC06466.jpg",
+            "caption": "",
+            "wide": true
+          }
+        },
+        "tile_1": {
+          "type": "tile",
+          "settings": {
+            "image": "shopify://shop_images/DSC09027.jpg",
+            "caption": "",
+            "wide": false
+          }
+        },
+        "tile_2": {
+          "type": "tile",
+          "settings": {
+            "image": "shopify://shop_images/DSC07931_b48d99f1-1ce1-48d1-ba36-325968db664f.jpg",
+            "caption": "",
+            "wide": false
+          }
+        },
+        "tile_3": {
+          "type": "tile",
+          "settings": {
+            "image": "shopify://shop_images/DSC06208.jpg",
+            "caption": "",
+            "wide": false
+          }
+        },
+        "tile_CjUxN3": {
+          "type": "tile",
+          "settings": {
+            "image": "shopify://shop_images/DSC08778p_6a56fdb3-e809-49be-a8d4-1634063902f2.jpg",
+            "caption": "",
+            "wide": false
+          }
+        }
+      },
+      "block_order": [
+        "tile_wide",
+        "tile_1",
+        "tile_2",
+        "tile_3",
+        "tile_CjUxN3"
+      ],
+      "settings": {
+        "eyebrow": "Nasze realizacje",
+        "heading": "Złoto w kadrze"
+      }
+    },
+    "gold_process": {
+      "type": "collection-gold-process",
+      "blocks": {
+        "path_wax": {
+          "type": "path",
+          "settings": {
+            "label": "Rzeźba w wosku",
+            "step_1": "Rzeźba w wosku",
+            "image_1": "shopify://shop_images/wosk_mode_rzezba_7.jpg",
+            "step_2": "Wyrób",
+            "image_2": "shopify://shop_images/Azurowy_pierscionek_Plecionka_37.jpg",
+            "step_3": "",
+            "image_3": "shopify://shop_images/wosk_mode_rzezba_20.jpg",
+            "step_4": "",
+            "image_4": "shopify://shop_images/wosk_mode_rzezba_21.jpg"
+          }
+        },
+        "path_B4zNKQ": {
+          "type": "path",
           "disabled": true,
           "settings": {
-            "color_scheme": "dark",
-            "text_size": "medium",
-            "text_color": "white",
-            "link": "",
-            "content_position": "bottom_center",
-            "content_alignment": "center",
-            "title": "SALE UP TO 25% OFF",
-            "subtitle": "Online Exclusive",
-            "button_label": "Shop The Sale",
-            "button_style": "m-button--primary",
-            "button_size": "",
-            "button_fixed": false
+            "label": "MO",
+            "step_1": "MODEL WOSKOWY",
+            "image_1": "shopify://shop_images/wosk_mode_rzezba_22.jpg",
+            "step_2": "WYRÓB ZŁOTY",
+            "step_3": "",
+            "image_3": "{{ collection.image }}",
+            "step_4": ""
+          }
+        },
+        "path_digital": {
+          "type": "path",
+          "disabled": true,
+          "settings": {
+            "label": "Projekt cyfrowy",
+            "step_1": "Projekt 3D",
+            "step_2": "Wydruk 3D",
+            "step_3": "Odlew",
+            "step_4": "Wyrób"
           }
         }
       },
       "block_order": [
-        "banner_promotion_KppNc9"
-      ],
-      "custom_css": [
-        ".m-banner-promotion {order: 3 !important; margin-top: 30px; margin-bottom: 0;}",
-        ".m-collection-filters-form {display: none !important;}",
-        ".m-collection-toolbar__filter {display: none !important;}",
-        ".m-sidebar {display: none !important;}",
-        ".avada-collection {display: none !important;}"
+        "path_wax",
+        "path_B4zNKQ",
+        "path_digital"
       ],
       "settings": {
-        "container": "container-full",
-        "grid_layout": "grid",
-        "grid_columns": "4",
-        "show_columns_switcher": true,
-        "pagination_limit": 16,
-        "paginate_type": "paginate",
-        "show_sorting": true,
-        "show_filter": false,
-        "filters_type": "storefront_filters",
-        "sidebar": "fixed",
-        "sidebar_title": "Filters",
-        "limit_height_widget": true,
-        "limit_height": 300,
-        "change_product_variant_on_fitlering": true,
-        "show_product_count": true,
-        "collapsed_groups": "Product type, Brand, Vendor, Size",
-        "color_swatches": "color,colour,couleur,farbe",
-        "color_swatches_design": "list"
-      }
-    },
-    "gold_workshop": {
-      "type": "collection-workshop-proof",
-      "blocks": {
-        "proof_odlew": {
-          "type": "proof",
-          "settings": {
-            "label": "Odlew",
-            "note": "Złoto próby 585 i 750"
-          }
-        },
-        "proof_tekstura": {
-          "type": "proof",
-          "settings": {
-            "label": "Projekt",
-            "note": "Rysunek i model 3D"
-          }
-        },
-        "proof_kamien": {
-          "type": "proof",
-          "settings": {
-            "label": "Kamień",
-            "note": "Osadzamy ręcznie"
-          }
-        }
-      },
-      "block_order": [
-        "proof_tekstura",
-        "proof_odlew",
-        "proof_kamien"
-      ],
-      "settings": {
-        "eyebrow": "Pracownia Biżuterii Artystycznej EPIR Art Jewellery",
-        "heading": "Jak powstaje biżuteria",
-        "intro": "Pracownia we Wrocławiu. Projekt, model 3D, odlew i ręczne wykończenie."
+        "eyebrow": "Proces",
+        "heading": "Od ognia do wyrobu",
+        "intro": "Dwie drogi w tej samej pracowni we Wrocławiu — klasyczna rzeźba w wosku albo model cyfrowy i odlew. Obie kończą się ręcznym wykończeniem."
       }
     },
     "gold_cocreate": {
       "type": "collection-cocreate-teaser",
       "settings": {
-        "eyebrow": "Projekt indywidualny",
-        "heading": "Szukasz własnego projektu? Zrobimy go razem.",
-        "body": "Napisz, czego szukasz, albo prześlij szkic. Przygotujemy model 3D i po Twojej akceptacji wykonamy biżuterię w pracowni.",
+        "eyebrow": "Pracownia Biżuterii Artystycznej Wrocław",
+        "heading": "Nie znalazłeś swojego wymarzonego wzoru",
+        "body": "Zaprojektuj z nami swój model biżuterii, który pokochasz",
         "cta_label": "Zaprojektuj swój model",
         "cta_url": "shopify://pages/zaprojektuj-swoj-model"
-      }
-    },
-    "gold_realizations": {
-      "type": "collection-gold-realizations",
-      "blocks": {
-        "real_tanzanit": {
-          "type": "realization",
-          "settings": {
-            "image": "shopify://shop_images/DSC06734.jpg",
-            "title": "Komplet biżuterii złotej z tanzanitami",
-            "text": "<p>Komplet ze złota i tanzanitów. Ciepłe złoto i głęboki błękit kamienia — wykonany na zamówienie w pracowni.</p>"
-          }
-        }
-      },
-      "block_order": [
-        "real_tanzanit"
-      ],
-      "settings": {
-        "eyebrow": "Pracownia Biżuterii Artystycznej EPIR Art Jewellery",
-        "heading": "Wybrane realizacje",
-        "intro": "Wzory z kolekcji i projekty według Twojego szkicu. Wszystko powstaje we Wrocławiu.",
-        "cta_label": "Zaprojektuj swój model",
-        "cta_url": "shopify://pages/zaprojektuj-swoj-model",
-        "footnote": "W razie wątpliwości: +48 698 718 564"
-      }
-    },
-    "apps_avada": {
-      "type": "apps",
-      "blocks": {
-        "avada_seo_suite_avada_after_collection_block_WjpdeW": {
-          "type": "shopify://apps/avada-seo-suite/blocks/avada-after-collection-block/15507c6e-1aa3-45d3-b698-7e175e033440",
-          "settings": {}
-        }
-      },
-      "block_order": [
-        "avada_seo_suite_avada_after_collection_block_WjpdeW"
-      ],
-      "settings": {
-        "heading": "",
-        "heading_size": "h3",
-        "subheading": "",
-        "header_alignment": "center",
-        "container": "container",
-        "background_color": "",
-        "padding_top": 0,
-        "padding_bottom": 0,
-        "custom_class": ""
-      }
-    },
-    "apps_gemma": {
-      "type": "apps",
-      "blocks": {
-        "epir_ai_assistant_section_qbWfmc": {
-          "type": "shopify://apps/epir_ai/blocks/assistant-section/019ca105-383c-7881-a0ce-813c2c58586f",
-          "settings": {
-            "title": "Czat z Gemmą",
-            "greeting_message": "Witaj. Jestem Gemmą z pracowni EPIR. Pomogę dobrać złoto i kamień albo zaplanować projekt.",
-            "input_placeholder": "Napisz wiadomość, np. „Pokaż pierścionki zaręczynowe z szafirem”",
-            "start_closed": true,
-            "accent_color": "#8B7D6A",
-            "worker_endpoint": "/apps/assistant/chat",
-            "storefront_id": "epir-liquid",
-            "channel": "online-store"
-          }
-        }
-      },
-      "block_order": [
-        "epir_ai_assistant_section_qbWfmc"
-      ],
-      "settings": {
-        "heading": "",
-        "heading_size": "h3",
-        "subheading": "",
-        "header_alignment": "center",
-        "container": "container",
-        "background_color": "",
-        "padding_top": 0,
-        "padding_bottom": 0,
-        "custom_class": ""
       }
     }
   },
   "order": [
-    "gold_manifesto",
-    "main",
-    "gold_workshop",
-    "gold_cocreate",
-    "gold_realizations",
-    "apps_avada",
-    "apps_gemma"
+    "gold-orska-hero",
+    "gold-orska-grid",
+    "gold-orska-lookbook",
+    "gold_process",
+    "gold_cocreate"
   ]
 }

@@ -17,7 +17,7 @@
 
   assign image_field = section.blocks | where: 'type', 'image_field'
 
-  assign enable_dynamic_checkout = st.enable_dynamic_checkout
+  assign enable_dynamic_checkout = false
 
   assign image = product.featured_image
   if first_3d_model and product.media.size < 2
