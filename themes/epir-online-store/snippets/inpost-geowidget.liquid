@@ -1,5 +1,5 @@
 {% comment %}
-  EPIR InPost Geowidget - cart / cart drawer.
+  EPIR InPost Geowidget - cart / cart drawer (Leaflet, cross-browser).
   Token: Theme settings > Cart settings > InPost Geowidget token
 {% endcomment %}
 {%- liquid
@@ -17,13 +17,13 @@
   -%}
 
   <div class="epir-inpost{% if context == 'drawer' %} epir-inpost--drawer{% endif %}">
-    <p class="epir-inpost__eyebrow">Dostawa</p>
+    <p class="epir-inpost__eyebrow">Dostawa do Paczkomatu InPost (opcjonalnie)</p>
     <h3 class="epir-inpost__title">Wybierz Paczkomat InPost</h3>
-    <p class="epir-inpost__hint">Punkt odbioru zapiszemy przy zamówieniu. Etykietę nadamy w pracowni.</p>
+    <p class="epir-inpost__hint">Punkt odbioru zapiszemy przy zamowieniu. Etykiete nadamy w pracowni.</p>
 
     <label class="epir-inpost__toggle">
       <input type="checkbox" data-epir-inpost-toggle>
-      <span>Chcę dostawę do Paczkomatu InPost</span>
+      <span>Chce dostawe do Paczkomatu InPost</span>
     </label>
 
     <div id="inpost-widget" class="epir-inpost__widget" data-epir-inpost-root data-epir-inpost-context="{{ context }}" data-epir-inpost-token="{{ epir_inpost_token | escape }}" data-epir-inpost-initial-code="{{ initial_code | escape }}" data-epir-inpost-initial-address="{{ initial_address | escape }}" {% if initial_code == blank %}hidden{% endif %}>
@@ -32,23 +32,15 @@
         <p class="epir-inpost__summary-code" data-epir-inpost-code>{{ initial_code }}</p>
         <p class="epir-inpost__summary-address" data-epir-inpost-address {% if initial_address == blank %}hidden{% endif %}>{{ initial_address }}</p>
         {% if context == 'drawer' %}
-          <a href="/cart#inpost-widget" class="epir-inpost__change epir-inpost__change--link">Zmień paczkomat na stronie koszyka</a>
+          <a href="/cart#inpost-widget" class="epir-inpost__change epir-inpost__change--link">Zmien paczkomat na stronie koszyka</a>
         {% else %}
-          <button type="button" class="epir-inpost__change" data-epir-inpost-change>Zmień Paczkomat</button>
+          <button type="button" class="epir-inpost__change" data-epir-inpost-change>Zmien Paczkomat</button>
         {% endif %}
       </div>
 
-      <div class="epir-inpost__map" data-epir-inpost-map {% if initial_code != blank %}hidden{% endif %}>
-        <inpost-geowidget
-          id="epir-inpost-geowidget-{{ context }}"
-          onpoint="epirInpostPointSelect"
-          token="{{ epir_inpost_token | escape }}"
-          language="pl"
-          config="parcelCollect"
-        ></inpost-geowidget>
-      </div>
+      <div class="epir-inpost__map" data-epir-inpost-map {% if initial_code != blank %}hidden{% endif %}></div>
 
-      <p class="epir-inpost__error" hidden data-epir-inpost-error>Nie udało się zapisać punktu. Spróbuj ponownie.</p>
+      <p class="epir-inpost__error" hidden data-epir-inpost-error>Nie udalo sie zaladowac punktow.</p>
     </div>
   </div>
 
@@ -81,6 +73,19 @@
       font-size: 0.85rem;
       line-height: 1.5;
       color: var(--epir-inpost-muted);
+    }
+    .epir-inpost__toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin: 0.5rem 0 1rem;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .epir-inpost__toggle input[type="checkbox"] {
+      width: 1.1rem;
+      height: 1.1rem;
+      cursor: pointer;
     }
     .epir-inpost__summary-label {
       margin: 0 0 0.25rem;
@@ -122,12 +127,6 @@
       min-height: 280px;
       width: 100%;
     }
-    .epir-inpost__map inpost-geowidget {
-      display: block;
-      width: 100%;
-      min-height: 320px;
-      height: 360px;
-    }
     .epir-inpost--drawer {
       margin: 0.75rem 0;
       padding: 0.85rem;
@@ -144,11 +143,6 @@
       max-height: 220px;
       overflow: auto;
     }
-    .epir-inpost--drawer .epir-inpost__map inpost-geowidget {
-      min-height: 180px;
-      height: 200px;
-      max-height: 220px;
-    }
     .epir-inpost--saving {
       opacity: 0.7;
       pointer-events: none;
@@ -159,10 +153,8 @@
       color: #8b1e1e;
       font-size: 0.85rem;
     }
-    button.epir-inpost--checkout-blocked,
-    [data-epir-inpost-checkout].epir-inpost--checkout-blocked {
-      opacity: 0.55;
-      cursor: not-allowed;
+    .epir-inpost--error {
+      border: 1px solid #8b1e1e;
     }
   </style>
 {%- elsif epir_inpost_enabled and epir_inpost_token == blank and request.design_mode -%}

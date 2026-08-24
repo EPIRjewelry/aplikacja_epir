@@ -1,5 +1,6 @@
 /**
- * EPIR - InPost Geowidget: save pickup point to cart attributes + gate checkout.
+ * EPIR - InPost Geowidget: save pickup point to cart attributes (Leaflet, no custom elements).
+ * Compatible with Chrome, Firefox, Safari, Edge, mobile browsers.
  */
 (function () {
   'use strict';
@@ -7,6 +8,7 @@
   var ATTR_CODE = 'InPost Paczkomat';
   var ATTR_ADDRESS = 'InPost adres';
   var ATTR_NAME = 'InPost nazwa';
+  var WORKER_URL = 'https://epir-inpost-proxy-production.krzysztofdzugaj.workers.dev';
 
   function formatAddress(point) {
     if (!point) return '';
@@ -31,32 +33,6 @@
       return window.Shopify.routes.root + 'cart/update.js';
     }
     return '/cart/update.js';
-  }
-
-  function updateCheckoutButtons() {
-    // Safety: keep checkout unblocked. InPost selection is auxiliary cart metadata only.
-    return;
-  }
-
-  function setSummary(root, code, address) {
-    var summary = root.querySelector('[data-epir-inpost-summary]');
-    var codeEl = root.querySelector('[data-epir-inpost-code]');
-    var addrEl = root.querySelector('[data-epir-inpost-address]');
-    var mapWrap = root.querySelector('[data-epir-inpost-map]');
-    if (!summary) return;
-
-    if (code) {
-      summary.hidden = false;
-      if (codeEl) codeEl.textContent = code;
-      if (addrEl) {
-        addrEl.textContent = address || '';
-        addrEl.hidden = !address;
-      }
-      if (mapWrap) mapWrap.hidden = true;
-    } else {
-      summary.hidden = true;
-      if (mapWrap) mapWrap.hidden = false;
-    }
   }
 
   function postAttributes(attrs) {
@@ -90,20 +66,140 @@
     return postAttributes(attrs);
   }
 
-  function onPointSelected(point, root) {
+  function setSummary(root, code, address) {
+    var summary = root.querySelector('[data-epir-inpost-summary]');
+    var codeEl = root.querySelector('[data-epir-inpost-code]');
+    var addrEl = root.querySelector('[data-epir-inpost-address]');
+    var mapWrap = root.querySelector('[data-epir-inpost-map]');
+    if (!summary) return;
+
+    if (code) {
+      summary.hidden = false;
+      if (codeEl) codeEl.textContent = code;
+      if (addrEl) {
+        addrEl.textContent = address || '';
+        addrEl.hidden = !address;
+      }
+      if (mapWrap) mapWrap.hidden = true;
+    } else {
+      summary.hidden = true;
+      if (mapWrap) mapWrap.hidden = false;
+    }
+  }
+
+  function showError(root, msg) {
+    var errorEl = root.querySelector('[data-epir-inpost-error]');
+    if (errorEl) {
+      errorEl.textContent = msg || 'Nie udalo sie zaladowac punktow.';
+      errorEl.hidden = false;
+    }
+    root.classList.add('epir-inpost--error');
+  }
+
+  function hideError(root) {
+    root.classList.remove('epir-inpost--error');
+    var errorEl = root.querySelector('[data-epir-inpost-error]');
+    if (errorEl) errorEl.hidden = true;
+  }
+
+  // Leaflet state per root
+  var leafletState = {};
+
+  function initMap(root) {
+    var mapWrap = root.querySelector('[data-epir-inpost-map]');
+    if (!mapWrap) return;
+
+    // Already has a Leaflet map instance?
+    if (leafletState[root.id] && leafletState[root.id].map) {
+      setTimeout(function () { leafletState[root.id].map.invalidateSize(); }, 100);
+      return;
+    }
+
+    // Wait until mapWrap is visible
+    if (mapWrap.hidden || mapWrap.offsetParent === null) {
+      return;
+    }
+
+    var map = L.map(mapWrap, { center: [52.069, 19.48], zoom: 6 });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '(c) OpenStreetMap contributors'
+    }).addTo(map);
+
+    var markersLayer = L.layerGroup().addTo(map);
+
+    // Fix size after container becomes visible
+    setTimeout(function () { map.invalidateSize(); }, 300);
+
+    leafletState[root.id] = { map: map, markersLayer: markersLayer, points: [] };
+
+    fetchPoints(root);
+  }
+
+  function fetchPoints(root) {
+    fetch(WORKER_URL + '/points?country=PL')
+      .then(function (res) {
+        if (!res.ok) throw new Error('Server error: ' + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        hideError(root);
+        if (data.error) throw new Error(data.error);
+        var state = leafletState[root.id];
+        if (!state) return;
+        state.points = data;
+        renderMarkers(root);
+      })
+      .catch(function (err) {
+        showError(root, 'Nie udalo sie zaladowac punktow. Sprobuj ponownie.');
+      });
+  }
+
+  function renderMarkers(root) {
+    var state = leafletState[root.id];
+    if (!state || !state.map) return;
+
+    state.markersLayer.clearLayers();
+    var validPoints = state.points.filter(function (p) {
+      return p.coordinates && p.coordinates.latitude !== 0 && p.coordinates.longitude !== 0;
+    });
+
+    if (validPoints.length === 0) {
+      showError(root, 'Brak dostepnych punktow InPost.');
+      return;
+    }
+
+    validPoints.forEach(function (point) {
+      var marker = L.marker([point.coordinates.latitude, point.coordinates.longitude]);
+      marker.bindPopup(
+        '<b>' + point.code + '</b><br>' +
+        point.address.street + '<br>' +
+        point.address.postcode + ' ' + point.address.city +
+        (point.opening_hours ? '<br><small>' + point.opening_hours + '</small>' : '')
+      );
+      marker.on('click', function () { selectPoint(point, root); });
+      state.markersLayer.addLayer(marker);
+    });
+
+    var bounds = validPoints.map(function (p) {
+      return [p.coordinates.latitude, p.coordinates.longitude];
+    });
+    state.map.fitBounds(bounds, { padding: [50, 50] });
+  }
+
+  function selectPoint(point, root) {
     var code = pointCode(point);
     if (!code) return;
     root.classList.add('epir-inpost--saving');
     savePoint(point)
       .then(function () {
         setSummary(root, code, formatAddress(point));
-        updateCheckoutButtons(true);
         root.classList.remove('epir-inpost--saving');
         root.classList.add('epir-inpost--selected');
+        hideError(root);
       })
       .catch(function () {
         root.classList.remove('epir-inpost--saving');
-        root.classList.add('epir-inpost--error');
+        showError(root, 'Nie udalo sie zapisac punktu. Sprobuj ponownie.');
       });
   }
 
@@ -127,10 +223,17 @@
         root.hidden = false;
         var mapWrap = root.querySelector('[data-epir-inpost-map]');
         if (mapWrap) mapWrap.hidden = !!(root.dataset.epirInpostInitialCode || '').trim();
+        // Init Leaflet map now that it's visible
+        setTimeout(function () { initMap(root); }, 200);
       } else {
         root.hidden = true;
         var mapWrap = root.querySelector('[data-epir-inpost-map]');
         if (mapWrap) mapWrap.hidden = true;
+        // Clear point from cart
+        clearPoint().then(function () {
+          setSummary(root, '', '');
+          root.classList.remove('epir-inpost--selected');
+        });
       }
     });
   }
@@ -143,10 +246,7 @@
     var initialAddress = root.dataset.epirInpostInitialAddress || '';
     if (initialCode) {
       setSummary(root, initialCode, initialAddress);
-      updateCheckoutButtons(true);
       root.classList.add('epir-inpost--selected');
-    } else {
-      updateCheckoutButtons(false);
     }
 
     bindToggle(root);
@@ -158,97 +258,77 @@
         clearPoint()
           .then(function () {
             setSummary(root, '', '');
-            updateCheckoutButtons(false);
             root.classList.remove('epir-inpost--selected', 'epir-inpost--saving');
             var mapWrap = root.querySelector('[data-epir-inpost-map]');
             if (mapWrap) mapWrap.hidden = false;
+            setTimeout(function () { initMap(root); }, 200);
           })
           .catch(function () {
             root.classList.remove('epir-inpost--saving');
           });
       });
     }
-
-    var widget = root.querySelector('inpost-geowidget');
-    if (widget) {
-      widget.addEventListener('onpointselect', function (event) {
-        var point = (event && event.detail) || (event && event.details) || null;
-        if (point) onPointSelected(point, root);
-      });
-    }
   }
 
-  window.epirInpostPointSelect = function (point) {
-    var roots = document.querySelectorAll('[data-epir-inpost-root]');
-    var visible = null;
-    roots.forEach(function (r) {
-      if (r.offsetParent !== null || r.getClientRects().length) visible = r;
-    });
-    if (!visible && roots.length) visible = roots[0];
-    if (visible) onPointSelected(point, visible);
-  };
-
-  function ensureAssets(done) {
-    if (window.__epirInpostGeoAssetsReady) {
+  function loadLeaflet(done) {
+    if (window.__epirLeafletReady) {
       if (done) done();
       return;
     }
-    if (window.__epirInpostGeoAssetsLoading) {
-      window.__epirInpostGeoAssetsLoading.push(done || function () {});
+    if (window.__epirLeafletLoading) {
+      window.__epirLeafletLoading.push(done || function () {});
       return;
     }
-    window.__epirInpostGeoAssetsLoading = [done || function () {}];
+    window.__epirLeafletLoading = [done || function () {}];
 
     function finish() {
-      window.__epirInpostGeoAssetsReady = true;
-      var cbs = window.__epirInpostGeoAssetsLoading || [];
-      window.__epirInpostGeoAssetsLoading = null;
+      window.__epirLeafletReady = true;
+      var cbs = window.__epirLeafletLoading || [];
+      window.__epirLeafletLoading = null;
       cbs.forEach(function (cb) { try { cb(); } catch (e) {} });
     }
 
-    if (!document.querySelector('link[data-epir-inpost-geo-css]')) {
+    if (!document.querySelector('link[data-epir-leaflet-css]')) {
       var link = document.createElement('link');
       link.rel = 'stylesheet';
-      link.href = 'https://geowidget.inpost.pl/inpost-geowidget.css';
-      link.setAttribute('data-epir-inpost-geo-css', '1');
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      link.setAttribute('data-epir-leaflet-css', '1');
       document.head.appendChild(link);
     }
 
-    if (window.customElements && window.customElements.get('inpost-geowidget')) {
+    if (typeof L !== 'undefined') {
       finish();
       return;
     }
 
-    var existing = document.querySelector('script[data-epir-inpost-geo-js]');
+    var existing = document.querySelector('script[data-epir-leaflet-js]');
     if (existing) {
       existing.addEventListener('load', finish);
       return;
     }
 
-    var geo = document.createElement('script');
-    geo.src = 'https://geowidget.inpost.pl/inpost-geowidget.js';
-    geo.defer = true;
-    geo.setAttribute('data-epir-inpost-geo-js', '1');
-    geo.addEventListener('load', finish);
-    geo.addEventListener('error', finish);
-    document.head.appendChild(geo);
+    var script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.setAttribute('data-epir-leaflet-js', '1');
+    script.addEventListener('load', finish);
+    script.addEventListener('error', finish);
+    document.head.appendChild(script);
   }
 
   function initAll() {
     document.querySelectorAll('[data-epir-inpost-root]').forEach(function (root) {
       root.dataset.epirInpostBound = '';
       bindRoot(root);
+      // If checkbox is already checked, init map
+      var toggle = root.parentElement ? root.parentElement.querySelector('[data-epir-inpost-toggle]') : null;
+      if (toggle && toggle.checked) {
+        setTimeout(function () { initMap(root); }, 500);
+      }
     });
   }
 
-  window.epirInpostAfterCartDom = function () {
-    ensureAssets(function () {
-      initAll();
-    });
-  };
-
   function boot() {
-    ensureAssets(function () {
+    loadLeaflet(function () {
       initAll();
     });
   }
@@ -259,8 +339,22 @@
     boot();
   }
 
-  document.addEventListener('cart:updated', window.epirInpostAfterCartDom);
-  document.addEventListener('minimog:cart:updated', window.epirInpostAfterCartDom);
+  // Listen for cart updates (e.g. after adding product)
+  document.addEventListener('cart:updated', function () {
+    loadLeaflet(function () {
+      initAll();
+    });
+  });
+  document.addEventListener('minimog:cart:updated', function () {
+    loadLeaflet(function () {
+      initAll();
+    });
+  });
+
+  // Expose for drawer re-init
+  window.epirInpostAfterCartDom = function () {
+    loadLeaflet(function () {
+      initAll();
+    });
+  };
 })();
-
-
