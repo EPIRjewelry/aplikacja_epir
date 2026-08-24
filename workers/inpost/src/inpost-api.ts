@@ -171,12 +171,17 @@ export class InpostApiClient {
   }
 
   async fetchPoints(params: FetchPointsParams): Promise<InpostPoint[]> {
-    // ShipX API: /v1/points
-    const url = new URL(`${this.baseUrl}/v1/points`);
+    // If query is provided, fetch ALL points for the country and filter locally
+    if (params.query) {
+      const allPoints = await this.fetchAllCountryPoints(params.country || 'PL');
+      const filtered = InpostApiClient.filterByQuery(allPoints, params.query);
+      return InpostApiClient.rankByQuery(filtered, params.query).slice(0, 20);
+    }
 
+    // Existing geo-based fetch (lat/lng/radius) — single page from API
+    const url = new URL(`${this.baseUrl}/v1/points`);
     if (params.country) url.searchParams.set('country', params.country);
     if (params.city) url.searchParams.set('city', params.city);
-    if (params.query) url.searchParams.set('query', params.query);
     if (params.latitude != null) url.searchParams.set('latitude', String(params.latitude));
     if (params.longitude != null) url.searchParams.set('longitude', String(params.longitude));
     if (params.radius != null) url.searchParams.set('radius', String(params.radius));
@@ -191,12 +196,113 @@ export class InpostApiClient {
 
     const data = await response.json() as { items?: ShipXPoint[] };
     const points = (data.items || []).map(p => this.mapPoint(p));
-    // Filter out invalid/mock data (lat=0, lng=0 means no real coordinates)
     return points.filter(p =>
       p.coordinates &&
       p.coordinates.latitude !== 0 &&
       p.coordinates.longitude !== 0
     );
+  }
+
+  /**
+   * Fetches ALL points for a country using pagination (per_page=500).
+   * Uses 5s timeout per page; if exceeded, returns partial results accumulated so far.
+   */
+  async fetchAllCountryPoints(country: string): Promise<InpostPoint[]> {
+    const allRaw: ShipXPoint[] = [];
+    let page = 1;
+    let hasMore = true;
+    let partial = false;
+
+    while (hasMore) {
+      const url = new URL(`${this.baseUrl}/v1/points`);
+      url.searchParams.set('country', country);
+      url.searchParams.set('per_page', '500');
+      url.searchParams.set('page', String(page));
+
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+
+        const response = await fetch(url.toString(), {
+          headers: await this.getHeaders(),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        if (!response.ok) {
+          // If we already have some data, return it as partial results
+          if (allRaw.length > 0) {
+            partial = true;
+            break;
+          }
+          throw new Error(`Failed to fetch points page ${page}: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json() as { items?: ShipXPoint[]; pages?: number };
+        const items = data.items || [];
+        allRaw.push(...items);
+
+        hasMore = data.pages != null ? page < data.pages : items.length === 500;
+        page++;
+      } catch (e) {
+        // Timeout or network error — return what we have if anything
+        if (allRaw.length > 0) {
+          partial = true;
+          break;
+        }
+        throw e;
+      }
+    }
+
+    const points = allRaw.map(p => this.mapPoint(p));
+    const filtered = points.filter(p =>
+      p.coordinates &&
+      p.coordinates.latitude !== 0 &&
+      p.coordinates.longitude !== 0
+    );
+
+    if (partial) {
+      console.log(`[INPOST] Returning partial results: ${filtered.length} points (timeout or error during pagination)`);
+    }
+
+    return filtered;
+  }
+
+  /** Filter points by query string matching code, city, street, name, or postcode. */
+  static filterByQuery(points: InpostPoint[], query: string): InpostPoint[] {
+    const q = query.toLowerCase().trim();
+    if (!q) return points;
+
+    return points.filter(p => {
+      if (p.code.toLowerCase().startsWith(q)) return true;
+      if (p.address.city.toLowerCase().includes(q)) return true;
+      if (p.address.street.toLowerCase().includes(q)) return true;
+      if (p.name.toLowerCase().includes(q)) return true;
+      if (p.address.postcode.toLowerCase().includes(q)) return true;
+      return false;
+    });
+  }
+
+  /** Rank points by relevance: exact code match first, then city start, then contains. */
+  static rankByQuery(points: InpostPoint[], query: string): InpostPoint[] {
+    const q = query.toLowerCase().trim();
+    if (!q) return points;
+
+    return points
+      .map(p => {
+        let score = 0;
+        if (p.code.toLowerCase() === q) score = 1000;
+        else if (p.code.toLowerCase().startsWith(q)) score = 500;
+        else if (p.address.city.toLowerCase() === q) score = 400;
+        else if (p.address.city.toLowerCase().startsWith(q)) score = 300;
+        else if (p.address.city.toLowerCase().includes(q)) score = 200;
+        else if (p.address.street.toLowerCase().includes(q)) score = 100;
+        else score = 0;
+        return { score, point: p };
+      })
+      .filter(x => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(x => x.point);
   }
 
   async fetchPoint(code: string): Promise<InpostPoint | null> {

@@ -37,8 +37,12 @@ async function handleGetPoints(request: Request, env: Env, client: InpostApiClie
     radius: url.searchParams.get('radius') ? parseInt(url.searchParams.get('radius')!) : undefined,
   };
 
-  // Build cache key from params (v2 = includes lat=0/lng=0 filter)
-  const cacheKey = `points:v2:${btoa(JSON.stringify(params))}`;
+  // Cache strategy:
+  // - If query is present → cache the full country dataset (v3:all:PL), then filter locally
+  // - Otherwise → cache the specific API request params (v2)
+  const cacheKey = params.query
+    ? `points:v3:all:${params.country || 'PL'}`
+    : `points:v2:${btoa(JSON.stringify(params))}`;
 
   try {
     // Try KV cache first
