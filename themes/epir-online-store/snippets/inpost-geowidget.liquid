@@ -151,18 +151,15 @@
       color: var(--epir-inpost-muted);
     }
     .epir-inpost__search-results {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      right: 0;
-      z-index: 10;
+      position: fixed;
+      z-index: 10000;
       max-height: 200px;
       overflow-y: auto;
       background: #fff;
       border: 1px solid rgba(34, 34, 34, 0.15);
-      border-top: none;
-      border-radius: 0 0 2px 2px;
+      border-radius: 2px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      display: none;
     }
     .epir-inpost__search-result-item {
       padding: 0.5rem 0.75rem;

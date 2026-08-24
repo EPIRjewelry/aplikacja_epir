@@ -240,9 +240,27 @@
 
     document.addEventListener('click', function (e) {
       if (e.target !== searchInput) {
-        searchResults.hidden = true;
+        hideSearchResults(searchResults);
       }
     });
+  }
+
+  function positionSearchResults(searchResults, input) {
+    var rect = input.getBoundingClientRect();
+    searchResults.style.top = (rect.bottom + 4) + 'px';
+    searchResults.style.left = rect.left + 'px';
+    searchResults.style.width = rect.width + 'px';
+  }
+
+  function hideSearchResults(searchResults) {
+    searchResults.style.display = 'none';
+    searchResults.hidden = true;
+  }
+
+  function showSearchResults(searchResults, input) {
+    positionSearchResults(searchResults, input);
+    searchResults.style.display = 'block';
+    searchResults.hidden = false;
   }
 
   function filterPoints(root, query) {
@@ -256,7 +274,7 @@
     }
 
     if (!query) {
-      searchResults.hidden = true;
+      hideSearchResults(searchResults);
       renderMarkers(root);
       return;
     }
@@ -285,7 +303,7 @@
 
     if (matches.length === 0) {
       searchResults.innerHTML = '<div class="epir-inpost__search-result-item">Brak wynikow</div>';
-      searchResults.hidden = false;
+      showSearchResults(searchResults, root._epirSearchInput || root.querySelector('[data-epir-inpost-search]'));
       return;
     }
 
@@ -297,7 +315,7 @@
         '</div>';
     }).join('');
 
-    searchResults.hidden = false;
+    showSearchResults(searchResults, root._epirSearchInput || root.querySelector('[data-epir-inpost-search]'));
 
     searchResults.querySelectorAll('[data-epir-inpost-select]').forEach(function (el) {
       el.addEventListener('click', function () {
@@ -305,7 +323,7 @@
         var point = state.points.find(function (p) { return p.code === code; });
         if (point) {
           selectPoint(point, root);
-          searchResults.hidden = true;
+          hideSearchResults(searchResults);
           var searchInput = root._epirSearchInput || root.querySelector('[data-epir-inpost-search]');
           if (searchInput) searchInput.value = '';
         }
