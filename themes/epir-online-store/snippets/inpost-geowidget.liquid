@@ -38,6 +38,11 @@
         {% endif %}
       </div>
 
+      <div class="epir-inpost__search">
+        <input type="text" class="epir-inpost__search-input" data-epir-inpost-search placeholder="Szukaj Paczkomatu (kod, miasto, ulica)..." autocomplete="off">
+        <div class="epir-inpost__search-results" data-epir-inpost-search-results hidden></div>
+      </div>
+
       <div class="epir-inpost__map" data-epir-inpost-map {% if initial_code != blank %}hidden{% endif %}></div>
 
       <p class="epir-inpost__error" hidden data-epir-inpost-error>Nie udalo sie zaladowac punktow.</p>
@@ -123,7 +128,65 @@
       text-decoration: underline;
       text-underline-offset: 0.15rem;
     }
-    .epir-inpost__map {
+    .epir-inpost__search {
+      position: relative;
+      margin: 0 0 0.75rem;
+    }
+    .epir-inpost__search-input {
+      width: 100%;
+      padding: 0.6rem 0.85rem;
+      border: 1px solid rgba(34, 34, 34, 0.25);
+      border-radius: 2px;
+      background: #fff;
+      font-size: 0.9rem;
+      color: var(--epir-inpost-ink);
+      box-sizing: border-box;
+    }
+    .epir-inpost__search-input:focus {
+      outline: none;
+      border-color: var(--epir-inpost-accent);
+      box-shadow: 0 0 0 2px rgba(44, 104, 78, 0.15);
+    }
+    .epir-inpost__search-input::placeholder {
+      color: var(--epir-inpost-muted);
+    }
+    .epir-inpost__search-results {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      max-height: 200px;
+      overflow-y: auto;
+      background: #fff;
+      border: 1px solid rgba(34, 34, 34, 0.15);
+      border-top: none;
+      border-radius: 0 0 2px 2px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .epir-inpost__search-result-item {
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(34, 34, 34, 0.08);
+      font-size: 0.85rem;
+    }
+    .epir-inpost__search-result-item:last-child {
+      border-bottom: none;
+    }
+    .epir-inpost__search-result-item:hover {
+      background: rgba(44, 104, 78, 0.08);
+    }
+    .epir-inpost__search-result-code {
+      font-weight: 600;
+      color: var(--epir-inpost-accent);
+    }
+    .epir-inpost__search-result-address {
+      display: block;
+      color: var(--epir-inpost-muted);
+      font-size: 0.8rem;
+      margin-top: 0.15rem;
+    }
+        .epir-inpost__map {
       min-height: 280px;
       width: 100%;
     }

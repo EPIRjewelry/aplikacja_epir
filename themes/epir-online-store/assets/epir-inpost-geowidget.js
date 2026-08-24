@@ -154,12 +154,13 @@
       });
   }
 
-  function renderMarkers(root) {
+  function renderMarkers(root, filteredPoints) {
     var state = leafletState[root.id];
     if (!state || !state.map) return;
 
     state.markersLayer.clearLayers();
-    var validPoints = state.points.filter(function (p) {
+    var sourcePoints = filteredPoints || state.points;
+    var validPoints = sourcePoints.filter(function (p) {
       return p.coordinates && p.coordinates.latitude !== 0 && p.coordinates.longitude !== 0;
     });
 
@@ -180,10 +181,12 @@
       state.markersLayer.addLayer(marker);
     });
 
-    var bounds = validPoints.map(function (p) {
-      return [p.coordinates.latitude, p.coordinates.longitude];
-    });
-    state.map.fitBounds(bounds, { padding: [50, 50] });
+    if (validPoints.length > 0) {
+      var bounds = validPoints.map(function (p) {
+        return [p.coordinates.latitude, p.coordinates.longitude];
+      });
+      state.map.fitBounds(bounds, { padding: [50, 50] });
+    }
   }
 
   function selectPoint(point, root) {
@@ -201,6 +204,87 @@
         root.classList.remove('epir-inpost--saving');
         showError(root, 'Nie udalo sie zapisac punktu. Sprobuj ponownie.');
       });
+  }
+
+
+  // Search functionality
+  var searchDebounce = null;
+
+  function bindSearch(root) {
+    var searchInput = root.querySelector('[data-epir-inpost-search]');
+    var searchResults = root.querySelector('[data-epir-inpost-search-results]');
+    if (!searchInput || !searchResults) return;
+
+    searchInput.addEventListener('input', function () {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(function () {
+        filterPoints(root, searchInput.value.trim());
+      }, 200);
+    });
+
+    searchInput.addEventListener('focus', function () {
+      if (searchInput.value.trim()) {
+        filterPoints(root, searchInput.value.trim());
+      }
+    });
+
+    document.addEventListener('click', function (e) {
+      if (e.target !== searchInput) {
+        searchResults.hidden = true;
+      }
+    });
+  }
+
+  function filterPoints(root, query) {
+    var state = leafletState[root.id];
+    var searchResults = root.querySelector('[data-epir-inpost-search-results]');
+    if (!state || !state.points || !searchResults) return;
+
+    if (!query) {
+      searchResults.hidden = true;
+      renderMarkers(root);
+      return;
+    }
+
+    var q = query.toLowerCase();
+    var matches = state.points.filter(function (p) {
+      var code = (p.code || '').toLowerCase();
+      var city = (p.address && (p.address.city || '')).toLowerCase();
+      var street = (p.address && (p.address.street || '')).toLowerCase();
+      var name = (p.name || '').toLowerCase();
+      return code.indexOf(q) !== -1 || city.indexOf(q) !== -1 || street.indexOf(q) !== -1 || name.indexOf(q) !== -1;
+    });
+
+    if (matches.length === 0) {
+      searchResults.innerHTML = '<div class="epir-inpost__search-result-item">Brak wynikow</div>';
+      searchResults.hidden = false;
+      return;
+    }
+
+    searchResults.innerHTML = matches.slice(0, 10).map(function (p) {
+      var addr = formatAddress(p);
+      return '<div class="epir-inpost__search-result-item" data-epir-inpost-select="' + p.code.replace(/"/g, '&quot;') + '">' +
+        '<span class="epir-inpost__search-result-code">' + p.code + '</span>' +
+        '<span class="epir-inpost__search-result-address">' + addr + '</span>' +
+        '</div>';
+    }).join('');
+
+    searchResults.hidden = false;
+
+    searchResults.querySelectorAll('[data-epir-inpost-select]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var code = el.getAttribute('data-epir-inpost-select');
+        var point = state.points.find(function (p) { return p.code === code; });
+        if (point) {
+          selectPoint(point, root);
+          searchResults.hidden = true;
+          var searchInput = root.querySelector('[data-epir-inpost-search]');
+          if (searchInput) searchInput.value = '';
+        }
+      });
+    });
+
+    renderMarkers(root, matches);
   }
 
   function bindToggle(root) {
