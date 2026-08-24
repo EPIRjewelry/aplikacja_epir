@@ -1,5 +1,5 @@
 /**
- * EPIR - InPost Geowidget: save pickup point to cart attributes (Leaflet, no custom elements).
+ * EPIR - InPost Geowidget v2: save pickup point to cart attributes (Leaflet, no custom elements).
  * Compatible with Chrome, Firefox, Safari, Edge, mobile browsers.
  */
 (function () {
@@ -477,7 +477,27 @@
   // Expose for drawer re-init
   window.epirInpostAfterCartDom = function () {
     loadLeaflet(function () {
-      initAll();
+      document.querySelectorAll('[data-epir-inpost-root]').forEach(function (root) {
+        root.removeAttribute('data-epir-inpost-bound');
+        bindRoot(root);
+      });
     });
   };
+  // MutationObserver for AJAX cart drawer (MINIMOG)
+  var drawerObserver = new MutationObserver(function () {
+    var newRoots = document.querySelectorAll('[data-epir-inpost-root]:not([data-epir-inpost-bound])');
+    if (newRoots.length > 0) {
+      loadLeaflet(function () {
+        newRoots.forEach(function (root) {
+          bindRoot(root);
+          var toggle = root.parentElement ? root.parentElement.querySelector('[data-epir-inpost-toggle]') : null;
+          if (toggle && toggle.checked) {
+            setTimeout(function () { initMap(root); }, 500);
+          }
+        });
+      });
+    }
+  });
+  drawerObserver.observe(document.body, { childList: true, subtree: true });
+
 })();
