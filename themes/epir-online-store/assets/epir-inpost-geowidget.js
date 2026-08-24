@@ -246,12 +246,25 @@
       return;
     }
 
+    // Detect if query looks like a parcel locker symbol (uppercase letters + digits)
+    // e.g., KXY123, ABA22, KRM1 etc.
+    var symbolPattern = /^[A-Z]{2,4}\d{2,3}$/i;
+    var isSymbolSearch = symbolPattern.test(query.toUpperCase().replace(/\s/g, ''));
+
     var q = query.toLowerCase();
     var matches = state.points.filter(function (p) {
       var code = (p.code || '').toLowerCase();
       var city = (p.address && (p.address.city || '')).toLowerCase();
       var street = (p.address && (p.address.street || '')).toLowerCase();
       var name = (p.name || '').toLowerCase();
+
+      if (isSymbolSearch) {
+        // For symbol searches, prioritize exact/partial code match
+        var normalizedQuery = query.toUpperCase().replace(/\s/g, '');
+        var normalizedCode = p.code.toUpperCase().replace(/\s/g, '');
+        return normalizedCode.indexOf(normalizedQuery) !== -1;
+      }
+
       return code.indexOf(q) !== -1 || city.indexOf(q) !== -1 || street.indexOf(q) !== -1 || name.indexOf(q) !== -1;
     });
 
