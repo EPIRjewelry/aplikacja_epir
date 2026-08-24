@@ -147,7 +147,13 @@
         var state = leafletState[root.id];
         if (!state) return;
         state.points = data;
-        renderMarkers(root);
+        // Check if there's an active search query
+        var searchInput = root.querySelector('[data-epir-inpost-search]');
+        if (searchInput && searchInput.value.trim()) {
+          filterPoints(root, searchInput.value.trim());
+        } else {
+          renderMarkers(root);
+        }
       })
       .catch(function (err) {
         showError(root, 'Nie udalo sie zaladowac punktow. Sprobuj ponownie.');
@@ -238,7 +244,13 @@
   function filterPoints(root, query) {
     var state = leafletState[root.id];
     var searchResults = root.querySelector('[data-epir-inpost-search-results]');
-    if (!state || !state.points || !searchResults) return;
+    if (!searchResults) return;
+
+    // If points not loaded yet, wait
+    if (!state || !state.points || state.points.length === 0) {
+      // Points will be filtered after they load via renderMarkers
+      return;
+    }
 
     if (!query) {
       searchResults.hidden = true;
@@ -347,6 +359,7 @@
     }
 
     bindToggle(root);
+    bindSearch(root);
 
     var changeBtn = root.querySelector('[data-epir-inpost-change]');
     if (changeBtn) {
