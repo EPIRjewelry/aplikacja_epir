@@ -148,7 +148,7 @@
         if (!state) return;
         state.points = data;
         // Check if there's an active search query
-        var searchInput = root.querySelector('[data-epir-inpost-search]');
+        var searchInput = root._epirSearchInput || root.querySelector('[data-epir-inpost-search]');
         if (searchInput && searchInput.value.trim()) {
           filterPoints(root, searchInput.value.trim());
         } else {
@@ -221,6 +221,10 @@
     var searchResults = root.querySelector('[data-epir-inpost-search-results]');
     if (!searchInput || !searchResults) return;
 
+    // Store reference to search elements on root for use by filterPoints
+    root._epirSearchInput = searchInput;
+    root._epirSearchResults = searchResults;
+
     searchInput.addEventListener('input', function () {
       clearTimeout(searchDebounce);
       searchDebounce = setTimeout(function () {
@@ -243,12 +247,11 @@
 
   function filterPoints(root, query) {
     var state = leafletState[root.id];
-    var searchResults = root.querySelector('[data-epir-inpost-search-results]');
+    var searchResults = root._epirSearchResults || root.querySelector('[data-epir-inpost-search-results]');
     if (!searchResults) return;
 
-    // If points not loaded yet, wait
+    // If points not loaded yet, just return (will be called again after load)
     if (!state || !state.points || state.points.length === 0) {
-      // Points will be filtered after they load via renderMarkers
       return;
     }
 
@@ -303,7 +306,7 @@
         if (point) {
           selectPoint(point, root);
           searchResults.hidden = true;
-          var searchInput = root.querySelector('[data-epir-inpost-search]');
+          var searchInput = root._epirSearchInput || root.querySelector('[data-epir-inpost-search]');
           if (searchInput) searchInput.value = '';
         }
       });
