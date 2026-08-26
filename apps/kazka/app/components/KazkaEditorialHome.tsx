@@ -8,9 +8,9 @@ import {
 } from '@epir/ui';
 import {useRef} from 'react';
 import {KazkaEditorialHero} from '~/components/KazkaEditorialHero';
+import {KazkaEditorialVideoSection} from '~/components/KazkaEditorialVideoSection';
 import {
   KAZKA_EDITORIAL_CATEGORIES,
-  KAZKA_EDITORIAL_COLLECTION_VIDEO,
   KAZKA_EDITORIAL_STRIP_IMAGE,
 } from '~/lib/kazka-editorial-assets';
 
@@ -106,27 +106,6 @@ export function KazkaEditorialHome({
         </div>
       </section>
 
-      <section className="w-full bg-[#f4efe8] py-8 md:py-12">
-        <div className="mb-4 px-4 md:px-6">
-          <p className="kazka-editorial-label text-[10px] tracking-[0.28em] text-[rgb(var(--color-primary))]/70">
-            KAZKA
-          </p>
-        </div>
-        <div className="w-full overflow-hidden bg-[#f1ece6]">
-          <div className="relative aspect-video w-full">
-            <iframe
-              className="absolute inset-0 h-full w-full"
-              src={KAZKA_EDITORIAL_COLLECTION_VIDEO.embedSrc}
-              title={KAZKA_EDITORIAL_COLLECTION_VIDEO.title}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-              loading="lazy"
-              referrerPolicy="strict-origin-when-cross-origin"
-            />
-          </div>
-        </div>
-      </section>
-
       {productSections.length > 0 ? (
         <div className="py-4 md:py-8">
           {productSections.map((section, i) => (
@@ -155,6 +134,7 @@ export function KazkaEditorialHome({
         </section>
       )}
 
+      <KazkaEditorialVideoSection />
 
       <section className="kazka-editorial-bleed relative aspect-[4/5] w-full overflow-hidden md:aspect-[21/9]">
         <img
