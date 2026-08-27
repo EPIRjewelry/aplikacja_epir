@@ -106,6 +106,8 @@ export function KazkaEditorialHome({
         </div>
       </section>
 
+      <KazkaEditorialVideoSection />
+
       {productSections.length > 0 ? (
         <div className="py-4 md:py-8">
           {productSections.map((section, i) => (
@@ -133,8 +135,6 @@ export function KazkaEditorialHome({
           </div>
         </section>
       )}
-
-      <KazkaEditorialVideoSection />
 
       <section className="kazka-editorial-bleed relative aspect-[4/5] w-full overflow-hidden md:aspect-[21/9]">
         <img

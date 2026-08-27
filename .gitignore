@@ -12,7 +12,8 @@ dist
 temp_sa.json
 .shopify
 **/public/build
-# Root package-lock.json jest wymagany przez CI (npm ci w .github/workflows/deploy-pages.yml).
+# Legacy lockfiles w apps/* — monorepo używa wyłącznie root package-lock.json
+apps/*/package-lock.json
 # Monorepo jest instalowane npm; `packageManager` w package.json bywa czytane przez narzędzia i tworzy pnpm-lock lokalnie — nie commitujemy.
 pnpm-lock.yaml
 
@@ -70,7 +71,12 @@ marketing/csv/*.csv
 
 # Agent / MCP staging junk
 .tmp/
+.tmp-*/
 .tmp-kazka-review/
+sections/
+
+# Theme audit pulls (local only)
+themes/epir-online-store/.tmp-live-audit/
 epir-marketing-ingest/.tmp*
 epir-marketing-ingest/.upload-chunks-b64/
 epir-marketing-ingest/.upload-chunks/

@@ -29,3 +29,11 @@ Poniższe zasady definiują standardy inżynieryjne, konwencje architektoniczne 
 * **Profesjonalizm i Rzeczowość:** Język powiadomień systemowych, wezwań do akcji (CTA) i opisów ma być merytoryczny, konkretny i wolny od zbędnych ozdobników emocjonalnych.
 * **Ekspertyza Technologiczna:** Kod UI powinien przewidywać wyświetlanie i ekspozycję twardych danych gemmologicznych, takich jak twardość w skali Mohsa czy precyzyjna próba kruszcu (np. pr. 585).
 * **Doradztwo:** Klient powinien w punktach styku czuć, że kupuje sztukę użytkową, a interfejs i użyte opisy pełnią rolę kompetentnego doradcy i eksperta, a nie tylko sprzedawcy.
+
+## 5. Hydrogen (kazka / zareczyny / inspiracje) — monorepo npm + Wrangler
+
+* **Instalacja zależności:** wyłącznie z **roota** repozytorium (`npm install --legacy-peer-deps --no-audit --no-fund`). **Zabrania się** `npm install` w katalogu `apps/kazka`, `apps/zareczyny` lub `apps/inspiracje` — tworzy to legacy lockfile i lokalny Wrangler 3.x, który na Node 20 wywala się błędem `z.ostring is not a function`.
+* **Dev / deploy:** `cd apps/<name> && npm run dev` oraz `npm run deploy -w <name>` (albo root `npm run pages:deploy:<name>`). Skrypty muszą używać root Wrangler 4.x: `node ../../node_modules/wrangler/bin/wrangler.js`.
+* **Antywzorzec (odrzuć w PR):** `npx wrangler`, `npm exec -w … -- wrangler`, nowy plik `apps/*/package-lock.json`, surowe `wrangler pages …` bez root bin.
+* **Lockfile:** jeden kanoniczny `package-lock.json` w root — nie commituj locków w `apps/*`.
+* **Sekrety lokalne:** `.dev.vars` w workspace Hydrogen (gitignored); sekrety z Cloudflare Pages nie działają na `127.0.0.1` bez `.dev.vars` (np. `EPIR_CHAT_SHARED_SECRET` dla BFF czatu/consent).
