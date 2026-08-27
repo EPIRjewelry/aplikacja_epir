@@ -1,7 +1,31 @@
 /// <reference types="@cloudflare/workers-types" />
 
-import { InpostApiClient } from './inpost-api';
+import { InpostApiClient, type InpostPoint } from './inpost-api';
 import type { Env } from './env';
+
+const COUNTRY_DATASET_TTL = 21600;
+
+export function countryDatasetCacheKey(country: string): string {
+  return `points:v4:all:${country}`;
+}
+
+export async function getCountryPoints(
+  env: Env,
+  client: InpostApiClient,
+  country: string,
+): Promise<{ points: InpostPoint[]; cacheStatus: 'dataset-hit' | 'dataset-miss' }> {
+  const datasetKey = countryDatasetCacheKey(country);
+  const cached = await env.INPOST_POINTS_CACHE.get<string>(datasetKey);
+  if (cached) {
+    return { points: JSON.parse(cached) as InpostPoint[], cacheStatus: 'dataset-hit' };
+  }
+
+  const points = await client.fetchAllCountryPoints(country);
+  await env.INPOST_POINTS_CACHE.put(datasetKey, JSON.stringify(points), {
+    expirationTtl: COUNTRY_DATASET_TTL,
+  });
+  return { points, cacheStatus: 'dataset-miss' };
+}
 
 function corsHeaders(request: Request, env: Env): Record<string, string> {
   const requestOrigin = request.headers.get('Origin');
@@ -37,27 +61,38 @@ async function handleGetPoints(request: Request, env: Env, client: InpostApiClie
     radius: url.searchParams.get('radius') ? parseInt(url.searchParams.get('radius')!) : undefined,
   };
 
-  // Cache strategy:
-  // - If query is present → cache the full country dataset (v3:all:PL), then filter locally
-  // - Otherwise → cache the specific API request params (v2)
-  const cacheKey = params.query
-    ? `points:v3:all:${params.country || 'PL'}`
-    : `points:v2:${btoa(JSON.stringify(params))}`;
+  const country = params.country || 'PL';
 
   try {
-    // Try KV cache first
-    const cached = await env.INPOST_POINTS_CACHE.get<string>(cacheKey);
-    if (cached) {
-      return jsonResponse(JSON.parse(cached), 200, { ...{ 'X-Cache': 'hit' }, ...corsHeaders(request, env) });
+    // Search: cache full country dataset, filter per query (never cache filtered results)
+    if (params.query) {
+      const { points: allPoints, cacheStatus } = await getCountryPoints(env, client, country);
+      const results = InpostApiClient.searchPoints(allPoints, params.query, 20);
+      return jsonResponse(results, 200, {
+        'X-Cache': cacheStatus,
+        ...corsHeaders(request, env),
+      });
     }
 
-    // Fetch from API
+    // Map / geo load: cache per request params (first page ~25 points)
+    const cacheKey = `points:v2:${btoa(JSON.stringify(params))}`;
+    const cached = await env.INPOST_POINTS_CACHE.get<string>(cacheKey);
+    if (cached) {
+      return jsonResponse(JSON.parse(cached), 200, {
+        'X-Cache': 'hit',
+        ...corsHeaders(request, env),
+      });
+    }
+
     const points = await client.fetchPoints(params);
+    await env.INPOST_POINTS_CACHE.put(cacheKey, JSON.stringify(points), {
+      expirationTtl: COUNTRY_DATASET_TTL,
+    });
 
-    // Cache for 6 hours
-    await env.INPOST_POINTS_CACHE.put(cacheKey, JSON.stringify(points), { expirationTtl: 21600 });
-
-    return jsonResponse(points, 200, { ...{ 'X-Cache': 'miss' }, ...corsHeaders(request, env) });
+    return jsonResponse(points, 200, {
+      'X-Cache': 'miss',
+      ...corsHeaders(request, env),
+    });
   } catch (e) {
     return jsonResponse({ error: 'Failed to fetch points', details: String(e) }, 500, corsHeaders(request, env));
   }

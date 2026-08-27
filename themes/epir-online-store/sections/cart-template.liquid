@@ -168,7 +168,7 @@
             <div class="m-cart__shipping-note m:text-sm m:text-color-subtext">{{ taxes_shipping_checkout }}</div>
           </div>
           {%- if settings.inpost_geowidget_enable and settings.inpost_geowidget_token != blank -%}
-  <script src="{{ 'epir-inpost-geowidget.js' | asset_url }}" defer="defer"></script>
+  <script src="{{ 'epir-inpost-geowidget-v4.js' | asset_url }}" defer="defer"></script>
 {%- endif -%}
 <div data-epir-inpost-mount>{% render 'inpost-geowidget', context: 'page' %}</div>
           <div class="m-cart__checkout">

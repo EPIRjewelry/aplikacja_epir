@@ -73,7 +73,7 @@ marketing/csv/*.csv
 .tmp/
 .tmp-*/
 .tmp-kazka-review/
-sections/
+/sections/
 
 # Theme audit pulls (local only)
 themes/epir-online-store/.tmp-live-audit/
@@ -120,6 +120,7 @@ scripts/debug/set-inspiracje-*.mjs
 
 # Vendor theme pull — README + shopify.theme.toml + EPIR Liquid only
 themes/epir-online-store/assets/
+!themes/epir-online-store/assets/epir-inpost-geowidget-v4.js
 themes/epir-online-store/blocks/
 themes/epir-online-store/config/
 themes/epir-online-store/layout/

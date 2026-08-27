@@ -174,8 +174,7 @@ export class InpostApiClient {
     // If query is provided, fetch ALL points for the country and filter locally
     if (params.query) {
       const allPoints = await this.fetchAllCountryPoints(params.country || 'PL');
-      const filtered = InpostApiClient.filterByQuery(allPoints, params.query);
-      return InpostApiClient.rankByQuery(filtered, params.query).slice(0, 20);
+      return InpostApiClient.searchPoints(allPoints, params.query, 20);
     }
 
     // Existing geo-based fetch (lat/lng/radius) — single page from API
@@ -268,41 +267,232 @@ export class InpostApiClient {
     return filtered;
   }
 
-  /** Filter points by query string matching code, city, street, name, or postcode. */
+  /** Normalize text for search: lowercase, trim, strip Polish diacritics. */
+  static normalizeSearchText(text: string): string {
+    return (text || '')
+      .toLowerCase()
+      .trim()
+      .replace(/ą/g, 'a')
+      .replace(/ć/g, 'c')
+      .replace(/ę/g, 'e')
+      .replace(/ł/g, 'l')
+      .replace(/ń/g, 'n')
+      .replace(/ó/g, 'o')
+      .replace(/ś/g, 's')
+      .replace(/ź/g, 'z')
+      .replace(/ż/g, 'z');
+  }
+
+  /** Compact locker code for comparison (strip spaces and dashes, upper). */
+  static compactLockerCode(text: string): string {
+    return (text || '').toUpperCase().replace(/[\s-]/g, '');
+  }
+
+  /**
+   * True when token looks like an InPost locker / POP code or prefix
+   * (KRA, WRO01A, KRA01M, WRO02BAPP, POP-WRO103).
+   * City names like "Wrocław" must NOT match.
+   */
+  static looksLikeLockerCode(token: string): boolean {
+    const compact = InpostApiClient.compactLockerCode(token);
+    if (!compact || compact.length < 2 || compact.length > 20) return false;
+    if (/^POP$/i.test(compact)) return true;
+    // POP + city prefix + digits (POPWRO103)
+    if (/^POP[A-Z]{2,4}\d{1,4}[A-Z0-9]*$/i.test(compact)) return true;
+    // City prefix only (WRO, KRA) — 2–4 letters
+    if (/^[A-Z]{2,4}$/i.test(compact)) return true;
+    // Full / partial code: letters + required digits + optional suffix (KRA01, KRA01M, WRO02BAPP)
+    if (/^[A-Z]{2,4}\d{1,3}[A-Z0-9]*$/i.test(compact)) return true;
+    return false;
+  }
+
+  /** @deprecated Use looksLikeLockerCode — kept for callers expecting the old name. */
+  static looksLikeCodeQuery(query: string): boolean {
+    return InpostApiClient.looksLikeLockerCode(query);
+  }
+
+  /**
+   * Parse free-text search into typed tokens (postcode / code / text).
+   * Strips commas, street prefixes (ul./al./os./pl.), and empty noise.
+   */
+  static parseSearchQuery(query: string): Array<{ kind: 'postcode' | 'code' | 'text'; value: string }> {
+    const raw = (query || '').trim();
+    if (!raw) return [];
+
+    const streetPrefixes = new Set(['ul', 'ul.', 'al', 'al.', 'os', 'os.', 'pl', 'pl.']);
+    const parts = raw
+      .replace(/,/g, ' ')
+      .split(/\s+/)
+      .map(p => p.trim())
+      .filter(Boolean);
+
+    const tokens: Array<{ kind: 'postcode' | 'code' | 'text'; value: string }> = [];
+
+    for (const part of parts) {
+      const lower = part.toLowerCase();
+      if (streetPrefixes.has(lower)) continue;
+
+      let cleaned = part;
+      const prefixed = /^(ul|al|os|pl)\.?(?:\/)?(.+)$/i.exec(part);
+      if (prefixed && prefixed[2]) {
+        cleaned = prefixed[2].trim();
+        if (!cleaned) continue;
+      }
+
+      if (/^\d{2}-\d{3}$/.test(cleaned) || /^\d{5}$/.test(cleaned)) {
+        const digits = cleaned.replace(/-/g, '');
+        const formatted = `${digits.slice(0, 2)}-${digits.slice(2)}`;
+        tokens.push({ kind: 'postcode', value: InpostApiClient.normalizeSearchText(formatted) });
+        continue;
+      }
+
+      if (InpostApiClient.looksLikeLockerCode(cleaned)) {
+        tokens.push({ kind: 'code', value: InpostApiClient.compactLockerCode(cleaned) });
+        continue;
+      }
+
+      const text = InpostApiClient.normalizeSearchText(cleaned);
+      if (text.length >= 1) {
+        tokens.push({ kind: 'text', value: text });
+      }
+    }
+
+    return tokens;
+  }
+
+  private static tokenMatchesPoint(
+    token: { kind: 'postcode' | 'code' | 'text'; value: string },
+    fields: { code: string; codeCompact: string; city: string; street: string; postcode: string; postcodeCompact: string },
+    options?: { textPreferCity?: boolean },
+  ): boolean {
+    if (token.kind === 'code') {
+      return fields.codeCompact.startsWith(token.value) || fields.codeCompact.includes(token.value);
+    }
+    if (token.kind === 'postcode') {
+      const compact = token.value.replace(/-/g, '');
+      return (
+        fields.postcode.includes(token.value) ||
+        fields.postcodeCompact.includes(compact) ||
+        fields.postcodeCompact.startsWith(compact)
+      );
+    }
+    // With a locker-code token present, city/postcode only (avoid "Wrocławska" in another city)
+    if (options?.textPreferCity) {
+      if (fields.city.includes(token.value)) return true;
+      if (fields.postcode.includes(token.value)) return true;
+      return false;
+    }
+    if (fields.city.includes(token.value)) return true;
+    if (fields.street.includes(token.value)) return true;
+    if (fields.postcode.includes(token.value)) return true;
+    if (fields.code.includes(token.value)) return true;
+    return false;
+  }
+
+  /** Filter points by query string matching code, city, street, or postcode. */
   static filterByQuery(points: InpostPoint[], query: string): InpostPoint[] {
-    const q = query.toLowerCase().trim();
-    if (!q) return points;
+    const raw = query.trim();
+    if (!raw) return points;
+
+    const normalizedWhole = InpostApiClient.normalizeSearchText(raw.replace(/,/g, ' ').replace(/\s+/g, ' '));
+
+    // Single character: only code-prefix searches (e.g. "K" → KRA…)
+    if (normalizedWhole.length === 1) {
+      if (!/^[a-z]$/i.test(normalizedWhole)) return [];
+      return points.filter(p =>
+        InpostApiClient.normalizeSearchText(p.code).startsWith(normalizedWhole)
+      );
+    }
+
+    if (normalizedWhole.length < 2) return [];
+
+    const tokens = InpostApiClient.parseSearchQuery(raw);
+    if (tokens.length === 0) return [];
+
+    const textPreferCity = tokens.some(t => t.kind === 'code') && tokens.some(t => t.kind === 'text');
 
     return points.filter(p => {
-      if (p.code.toLowerCase().startsWith(q)) return true;
-      if (p.address.city.toLowerCase().includes(q)) return true;
-      if (p.address.street.toLowerCase().includes(q)) return true;
-      if (p.name.toLowerCase().includes(q)) return true;
-      if (p.address.postcode.toLowerCase().includes(q)) return true;
-      return false;
+      const fields = {
+        code: InpostApiClient.normalizeSearchText(p.code),
+        codeCompact: InpostApiClient.compactLockerCode(p.code),
+        city: InpostApiClient.normalizeSearchText(p.address.city),
+        street: InpostApiClient.normalizeSearchText(p.address.street),
+        postcode: InpostApiClient.normalizeSearchText(p.address.postcode),
+        postcodeCompact: (p.address.postcode || '').replace(/[\s-]/g, ''),
+      };
+      return tokens.every(t => InpostApiClient.tokenMatchesPoint(t, fields, { textPreferCity }));
     });
   }
 
-  /** Rank points by relevance: exact code match first, then city start, then contains. */
+  /** Rank points by relevance: code exact > code prefix > city start > city contains > street. */
   static rankByQuery(points: InpostPoint[], query: string): InpostPoint[] {
-    const q = query.toLowerCase().trim();
-    if (!q) return points;
+    const raw = query.trim();
+    if (!raw) return points;
+
+    const tokens = InpostApiClient.parseSearchQuery(raw);
+    if (tokens.length === 0) return points;
+
+    const codeTokens = tokens.filter(t => t.kind === 'code');
+    const postcodeTokens = tokens.filter(t => t.kind === 'postcode');
+    const textTokens = tokens.filter(t => t.kind === 'text');
+    const singleText = textTokens.length === 1 && codeTokens.length === 0 && postcodeTokens.length === 0
+      ? textTokens[0].value
+      : null;
+    const cityLikeQuery = singleText != null && singleText.length >= 2 && singleText.length <= 4 && /^[a-z]+$/i.test(singleText);
 
     return points
       .map(p => {
+        const code = InpostApiClient.normalizeSearchText(p.code);
+        const codeCompact = InpostApiClient.compactLockerCode(p.code);
+        const city = InpostApiClient.normalizeSearchText(p.address.city);
+        const street = InpostApiClient.normalizeSearchText(p.address.street);
+        const postcode = InpostApiClient.normalizeSearchText(p.address.postcode);
+        const postcodeCompact = (p.address.postcode || '').replace(/[\s-]/g, '');
+
         let score = 0;
-        if (p.code.toLowerCase() === q) score = 1000;
-        else if (p.code.toLowerCase().startsWith(q)) score = 500;
-        else if (p.address.city.toLowerCase() === q) score = 400;
-        else if (p.address.city.toLowerCase().startsWith(q)) score = 300;
-        else if (p.address.city.toLowerCase().includes(q)) score = 200;
-        else if (p.address.street.toLowerCase().includes(q)) score = 100;
-        else score = 0;
+
+        for (const t of codeTokens) {
+          if (codeCompact === t.value) score = Math.max(score, 1000);
+          else if (codeCompact.startsWith(t.value)) score = Math.max(score, 500);
+          else if (codeCompact.includes(t.value)) score = Math.max(score, 450);
+        }
+
+        for (const t of postcodeTokens) {
+          const compact = t.value.replace(/-/g, '');
+          if (postcode === t.value || postcodeCompact === compact) score = Math.max(score, 420);
+          else if (postcode.startsWith(t.value) || postcodeCompact.startsWith(compact)) score = Math.max(score, 380);
+          else if (postcode.includes(t.value) || postcodeCompact.includes(compact)) score = Math.max(score, 350);
+        }
+
+        for (const t of textTokens) {
+          if (city === t.value) score = Math.max(score, 400);
+          else if (city.startsWith(t.value)) score = Math.max(score, cityLikeQuery ? 550 : 300);
+          else if (city.includes(t.value)) score = Math.max(score, 200);
+          else if (street.includes(t.value)) score = Math.max(score, 100);
+          else if (code.includes(t.value) || codeCompact.includes(t.value.toUpperCase())) score = Math.max(score, 80);
+        }
+
+        // Multi-token bonus when all tokens match (already filtered, so always true for survivors)
+        if (tokens.length > 1 && score > 0) {
+          score += 50 * tokens.length;
+        }
+
+        // Legacy single-token city-like boost when no code tokens (e.g. "wro")
+        if (cityLikeQuery && city.startsWith(singleText!) && codeTokens.length === 0) {
+          score = Math.max(score, 550);
+        }
+
         return { score, point: p };
       })
       .filter(x => x.score > 0)
       .sort((a, b) => b.score - a.score)
       .map(x => x.point);
+  }
+
+  /** Search helper: filter + rank + limit. */
+  static searchPoints(points: InpostPoint[], query: string, limit = 20): InpostPoint[] {
+    const filtered = InpostApiClient.filterByQuery(points, query);
+    return InpostApiClient.rankByQuery(filtered, query).slice(0, limit);
   }
 
   async fetchPoint(code: string): Promise<InpostPoint | null> {
