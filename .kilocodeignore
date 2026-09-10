@@ -1,21 +1,142 @@
-# EPIR — Kilo Code context ignore (lustro .cursorignore § token budget)
-# Aktualizuj razem z .cursorignore; nie duplikuj reguł .mdc — Kilo: REVIEW.md + Biblią
-# node_modules, .git, dist/build — dodatkowo: .gitignore + built-in Kilo
+# =============================================================================
+# EPIR — Kilo Code Context Ignore
+# =============================================================================
+# Lustro .cursorignore § token-budget (bez .kilo/ — własna konfiguracja Kilo)
+# Aktualizuj razem z .cursorignore; nie duplikuj reguł .mdc
+# Kilo: REVIEW.md + EPIR_AI_BIBLE.md (reszta przez router docs/kb/)
+# Kilo nie ma .cursorindexingignore — soft-exclusions są tu twarde
+# =============================================================================
 
 # --- Dual Plane: Cursor execution plane — nie indeksuj ---
 .cursor/
 
+# --- Core exclusions (standard) ---
+node_modules/
+**/node_modules/
+.git/
+
+# --- Cache, temp, build artifacts ---
+.cache/
+.tmp/
+.tmp-*
+**/.cache/
+**/.tmp/
+**/.tmp-*
+**/.vite/
+**/.mf/
+**/.preview-html/
+**/.tmp-live-audit/
+**/_tmp-*/
+scripts/_tmp-*
+**/dist/
+**/build/
+**/coverage/
+**/.nyc_output/
+**/__pycache__/
+*.pyc
+.venv/
+**/.venv/
+.npm-cache-local/
+**/.turbo/
+**/.parcel-cache/
+**/*.tsbuildinfo
+
+# Remix / Hydrogen generated
+apps/*/functions/
+apps/*/app/styles/tailwind-build.css
+apps/*/public/build/
+
+# --- Wrangler / Cloudflare local ---
+.cloudflare/
+.wrangler/
+wrangler-dist/
+.shopify/
+**/pipelines-schemas/.local/
+
+# --- Vitest / E2E cache ---
+**/.vitest-cache/
+test-results/
+playwright-report/
+**/playwright-report/
+
+# --- Logs ---
+*.log
+specs/logs/
+
+# --- Lockfiles ---
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+bun.lockb
+**/package-lock.json
+
+# --- Data dumps / staging ---
+*.csv
+*.jsonl
+*.bak
+*.bak-local
+tree_app.txt
+**/tree_*.txt
+.preview-gold.html
+**/.preview-gold.html
+.tmp-*.html
+**/.tmp-*.html
+.tmp-*.json
+**/.tmp-*.json
+
+# --- Secrets / local vars ---
+.env
+.env.*
+.dev.vars
+**/service-account.json
+temp_sa.json
+*-secrets.txt
+**/r2-sql-token*.txt
+**/cf-secrets.local.*
+**/pipelines-ingest*.local.*
+
+# --- Audit / reports ---
+audit_report.json
+
 # --- Token budget / vector isolation (lustro .cursorignore) ---
+
+# Kompilacje Operator Studio (nie źródło)
 workers/chat/operator-studio-dist/
-**/*.jsonl
+
+# Binaria, fonty, media (nie globalnie SVG w src/)
 **/*.png
 **/*.jpg
 **/*.jpeg
+**/*.webp
+**/*.gif
+**/*.ico
+**/*.bmp
+**/*.tif
+**/*.tiff
+**/*.avif
 **/*.wasm
-apps/kazka/public/**/*.svg
-apps/zareczyny/public/**/*.svg
+**/*.mp4
+**/*.webm
+**/*.mov
+**/*.mp3
+**/*.wav
+**/*.ogg
+**/*.ttf
+**/*.otf
+**/*.woff
+**/*.woff2
+**/*.eot
+**/*.pdf
+**/*.zip
+**/*.7z
+**/*.rar
+**/*.gz
+**/*.map
 
-# --- Blender 3D (binaria w repo) ---
+# SVG: public/ storefrontów
+apps/*/public/**/*.svg
+
+# --- Blender / CAD ---
 *.blend
 *.blend1
 *.blend2
@@ -24,37 +145,111 @@ apps/zareczyny/public/**/*.svg
 *.gltf
 *.obj
 *.dae
+*.hdr
+*.exr
+*.stl
+*.3mf
+*.step
+*.stp
+*.iges
+*.igs
 
-# --- EPIR-specific (lustro .cursorignore; bez .kilo/ — własna konfiguracja Kilo) ---
-audit_report.json
-.env
-.env.*
-.dev.vars
-.cloudflare/
-.wrangler/
-.cache/
-.tmp/
-**/.vitest-cache/
-*.log
-apps/kazka/public/build/
-apps/zareczyny/public/build/
-
+# --- Minifikaty / vendor bundle ---
 **/*.aio.min.css
 **/*.aio.min.js
+**/*.min.js
+**/*.min.css
 
-# Vendor theme pull (lustro .cursorignore)
+# --- Vendor theme pull; wyjątki = EPIR Liquid / JSON w git ---
 themes/epir-online-store/assets/
+!themes/epir-online-store/assets/epir-inpost-geowidget-v4.js
 themes/epir-online-store/blocks/
 themes/epir-online-store/config/
 themes/epir-online-store/layout/
 themes/epir-online-store/locales/
 themes/epir-online-store/scripts/
-themes/epir-online-store/snippets/
+themes/epir-online-store/snippets/*
+!themes/epir-online-store/snippets/main-product-blocks.liquid
+!themes/epir-online-store/snippets/product-option.liquid
+!themes/epir-online-store/snippets/sticky-atc.liquid
+!themes/epir-online-store/snippets/product-card-quick-add-btn.liquid
+!themes/epir-online-store/snippets/cart-drawer.liquid
+themes/epir-online-store/sections/*
+!themes/epir-online-store/sections/collection-gold-manifesto.liquid
+!themes/epir-online-store/sections/collection-gold-realizations.liquid
+!themes/epir-online-store/sections/collection-workshop-proof.liquid
+!themes/epir-online-store/sections/collection-cocreate-teaser.liquid
+!themes/epir-online-store/sections/zaprojektuj-swoj-model.liquid
+!themes/epir-online-store/sections/main-product.liquid
+themes/epir-online-store/templates/*
+!themes/epir-online-store/templates/collection.zloto.json
+!themes/epir-online-store/templates/collection.zlota.json
+!themes/epir-online-store/templates/page.zaprojektuj.json
+!themes/epir-online-store/templates/product.json
 
-# Agent / MCP staging junk (token burn)
+# --- Agent / MCP staging junk ---
 epir-marketing-ingest/.tmp*
 epir-marketing-ingest/.upload-chunks-b64/
 epir-marketing-ingest/.upload-chunks/
-.tmp/shopping-audit*.json
+epir-marketing-ingest/.upload-b64.txt
+epir-marketing-ingest/scripts/mcp-stdio-*.mjs
+epir-marketing-ingest/scripts/mcp-inspect-*.mjs
+epir-marketing-ingest/scripts/mcp-list-*.mjs
+epir-marketing-ingest/scripts/mcp-binary-*.mjs
+epir-marketing-ingest/scripts/mcp-combine-*.mjs
+epir-marketing-ingest/scripts/mcp-delete-*.mjs
+epir-marketing-ingest/scripts/mcp-run-*.mjs
+epir-marketing-ingest/scripts/mcp-upload-part*.mjs
+epir-marketing-ingest/scripts/upload-*.mjs
+!epir-marketing-ingest/scripts/upload-r2.mjs
+epir-marketing-ingest/scripts/gen-*.mjs
+epir-marketing-ingest/scripts/prepare-*.mjs
+epir-marketing-ingest/scripts/split-*.mjs
+epir-marketing-ingest/scripts/inspect-*.mjs
+epir-marketing-ingest/scripts/extract-*.mjs
+epir-marketing-ingest/scripts/decode-*.mjs
+epir-marketing-ingest/scripts/check-part-*.mjs
+epir-marketing-ingest/scripts/analyze-batch.mjs
+epir-marketing-ingest/scripts/invoke-mcp-*.mjs
+epir-marketing-ingest/scripts/run-mcp-*.mjs
+data/
+Azure/
+/sections/
 
-# specs/, agents/, .github/agents/, .notes/, marketing/csv/ — w Cursor: .cursorindexingignore (@ dostępny)
+# --- Jednorazowe skrypty debug ---
+scripts/debug/*
+!scripts/debug/cf-missing-secrets.mjs
+!scripts/debug/cf-token-audit.mjs
+
+# --- dbt compiled ---
+analytics/dbt/**/target/
+analytics/dbt/**/dbt_packages/
+**/.dbt/
+
+# --- Lustro .cursorindexingignore (Kilo: twarde, bo brak soft-index) ---
+specs/
+agents/
+.github/agents/
+.notes/
+marketing/csv/
+docs/working/
+docs/audits/
+docs/Architektura*.md
+docs/EPIR_CLOUDFLARE_AGENT_SERVICE_PLAN.md
+docs/EPIR_PROJECT_B_COPILOT_VISION.md
+.cursor/plans/
+tests/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+**/src/*.test.ts
+workers/*/test/
+workers/*/src/*.test.ts
+packages/**/*.test.ts
+apps/**/*.test.ts
+apps/**/*.test.tsx
+mcp-servers/**/test/
+extensions/**/*.test.ts
+epir-marketing-agent-service/**/*.test.ts
+epir-marketing-ingest/**/*.test.ts
