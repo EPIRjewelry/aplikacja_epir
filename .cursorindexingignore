@@ -1,20 +1,47 @@
-# ==============================================================================
-# .cursorindexingignore - Ograniczenie auto-indeksowania bez blokady dostępu
-# Pliki w tym folderze NIE będą indeksowane wektorowo w tle (oszczędność tokenów),
-# ale Cursor zachowa do nich dostęp, gdy bezpośrednio wspomnisz o nich (@plik).
-# ==============================================================================
+# =============================================================================
+# EPIR — Cursor Indexing Ignore
+# =============================================================================
+# Tylko wykluczenie z semantic index (embeddings) — pliki NADAL dostępne
+# przez @-mentions, file search i chat context.
+# Twarde dump/binaria są w .cursorignore (nie duplikuj tutaj).
+# =============================================================================
 
-# --- DOKUMENTACJA, REGUŁY I NOTATKI PROJEKTOWE ---
-.notes/
+# --- Specyfikacje i plany robocze ---
 specs/
+.cursor/plans/
+
+# --- Agent definitions (read-only dla Cursor) ---
 agents/
 .github/agents/
 
-# Agent / MCP staging junk
-epir-marketing-ingest/.tmp*
-epir-marketing-ingest/.upload-chunks-b64/
-epir-marketing-ingest/.upload-chunks/
-.tmp/
+# --- Notatki robocze ---
+.notes/
 
-# Feed / dump marketing — duże CSV; @ gdy zadanie tego wymaga
+# --- Marketing data / CSV dumps ---
 marketing/csv/
+
+# --- Working docs (syntezy research, niewiążące) ---
+docs/working/
+docs/audits/
+docs/Architektura*.md
+docs/EPIR_CLOUDFLARE_AGENT_SERVICE_PLAN.md
+docs/EPIR_PROJECT_B_COPILOT_VISION.md
+
+# --- Testy (duży korpus; @ nadal działa) ---
+tests/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+workers/*/test/
+workers/*/src/*.test.ts
+packages/**/*.test.ts
+apps/**/*.test.ts
+apps/**/*.test.tsx
+mcp-servers/**/test/
+extensions/**/*.test.ts
+epir-marketing-agent-service/**/*.test.ts
+epir-marketing-ingest/**/*.test.ts
+
+# --- Debug logs (historia, nie kod) ---
+.cursor/debug-*.log
