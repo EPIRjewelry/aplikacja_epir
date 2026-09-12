@@ -2,17 +2,7 @@ import {redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
 
 import {type MetaFunction, useLoaderData} from '@remix-run/react';
 
-import {
-
-  CraftsmanshipStory,
-
-  GemologySection,
-
-  ROUTE_CONTENT_QUERY,
-
-  type RouteContentProps,
-
-} from '@epir/ui';
+import {ROUTE_CONTENT_QUERY, type RouteContentProps} from '@epir/ui';
 
 import {getSeoMeta} from '@shopify/hydrogen';
 
@@ -37,10 +27,6 @@ import {
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 
 import {KazkaEditorialHome} from '~/components/KazkaEditorialHome';
-
-import {KAZKA_CRAFTSMANSHIP, KAZKA_GEMOLOGY} from '~/lib/kazka-brand-copy';
-
-
 
 export const meta: MetaFunction<typeof loader> = ({data}) =>
 
@@ -257,21 +243,11 @@ export default function Index() {
     <>
 
       <KazkaEditorialHome
-
         route={route}
-
         collections={collections}
-
         products={products}
-
         hubCollectionHandle={KAZKA_HUB_COLLECTION_HANDLE}
-
       />
-
-      <CraftsmanshipStory {...KAZKA_CRAFTSMANSHIP} />
-
-      <GemologySection {...KAZKA_GEMOLOGY} />
-
     </>
 
   );
