@@ -1,4 +1,9 @@
 /* Shared tokens from @epir/ui - base styles in packages/ui/styles/base.css */
+html,
+body {
+  overflow-x: clip;
+}
+
 :root {
   /* Kazka Jewelry - Cartier-inspired palette */
   --color-primary: 10 22 40;        /* #0A1628 - głęboki granat */

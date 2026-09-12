@@ -3,7 +3,6 @@ import {KazkaEditorialCategoryTiles} from '~/components/KazkaEditorialCategoryTi
 import {KazkaEditorialHero} from '~/components/KazkaEditorialHero';
 import {KazkaEditorialVideoSection} from '~/components/KazkaEditorialVideoSection';
 import {KazkaFeaturedProducts} from '~/components/KazkaFeaturedProducts';
-import {parseCmsHeroSlides} from '~/lib/kazka-cms-hero';
 import {parseCmsFeaturedProductsSections} from '~/lib/kazka-cms-featured-products';
 
 type FeaturedProduct = {
@@ -33,12 +32,12 @@ export function KazkaEditorialHome({
   products: {nodes: FeaturedProduct[]};
   hubCollectionHandle: string;
 }) {
-  const heroSlides = parseCmsHeroSlides(route);
   const featuredProductsSections = parseCmsFeaturedProductsSections(route);
 
   return (
     <div className="flex w-full flex-col">
-      <KazkaEditorialHero slides={heroSlides} />
+      {/* Editorial fallback slides — CMS hero-kazka is legacy marketing dyptych, not Orska fill */}
+      <KazkaEditorialHero slides={[]} />
       {featuredProductsSections.map((section) => (
         <KazkaFeaturedProducts key={section.id} {...section} />
       ))}
