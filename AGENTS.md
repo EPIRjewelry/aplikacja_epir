@@ -148,7 +148,7 @@ Each worker and extension has its own Vitest config. Run tests per-workspace:
 ### Running dev servers locally
 
 - **Chat worker**: `cd workers/chat && npx wrangler dev --port 8787 --local` — starts on `localhost:8787`. Root `/` returns `ok`. The `--local` flag avoids Cloudflare OAuth login; AI and Vectorize bindings are unavailable locally (`not supported`), so `/chat` returns 500 without remote credentials.
-- **Hydrogen storefronts** (kazka/zareczyny): `cd apps/<name> && npm run build:css && npx wrangler pages dev ./public --port <port> --local` — starts the Remix SSR worker. Returns 500 without Shopify API tokens (`PUBLIC_STOREFRONT_API_TOKEN`, `SESSION_SECRET`, etc.).
+- **Hydrogen storefronts** (kazka/zareczyny/inspiracje): `cd apps/<name> && npm run dev` — używa root Wrangler 4.x (`node ../../node_modules/wrangler/bin/wrangler.js`). **Nie** rób `npm install` ani `npx wrangler` w `apps/<name>` (legacy lock / Wrangler 3.x → `z.ostring is not a function` na Node 20). Deploy: `npm run deploy -w <name>` lub root `npm run pages:deploy:kazka`. Sekrety lokalnie: `apps/<name>/.dev.vars` (w tym `EPIR_CHAT_SHARED_SECRET` do czatu/consent).
 
 ### Building storefronts
 

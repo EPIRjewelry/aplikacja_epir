@@ -1,0 +1,37 @@
+name = "epir-inpost-proxy"
+main = "src/index.ts"
+compatibility_date = "2025-09-30"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[build]
+command = ""
+
+[vars]
+INPOST_ENV = "production"
+ALLOWED_ORIGINS = "https://epirbizuteria.pl,https://www.epirbizuteria.pl"
+
+[env.production]
+INPOST_ENV = "production"
+name = "epir-inpost-proxy-production"
+
+[[env.production.kv_namespaces]]
+binding = "INPOST_POINTS_CACHE"
+id = "d96fd1b548034a89a71aea1592424beb"
+
+# KV namespace for points cache and token persistence (dedicated to this worker only).
+[[kv_namespaces]]
+binding = "INPOST_POINTS_CACHE"
+id = "d96fd1b548034a89a71aea1592424beb"
+preview_id = "d96fd1b548034a89a71aea1592424beb"
+
+[observability]
+enabled = true
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+
+# Secrets to set (do NOT put these in this file):
+# wrangler secret put INPOST_CLIENT_ID
+# wrangler secret put INPOST_CLIENT_SECRET

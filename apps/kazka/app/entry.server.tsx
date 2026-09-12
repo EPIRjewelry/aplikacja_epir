@@ -33,6 +33,11 @@ export default async function handleRequest(
       'https://kazka.epirbizuteria.pl',
       'https://cdn.shopify.com',
     ],
+    frameSrc: [
+      "'self'",
+      'https://www.youtube.com',
+      'https://www.youtube-nocookie.com',
+    ],
     connectSrc: [
       "'self'",
       'https://monorail-edge.shopifysvc.com',

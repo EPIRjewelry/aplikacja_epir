@@ -1,7 +1,7 @@
 <script src="{{ 'cart.js' | asset_url }}" defer="defer"></script>
 <script src="{{ 'cart-drawer.js' | asset_url }}" defer="defer"></script>
 {%- if settings.inpost_geowidget_enable and settings.inpost_geowidget_token != blank -%}
-  <script src="{{ 'epir-inpost-geowidget.js' | asset_url }}" defer="defer"></script>
+  <script src="{{ 'epir-inpost-geowidget-v4.js' | asset_url }}" defer="defer"></script>
 {%- endif -%}
 {% liquid
   if linklists['gift-wrapping'].links != blank and linklists['gift-wrapping'].links.first.type == 'product_link'

@@ -1,0 +1,46 @@
+---
+description: Hydrogen monorepo — npm workspaces, Wrangler 4 z roota; zakaz npm install / npx wrangler w apps/*
+globs: apps/kazka/**/*,apps/zareczyny/**/*,apps/inspiracje/**/*,package.json
+alwaysApply: false
+---
+
+⚠️ SSOT: [`AGENTS.md`](../../AGENTS.md) § dev servers, [`docs/kb/WORKERS_AND_EDGE.md`](../../docs/kb/WORKERS_AND_EDGE.md).
+
+## Monorepo — jedyna poprawna ścieżka
+
+| MUST | MUST NOT |
+|------|----------|
+| `npm install --legacy-peer-deps` z **roota** repo | `npm install` w `apps/kazka`, `apps/zareczyny`, `apps/inspiracje` |
+| Dev: `cd apps/<name> && npm run dev` | `npx wrangler`, globalny `wrangler`, `npm exec -w … -- wrangler` |
+| Deploy Pages: `npm run deploy -w <name>` lub root `npm run pages:deploy:<name>` | Ręczne `wrangler pages deploy` z podfolderu bez root bin |
+| Wrangler **4.46.0** przez `node ../../node_modules/wrangler/bin/wrangler.js` (skrypt w `package.json` workspace) | Lokalny `apps/*/node_modules/wrangler` (legacy 3.x → crash `z.ostring is not a function` na Node 20) |
+
+## Skrypty kanoniczne (apps/kazka — wzór)
+
+```json
+"wrangler": "node ../../node_modules/wrangler/bin/wrangler.js pages dev ./public --local",
+"deploy": "npm run build && node ../../node_modules/wrangler/bin/wrangler.js pages deploy public --project-name=… --branch=main"
+```
+
+Root [`package.json`](../../package.json): `pages:deploy:kazka` → `npm run deploy -w kazka` (nie `npm exec wrangler`).
+
+## Lockfile
+
+- **Tylko** root `package-lock.json`.
+- **Nie** twórz `apps/*/package-lock.json` (legacy scaffold = Wrangler 3.x w pułapce).
+- W `.gitignore`: `apps/*/package-lock.json`.
+
+## Sekrety lokalne (dev)
+
+- Cloudflare Pages secrets **nie** trafiają do `wrangler pages dev --local`.
+- Kopiuj [`apps/<name>/.dev.vars.example`](../../apps/kazka/.dev.vars.example) → `.dev.vars` (gitignored).
+- Czat/consent BFF: `EPIR_CHAT_SHARED_SECRET` — ten sam co na workerze czatu / Pages Production.
+
+## Node
+
+- Hydrogen storefronts: Node **≥18** (repo używa 20.x).
+- Po usunięciu błędnego `apps/*/node_modules`: odśwież z roota (`npm run deps`).
+
+## PR / review
+
+Jeśli diff dodaje `apps/*/package-lock.json`, zmienia `wrangler` na bare CLI albo dokumentuje `npx wrangler` w `apps/*` — **FAIL** (napraw przed merge).

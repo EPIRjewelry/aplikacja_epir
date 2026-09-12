@@ -44,26 +44,40 @@ export type EditorialCategoryTile = {
 
 export const KAZKA_EDITORIAL_CATEGORIES: EditorialCategoryTile[] = [
   {
-    href: '/collections/kazka?type=Kolczyki',
-    image: '/editorial/lifestyle-earrings-laugh.png',
-    label: 'Kolczyki',
-    alt: 'Kolczyki Kazka',
-  },
-  {
-    href: '/collections/kazka?type=Pierścionek',
+    href: '/collections/kazka-pierscionki',
     image: '/editorial/lifestyle-rings-hand.png',
     label: 'Pierścionki',
     alt: 'Pierścionki Kazka',
   },
   {
-    href: '/collections/kazka?type=Naszyjnik',
+    href: '/collections/kazka-bransoletki',
+    image: `${SHOPIFY_CDN}/kazka_jewelry_12.jpg?v=1786728580`,
+    label: 'Bransoletki',
+    alt: 'Bransoletki Kazka',
+  },
+  {
+    href: '/collections/kazka-naszyjniki',
     image: '/editorial/lifestyle-necklace.png',
     label: 'Naszyjniki',
     alt: 'Naszyjniki Kazka',
+  },
+  {
+    href: '/collections/kazka-kolczyki',
+    image: '/editorial/lifestyle-earrings-laugh.png',
+    label: 'Kolczyki',
+    alt: 'Kolczyki Kazka',
   },
 ];
 
 export const KAZKA_EDITORIAL_STRIP_IMAGE = {
   src: `${SHOPIFY_CDN}/kazka_jewelry_12.jpg?v=1786728580`,
   alt: 'Złoty soliter — detal w szkle',
+};
+
+/** Homepage collection film — https://www.youtube.com/watch?v=6xyQzr1BGg8 */
+export const KAZKA_EDITORIAL_COLLECTION_VIDEO = {
+  youtubeId: '6xyQzr1BGg8',
+  embedSrc:
+    'https://www.youtube-nocookie.com/embed/6xyQzr1BGg8?rel=0&modestbranding=1',
+  title: 'Kazka — film kolekcji',
 };
