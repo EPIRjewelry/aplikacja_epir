@@ -2,7 +2,9 @@ import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {type MetaFunction, useLoaderData} from '@remix-run/react';
 import {ProductGallery, ProductOptions, ProductForm} from '@epir/ui';
 import {getSeoMeta, Money} from '@shopify/hydrogen';
+import {KazkaProductTrust} from '~/components/KazkaProductTrust';
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
+import {buildKazkaProductTrustItems} from '~/lib/kazka-pdp-trust';
 import {buildProductJsonLd} from '~/lib/product-json-ld';
 
 export async function loader({params, context, request}: LoaderFunctionArgs) {
@@ -97,17 +99,18 @@ export default function ProductHandle() {
   const variantId = selectedVariant?.id;
   const hasPrice = Boolean(selectedVariant?.price?.amount);
   const showPurchaseForm = Boolean(variantId && hasPrice);
+  const trustItems = buildKazkaProductTrustItems(product);
 
   return (
-    <section className="w-full gap-4 md:gap-8 grid px-6 md:px-8 lg:px-12">
-      <div className="grid items-start gap-6 lg:gap-20 md:grid-cols-2 lg:grid-cols-3">
+    <section className="mx-auto grid w-full max-w-7xl gap-4 md:gap-8">
+      <div className="grid items-start gap-6 md:grid-cols-2 md:gap-10 lg:grid-cols-3 lg:gap-12">
         <div className="lg:col-span-2">
           <ProductGallery
             medias={product.media.nodes}
             videoPlayback="mp4"
           />
         </div>
-        <div className="md:sticky md:mx-auto max-w-xl md:max-w-[24rem] grid gap-8 p-0 md:p-6 md:px-0 top-[6rem] lg:top-[8rem] xl:top-[10rem]">
+        <div className="kazka-pdp-panel grid w-full max-w-xl gap-8 md:sticky md:top-[6rem] md:max-w-none md:p-0 lg:top-[8rem] xl:top-[10rem]">
           <div className="grid gap-2">
             <h1 className="text-4xl font-bold leading-10 whitespace-normal">
               {product.title}
@@ -146,6 +149,7 @@ export default function ProductHandle() {
               />
             </div>
           ) : null}
+          <KazkaProductTrust items={trustItems} />
           <div
             className="prose border-t border-gray-200 pt-6 text-black text-md"
             dangerouslySetInnerHTML={{__html: product.descriptionHtml}}

@@ -20,8 +20,8 @@ export default function ProductGrid<T extends {id: string} = Product>({
   return (
     <Pagination connection={connection}>
       {({nodes, NextLink, isLoading, hasNextPage}) => (
-        <section className="w-full gap-6 md:gap-8">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+        <section className="mx-auto w-full max-w-7xl gap-6 md:gap-8">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-4">
             {nodes.map((product) => (
               <ProductCard key={product.id} product={product as Product} />
             ))}

@@ -69,7 +69,7 @@ export function ProductGallery({medias}: ProductGalleryProps) {
     <div className="grid gap-4">
       <div
         ref={featuredRef}
-        className="card-image aspect-square scroll-mt-28 bg-gray-100"
+        className="card-image aspect-square w-full scroll-mt-28 bg-gray-100 md:mx-auto md:max-w-[min(100%,70vh)]"
       >
         <MediaFile
           tabIndex={0}
@@ -84,7 +84,7 @@ export function ProductGallery({medias}: ProductGalleryProps) {
             <button
               type="button"
               key={mediaKey(med, i)}
-              className={`card-image aspect-square overflow-hidden bg-gray-100 ring-offset-2 ${
+              className={`card-image aspect-square overflow-hidden bg-gray-100 ring-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgb(var(--color-accent))] focus-visible:outline-offset-2 ${
                 i === index ? 'ring-2 ring-[rgb(var(--color-primary))]' : ''
               }`}
               aria-label={`Pokaż media ${i + 1}`}

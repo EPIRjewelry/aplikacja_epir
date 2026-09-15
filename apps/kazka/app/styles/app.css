@@ -1,9 +1,4 @@
 /* Shared tokens from @epir/ui - base styles in packages/ui/styles/base.css */
-html,
-body {
-  overflow-x: clip;
-}
-
 :root {
   /* Kazka Jewelry - Cartier-inspired palette */
   --color-primary: 10 22 40;        /* #0A1628 - głęboki granat */
@@ -44,6 +39,7 @@ html {
 html,
 body {
   font-family: var(--font-family-brand);
+  overflow-x: clip;
 }
 
 a.active {
@@ -80,4 +76,16 @@ a.active {
 
 .kazka-editorial-cta:hover {
   background: rgb(var(--color-primary) / 0.04);
+}
+
+/* PDP — comfortable tap targets, premium panel */
+.kazka-pdp-panel button[type='submit'] {
+  min-height: 2.75rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kazka-category-tile-hover {
+    transition: none !important;
+    transform: none !important;
+  }
 }

@@ -2,9 +2,31 @@
 
 Definicje i wpis `route-home` zostały utworzone przez MCP. Wykonaj poniższe kroki ręcznie w **Shopify Admin**.
 
+## Co jest już w CMS vs co nadal jest w kodzie
+
+| Sekcja home | Źródło treści | Status |
+|---|---|---|
+| Hero | metaobiekt `section_hero` → pole Route `sections` | **wdrożone** — edycja w Shopify Admin |
+| Featured products | metaobiekt `section_featured_products` → pole Route `featured_products` | **wdrożone** |
+| Kafle kategorii | `KAZKA_EDITORIAL_CATEGORIES` w repo | **kod** — roadmap: `section_category_tiles` |
+| Video kolekcji | `KAZKA_EDITORIAL_COLLECTION_VIDEO` w repo | **kod** — roadmap: `section_editorial_video` |
+
+Pełna macierz layoutu i QA: [`docs/KAZKA_PAGE_ALIGNMENT.md`](docs/KAZKA_PAGE_ALIGNMENT.md) (sekcja 0).
+
 ## Ograniczenie platformy Shopify
 
-**Shopify nie pozwala na wiele typów w jednym polu `list.metaobject_reference`.** Zamiast jednego pola `sections` z mieszanymi typami, Route ma 3 osobne pola. Kolejność renderowania w kodzie: Hero → Featured Collections → Featured Products.
+**Shopify nie pozwala na wiele typów w jednym polu `list.metaobject_reference`.** Zamiast jednego pola `sections` z mieszanymi typami, Route ma 3 osobne pola. Kolejność renderowania w kodzie: Hero → Featured Products → Category Tiles (kod) → Video (kod).
+
+### Roadmap sekcji Kazka (poza Route)
+
+| Sekcja | Status | Uwagi |
+|---|---|---|
+| Hero | CMS `section_hero` | `route.sections` |
+| Featured products | CMS `section_featured_products` | `route.featured_products` |
+| Kafle kategorii | **kod** (`KAZKA_EDITORIAL_CATEGORIES`) | docelowo `section_category_tiles` + pole Route |
+| Video kolekcji | **kod** (`KAZKA_EDITORIAL_COLLECTION_VIDEO`) | docelowo `section_editorial_video` |
+
+Szczegóły image governance i QA: [`docs/KAZKA_PAGE_ALIGNMENT.md`](docs/KAZKA_PAGE_ALIGNMENT.md).
 
 ## Stan po automatyzacji MCP
 

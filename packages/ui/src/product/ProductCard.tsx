@@ -45,7 +45,7 @@ export default function ProductCard({product}: ProductCardProps) {
         if (videoRef.current) videoRef.current.currentTime = 0;
       }}
     >
-      <div className="grid gap-4 fadeIn">
+      <div className="grid gap-2 fadeIn md:gap-3">
         <div className="card-image relative aspect-[4/5] overflow-hidden bg-[#f2f2f2]">
           {isDiscounted && (
             <span className="absolute top-2 right-2 z-20 bg-red-600 text-white text-xs font-medium px-2 py-1 rounded">

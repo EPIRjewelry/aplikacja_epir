@@ -6,7 +6,7 @@ export function KazkaEditorialCategoryTiles() {
   return (
     <section className="py-10 md:py-14">
       <h2 className="kazka-editorial-label mb-6 text-center">Odkryj</h2>
-      <div className="grid grid-cols-2 gap-3 md:gap-4">
+      <div className="grid grid-cols-2 gap-3 px-4 md:gap-4 md:px-6">
         {KAZKA_EDITORIAL_CATEGORIES.map((tile) => (
           <Link
             key={tile.href}
@@ -16,7 +16,7 @@ export function KazkaEditorialCategoryTiles() {
             <img
               src={tile.image}
               alt={tile.alt}
-              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+              className="kazka-category-tile-hover h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
               loading="lazy"
               decoding="async"
             />

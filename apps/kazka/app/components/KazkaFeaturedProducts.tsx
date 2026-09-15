@@ -33,7 +33,7 @@ export function KazkaFeaturedProducts({
         <div className="mb-6 md:mb-8" />
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3 px-4 md:grid-cols-4 md:gap-5 md:px-6">
+      <div className="mx-auto grid max-w-7xl grid-cols-2 gap-3 px-4 md:grid-cols-4 md:gap-5 md:px-6">
         {products.map((product, index) => (
           <FeaturedProductTile
             key={product.id}
@@ -71,7 +71,7 @@ function FeaturedProductTile({
         if (videoRef.current) videoRef.current.currentTime = 0;
       }}
     >
-      <div className="relative aspect-[4/5] overflow-hidden bg-[#f2f2f2] shadow-sm">
+      <div className="relative aspect-[4/5] overflow-hidden bg-[#f2f2f2]">
         {product.imageUrl ? (
           <img
             src={product.imageUrl}

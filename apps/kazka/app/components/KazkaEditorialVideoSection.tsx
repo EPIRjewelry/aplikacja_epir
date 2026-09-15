@@ -10,7 +10,7 @@ export function KazkaEditorialVideoSection() {
         </p>
       </div>
       <div className="kazka-editorial-bleed w-full overflow-hidden bg-[#f1ece6]">
-        <div className="relative aspect-video w-full min-h-[50vh] md:min-h-[62vh]">
+        <div className="relative aspect-video w-full min-h-[50vh] md:min-h-0">
           <iframe
             className="absolute inset-0 h-full w-full"
             src={KAZKA_EDITORIAL_COLLECTION_VIDEO.embedSrc}

@@ -43,13 +43,14 @@ Ten katalog jest częścią jedynego kanonicznego pakietu dokumentacji EPIR. Ten
 
 Te pliki **muszą** być w tym samym drzewie co NotebookLM (mirror 1:1), ale **nie** równają się kanonowi: to syntezy, Q&A i kompas z research — przed decyzją produkcyjną obowiązuje weryfikacja w **aktualnych** dokumentach dostawców oraz w kodzie `aplikacja_epir`.
 
+- [`working/SHOPIFY_FLOW_EPIR_STACK.md`](working/SHOPIFY_FLOW_EPIR_STACK.md) — Shopify Flow → własny stos EPIR (bez Klaviyo); webhooki analytics + proxy czatu; niewiążący.
 - [`working/KUSTOSZ_BRIEF_LATEST.md`](working/KUSTOSZ_BRIEF_LATEST.md) — ostatni brief Cursor Kustosza (ops desk); niewiążący, odnawiany przy audycie.
 - [`working/EPIR_COPY_PHILOSOPHY.md`](working/EPIR_COPY_PHILOSOPHY.md) — **język marki EPIR Art Jewellery** (5 zasad; default total: Gemma, sklep, landingu, Zaręczyny, Inspiracje); wyjątek: Kazka Jewelry. Reguła: `.cursor/rules/epir-copywriting.mdc` (`alwaysApply`).
 - [`working/COCREATE_ORDER_FREEZE.md`](working/COCREATE_ORDER_FREEZE.md) — zamrożenie kolejności CoCreate (niewiążący, operacyjny).
 - [`working/LANDINGS_APEX_HANDOFF.md`](working/LANDINGS_APEX_HANDOFF.md) — handoff landingów Ads Apex (routing UTM, paleta, stan deploy, otwarte); start nowego wątku Cursor.
 - [`working/GENIALNY_PLAN_CURSOR_GROKA_4_5.md`](working/GENIALNY_PLAN_CURSOR_GROKA_4_5.md) — decyzja robocza: 3 aktywne landingu Apex + mosty EPIR↔Kazka; niewiążący.
 - [`working/LANDINGS_DEPLOY_AUDIT.md`](working/LANDINGS_DEPLOY_AUDIT.md) — procedura audytowa pre/post deploy (PMax PDP, tracking `l.`, ingest, checklist).
-- [`working/ORSKA_PAGE_DESIGN.md`](working/ORSKA_PAGE_DESIGN.md) — audyt stylu [orska.pl](https://orska.pl/) (editorial fill, kafle 4:5); kompas UI dla Kazka; niewiążący.
+- [`working/ORSKA_PAGE_DESIGN.md`](working/ORSKA_PAGE_DESIGN.md) — **formalna referencja layoutu stron Kazka** (home / kolekcja / PDP); ORSKA + Cartier + luxury PDP benchmarks; UI ciche ale zawsze widoczne i użyteczne; **czytać przed zmianą layoutu/sizingu w `apps/kazka`**.
 - [`working/FEED_AND_STORE_STRUCTURE.md`](working/FEED_AND_STORE_STRUCTURE.md) — zestawienie reguł feedu GMC (`epir-marketing-ingest`) z modelem sklepu operatora; niewiążący.
 - [`Architektura AI Analityka w Ekosystemie Cloudflare i Google Ads.md`](Architektura%20AI%20Analityka%20w%20Ekosystemie%20Cloudflare%20i%20Google%20Ads.md) — synteza (np. NotebookLM / deep research): hipotezy, linki, ryzyka; nie zastępuje `EPIR_*` ani wdrożenia.
 - [`EPIR_CLOUDFLARE_AGENT_SERVICE_PLAN.md`](EPIR_CLOUDFLARE_AGENT_SERVICE_PLAN.md) — plan warstwy „agent jako usługa” (Agents SDK obok monorepo, bramki ESOG, publiczne repo); nie zastępuje kanonu ani kontraktu danych w `EPIR_*`.

@@ -106,7 +106,7 @@ export default function Collection() {
   const hasProducts = Boolean(collection.products?.nodes?.length);
 
   return (
-    <section className="w-full gap-8">
+    <section className="mx-auto w-full max-w-7xl gap-8">
       <header className="grid w-full gap-6 py-6 md:py-8 fadeIn">
         <h1 className="text-3xl md:text-4xl font-bold text-[rgb(var(--color-primary))]">
           {collection.title}
