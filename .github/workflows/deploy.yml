@@ -176,23 +176,10 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: |
-            apps/${{ matrix.app }}/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install monorepo dependencies
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
-      - name: Install app dependencies
-        working-directory: apps/${{ matrix.app }}
-        run: npm install --legacy-peer-deps --no-audit --no-fund
-
-      - name: Build app
-        working-directory: apps/${{ matrix.app }}
-        run: npm run build
-
-      - name: Deploy app to Cloudflare Pages
-        working-directory: apps/${{ matrix.app }}
-        run: |
-          node ../../node_modules/wrangler/bin/wrangler.js pages deploy public \
-            --project-name=${{ matrix.project }} \
-            --branch=main
+      - name: Build and deploy app to Cloudflare Pages
+        run: npm run deploy -w ${{ matrix.app }}

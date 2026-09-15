@@ -58,24 +58,21 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: |
-            apps/${{ matrix.app }}/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install app dependencies
+      - name: Install monorepo dependencies
         if: steps.changes.outputs.relevant == 'true' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
-        working-directory: apps/${{ matrix.app }}
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Build app
         if: steps.changes.outputs.relevant == 'true' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
-        working-directory: apps/${{ matrix.app }}
-        run: npm run build
+        run: npm run build -w ${{ matrix.app }}
 
       - name: Deploy preview to Cloudflare Pages
         if: steps.changes.outputs.relevant == 'true' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
         working-directory: apps/${{ matrix.app }}
         run: |
-          npx wrangler pages deploy public \
+          node ../../node_modules/wrangler/bin/wrangler.js pages deploy public \
             --project-name=${{ matrix.project }} \
             --branch=${{ github.event.inputs.branch_label }}
 

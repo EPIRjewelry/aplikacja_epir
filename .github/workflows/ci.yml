@@ -36,18 +36,15 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: |
-            apps/${{ matrix.app }}/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install deps
         if: steps.changes.outputs.relevant == 'true'
-        working-directory: apps/${{ matrix.app }}
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Run lint
         if: steps.changes.outputs.relevant == 'true'
-        working-directory: apps/${{ matrix.app }}
-        run: npm run lint -- --config .eslintrc.cjs
+        run: npm run lint -w ${{ matrix.app }} -- --config .eslintrc.cjs
 
       - name: Skip (no relevant changes)
         if: steps.changes.outputs.relevant != 'true'
@@ -80,18 +77,15 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: |
-            apps/${{ matrix.app }}/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install deps
         if: steps.changes.outputs.relevant == 'true'
-        working-directory: apps/${{ matrix.app }}
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Run typecheck
         if: steps.changes.outputs.relevant == 'true'
-        working-directory: apps/${{ matrix.app }}
-        run: npm run typecheck
+        run: npm run typecheck -w ${{ matrix.app }}
 
       - name: Skip (no relevant changes)
         if: steps.changes.outputs.relevant != 'true'
@@ -124,18 +118,15 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: |
-            apps/${{ matrix.app }}/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install deps
         if: steps.changes.outputs.relevant == 'true'
-        working-directory: apps/${{ matrix.app }}
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Run build
         if: steps.changes.outputs.relevant == 'true'
-        working-directory: apps/${{ matrix.app }}
-        run: npm run build
+        run: npm run build -w ${{ matrix.app }}
 
       - name: Skip (no relevant changes)
         if: steps.changes.outputs.relevant != 'true'
