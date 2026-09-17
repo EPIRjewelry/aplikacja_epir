@@ -28,6 +28,7 @@ import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 
 import {KazkaEditorialCategoryTiles} from '~/components/KazkaEditorialCategoryTiles';
 import {KazkaEditorialHero} from '~/components/KazkaEditorialHero';
+import {KazkaEditorialLines} from '~/components/KazkaEditorialLines';
 import {KazkaEditorialManifestoBridge} from '~/components/KazkaEditorialManifestoBridge';
 import {KazkaCustomOrderBrief} from '~/components/KazkaCustomOrderBrief';
 import {KazkaEditorialVideoSection} from '~/components/KazkaEditorialVideoSection';
@@ -252,6 +253,7 @@ export default function Index() {
     <div className="kazka-home flex w-full flex-col overflow-x-clip">
 
       <KazkaEditorialHero slides={heroSlides} />
+      <KazkaEditorialLines />
       {featuredProductsSections.map((section) => (
         <KazkaFeaturedProducts key={section.id} {...section} />
       ))}

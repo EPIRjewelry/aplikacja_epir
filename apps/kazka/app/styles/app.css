@@ -123,6 +123,20 @@ a.active {
   object-position: center 42%;
 }
 
+/* Home lines — quieter 4:5 tiles under hero */
+.kazka-line-tile {
+  aspect-ratio: 4 / 5;
+  width: 100%;
+  max-height: min(42vh, 22rem);
+  overflow: hidden;
+}
+
+@media (min-width: 48em) {
+  .kazka-line-tile {
+    max-height: min(48vh, 26rem);
+  }
+}
+
 .kazka-home-video {
   position: relative;
   width: 100%;

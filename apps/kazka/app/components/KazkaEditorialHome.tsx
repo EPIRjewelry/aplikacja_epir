@@ -1,6 +1,7 @@
 import {type RouteContentProps} from '@epir/ui';
 import {KazkaEditorialCategoryTiles} from '~/components/KazkaEditorialCategoryTiles';
 import {KazkaEditorialHero} from '~/components/KazkaEditorialHero';
+import {KazkaEditorialLines} from '~/components/KazkaEditorialLines';
 import {KazkaEditorialVideoSection} from '~/components/KazkaEditorialVideoSection';
 import {KazkaFeaturedProducts} from '~/components/KazkaFeaturedProducts';
 import {parseCmsFeaturedProductsSections} from '~/lib/kazka-cms-featured-products';
@@ -19,7 +20,7 @@ type FeaturedCollection = {
 };
 
 /**
- * Homepage Kazka — hero (CMS metaobiekt, Orska UI) → featured products (CMS) → kafle → YouTube.
+ * Homepage Kazka — hero → linie → featured products → kafle → YouTube.
  * featured_products na route-kazka-home; pusta lista = sekcja ukryta.
  * Hero: parseCmsHeroSlides(route); pusty CMS → fallback w KazkaEditorialHero.
  */
@@ -40,6 +41,7 @@ export function KazkaEditorialHome({
   return (
     <div className="kazka-home flex w-full flex-col overflow-x-clip">
       <KazkaEditorialHero slides={heroSlides} />
+      <KazkaEditorialLines />
       {featuredProductsSections.map((section) => (
         <KazkaFeaturedProducts key={section.id} {...section} />
       ))}
