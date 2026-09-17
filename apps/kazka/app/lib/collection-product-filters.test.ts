@@ -78,6 +78,28 @@ describe('parseCollectionProductFilters', () => {
     const params = new URLSearchParams('price_min=abc&price_max=-1');
     expect(parseCollectionProductFilters(params)).toEqual([]);
   });
+
+  it('maps linia=lab to Jakość LAB variantOption', () => {
+    const params = new URLSearchParams('linia=lab');
+    expect(parseCollectionProductFilters(params)).toEqual([
+      {variantOption: {name: 'Jakość', value: 'LAB'}},
+    ]);
+  });
+
+  it('maps linia=fancy and kat to product tags', () => {
+    const params = new URLSearchParams('linia=fancy&kat=kolczyki');
+    expect(parseCollectionProductFilters(params)).toEqual([
+      {tag: 'FANCY_CUT'},
+      {tag: 'kazka-kolczyki'},
+    ]);
+  });
+
+  it('maps linia=classic to kazka-classic tag', () => {
+    const params = new URLSearchParams('linia=classic');
+    expect(parseCollectionProductFilters(params)).toEqual([
+      {tag: 'kazka-classic'},
+    ]);
+  });
 });
 
 describe('parseCollectionSort', () => {

@@ -34,9 +34,13 @@ export const COLLECTION_QUERY = `#graphql
           title
           publishedAt
           handle
-          variants(first: 1) {
+          variants(first: 10) {
             nodes {
               id
+              selectedOptions {
+                name
+                value
+              }
               image {
                 url
                 altText

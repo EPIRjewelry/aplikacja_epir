@@ -132,6 +132,36 @@ export const SORT_FILTER_OPTIONS = [
   {value: 'newest', label: 'Najnowsze'},
 ] as const;
 
+/** Wymiar 1 — linia / koncept (zakładki nawigacji). */
+export const LINIA_URL_TO_FILTER: Record<string, CollectionProductFilter> = {
+  lab: {variantOption: {name: 'Jakość', value: 'LAB'}},
+  fancy: {tag: 'FANCY_CUT'},
+  classic: {tag: 'kazka-classic'},
+};
+
+export const LINIA_NAV_OPTIONS = [
+  {value: '', label: 'Wszystkie'},
+  {value: 'classic', label: 'Classic'},
+  {value: 'lab', label: 'Big Lab'},
+  {value: 'fancy', label: 'Fancy Cut'},
+] as const;
+
+/** Wymiar 2 — typ biżuterii (tagi produktu). */
+export const KAT_URL_TO_TAG: Record<string, string> = {
+  pierscionek: 'kazka-pierscionek',
+  naszyjnik: 'kazka-naszyjnik',
+  kolczyki: 'kazka-kolczyki',
+  bransoletka: 'kazka-bransoletka',
+};
+
+export const KAT_NAV_OPTIONS = [
+  {value: '', label: 'Wszystkie typy'},
+  {value: 'pierscionek', label: 'Pierścionki'},
+  {value: 'naszyjnik', label: 'Naszyjniki'},
+  {value: 'kolczyki', label: 'Kolczyki'},
+  {value: 'bransoletka', label: 'Bransoletki'},
+] as const;
+
 const VARIANT_OPTION_PROBA = 'Próba złota';
 const VARIANT_OPTION_QUALITY = 'Jakość';
 
@@ -243,6 +273,18 @@ export function parseCollectionProductFilters(
     filters.push({available: true});
   }
 
+  const linia = searchParams.get('linia')?.trim().toLowerCase() ?? '';
+  const liniaFilter = LINIA_URL_TO_FILTER[linia];
+  if (liniaFilter) {
+    filters.push(liniaFilter);
+  }
+
+  const kat = searchParams.get('kat')?.trim().toLowerCase() ?? '';
+  const katTag = KAT_URL_TO_TAG[kat];
+  if (katTag) {
+    filters.push({tag: katTag});
+  }
+
   return filters;
 }
 
@@ -251,6 +293,8 @@ export function collectionHasActiveFilters(
 ): boolean {
   return (
     parseCollectionProductFilters(searchParams).length > 0 ||
-    Boolean((searchParams.get('sort') ?? '').trim())
+    Boolean((searchParams.get('sort') ?? '').trim()) ||
+    Boolean((searchParams.get('linia') ?? '').trim()) ||
+    Boolean((searchParams.get('kat') ?? '').trim())
   );
 }

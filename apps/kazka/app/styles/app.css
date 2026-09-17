@@ -138,6 +138,19 @@ a.active {
   color: rgb(var(--color-primary) / 0.75);
 }
 
+/* Top bar — restraint, czytelna hierarchia (Cartier-inspired) */
+.site-header__logo-text {
+  font-family: var(--font-family-brand);
+}
+
+.site-header__trust {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.site-header__cta {
+  font-size: 0.6875rem;
+}
+
 .kazka-editorial-cta {
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 0.75rem;

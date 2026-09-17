@@ -3,9 +3,41 @@ import {Link} from '@remix-run/react';
 import type {Product} from '@shopify/hydrogen-react/storefront-api-types';
 import {hoverMedia, type CardMediaNode} from '../media/hoverMediaUrl';
 
+export type VariantOptionPreference = {name: string; value: string};
+
 export type ProductCardProps = {
   product: Product & {media?: {nodes?: CardMediaNode[] | null} | null};
+  preferVariantOptions?: VariantOptionPreference[];
 };
+
+function pickPreferredVariant<
+  V extends {selectedOptions?: {name: string; value: string}[] | null},
+>(variants: V[] | null | undefined, prefer?: VariantOptionPreference[]): V | undefined {
+  if (!variants?.length) return undefined;
+  if (!prefer?.length) return variants[0];
+
+  const matched = variants.find((variant) =>
+    prefer.every((opt) =>
+      variant.selectedOptions?.some(
+        (selected) => selected.name === opt.name && selected.value === opt.value,
+      ),
+    ),
+  );
+
+  return matched ?? variants[0];
+}
+
+function buildProductHref(
+  handle: string,
+  prefer?: VariantOptionPreference[],
+): string {
+  if (!prefer?.length) return `/products/${handle}`;
+  const params = new URLSearchParams();
+  for (const {name, value} of prefer) {
+    params.set(name, value);
+  }
+  return `/products/${handle}?${params.toString()}`;
+}
 
 function formatMoneyPl(
   money: {amount: string; currencyCode: string} | null | undefined,
@@ -20,8 +52,14 @@ function formatMoneyPl(
   }).format(amount);
 }
 
-export default function ProductCard({product}: ProductCardProps) {
-  const variant = product.variants?.nodes?.[0];
+export default function ProductCard({
+  product,
+  preferVariantOptions,
+}: ProductCardProps) {
+  const variant = pickPreferredVariant(
+    product.variants?.nodes,
+    preferVariantOptions,
+  );
   const {price, compareAtPrice, image} = variant || {};
   const priceAmount = Number(price?.amount ?? 0);
   const compareAmount = Number(compareAtPrice?.amount ?? 0);
@@ -35,7 +73,7 @@ export default function ProductCard({product}: ProductCardProps) {
 
   return (
     <Link
-      to={`/products/${product.handle}`}
+      to={buildProductHref(product.handle, preferVariantOptions)}
       className="group"
       onMouseEnter={() => {
         void videoRef.current?.play();

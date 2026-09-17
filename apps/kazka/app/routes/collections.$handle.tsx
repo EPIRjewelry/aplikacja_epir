@@ -1,7 +1,10 @@
-import {type MetaFunction, useLoaderData} from '@remix-run/react';
+import {type MetaFunction, useLoaderData, useSearchParams} from '@remix-run/react';
 import {getPaginationVariables, getSeoMeta} from '@shopify/hydrogen';
 import {CollectionFilters, ProductGrid} from '@epir/ui';
 import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
+import {KazkaCategoryBar} from '~/components/KazkaCategoryBar';
+import {KazkaCollectionNav} from '~/components/KazkaCollectionNav';
+import {KazkaEmptyCollectionState} from '~/components/KazkaEmptyCollectionState';
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 import {
   METAL_FILTER_OPTIONS,
@@ -11,9 +14,11 @@ import {
   SORT_FILTER_OPTIONS,
   TYPE_FILTER_OPTIONS,
   WEIGHT_FILTER_OPTIONS,
+  collectionHasActiveFilters,
   parseCollectionProductFilters,
   parseCollectionSort,
 } from '~/lib/collection-product-filters';
+import {preferVariantOptionsForLinia} from '~/lib/kazka-collection-nav';
 import {COLLECTION_QUERY} from '~/queries/collection';
 import type {CollectionQueryData} from '~/types/collection';
 
@@ -103,10 +108,22 @@ export const meta: MetaFunction<typeof loader> = ({data}) => {
 
 export default function Collection() {
   const {collection, activeFilterCount} = useLoaderData<typeof loader>();
+  const [searchParams] = useSearchParams();
   const hasProducts = Boolean(collection.products?.nodes?.length);
+  const activeLinia = searchParams.get('linia') ?? '';
+  const activeKat = searchParams.get('kat') ?? '';
+  const hasLiniaFilter = Boolean(activeLinia);
+  const hasKatFilter = Boolean(activeKat);
+  const hasOtherFilters =
+    collectionHasActiveFilters(searchParams) &&
+    !hasLiniaFilter &&
+    !hasKatFilter;
+  const preferVariantOptions = preferVariantOptionsForLinia(activeLinia);
 
   return (
     <section className="mx-auto w-full max-w-7xl gap-8">
+      <KazkaCollectionNav />
+
       <header className="grid w-full gap-6 py-6 md:py-8 fadeIn">
         <h1 className="text-3xl md:text-4xl font-bold text-[rgb(var(--color-primary))]">
           {collection.title}
@@ -118,6 +135,8 @@ export default function Collection() {
           </p>
         )}
       </header>
+
+      <KazkaCategoryBar />
 
       <CollectionFilters
         metalOptions={METAL_FILTER_OPTIONS}
@@ -132,15 +151,16 @@ export default function Collection() {
       <div className="fadeIn" style={{animationDelay: '100ms'}}>
         {hasProducts ? (
           <ProductGrid
-            key={`${collection.handle}-${activeFilterCount}`}
+            key={`${collection.handle}-${activeFilterCount}-${activeLinia}-${activeKat}`}
             connection={collection.products}
+            preferVariantOptions={preferVariantOptions}
           />
         ) : (
-          <p className="text-[rgb(var(--color-primary))]/70 py-12">
-            {activeFilterCount > 0
-              ? 'Brak produktów dla wybranych filtrów. Zmień kryteria lub wyczyść filtry.'
-              : 'Brak produktów w tej kolekcji. Upewnij się, że produkty są opublikowane w kanale Kazka.'}
-          </p>
+          <KazkaEmptyCollectionState
+            hasLiniaFilter={hasLiniaFilter}
+            hasKatFilter={hasKatFilter}
+            hasOtherFilters={hasOtherFilters}
+          />
         )}
       </div>
     </section>

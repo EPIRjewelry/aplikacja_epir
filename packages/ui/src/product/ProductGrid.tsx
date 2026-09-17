@@ -1,7 +1,7 @@
 import {Pagination} from '@shopify/hydrogen';
 import type {PageInfo} from '@shopify/hydrogen-react/storefront-api-types';
 import type {Product} from '@shopify/hydrogen-react/storefront-api-types';
-import ProductCard from './ProductCard';
+import ProductCard, {type VariantOptionPreference} from './ProductCard';
 
 export type ProductGridConnection<T extends {id: string} = Product> = {
   nodes: T[];
@@ -11,11 +11,13 @@ export type ProductGridConnection<T extends {id: string} = Product> = {
 export type ProductGridProps<T extends {id: string} = Product> = {
   connection: ProductGridConnection<T>;
   loadMoreLabel?: string;
+  preferVariantOptions?: VariantOptionPreference[];
 };
 
 export default function ProductGrid<T extends {id: string} = Product>({
   connection,
   loadMoreLabel = 'Załaduj więcej',
+  preferVariantOptions,
 }: ProductGridProps<T>) {
   return (
     <Pagination connection={connection}>
@@ -23,7 +25,11 @@ export default function ProductGrid<T extends {id: string} = Product>({
         <section className="mx-auto w-full max-w-7xl gap-6 md:gap-8">
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-4">
             {nodes.map((product) => (
-              <ProductCard key={product.id} product={product as Product} />
+              <ProductCard
+                key={product.id}
+                product={product as Product}
+                preferVariantOptions={preferVariantOptions}
+              />
             ))}
           </div>
           {hasNextPage ? (
