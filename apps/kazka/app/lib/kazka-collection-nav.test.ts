@@ -1,5 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {
+  HEADER_KAT_NAV_OPTIONS,
+  buildCategoryHref,
   buildClearKatParams,
   buildClearLiniaParams,
   buildKatParams,
@@ -28,6 +30,28 @@ describe('kazka-collection-nav', () => {
     expect(buildKatParams(current, 'pierscionek')).toBe(
       'linia=lab&kat=pierscionek',
     );
+  });
+
+  it('buildCategoryHref uses hub path and keeps only linia+kat', () => {
+    const current = new URLSearchParams(
+      'linia=lab&metal=zloto-zolte&cursor=abc&kat=kolczyki',
+    );
+    expect(
+      buildCategoryHref('/collections/kazka', current, 'pierscionek'),
+    ).toBe('/collections/kazka?linia=lab&kat=pierscionek');
+    expect(buildCategoryHref('/collections/kazka', current, '')).toBe(
+      '/collections/kazka?linia=lab',
+    );
+  });
+
+  it('HEADER_KAT_NAV_OPTIONS excludes empty all-types entry', () => {
+    expect(HEADER_KAT_NAV_OPTIONS.every((opt) => opt.value !== '')).toBe(true);
+    expect(HEADER_KAT_NAV_OPTIONS.map((o) => o.value)).toEqual([
+      'pierscionek',
+      'naszyjnik',
+      'kolczyki',
+      'bransoletka',
+    ]);
   });
 
   it('buildClearKatParams and buildClearLiniaParams remove only nav axis', () => {

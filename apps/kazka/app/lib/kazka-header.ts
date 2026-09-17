@@ -8,5 +8,6 @@ export const KAZKA_HEADER_TRUST =
 export const EPIR_GOLD_COLLECTION_URL =
   'https://epirbizuteria.pl/collections/zlota-bizuteria?utm_source=kazka&utm_medium=header&utm_campaign=kazka_to_epir_gold';
 
-export const KAZKA_COLLECTION_NAV_LABEL = 'Kolekcja';
+/** Hub kolekcji Kazka — jedno miejsce docelowe dla kategorii w headerze. */
+export const KAZKA_COLLECTION_HUB_PATH = '/collections/kazka';
 export const EPIR_GOLD_HEADER_CTA = 'Złoto EPIR';

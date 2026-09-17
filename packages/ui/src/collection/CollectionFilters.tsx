@@ -220,24 +220,26 @@ export function CollectionFilters({
               ))}
             </select>
           </div>
-          <div>
-            <label className={legendClass} htmlFor="collection-type">
-              Typ
-            </label>
-            <select
-              id="collection-type"
-              name="type"
-              defaultValue={selectedType}
-              className={`w-full ${fieldClass}`}
-            >
-              <option value="">Wszystkie</option>
-              {typeOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          {typeOptions.length > 0 ? (
+            <div>
+              <label className={legendClass} htmlFor="collection-type">
+                Typ
+              </label>
+              <select
+                id="collection-type"
+                name="type"
+                defaultValue={selectedType}
+                className={`w-full ${fieldClass}`}
+              >
+                <option value="">Wszystkie</option>
+                {typeOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
         </fieldset>
 
         <fieldset className="grid gap-3 content-start">

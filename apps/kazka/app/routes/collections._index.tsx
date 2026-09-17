@@ -15,9 +15,9 @@ const COLLECTIONS_QUERY = `#graphql
 
 /**
  * /collections (bez handle) → przekierowanie do pierwszej dozwolonej kolekcji.
- * Naprawia 404 gdy Hero CTA ma cta_href="/collections".
+ * Zachowuje query string (np. ?kat=pierscionek z globalnego headera).
  */
-export async function loader({context}: LoaderFunctionArgs) {
+export async function loader({context, request}: LoaderFunctionArgs) {
   const filter = context.env.COLLECTION_FILTER;
   const allowedHandles = filter
     ? filter.split(',').map((h) => h.trim()).filter(Boolean)
@@ -34,8 +34,9 @@ export async function loader({context}: LoaderFunctionArgs) {
     : collections.nodes;
 
   const firstHandle = nodes[0]?.handle ?? allowedHandles?.[0];
+  const search = new URL(request.url).search;
   if (firstHandle) {
-    return redirect(`/collections/${firstHandle}`, 302);
+    return redirect(`/collections/${firstHandle}${search}`, 302);
   }
-  return redirect('/', 302);
+  return redirect(`/${search}`, 302);
 }

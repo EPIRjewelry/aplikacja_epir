@@ -39,6 +39,28 @@ export function buildKatParams(current: URLSearchParams, kat: string): string {
   return next.toString();
 }
 
+/**
+ * Kanoniczny href kategorii w globalnym headerze.
+ * Jedno miejsce: hub kolekcji + ?kat=… (zachowuje linia, czyści paginację i inne filtry listingowe).
+ */
+export function buildCategoryHref(
+  hubPath: string,
+  current: URLSearchParams,
+  kat: string,
+): string {
+  const next = new URLSearchParams();
+  const linia = current.get('linia')?.trim();
+  if (linia) next.set('linia', linia);
+  if (kat) next.set('kat', kat);
+  const qs = next.toString();
+  return qs ? `${hubPath}?${qs}` : hubPath;
+}
+
+/** Opcje kategorii w top barze — bez „Wszystkie typy”. */
+export const HEADER_KAT_NAV_OPTIONS = KAT_NAV_OPTIONS.filter(
+  (opt) => opt.value !== '',
+);
+
 export function buildClearLiniaParams(current: URLSearchParams): string {
   const next = stripPaginationParams(current);
   next.delete('linia');

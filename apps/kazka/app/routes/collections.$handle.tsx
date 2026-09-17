@@ -2,7 +2,6 @@ import {type MetaFunction, useLoaderData, useSearchParams} from '@remix-run/reac
 import {getPaginationVariables, getSeoMeta} from '@shopify/hydrogen';
 import {CollectionFilters, ProductGrid} from '@epir/ui';
 import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
-import {KazkaCategoryBar} from '~/components/KazkaCategoryBar';
 import {KazkaCollectionNav} from '~/components/KazkaCollectionNav';
 import {KazkaEmptyCollectionState} from '~/components/KazkaEmptyCollectionState';
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
@@ -12,7 +11,6 @@ import {
   QUALITY_FILTER_OPTIONS,
   SHAPE_FILTER_OPTIONS,
   SORT_FILTER_OPTIONS,
-  TYPE_FILTER_OPTIONS,
   WEIGHT_FILTER_OPTIONS,
   collectionHasActiveFilters,
   parseCollectionProductFilters,
@@ -136,15 +134,13 @@ export default function Collection() {
         )}
       </header>
 
-      <KazkaCategoryBar />
-
       <CollectionFilters
         metalOptions={METAL_FILTER_OPTIONS}
         probaOptions={PROBA_FILTER_OPTIONS}
         shapeOptions={SHAPE_FILTER_OPTIONS}
         weightOptions={WEIGHT_FILTER_OPTIONS}
         qualityOptions={QUALITY_FILTER_OPTIONS}
-        typeOptions={TYPE_FILTER_OPTIONS}
+        typeOptions={[]}
         sortOptions={SORT_FILTER_OPTIONS}
       />
 

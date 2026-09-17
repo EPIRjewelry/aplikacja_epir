@@ -1,13 +1,17 @@
 import {useEffect, useState} from 'react';
-import {Link, NavLink} from '@remix-run/react';
+import {Link, NavLink, useSearchParams} from '@remix-run/react';
 import {
   EPIR_GOLD_COLLECTION_URL,
   EPIR_GOLD_HEADER_CTA,
-  KAZKA_COLLECTION_NAV_LABEL,
+  KAZKA_COLLECTION_HUB_PATH,
   KAZKA_HEADER_BRAND,
   KAZKA_HEADER_DESCRIPTOR,
   KAZKA_HEADER_TRUST,
 } from '~/lib/kazka-header';
+import {
+  HEADER_KAT_NAV_OPTIONS,
+  buildCategoryHref,
+} from '~/lib/kazka-collection-nav';
 
 export type NavCollection = {id: string; title: string; handle: string};
 
@@ -23,12 +27,12 @@ export type HeaderProps = {
 };
 
 const NAV_LINK =
-  'site-header__nav-link kazka-editorial-label text-[rgb(var(--color-primary))] no-underline transition-[color,opacity] duration-150 ease-out hover:text-[rgb(var(--color-accent))] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgb(var(--color-accent))] focus-visible:outline-offset-2';
+  'site-header__nav-link kazka-editorial-label shrink-0 snap-start text-[rgb(var(--color-primary))] no-underline transition-[color,opacity] duration-150 ease-out hover:text-[rgb(var(--color-accent))] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgb(var(--color-accent))] focus-visible:outline-offset-2';
 
-function collectionNavLinkClass({isActive}: {isActive: boolean}) {
+function categoryNavLinkClass({isActive}: {isActive: boolean}) {
   return [
     NAV_LINK,
-    isActive ? 'text-[rgb(var(--color-accent))]' : '',
+    isActive ? 'text-[rgb(var(--color-accent))]' : 'text-[rgb(var(--color-primary))]/70',
   ]
     .filter(Boolean)
     .join(' ');
@@ -48,9 +52,15 @@ export function Header({
   renderCartHeader,
 }: HeaderProps) {
   void renderCartHeader;
-  void collections;
 
   const [isScrolled, setIsScrolled] = useState(false);
+  const [searchParams] = useSearchParams();
+  const activeKat = searchParams.get('kat') ?? '';
+
+  const hubHandle = collections[0]?.handle;
+  const hubPath = hubHandle
+    ? `/collections/${hubHandle}`
+    : KAZKA_COLLECTION_HUB_PATH;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -73,7 +83,7 @@ export function Header({
       className="site-header flex h-[var(--height-nav)] sticky top-0 z-50 w-full items-center border-b border-[rgb(var(--color-primary))]/10 bg-[rgb(var(--color-contrast))] px-6 leading-none transition-[box-shadow] duration-200 ease-out data-[scrolled=true]:shadow-[0_2px_12px_rgba(0,0,0,0.06)] md:px-8 lg:px-12"
       {...(isScrolled ? {'data-scrolled': 'true'} : {})}
     >
-      <div className="site-header__inner grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-4 md:gap-6">
+      <div className="site-header__inner grid w-full grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto] items-center gap-3 sm:gap-4 md:gap-6">
         <div className="site-header__left min-w-0 justify-self-start">
           <Link
             to="/"
@@ -92,30 +102,33 @@ export function Header({
           </Link>
         </div>
 
-        <div className="site-header__center hidden min-w-0 justify-self-center sm:flex">
-          <nav className="site-header__nav" aria-label="Nawigacja kolekcji">
-            <ul className="site-header__nav-list flex items-center justify-center">
-              <li className="site-header__nav-item">
-                <NavLink
-                  to="/collections"
-                  prefetch="intent"
-                  className={collectionNavLinkClass}
-                >
-                  {KAZKA_COLLECTION_NAV_LABEL}
-                </NavLink>
-              </li>
+        <div className="site-header__center min-w-0 justify-self-center overflow-hidden">
+          <nav
+            className="site-header__nav"
+            aria-label="Kategorie biżuterii"
+          >
+            <ul className="hiddenScroll flex max-w-full items-center justify-center gap-x-3 overflow-x-auto snap-x snap-mandatory sm:gap-x-5 md:gap-x-6">
+              {HEADER_KAT_NAV_OPTIONS.map(({value, label}) => {
+                const to = buildCategoryHref(hubPath, searchParams, value);
+                const isActive = activeKat === value;
+                return (
+                  <li key={value} className="site-header__nav-item shrink-0 snap-start">
+                    <NavLink
+                      to={to}
+                      prefetch="intent"
+                      className={() => categoryNavLinkClass({isActive})}
+                      aria-current={isActive ? 'page' : undefined}
+                    >
+                      {label}
+                    </NavLink>
+                  </li>
+                );
+              })}
             </ul>
           </nav>
         </div>
 
         <div className="site-header__right flex shrink-0 items-center justify-end gap-x-2 sm:gap-x-3 md:gap-x-4">
-          <NavLink
-            to="/collections"
-            prefetch="intent"
-            className={`${NAV_LINK} sm:hidden`}
-          >
-            {KAZKA_COLLECTION_NAV_LABEL}
-          </NavLink>
           <a
             href={EPIR_GOLD_COLLECTION_URL}
             target="_blank"
