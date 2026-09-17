@@ -1,17 +1,13 @@
 import {useEffect, useState} from 'react';
-import {Link, NavLink, useSearchParams} from '@remix-run/react';
+import {Link, NavLink, useLocation} from '@remix-run/react';
 import {
   EPIR_GOLD_COLLECTION_URL,
   EPIR_GOLD_HEADER_CTA,
-  KAZKA_COLLECTION_HUB_PATH,
+  KAZKA_CATEGORY_NAV,
   KAZKA_HEADER_BRAND,
   KAZKA_HEADER_DESCRIPTOR,
   KAZKA_HEADER_TRUST,
 } from '~/lib/kazka-header';
-import {
-  HEADER_KAT_NAV_OPTIONS,
-  buildCategoryHref,
-} from '~/lib/kazka-collection-nav';
 
 export type NavCollection = {id: string; title: string; handle: string};
 
@@ -52,15 +48,10 @@ export function Header({
   renderCartHeader,
 }: HeaderProps) {
   void renderCartHeader;
+  void collections;
 
   const [isScrolled, setIsScrolled] = useState(false);
-  const [searchParams] = useSearchParams();
-  const activeKat = searchParams.get('kat') ?? '';
-
-  const hubHandle = collections[0]?.handle;
-  const hubPath = hubHandle
-    ? `/collections/${hubHandle}`
-    : KAZKA_COLLECTION_HUB_PATH;
+  const {pathname} = useLocation();
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -108,13 +99,12 @@ export function Header({
             aria-label="Kategorie biżuterii"
           >
             <ul className="hiddenScroll flex max-w-full items-center justify-center gap-x-3 overflow-x-auto snap-x snap-mandatory sm:gap-x-5 md:gap-x-6">
-              {HEADER_KAT_NAV_OPTIONS.map(({value, label}) => {
-                const to = buildCategoryHref(hubPath, searchParams, value);
-                const isActive = activeKat === value;
+              {KAZKA_CATEGORY_NAV.map(({handle, label, path}) => {
+                const isActive = pathname.includes(handle);
                 return (
-                  <li key={value} className="site-header__nav-item shrink-0 snap-start">
+                  <li key={handle} className="site-header__nav-item shrink-0 snap-start">
                     <NavLink
-                      to={to}
+                      to={path}
                       prefetch="intent"
                       className={() => categoryNavLinkClass({isActive})}
                       aria-current={isActive ? 'page' : undefined}
