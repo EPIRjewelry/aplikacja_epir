@@ -26,7 +26,14 @@ import {
 
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 
-import {KazkaEditorialHome} from '~/components/KazkaEditorialHome';
+import {KazkaEditorialCategoryTiles} from '~/components/KazkaEditorialCategoryTiles';
+import {KazkaEditorialHero} from '~/components/KazkaEditorialHero';
+import {KazkaEditorialManifestoBridge} from '~/components/KazkaEditorialManifestoBridge';
+import {KazkaCustomOrderBrief} from '~/components/KazkaCustomOrderBrief';
+import {KazkaEditorialVideoSection} from '~/components/KazkaEditorialVideoSection';
+import {KazkaFeaturedProducts} from '~/components/KazkaFeaturedProducts';
+import {parseCmsFeaturedProductsSections} from '~/lib/kazka-cms-featured-products';
+import {parseCmsHeroSlides} from '~/lib/kazka-cms-hero';
 
 export const meta: MetaFunction<typeof loader> = ({data}) =>
 
@@ -234,21 +241,26 @@ export async function loader({
 
 export default function Index() {
 
-  const {route, collections, products} = useLoaderData<typeof loader>();
+  const {route, collections: _collections, products: _products} =
+    useLoaderData<typeof loader>();
 
-
+  const heroSlides = parseCmsHeroSlides(route);
+  const featuredProductsSections = parseCmsFeaturedProductsSections(route);
 
   return (
 
-    <>
+    <div className="kazka-home flex w-full flex-col overflow-x-clip">
 
-      <KazkaEditorialHome
-        route={route}
-        collections={collections}
-        products={products}
-        hubCollectionHandle={KAZKA_HUB_COLLECTION_HANDLE}
-      />
-    </>
+      <KazkaEditorialHero slides={heroSlides} />
+      {featuredProductsSections.map((section) => (
+        <KazkaFeaturedProducts key={section.id} {...section} />
+      ))}
+      <KazkaEditorialCategoryTiles />
+      <KazkaEditorialManifestoBridge />
+      <KazkaEditorialVideoSection />
+      <KazkaCustomOrderBrief />
+
+    </div>
 
   );
 

@@ -1,7 +1,5 @@
--- Example: Pipelines SQL stream → Iceberg sink (pixel).
--- Prod copy: pixel-pipeline-production.sql
--- Stream (CF): session_id, event_type, timestamp (int64 ms), page_url, referrer, utm_*, …
--- Batch maps D1 → stream in workers/bigquery-batch/src/pixel-pipeline-record.ts
+-- Prod SQL: 13 columns = epir_pixel_events_sink (analytics.epir_pixel_events_raw)
+-- Stream: session_id, event_type, timestamp (ms), page_url, referrer, utm_*, user_agent, shop_domain
 
 INSERT INTO epir_pixel_events_sink (
   id,

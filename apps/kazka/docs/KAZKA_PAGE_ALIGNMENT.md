@@ -15,8 +15,9 @@
 | Kafle kategorii | kod: `KAZKA_EDITORIAL_CATEGORIES` + assety | metaobiekt `section_category_tiles` + pole Route |
 | Video kolekcji | kod: `KAZKA_EDITORIAL_COLLECTION_VIDEO` | metaobiekt `section_editorial_video` + pole Route |
 | Siatki listing / featured | `max-w-7xl`, proporcja 4:5, bez `shadow-sm` na featured | — |
-| PDP galeria | desktop: `max-w-[min(100%,70vh)]`; mobile: pełna szerokość | — |
-| PDP trust | linki do Wysyłka / Zwroty / Czat; kamień tylko z metafield `stone_profile` | dodatkowe pola produktowe gdy zweryfikowane w Shopify |
+| PDP galeria | desktop: `max-w-[min(100%,70vh)]`; mobile: pełna szerokość; zoom in-place na IMAGE (CDN 2048) w shared `ProductGallery` | — |
+| PDP panel Kazka | chrom lokalny: etykieta Kazka, kamień przy cenie z metafield; chipy + CTA ze shared `@epir/ui` | dodatkowe pola produktowe gdy zweryfikowane w Shopify |
+| PDP trust | linki do Wysyłka / Zwroty / Czat (bez kamienia — kamień przy cenie) | dodatkowe pola produktowe gdy zweryfikowane w Shopify |
 | A11y / motion | `prefers-reduced-motion` na kafelach; min-height CTA PDP | — |
 
 **Zasada trust:** blok PDP nie zawiera twierdzeń per SKU (np. opakowanie, technika wykonania), dopóki nie pochodzą z danych produktu lub stron sklepu.

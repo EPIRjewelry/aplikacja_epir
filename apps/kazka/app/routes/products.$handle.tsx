@@ -4,8 +4,27 @@ import {ProductGallery, ProductOptions, ProductForm} from '@epir/ui';
 import {getSeoMeta, Money} from '@shopify/hydrogen';
 import {KazkaProductTrust} from '~/components/KazkaProductTrust';
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
-import {buildKazkaProductTrustItems} from '~/lib/kazka-pdp-trust';
+import {
+  buildKazkaProductTrustItems,
+  kazkaProductStoneLabel,
+} from '~/lib/kazka-pdp-trust';
 import {buildProductJsonLd} from '~/lib/product-json-ld';
+
+type KazkaProductGalleryProps = {
+  medias: Parameters<typeof ProductGallery>[0]['medias'];
+  featuredFit?: Parameters<typeof ProductGallery>[0]['featuredFit'];
+  featuredObjectPosition?: string;
+  featuredBackground?: string;
+  layout?: Parameters<typeof ProductGallery>[0]['layout'];
+};
+
+function KazkaProductGallery(props: KazkaProductGalleryProps) {
+  return (
+    <div className="kazka-pdp-gallery min-w-0 lg:col-span-2">
+      <ProductGallery {...props} />
+    </div>
+  );
+}
 
 export async function loader({params, context, request}: LoaderFunctionArgs) {
   const {handle} = params;
@@ -94,30 +113,54 @@ export const meta: MetaFunction<typeof loader> = ({data}) => {
   });
 };
 
+function splitDescriptionHtml(html: string): {
+  visibleHtml: string;
+  specHtml: string | null;
+} {
+  const marker = 'Specyfikacja';
+  const idx = html.indexOf(marker);
+  if (idx === -1) return {visibleHtml: html, specHtml: null};
+
+  let visibleHtml = html.slice(0, idx);
+  let specHtml = html.slice(idx);
+
+  visibleHtml = visibleHtml.replace(/<h4>\s*$/i, '');
+  specHtml = specHtml.replace(/^Specyfikacja\s*<\/h4>\s*/i, '');
+
+  return {visibleHtml, specHtml};
+}
+
 export default function ProductHandle() {
   const {product, selectedVariant, countryCode} = useLoaderData<typeof loader>();
   const variantId = selectedVariant?.id;
   const hasPrice = Boolean(selectedVariant?.price?.amount);
   const showPurchaseForm = Boolean(variantId && hasPrice);
   const trustItems = buildKazkaProductTrustItems(product);
+  const stoneLabel = kazkaProductStoneLabel(product);
+  const {visibleHtml, specHtml} = splitDescriptionHtml(product.descriptionHtml ?? '');
+  const featuredObjectPosition = product.tags?.includes('kazka-naszyjnik')
+    ? 'center 65%'
+    : 'center 50%';
+  const featuredFit = product.tags?.includes('kazka-naszyjnik')
+    ? 'cover'
+    : 'contain';
 
   return (
-    <section className="mx-auto grid w-full max-w-7xl gap-4 md:gap-8">
+    <section className="kazka-pdp grid w-full gap-4 md:gap-8">
       <div className="grid items-start gap-6 md:grid-cols-2 md:gap-10 lg:grid-cols-3 lg:gap-12">
-        <div className="lg:col-span-2">
-          <ProductGallery
-            medias={product.media.nodes}
-            videoPlayback="mp4"
-          />
-        </div>
-        <div className="kazka-pdp-panel grid w-full max-w-xl gap-8 md:sticky md:top-[6rem] md:max-w-none md:p-0 lg:top-[8rem] xl:top-[10rem]">
+        <KazkaProductGallery
+          medias={product.media.nodes}
+          layout="editorial"
+          featuredFit={featuredFit}
+          featuredObjectPosition={featuredObjectPosition}
+          featuredBackground="#f5f0e6"
+        />
+        <div className="kazka-pdp-panel grid w-full max-w-xl gap-8 px-6 md:sticky md:top-[6rem] md:max-w-none md:px-8 lg:top-[8rem] lg:pl-8 lg:pr-12 xl:top-[10rem]">
           <div className="grid gap-2">
-            <h1 className="text-4xl font-bold leading-10 whitespace-normal">
+            <p className="kazka-editorial-label">Kazka</p>
+            <h1 className="text-4xl font-normal leading-10 whitespace-normal">
               {product.title}
             </h1>
-            <span className="max-w-prose whitespace-pre-wrap inherit text-copy opacity-50 font-medium">
-              {product.vendor}
-            </span>
           </div>
           <ProductOptions
             options={product.options}
@@ -134,6 +177,11 @@ export default function ProductHandle() {
               Wybierz wariant, aby zobaczyć cenę.
             </p>
           )}
+          {stoneLabel ? (
+            <p className="text-sm text-[rgb(var(--color-primary))]/70">
+              Kamień · {stoneLabel}
+            </p>
+          ) : null}
           {showPurchaseForm ? (
             <div className="space-y-2">
               {selectedVariant?.availableForSale === false ? (
@@ -142,19 +190,35 @@ export default function ProductHandle() {
                   wybierz inną konfigurację lub napisz na czacie.
                 </p>
               ) : null}
-              <ProductForm
-                countryCode={countryCode}
-                variantId={variantId}
-                showBuyNow
-              />
+              <ProductForm countryCode={countryCode} variantId={variantId} />
             </div>
           ) : null}
           <KazkaProductTrust items={trustItems} />
-          <div
-            className="prose border-t border-gray-200 pt-6 text-black text-md"
-            dangerouslySetInnerHTML={{__html: product.descriptionHtml}}
-            suppressHydrationWarning
-          ></div>
+          {specHtml ? (
+            <div className="kazka-pdp-description border-t border-gray-200 pt-6">
+              <div
+                className="prose text-black text-md"
+                dangerouslySetInnerHTML={{__html: visibleHtml}}
+                suppressHydrationWarning
+              />
+              <details className="mt-4">
+                <summary className="kazka-editorial-label cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                  Specyfikacja
+                </summary>
+                <div
+                  className="prose text-black text-md pt-4"
+                  dangerouslySetInnerHTML={{__html: specHtml}}
+                  suppressHydrationWarning
+                />
+              </details>
+            </div>
+          ) : (
+            <div
+              className="kazka-pdp-description prose border-t border-gray-200 pt-6 text-black text-md"
+              dangerouslySetInnerHTML={{__html: product.descriptionHtml}}
+              suppressHydrationWarning
+            />
+          )}
         </div>
       </div>
     </section>
@@ -169,6 +233,7 @@ const PRODUCT_QUERY = `#graphql
       handle
       vendor
       productType
+      tags
       description
       descriptionHtml
       seo {
@@ -207,6 +272,9 @@ const PRODUCT_QUERY = `#graphql
             }
           }
         }
+      }
+      mainStone: metafield(namespace: "custom", key: "main_stone") {
+        value
       }
       media(first: 20) {
         nodes {

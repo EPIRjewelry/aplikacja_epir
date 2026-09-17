@@ -18,6 +18,10 @@ import {
   findCatalogEntry,
   isValidOpenRouterModelId,
 } from './openrouter-catalog';
+import {
+  buildOpenRouterChatBody,
+  isOpenRouterParameterRoutingError,
+} from './openrouter-params';
 import { sanitizeHarmonyHistory } from './utils/sanitizeHarmonyHistory';
 
 export type GroqToolCall = {
@@ -1060,38 +1064,59 @@ async function streamGroqEventsOpenRouter(
   const modelName = modelId.replace('openrouter/', '');
 
   const modalities = openRouterImageGenModalities(modelId, options?.modelCapabilities);
-  const body: Record<string, unknown> = {
-    model: modelName,
-    messages: sanitizedMessages,
-    stream: true,
-    ...(tools && !modalities
-      ? { tools, tool_choice: resolvedToolChoice, parallel_tool_calls: true }
-      : {}),
-    max_tokens: options?.maxTokens ?? MODEL_PARAMS.max_tokens,
-    temperature: MODEL_PARAMS.temperature,
-    top_p: MODEL_PARAMS.top_p,
-    ...(modalities ? { modalities } : {}),
+  const wantTools = Boolean(tools && tools.length > 0) && !modalities;
+  const maxTokens = options?.maxTokens ?? MODEL_PARAMS.max_tokens;
+
+  const postOpenRouter = (includeTools: boolean) => {
+    const body = buildOpenRouterChatBody({
+      model: modelName,
+      messages: sanitizedMessages,
+      stream: true,
+      maxTokens,
+      temperature: MODEL_PARAMS.temperature,
+      topP: MODEL_PARAMS.top_p,
+      modalities,
+      tools,
+      toolChoice: resolvedToolChoice,
+      includeTools,
+    });
+    return fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: options?.abortSignal,
+    });
   };
 
   const t0 = Date.now();
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-    signal: options?.abortSignal,
-  });
-
-  const dt = Date.now() - t0;
+  let res = await postOpenRouter(wantTools);
+  let dt = Date.now() - t0;
   console.log(
-    `[OpenRouter] ${timingLabel ?? 'stream'} status=${res.status} model=${modelName} duration_ms=${dt}`,
+    `[OpenRouter] ${timingLabel ?? 'stream'} status=${res.status} model=${modelName} duration_ms=${dt} tools=${wantTools}`,
   );
 
   if (!res.ok || !res.body) {
     const text = await safeReadText(res);
-    throw new Error(`OpenRouter streaming error: ${res.status} ${text}`);
+    if (wantTools && isOpenRouterParameterRoutingError(res.status, text)) {
+      console.warn(
+        `[OpenRouter] retry without tools after parameter routing error model=${modelName}`,
+      );
+      const t1 = Date.now();
+      res = await postOpenRouter(false);
+      dt = Date.now() - t1;
+      console.log(
+        `[OpenRouter] ${timingLabel ?? 'stream'} retry-no-tools status=${res.status} model=${modelName} duration_ms=${dt}`,
+      );
+      if (!res.ok || !res.body) {
+        const retryText = await safeReadText(res);
+        throw new Error(`OpenRouter streaming error: ${res.status} ${retryText}`);
+      }
+    } else {
+      throw new Error(`OpenRouter streaming error: ${res.status} ${text}`);
+    }
   }
 
   return (res.body as ReadableStream<Uint8Array>)

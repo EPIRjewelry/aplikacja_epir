@@ -16,7 +16,7 @@ export function KazkaFeaturedProducts({
 
   return (
     <section
-      className="w-full bg-[#f1ece6] py-10 md:py-14"
+      className="w-full bg-[#f1ece6] py-6 md:py-8"
       aria-label={heading ?? 'Wybrane produkty'}
       data-section-id={id}
     >
@@ -33,7 +33,7 @@ export function KazkaFeaturedProducts({
         <div className="mb-6 md:mb-8" />
       ) : null}
 
-      <div className="mx-auto grid max-w-7xl grid-cols-2 gap-3 px-4 md:grid-cols-4 md:gap-5 md:px-6">
+      <div className="grid w-full grid-cols-2 gap-2 px-0 md:grid-cols-4 md:gap-3">
         {products.map((product, index) => (
           <FeaturedProductTile
             key={product.id}
@@ -71,7 +71,7 @@ function FeaturedProductTile({
         if (videoRef.current) videoRef.current.currentTime = 0;
       }}
     >
-      <div className="relative aspect-[4/5] overflow-hidden bg-[#f2f2f2]">
+      <div className="kazka-home-tile relative overflow-hidden bg-[#f2f2f2]">
         {product.imageUrl ? (
           <img
             src={product.imageUrl}

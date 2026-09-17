@@ -442,6 +442,92 @@ function extractEpirSessionIdFromOrder(order: Record<string, unknown>): string |
   return tryAttrs(order.note_attributes) ?? tryAttrs(order.custom_attributes);
 }
 
+/**
+ * Auth for Shopify Admin webhooks (HMAC) and Shopify Flow "Send HTTP request"
+ * (header X-EPIR-FLOW-SECRET = same SHOPIFY_WEBHOOK_SECRET — no new secret name).
+ */
+async function authorizeShopifyIngress(
+  request: Request,
+  rawBody: ArrayBuffer,
+  secret: string
+): Promise<boolean> {
+  const hmacHeader = request.headers.get('X-Shopify-Hmac-Sha256');
+  if (await verifyShopifyWebhookHmac(rawBody, hmacHeader, secret)) return true;
+
+  const flowSecret =
+    request.headers.get('X-EPIR-FLOW-SECRET') ??
+    request.headers.get('X-Epir-Flow-Secret');
+  if (!flowSecret) return false;
+  const enc = new TextEncoder();
+  const a = enc.encode(flowSecret);
+  const b = enc.encode(secret);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+function readShopifyCustomerId(payload: Record<string, unknown>): string | null {
+  const direct =
+    payload.customer_id ?? payload.customerId ?? payload.shopify_customer_id;
+  if (typeof direct === 'string' && direct.trim()) {
+    const v = direct.trim();
+    return v.startsWith('gid://') ? v : `gid://shopify/Customer/${v}`;
+  }
+  if (typeof direct === 'number' && Number.isFinite(direct)) {
+    return `gid://shopify/Customer/${direct}`;
+  }
+  const customer = payload.customer;
+  if (customer && typeof customer === 'object') {
+    const c = customer as Record<string, unknown>;
+    const id = c.admin_graphql_api_id ?? c.id;
+    if (typeof id === 'string' && id.trim()) {
+      const v = id.trim();
+      return v.startsWith('gid://') ? v : `gid://shopify/Customer/${v}`;
+    }
+    if (typeof id === 'number' && Number.isFinite(id)) {
+      return `gid://shopify/Customer/${id}`;
+    }
+  }
+  return null;
+}
+
+function readNumberField(payload: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const v = payload[key];
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string' && v.trim()) {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return null;
+}
+
+function readStringField(payload: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const v = payload[key];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return null;
+}
+
+async function ensureCustomerVipTable(db: D1Database): Promise<void> {
+  try {
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS customer_vip (
+          customer_id TEXT PRIMARY KEY,
+          orders_count INTEGER,
+          source TEXT,
+          marked_at INTEGER NOT NULL
+        )`
+      )
+      .run();
+  } catch (err) {
+    console.error('[ANALYTICS_WORKER] ❌ Failed to ensure customer_vip table:', err);
+    throw err;
+  }
+}
+
 async function handleOrdersCreateWebhook(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'POST') {
     return new Response('Method Not Allowed', { status: 405 });
@@ -451,8 +537,7 @@ async function handleOrdersCreateWebhook(request: Request, env: Env): Promise<Re
     return json({ ok: false, error: 'Webhook secret not configured' }, 401);
   }
   const rawBody = await request.arrayBuffer();
-  const hmacHeader = request.headers.get('X-Shopify-Hmac-Sha256');
-  if (!(await verifyShopifyWebhookHmac(rawBody, hmacHeader, secret))) {
+  if (!(await authorizeShopifyIngress(request, rawBody, secret))) {
     return json({ ok: false, error: 'Unauthorized' }, 401);
   }
   let order: Record<string, unknown>;
@@ -478,6 +563,143 @@ async function handleOrdersCreateWebhook(request: Request, env: Env): Promise<Re
     .bind(shopifyGid, orderName, epirSessionId, 'webhook_orders_create', receivedAt)
     .run();
   return json({ ok: true }, 200);
+}
+
+/**
+ * Shopify Flow #2: Checkout Abandoned → customer_events (jewelry-analytics-db).
+ * Gemma (po naprawie) czyta to przez journey / d1 tools.
+ */
+async function handleCheckoutAbandonedWebhook(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') {
+    return new Response('Method Not Allowed', { status: 405 });
+  }
+  const secret = env.SHOPIFY_WEBHOOK_SECRET;
+  if (!secret) {
+    return json({ ok: false, error: 'Webhook secret not configured' }, 401);
+  }
+  const rawBody = await request.arrayBuffer();
+  if (!(await authorizeShopifyIngress(request, rawBody, secret))) {
+    return json({ ok: false, error: 'Unauthorized' }, 401);
+  }
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(new TextDecoder().decode(rawBody)) as Record<string, unknown>;
+  } catch {
+    return json({ ok: false, error: 'Invalid JSON' }, 400);
+  }
+
+  const customerId =
+    readShopifyCustomerId(payload) ??
+    (typeof payload.email === 'string' && payload.email.trim()
+      ? `email:${payload.email.trim().toLowerCase()}`
+      : null);
+  if (!customerId) {
+    return json({ ok: false, error: 'Missing customer_id or email' }, 400);
+  }
+
+  const cartToken =
+    readStringField(payload, ['cart_token', 'token', 'checkout_token']) ??
+    `abandoned_${Date.now()}`;
+  const sessionId =
+    readStringField(payload, ['session_id', 'epir_session_id']) ?? `flow_abandoned_${cartToken}`;
+  const checkoutUrl = readStringField(payload, [
+    'checkout_url',
+    'checkoutUrl',
+    'abandoned_checkout_url',
+    'abandonedCheckoutUrl',
+  ]);
+  const cartTotal = readNumberField(payload, [
+    'cart_total',
+    'cartTotal',
+    'total_price',
+    'totalPrice',
+    'subtotal_price',
+  ]);
+  const receivedAt = Date.now();
+
+  await ensureCustomerEventsTable(env.DB);
+  await insertCustomerEvent(env.DB, customerId, sessionId, 'checkout_abandoned', receivedAt, {
+    pageUrl: checkoutUrl,
+    cartToken,
+    cartTotal,
+    eventDataJson: JSON.stringify({
+      source: 'shopify_flow_checkout_abandoned',
+      checkout_url: checkoutUrl,
+      line_items: payload.line_items ?? payload.lineItems ?? null,
+      email: typeof payload.email === 'string' ? payload.email : null,
+    }),
+  });
+
+  return json({ ok: true, event_type: 'checkout_abandoned', customer_id: customerId }, 200);
+}
+
+/**
+ * Shopify Flow #4: VIP (orders_count >= 2) → customer_vip + customer_events.
+ * memory_facts żyje w D1 czatu (ai-assistant-sessions-db); tu zapisujemy sygnał VIP
+ * w jewelry-analytics-db (journey / Kustosz / Gemma po naprawie).
+ */
+async function handleCustomerVipWebhook(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') {
+    return new Response('Method Not Allowed', { status: 405 });
+  }
+  const secret = env.SHOPIFY_WEBHOOK_SECRET;
+  if (!secret) {
+    return json({ ok: false, error: 'Webhook secret not configured' }, 401);
+  }
+  const rawBody = await request.arrayBuffer();
+  if (!(await authorizeShopifyIngress(request, rawBody, secret))) {
+    return json({ ok: false, error: 'Unauthorized' }, 401);
+  }
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(new TextDecoder().decode(rawBody)) as Record<string, unknown>;
+  } catch {
+    return json({ ok: false, error: 'Invalid JSON' }, 400);
+  }
+
+  const customerId = readShopifyCustomerId(payload);
+  if (!customerId) {
+    return json({ ok: false, error: 'Missing customer_id' }, 400);
+  }
+
+  const ordersCount = readNumberField(payload, ['orders_count', 'ordersCount', 'number_of_orders']);
+  const receivedAt = Date.now();
+  const sessionId =
+    readStringField(payload, ['session_id', 'epir_session_id']) ?? `flow_vip_${customerId}`;
+
+  await ensureCustomerVipTable(env.DB);
+  await env.DB
+    .prepare(
+      `INSERT INTO customer_vip (customer_id, orders_count, source, marked_at)
+       VALUES (?1, ?2, ?3, ?4)
+       ON CONFLICT(customer_id) DO UPDATE SET
+         orders_count = excluded.orders_count,
+         source = excluded.source,
+         marked_at = excluded.marked_at`
+    )
+    .bind(customerId, ordersCount, 'shopify_flow_vip', receivedAt)
+    .run();
+
+  await ensureCustomerEventsTable(env.DB);
+  await insertCustomerEvent(env.DB, customerId, sessionId, 'vip_customer', receivedAt, {
+    eventDataJson: JSON.stringify({
+      source: 'shopify_flow_vip',
+      fact_type: 'vip_customer',
+      value: 'true',
+      orders_count: ordersCount,
+    }),
+  });
+
+  return json(
+    {
+      ok: true,
+      event_type: 'vip_customer',
+      customer_id: customerId,
+      orders_count: ordersCount,
+      note: 'VIP stored in jewelry-analytics-db (customer_vip + customer_events); not chat memory_facts',
+    },
+    200
+  );
 }
 
 async function insertCustomerEvent(
@@ -1914,6 +2136,12 @@ export default {
 
     if (request.method === 'POST' && url.pathname === '/webhooks/orders/create') {
       return handleOrdersCreateWebhook(request, env);
+    }
+    if (request.method === 'POST' && url.pathname === '/webhooks/checkout/abandoned') {
+      return handleCheckoutAbandonedWebhook(request, env);
+    }
+    if (request.method === 'POST' && url.pathname === '/webhooks/customers/vip') {
+      return handleCustomerVipWebhook(request, env);
     }
     if (request.method === 'POST' && (url.pathname === '/pixel' || url.pathname === '/pixel/events')) {
       return handlePixelPost(request, env, ctx);

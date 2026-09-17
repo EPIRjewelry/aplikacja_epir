@@ -891,3 +891,161 @@ describe('Analytics Worker - POST /webhooks/orders/create', () => {
         expect(row?.epir_session_id).toBe('sess-custom-attr');
     });
 });
+
+describe('Analytics Worker - POST /webhooks/checkout/abandoned', () => {
+    beforeAll(async () => {
+        await env.DB.prepare(`
+          CREATE TABLE IF NOT EXISTS customer_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            event_timestamp INTEGER NOT NULL,
+            event_data TEXT,
+            page_url TEXT,
+            page_title TEXT,
+            referrer TEXT,
+            product_id TEXT,
+            product_title TEXT,
+            product_price REAL,
+            variant_id TEXT,
+            cart_token TEXT,
+            cart_total REAL,
+            user_agent TEXT,
+            ip_address TEXT,
+            created_at INTEGER NOT NULL
+          )
+        `).run();
+    });
+
+    afterEach(async () => {
+        await env.DB.prepare('DELETE FROM customer_events').run();
+    });
+
+    it('returns 401 without auth', async () => {
+        const body = JSON.stringify({ customer_id: 'gid://shopify/Customer/1' });
+        const response = await SELF.fetch('https://example.com/webhooks/checkout/abandoned', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body,
+        });
+        expect(response.status).toBe(401);
+    });
+
+    it('stores checkout_abandoned via HMAC', async () => {
+        const payload = {
+            customer_id: 'gid://shopify/Customer/9001',
+            checkout_url: 'https://epirbizuteria.pl/checkouts/abc',
+            cart_total: 254.5,
+            cart_token: 'tok-abc',
+            line_items: [{ title: 'Galazki' }],
+        };
+        const body = JSON.stringify(payload);
+        const response = await SELF.fetch('https://example.com/webhooks/checkout/abandoned', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Shopify-Hmac-Sha256': shopifyWebhookHmac(body),
+            },
+            body,
+        });
+        expect(response.status).toBe(200);
+        const row = await env.DB.prepare(
+            `SELECT customer_id, event_type, cart_total, page_url FROM customer_events WHERE event_type = ? LIMIT 1`
+        )
+            .bind('checkout_abandoned')
+            .first<{
+                customer_id: string;
+                event_type: string;
+                cart_total: number | null;
+                page_url: string | null;
+            }>();
+        expect(row?.customer_id).toBe('gid://shopify/Customer/9001');
+        expect(row?.cart_total).toBe(254.5);
+        expect(row?.page_url).toContain('checkouts/abc');
+    });
+
+    it('accepts Flow shared secret header', async () => {
+        const payload = { email: 'buyer@example.com', total_price: '100.00', token: 't1' };
+        const body = JSON.stringify(payload);
+        const response = await SELF.fetch('https://example.com/webhooks/checkout/abandoned', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-EPIR-FLOW-SECRET': WEBHOOK_TEST_SECRET,
+            },
+            body,
+        });
+        expect(response.status).toBe(200);
+        const row = await env.DB.prepare(
+            `SELECT customer_id FROM customer_events WHERE event_type = 'checkout_abandoned' ORDER BY id DESC LIMIT 1`
+        ).first<{ customer_id: string }>();
+        expect(row?.customer_id).toBe('email:buyer@example.com');
+    });
+});
+
+describe('Analytics Worker - POST /webhooks/customers/vip', () => {
+    beforeAll(async () => {
+        await env.DB.prepare(`
+          CREATE TABLE IF NOT EXISTS customer_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            event_timestamp INTEGER NOT NULL,
+            event_data TEXT,
+            page_url TEXT,
+            page_title TEXT,
+            referrer TEXT,
+            product_id TEXT,
+            product_title TEXT,
+            product_price REAL,
+            variant_id TEXT,
+            cart_token TEXT,
+            cart_total REAL,
+            user_agent TEXT,
+            ip_address TEXT,
+            created_at INTEGER NOT NULL
+          )
+        `).run();
+        await env.DB.prepare(`
+          CREATE TABLE IF NOT EXISTS customer_vip (
+            customer_id TEXT PRIMARY KEY,
+            orders_count INTEGER,
+            source TEXT,
+            marked_at INTEGER NOT NULL
+          )
+        `).run();
+    });
+
+    afterEach(async () => {
+        await env.DB.prepare('DELETE FROM customer_events').run();
+        await env.DB.prepare('DELETE FROM customer_vip').run();
+    });
+
+    it('upserts customer_vip and vip_customer event', async () => {
+        const payload = { customer_id: '12345', orders_count: 2 };
+        const body = JSON.stringify(payload);
+        const response = await SELF.fetch('https://example.com/webhooks/customers/vip', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Shopify-Hmac-Sha256': shopifyWebhookHmac(body),
+            },
+            body,
+        });
+        expect(response.status).toBe(200);
+        const vip = await env.DB.prepare('SELECT * FROM customer_vip WHERE customer_id = ?')
+            .bind('gid://shopify/Customer/12345')
+            .first<{ customer_id: string; orders_count: number | null; source: string | null }>();
+        expect(vip?.orders_count).toBe(2);
+        expect(vip?.source).toBe('shopify_flow_vip');
+        const ev = await env.DB.prepare(
+            `SELECT event_type FROM customer_events WHERE customer_id = ? LIMIT 1`
+        )
+            .bind('gid://shopify/Customer/12345')
+            .first<{ event_type: string }>();
+        expect(ev?.event_type).toBe('vip_customer');
+    });
+});
+

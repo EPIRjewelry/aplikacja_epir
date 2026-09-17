@@ -54,6 +54,81 @@ a.active {
   margin-right: calc(50% - 50vw);
 }
 
+/*
+ * Home only — cancel Layout `main` padding (p-6 md:p-8 lg:px-12).
+ * Width: edge-to-edge. Height: ORSKA-like (wide, not 100svh).
+ */
+.kazka-home {
+  width: calc(100% + 3rem);
+  margin: -1.5rem -1.5rem;
+}
+
+@media (min-width: 48em) {
+  .kazka-home {
+    width: calc(100% + 4rem);
+    margin: -2rem -2rem;
+  }
+}
+
+@media (min-width: 64em) {
+  .kazka-home {
+    width: calc(100% + 6rem);
+    margin-left: -3rem;
+    margin-right: -3rem;
+    margin-top: -2rem;
+    margin-bottom: -2rem;
+  }
+}
+
+.kazka-home-hero {
+  width: 100%;
+  height: min(62svh, 28rem);
+}
+
+@media (min-width: 48em) {
+  .kazka-home-hero {
+    /* ~2:1 like orska.pl desktop hero, capped so ultrawide stays calm */
+    height: min(50vw, 45rem);
+  }
+}
+
+.kazka-home-tile {
+  aspect-ratio: 4 / 5;
+  width: 100%;
+  max-height: min(42vh, 20rem);
+  overflow: hidden;
+}
+
+@media (min-width: 48em) {
+  .kazka-home-tile {
+    max-height: min(46vh, 26rem);
+  }
+}
+
+/* Odkryj only — ~12.5% taller tiles; jewelry centered in crop */
+.kazka-odkryj-tile {
+  aspect-ratio: 4 / 5.625;
+  width: 100%;
+  max-height: min(47vh, 22.5rem);
+  overflow: hidden;
+}
+
+@media (min-width: 48em) {
+  .kazka-odkryj-tile {
+    max-height: min(52vh, 29rem);
+  }
+}
+
+.kazka-odkryj-tile img {
+  object-position: center 42%;
+}
+
+.kazka-home-video {
+  position: relative;
+  width: 100%;
+  height: min(70.3125vw, 45rem, 65vh);
+}
+
 .kazka-editorial-label {
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 0.75rem;
@@ -78,9 +153,98 @@ a.active {
   background: rgb(var(--color-primary) / 0.04);
 }
 
+/*
+ * PDP — cancel Layout `main` horizontal padding so gallery bleeds to viewport left.
+ * Panel keeps its own px (see products.$handle.tsx).
+ */
+.kazka-pdp {
+  width: calc(100% + 3rem);
+  margin-left: -1.5rem;
+  margin-right: -1.5rem;
+}
+
+@media (min-width: 48em) {
+  .kazka-pdp {
+    width: calc(100% + 4rem);
+    margin-left: -2rem;
+    margin-right: -2rem;
+  }
+}
+
+@media (min-width: 64em) {
+  .kazka-pdp {
+    width: calc(100% + 6rem);
+    margin-left: -3rem;
+    margin-right: -3rem;
+  }
+}
+
+.kazka-pdp-gallery {
+  padding-left: 1.5rem;
+}
+
+@media (min-width: 48em) {
+  .kazka-pdp-gallery {
+    padding-left: 2rem;
+  }
+}
+
+@media (min-width: 64em) {
+  .kazka-pdp-gallery {
+    padding-left: 3rem;
+  }
+}
+
 /* PDP — comfortable tap targets, premium panel */
 .kazka-pdp-panel button[type='submit'] {
   min-height: 2.75rem;
+}
+
+.kazka-pdp-panel .kazka-pdp-description {
+  color: rgb(var(--color-primary) / 0.75);
+}
+
+.kazka-pdp-panel .kazka-pdp-description p:first-child {
+  font-size: 1.05rem;
+  color: rgb(var(--color-primary) / 0.85);
+}
+
+/* PDP gallery — unblock zoom (card-image ::before intercepts pointer events) */
+.kazka-pdp-gallery .card-image::before {
+  content: none;
+}
+
+.kazka-pdp-gallery .card-image {
+  box-shadow: none;
+}
+
+/* Beat `.card-image img { object-cover }` so featuredFit contain/cover actually apply */
+.kazka-pdp-gallery .card-image img.object-contain {
+  object-fit: contain;
+}
+
+.kazka-pdp-gallery .card-image img.object-cover {
+  object-fit: cover;
+}
+
+/* Editorial gallery — hero + 2-col stack; natural document height (no max-height clip) */
+.kazka-pdp-gallery .product-gallery-editorial > .card-image:first-child {
+  width: 100%;
+  max-width: 100%;
+  min-height: unset !important;
+  aspect-ratio: 4 / 5 !important;
+}
+
+.kazka-pdp-gallery .product-gallery-editorial .card-image img {
+  height: 100%;
+}
+
+.kazka-pdp-gallery .product-gallery-editorial > .grid {
+  max-width: 100%;
+}
+
+.kazka-pdp-gallery .product-gallery-editorial button img {
+  pointer-events: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

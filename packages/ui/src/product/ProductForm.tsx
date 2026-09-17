@@ -14,6 +14,12 @@ type CartActionJson = {
   cart?: unknown;
 };
 
+const addToCartClass =
+  'min-h-[2.75rem] w-full border-0 bg-[rgb(var(--color-primary))] px-6 py-3 text-center text-sm font-medium tracking-[0.04em] text-[rgb(var(--color-contrast))] transition-colors hover:bg-[rgb(var(--color-accent))] hover:text-[rgb(var(--color-primary))] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgb(var(--color-accent))] focus-visible:outline-offset-2';
+
+const buyNowClass =
+  'min-h-[2.75rem] w-full border border-[rgb(var(--color-primary))] bg-white px-6 py-3 text-center text-sm font-medium tracking-[0.04em] text-[rgb(var(--color-primary))] transition-colors hover:bg-black/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgb(var(--color-accent))] focus-visible:outline-offset-2';
+
 export function ProductForm(props: {
   variantId?: string;
   /** Gdy brak `selectedLocale` w root; np. kraj z `storefront.i18n` (PL zamiast domyślnego US). */
@@ -51,32 +57,26 @@ export function ProductForm(props: {
       : null;
 
   return (
-    <div className="grid gap-2 max-w-[400px]">
+    <div className="grid w-full gap-2">
       <fetcher.Form action="/cart" method="post" className="grid gap-2">
         <input type="hidden" name="countryCode" value={country} />
         <input type="hidden" name="lines" value={JSON.stringify(lines)} />
         <input type="hidden" name="cartAction" value="ADD_TO_CART" />
-      {(errMsg || userErr) && fetcher.state === 'idle' ? (
-        <p className="text-sm text-red-600" role="alert">
-          {errMsg || userErr}
-        </p>
-      ) : null}
-      <button
-        type="submit"
-        className="bg-epir-base hover:bg-epir-accent text-white px-6 py-3 w-full rounded-md text-center font-medium transition-colors"
-      >
-        Do koszyka
-      </button>
+        {(errMsg || userErr) && fetcher.state === 'idle' ? (
+          <p className="text-sm text-red-600" role="alert">
+            {errMsg || userErr}
+          </p>
+        ) : null}
+        <button type="submit" className={addToCartClass}>
+          Do koszyka
+        </button>
       </fetcher.Form>
       {props.showBuyNow ? (
         <Form action="/cart" method="post">
           <input type="hidden" name="countryCode" value={country} />
           <input type="hidden" name="lines" value={JSON.stringify(lines)} />
           <input type="hidden" name="cartAction" value="BUY_NOW" />
-          <button
-            type="submit"
-            className="border border-[rgb(var(--color-primary))] bg-white text-[rgb(var(--color-primary))] hover:bg-black/5 px-6 py-3 w-full rounded-md text-center font-medium transition-colors"
-          >
+          <button type="submit" className={buyNowClass}>
             Kup teraz
           </button>
         </Form>

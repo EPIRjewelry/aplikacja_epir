@@ -74,7 +74,7 @@ export function KazkaEditorialHero({slides: cmsSlides}: {slides: CmsHeroSlide[]}
 
   return (
     <section
-      className="kazka-editorial-bleed relative h-[calc(100svh-var(--height-nav))] min-h-[28rem] w-full overflow-hidden bg-[#2c3238]"
+      className="kazka-home-hero relative w-full overflow-hidden bg-[#2c3238]"
       aria-label="Kazka — kolekcja"
     >
       {slides.map((s, i) => {

@@ -45,25 +45,29 @@ export type EditorialCategoryTile = {
 export const KAZKA_EDITORIAL_CATEGORIES: EditorialCategoryTile[] = [
   {
     href: '/collections/kazka-pierscionki',
-    image: '/editorial/lifestyle-rings-hand.png',
+    image:
+      'https://cdn.shopify.com/s/files/1/0249/9756/0425/files/kafel_kazka_pierscionki.png?v=1789554672',
     label: 'Pierścionki',
     alt: 'Pierścionki Kazka',
   },
   {
     href: '/collections/kazka-bransoletki',
-    image: `${SHOPIFY_CDN}/kazka_jewelry_12.jpg?v=1786728580`,
+    image:
+      'https://cdn.shopify.com/s/files/1/0249/9756/0425/files/kafeL_kazka_bransoletka.png?v=1789554672',
     label: 'Bransoletki',
     alt: 'Bransoletki Kazka',
   },
   {
     href: '/collections/kazka-naszyjniki',
-    image: '/editorial/lifestyle-necklace.png',
+    image:
+      'https://cdn.shopify.com/s/files/1/0249/9756/0425/files/kafel_kazka_wisior.png?v=1789554672',
     label: 'Naszyjniki',
     alt: 'Naszyjniki Kazka',
   },
   {
     href: '/collections/kazka-kolczyki',
-    image: '/editorial/lifestyle-earrings-laugh.png',
+    image:
+      'https://cdn.shopify.com/s/files/1/0249/9756/0425/files/kafel_kazka_kolczyki.png?v=1789554672',
     label: 'Kolczyki',
     alt: 'Kolczyki Kazka',
   },

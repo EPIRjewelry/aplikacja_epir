@@ -1057,6 +1057,15 @@ function isPixelPath(pathname: string): boolean {
   return pathname === '/pixel' || pathname.startsWith('/pixel/');
 }
 
+/** Shopify Flow → analytics (public ingress via asystent; analytics has no workers.dev routes). */
+function isAnalyticsShopifyWebhookPath(pathname: string): boolean {
+  return (
+    pathname === '/webhooks/orders/create' ||
+    pathname === '/webhooks/checkout/abandoned' ||
+    pathname === '/webhooks/customers/vip'
+  );
+}
+
 function isAnalyticsChartsProxyPath(pathname: string): boolean {
   return pathname === '/apps/assistant/charts' || pathname === '/api/charts';
 }
@@ -4850,8 +4859,8 @@ export default {
       return handleAnalyticsChartsProxy(request, env, url);
     }
 
-    // 1. Proxy /pixel – na początku, przed routingiem czatu (Gateway pattern)
-    if (isPixelPath(pathname)) {
+    // 1. Proxy /pixel (+ Shopify Flow webhooks) – na początku, przed routingiem czatu (Gateway pattern)
+    if (isPixelPath(pathname) || isAnalyticsShopifyWebhookPath(pathname)) {
       // OPTIONS (preflight CORS) – zwróć CORS headers
       if (method === 'OPTIONS') {
         return new Response(null, {
@@ -5046,10 +5055,12 @@ export default {
         }
         return handleCocreateAppProxy(request, env, ctx);
       }
-      return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
-      });
+
+      const s2sCocreate = verifyS2SChatRequest(request, env);
+      if (!s2sCocreate.ok) {
+        return s2sCocreate.response;
+      }
+      return handleCocreateAppProxy(request, env, ctx);
     }
 
     // Historia czatu storefrontu (App Proxy)

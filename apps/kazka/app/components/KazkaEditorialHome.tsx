@@ -38,7 +38,7 @@ export function KazkaEditorialHome({
   const featuredProductsSections = parseCmsFeaturedProductsSections(route);
 
   return (
-    <div className="flex w-full flex-col overflow-x-clip">
+    <div className="kazka-home flex w-full flex-col overflow-x-clip">
       <KazkaEditorialHero slides={heroSlides} />
       {featuredProductsSections.map((section) => (
         <KazkaFeaturedProducts key={section.id} {...section} />

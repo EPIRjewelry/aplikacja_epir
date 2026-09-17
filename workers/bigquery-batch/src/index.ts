@@ -10,11 +10,12 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 // ============================================================================
 
 import { getR2AnalyticsSql, getQ9ToolUsageFallbackSql, isMissingIcebergNameColumnError, VALID_QUERY_IDS } from './analytics-queries';
-import { PIXEL_CREATED_AT_MS_SQL, pixelCreatedAtIso, pixelCreatedAtMs } from './d1-timestamps';
+import { PIXEL_CREATED_AT_MS_SQL, pixelCreatedAtMs } from './d1-timestamps';
 import { buildFlowHealthReport } from './edog-flow-health-runner';
 import { buildEdogNarrative } from './edog-reason-narrative';
 import { runOperatorDailyReport } from './operator-daily-report';
 import { runWarehouseExportCatchUp } from './warehouse-export-catchup';
+import { mapPixelRowToPipelineRecord } from './pixel-pipeline-record';
 import { postPipelineIngestBatch } from './pipeline-ingest';
 import { isR2SqlQueryConfigured, runR2SqlJob } from './r2-sql-client';
 import { epirDebugLog } from './epir-debug-log';
@@ -149,20 +150,7 @@ async function exportPixelEvents(
 
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
       const chunk = rows.slice(i, i + BATCH_SIZE);
-      const records = chunk.map((r) => {
-        const pageUrl = String(r.page_url ?? '').trim();
-        return {
-          event_type: r.event_type,
-          session_id: r.session_id,
-          customer_id: r.customer_id,
-          storefront_id: r.storefront_id ?? null,
-          channel: r.channel ?? null,
-          // Stream schema: `url` required — puste page_url w D1 (~legacy) → placeholder (inaczej ingest odrzuca cały batch).
-          url: pageUrl || 'https://epir.local/unknown',
-          payload: JSON.stringify(r),
-          created_at: pixelCreatedAtIso(r.created_at),
-        };
-      });
+      const records = chunk.map((r) => mapPixelRowToPipelineRecord(r));
 
       const pr = await postPipelineIngestBatch(pipelineUrl, undefined, records);
       if (!pr.ok) {
