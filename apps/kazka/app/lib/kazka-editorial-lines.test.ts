@@ -2,17 +2,23 @@ import {describe, expect, it} from 'vitest';
 import {KAZKA_EDITORIAL_LINES} from './kazka-editorial-assets';
 
 describe('KAZKA_EDITORIAL_LINES', () => {
-  it('exposes three curated lines with linia query params', () => {
+  it('exposes three curated lines linked to dedicated collections', () => {
     expect(KAZKA_EDITORIAL_LINES.map((line) => line.label)).toEqual([
       'Classic',
       'Big Lab',
       'Fancy Cut',
     ]);
     expect(KAZKA_EDITORIAL_LINES.map((line) => line.href)).toEqual([
-      '/collections/kazka?linia=classic',
-      '/collections/kazka?linia=lab',
-      '/collections/kazka?linia=fancy',
+      '/collections/kazka-classic',
+      '/collections/kazka-big-lab',
+      '/collections/kazka-fancy-cut',
     ]);
+  });
+
+  it('uses updated line tile CDN assets', () => {
+    expect(KAZKA_EDITORIAL_LINES[0].image).toContain('classic.png');
+    expect(KAZKA_EDITORIAL_LINES[1].image).toContain('big-lab.png');
+    expect(KAZKA_EDITORIAL_LINES[2].image).toContain('fancy-cut.png');
   });
 
   it('gives each line an image and a short body', () => {

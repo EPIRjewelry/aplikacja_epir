@@ -12,12 +12,16 @@ export type ProductGridProps<T extends {id: string} = Product> = {
   connection: ProductGridConnection<T>;
   loadMoreLabel?: string;
   preferVariantOptions?: VariantOptionPreference[];
+  titleClassName?: string;
+  priceClassName?: string;
 };
 
 export default function ProductGrid<T extends {id: string} = Product>({
   connection,
   loadMoreLabel = 'Załaduj więcej',
   preferVariantOptions,
+  titleClassName,
+  priceClassName,
 }: ProductGridProps<T>) {
   return (
     <Pagination connection={connection}>
@@ -29,6 +33,8 @@ export default function ProductGrid<T extends {id: string} = Product>({
                 key={product.id}
                 product={product as Product}
                 preferVariantOptions={preferVariantOptions}
+                titleClassName={titleClassName}
+                priceClassName={priceClassName}
               />
             ))}
           </div>

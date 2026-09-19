@@ -25,8 +25,7 @@ export function KazkaEditorialCategoryTiles() {
               loading="lazy"
               decoding="async"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
-            <span className="kazka-editorial-label absolute bottom-4 left-4 text-white">
+            <span className="kazka-odkryj-label absolute bottom-4 left-4">
               {tile.label}
             </span>
           </Link>

@@ -8,7 +8,14 @@ export type VariantOptionPreference = {name: string; value: string};
 export type ProductCardProps = {
   product: Product & {media?: {nodes?: CardMediaNode[] | null} | null};
   preferVariantOptions?: VariantOptionPreference[];
+  titleClassName?: string;
+  priceClassName?: string;
 };
+
+const DEFAULT_TITLE_CLASS =
+  'truncate text-sm font-medium text-[rgb(var(--color-primary))] group-hover:opacity-80 transition-opacity';
+
+const DEFAULT_PRICE_CLASS = 'text-xs text-[rgb(var(--color-primary))]/75';
 
 function pickPreferredVariant<
   V extends {selectedOptions?: {name: string; value: string}[] | null},
@@ -55,6 +62,8 @@ function formatMoneyPl(
 export default function ProductCard({
   product,
   preferVariantOptions,
+  titleClassName = DEFAULT_TITLE_CLASS,
+  priceClassName = DEFAULT_PRICE_CLASS,
 }: ProductCardProps) {
   const variant = pickPreferredVariant(
     product.variants?.nodes,
@@ -124,15 +133,15 @@ export default function ProductCard({
           ) : null}
         </div>
         <div className="grid gap-1">
-          <h3 className="truncate text-sm font-medium text-[rgb(var(--color-primary))] group-hover:opacity-80 transition-opacity">
+          <h3 className={titleClassName}>
             {product.title}
           </h3>
           <div className="flex gap-2 items-baseline">
             {priceLabel ? (
-              <span className="text-xs text-[rgb(var(--color-primary))]/75">{priceLabel}</span>
+              <span className={priceClassName}>{priceLabel}</span>
             ) : null}
             {compareLabel ? (
-              <span className="text-sm line-through opacity-60">{compareLabel}</span>
+              <span className="text-sm tabular-nums line-through opacity-60">{compareLabel}</span>
             ) : null}
           </div>
         </div>

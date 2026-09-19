@@ -13,7 +13,7 @@ import {
 import type {Shop, CountryCode, LanguageCode} from '@shopify/hydrogen/storefront-api-types';
 import styles from './styles/app.css';
 import tailwind from './styles/tailwind-build.css';
-import favicon from '../public/favicon.svg';
+import favicon from '../public/favicon.png';
 import {
   Layout,
   CartHeader,
@@ -84,9 +84,9 @@ export const links: LinksFunction = () => {
     },
     {
       rel: 'stylesheet',
-      href: 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&display=swap',
+      href: 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap',
     },
-    {rel: 'icon', type: 'image/svg+xml', href: favicon},
+    {rel: 'icon', type: 'image/png', href: favicon},
   ];
 };
 

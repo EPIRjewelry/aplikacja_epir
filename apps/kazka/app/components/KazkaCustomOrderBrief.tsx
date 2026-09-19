@@ -45,7 +45,7 @@ const selectClass =
 const selectProps = {style: {colorScheme: 'dark' as const}};
 
 const labelClass =
-  'mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.16em] text-[rgb(var(--color-accent))]';
+  'mb-1.5 block font-sans text-[11px] font-medium uppercase tracking-[0.18em] text-[rgb(var(--color-accent))]';
 
 const STONE_OPTIONS = [
   {value: 'brylant biały', label: 'Brylant biały'},
@@ -186,7 +186,7 @@ export function KazkaCustomOrderBrief() {
 
       <div className="relative mx-auto max-w-2xl px-6 py-16 md:px-10 md:py-24">
         <div className="mb-10 text-center md:mb-12">
-          <p className="kazka-editorial-label mb-4 text-[10px] tracking-[0.28em] text-[rgb(var(--color-accent))]">
+          <p className="kazka-editorial-label mb-4 text-[rgb(var(--color-accent))]">
             KAZKA · ZAMÓWIENIE INDYWIDUALNE
           </p>
           <h2
@@ -195,7 +195,7 @@ export function KazkaCustomOrderBrief() {
           >
             Jeden projekt. Jeden pierścionek.
           </h2>
-          <p className="mt-5 text-base leading-relaxed text-[rgb(var(--color-contrast))]/85 md:text-lg">
+          <p className="mx-auto mt-5 max-w-[45ch] font-sans text-base leading-[1.6] text-[rgb(var(--color-contrast))]/90 md:text-lg">
             Każde zamówienie zaczyna się od rozmowy. Opisz kształt, kamień i
             okazję — zaprojektujemy geometrię pod Twój palec.
           </p>
@@ -290,7 +290,7 @@ export function KazkaCustomOrderBrief() {
                 <path d="M12 16V4m0 0l-4 4m4-4l4 4M4 20h16" />
               </svg>
               <p className="text-sm">Upuść szkic lub zdjęcie inspiracji tutaj</p>
-              <p className="mt-1 text-xs text-[rgb(var(--color-contrast))]/55">
+              <p className="mt-1 font-sans text-xs font-medium text-[rgb(var(--color-contrast))]/80">
                 PNG, JPG — max 10 MB · opcjonalnie
               </p>
               {selectedFile ? (
@@ -466,7 +466,7 @@ export function KazkaCustomOrderBrief() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="inline-flex w-full items-center justify-center border-2 border-[rgb(var(--color-accent))] bg-[rgb(var(--color-accent))] px-10 py-4 text-xs font-bold uppercase tracking-[0.22em] text-[rgb(var(--color-primary))] transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-65 sm:w-auto"
+              className="inline-flex w-full items-center justify-center border-2 border-[rgb(var(--color-accent))] bg-[rgb(var(--color-accent))] px-6 py-3 font-sans text-[11px] font-medium uppercase tracking-[0.15em] text-[rgb(var(--color-primary))] transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-65 sm:w-auto"
             >
               {isSubmitting ? 'Wysyłanie…' : 'Wyślij brief'}
             </button>

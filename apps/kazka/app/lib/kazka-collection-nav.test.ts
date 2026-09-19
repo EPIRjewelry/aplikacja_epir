@@ -1,9 +1,12 @@
 import {describe, expect, it} from 'vitest';
 import {
+  activeLiniaFromPath,
   buildClearKatParams,
   buildClearLiniaParams,
   buildKatParams,
+  buildLiniaHref,
   buildLiniaParams,
+  liniaFromCollectionHandle,
   pickLabVariant,
   preferVariantOptionsForLinia,
 } from './kazka-collection-nav';
@@ -55,5 +58,25 @@ describe('kazka-collection-nav', () => {
       {name: 'Jakość', value: 'LAB'},
     ]);
     expect(preferVariantOptionsForLinia('fancy')).toBeUndefined();
+  });
+
+  it('buildLiniaHref maps to dedicated collection paths', () => {
+    expect(buildLiniaHref('')).toBe('/collections/kazka');
+    expect(buildLiniaHref('classic')).toBe('/collections/kazka-classic');
+    expect(buildLiniaHref('lab')).toBe('/collections/kazka-big-lab');
+    expect(buildLiniaHref('fancy')).toBe('/collections/kazka-fancy-cut');
+  });
+
+  it('activeLiniaFromPath detects line from pathname', () => {
+    expect(activeLiniaFromPath('/collections/kazka-classic')).toBe('classic');
+    expect(activeLiniaFromPath('/collections/kazka-big-lab')).toBe('lab');
+    expect(activeLiniaFromPath('/collections/kazka-fancy-cut')).toBe('fancy');
+    expect(activeLiniaFromPath('/collections/kazka')).toBe('');
+    expect(activeLiniaFromPath('/collections/kazka-pierscionki')).toBeNull();
+  });
+
+  it('liniaFromCollectionHandle maps collection handle to linia key', () => {
+    expect(liniaFromCollectionHandle('kazka-big-lab')).toBe('lab');
+    expect(liniaFromCollectionHandle('kazka-pierscionki')).toBe('');
   });
 });

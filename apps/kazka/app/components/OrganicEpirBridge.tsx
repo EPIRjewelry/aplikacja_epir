@@ -20,7 +20,7 @@ export function OrganicEpirBridge() {
         }}
       />
       <div className="relative mx-auto flex max-w-5xl flex-col items-center px-6 py-16 text-center md:px-10 md:py-24">
-        <p className="mb-4 text-xs font-semibold uppercase tracking-[0.35em] text-[rgb(var(--color-accent))]">
+        <p className="kazka-editorial-label mb-4 text-[rgb(var(--color-accent))]">
           Inny język formy
         </p>
         <h2
@@ -29,7 +29,7 @@ export function OrganicEpirBridge() {
         >
           Szukasz organicznej rzeźby w złocie?
         </h2>
-        <p className="mt-6 max-w-xl text-base leading-relaxed text-[rgb(var(--color-contrast))]/85 md:text-lg">
+        <p className="mt-6 max-w-[45ch] font-sans text-base leading-[1.6] text-[rgb(var(--color-contrast))]/90 md:text-lg">
           EPIR Art Jewellery — złoto o żywej powierzchni i formie inspirowanej lasem:
           brylant oraz inne kamienie szlachetne w rzeźbiarskim osadzeniu. Także srebro
           w tym samym, równie szlachetnym języku. Osobna pracownia, ta sama wrocławska
@@ -38,7 +38,7 @@ export function OrganicEpirBridge() {
         <a
           href={href}
           rel="noopener noreferrer"
-          className="mt-10 inline-flex items-center justify-center border-2 border-[rgb(var(--color-accent))] bg-[rgb(var(--color-accent))] px-10 py-4 text-xs font-bold uppercase tracking-[0.22em] text-[rgb(var(--color-primary))] transition-opacity hover:opacity-90"
+          className="mt-10 inline-flex items-center justify-center border-2 border-[rgb(var(--color-accent))] bg-[rgb(var(--color-accent))] px-6 py-3 font-sans text-[11px] font-medium uppercase tracking-[0.15em] text-[rgb(var(--color-primary))] transition-opacity hover:opacity-90"
         >
           Odkryj złoto EPIR
         </a>

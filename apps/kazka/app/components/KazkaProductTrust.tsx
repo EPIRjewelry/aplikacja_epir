@@ -14,19 +14,19 @@ export function KazkaProductTrust({items}: {items: ProductTrustItem[]}) {
       </h2>
       <ul className="grid gap-3">
         {items.map((item) => (
-          <li key={item.id} className="grid gap-0.5 text-sm leading-relaxed">
+          <li key={item.id} className="grid gap-0.5 font-sans text-sm leading-relaxed">
             <span className="font-medium text-[rgb(var(--color-primary))]">
               {item.label}
             </span>
             {item.href ? (
               <Link
                 to={item.href}
-                className="text-[rgb(var(--color-primary))]/70 underline-offset-4 hover:text-[rgb(var(--color-accent))] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgb(var(--color-accent))] focus-visible:outline-offset-2"
+                className="text-[rgb(var(--color-primary))]/80 underline-offset-4 hover:text-[rgb(var(--color-accent))] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgb(var(--color-accent))] focus-visible:outline-offset-2"
               >
                 {item.value ?? item.label}
               </Link>
             ) : (
-              <span className="text-[rgb(var(--color-primary))]/70">{item.value}</span>
+              <span className="kazka-figure text-[rgb(var(--color-primary))]/80">{item.value}</span>
             )}
           </li>
         ))}

@@ -5,7 +5,7 @@ export function KazkaEditorialVideoSection() {
   return (
     <section className="w-full bg-[#f4efe8] py-6 md:py-8">
       <div className="mb-3 px-4 md:mb-4 md:px-6">
-        <p className="kazka-editorial-label text-[10px] tracking-[0.28em] text-[rgb(var(--color-primary))]/70">
+        <p className="kazka-editorial-label text-[rgb(var(--color-primary))]/80">
           KAZKA
         </p>
       </div>

@@ -158,7 +158,7 @@ export default function ProductHandle() {
         <div className="kazka-pdp-panel grid w-full max-w-xl gap-8 px-6 md:sticky md:top-[6rem] md:max-w-none md:px-8 lg:top-[8rem] lg:pl-8 lg:pr-12 xl:top-[10rem]">
           <div className="grid gap-2">
             <p className="kazka-editorial-label">Kazka</p>
-            <h1 className="text-4xl font-normal leading-10 whitespace-normal">
+            <h1 className="font-serif text-4xl font-normal leading-10 whitespace-normal">
               {product.title}
             </h1>
           </div>
@@ -170,15 +170,15 @@ export default function ProductHandle() {
             <Money
               withoutTrailingZeros
               data={selectedVariant.price}
-              className="text-xl font-semibold mb-2"
+              className="font-sans text-xl font-semibold tabular-nums mb-2 text-[rgb(var(--color-primary))]"
             />
           ) : (
-            <p className="text-xl font-semibold mb-2 text-black/50">
+            <p className="font-sans text-xl font-medium mb-2 text-[rgb(var(--color-primary))]/80">
               Wybierz wariant, aby zobaczyć cenę.
             </p>
           )}
           {stoneLabel ? (
-            <p className="text-sm text-[rgb(var(--color-primary))]/70">
+            <p className="font-sans text-[12px] uppercase tracking-[0.08em] font-medium text-[rgb(var(--color-primary))]/80">
               Kamień · {stoneLabel}
             </p>
           ) : null}

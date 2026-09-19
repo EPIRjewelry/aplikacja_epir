@@ -45,8 +45,7 @@ export type EditorialCategoryTile = {
 export const KAZKA_EDITORIAL_CATEGORIES: EditorialCategoryTile[] = [
   {
     href: '/collections/kazka-pierscionki',
-    image:
-      'https://cdn.shopify.com/s/files/1/0249/9756/0425/files/kafel_kazka_pierscionki.png?v=1789554672',
+    image: `${SHOPIFY_CDN}/pier-cionki-winieta-powi-kszona-d-o.png?v=1789718901`,
     label: 'Pierścionki',
     alt: 'Pierścionki Kazka',
   },
@@ -89,25 +88,25 @@ export type EditorialLineTile = {
 /** Home — discovery of curated lines (Classic / Big Lab / Fancy Cut). */
 export const KAZKA_EDITORIAL_LINES: EditorialLineTile[] = [
   {
-    href: '/collections/kazka?linia=classic',
-    image: `${SHOPIFY_CDN}/kazka_jewelry_15.jpg?v=1786728584`,
+    href: '/collections/kazka-classic',
+    image: `${SHOPIFY_CDN}/classic.png?v=1789721037`,
     label: 'Classic',
     body: 'Geometryczna czystość soliterów — złoto 18K i naturalny brylant.',
-    alt: 'Linia Classic — soliter Kazka',
+    alt: 'Linia Classic — Kazka Jewelry',
   },
   {
-    href: '/collections/kazka?linia=lab',
-    image: `${SHOPIFY_CDN}/kazka_jewelry_12.jpg?v=1786728580`,
+    href: '/collections/kazka-big-lab',
+    image: `${SHOPIFY_CDN}/big-lab.png?v=1789721041`,
     label: 'Big Lab',
     body: 'Ten sam projekt, diament laboratoryjny — świadomy wybór blasku.',
-    alt: 'Linia Big Lab — złoty soliter w szkle',
+    alt: 'Linia Big Lab — Kazka Jewelry',
   },
   {
-    href: '/collections/kazka?linia=fancy',
-    image: '/editorial/lifestyle-rings-closeup.png',
+    href: '/collections/kazka-fancy-cut',
+    image: `${SHOPIFY_CDN}/fancy-cut.png?v=1789721045`,
     label: 'Fancy Cut',
     body: 'Szlify poza okrągłym — kamień jako forma, nie tylko błysk.',
-    alt: 'Linia Fancy Cut — pierścionki z kamieniami',
+    alt: 'Linia Fancy Cut — Kazka Jewelry',
   },
 ];
 

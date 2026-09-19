@@ -1,6 +1,10 @@
 import {Link} from '@remix-run/react';
 import {useRef} from 'react';
 import type {CmsFeaturedProductsSection} from '~/lib/kazka-cms-featured-products';
+import {
+  KAZKA_PRODUCT_PRICE_CLASS,
+  KAZKA_PRODUCT_TITLE_CLASS,
+} from '~/lib/kazka-typography';
 
 /**
  * Featured products — CMS (route.featured_products), kafle 4:5, styl Kazka/Orska.
@@ -21,12 +25,12 @@ export function KazkaFeaturedProducts({
       data-section-id={id}
     >
       {heading ? (
-        <h2 className="kazka-editorial-label mb-2 px-4 text-center text-[#2c3238] md:px-6">
+        <h2 className="kazka-section-heading mb-3 px-4 text-center md:px-6">
           {heading}
         </h2>
       ) : null}
       {body ? (
-        <p className="mx-auto mb-6 max-w-xl px-4 text-center text-xs leading-relaxed text-[#2c3238]/70 md:mb-8 md:px-6">
+        <p className="kazka-section-lead mx-auto mb-6 max-w-2xl px-4 text-center md:mb-8 md:px-6">
           {body}
         </p>
       ) : heading ? (
@@ -105,11 +109,11 @@ function FeaturedProductTile({
           />
         ) : null}
       </div>
-      <h3 className="truncate text-sm font-medium text-[rgb(var(--color-primary))] group-hover:opacity-80">
+      <h3 className={KAZKA_PRODUCT_TITLE_CLASS}>
         {product.title}
       </h3>
       {showPrices && product.priceLabel ? (
-        <p className="text-xs text-[rgb(var(--color-primary))]/65">
+        <p className={KAZKA_PRODUCT_PRICE_CLASS}>
           {product.priceLabel}
         </p>
       ) : null}

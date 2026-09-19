@@ -4,6 +4,10 @@ import {CollectionFilters, ProductGrid} from '@epir/ui';
 import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {KazkaCollectionNav} from '~/components/KazkaCollectionNav';
 import {KazkaEmptyCollectionState} from '~/components/KazkaEmptyCollectionState';
+import {
+  KAZKA_PRODUCT_PRICE_CLASS,
+  KAZKA_PRODUCT_TITLE_CLASS,
+} from '~/lib/kazka-typography';
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 import {
   METAL_FILTER_OPTIONS,
@@ -16,7 +20,10 @@ import {
   parseCollectionProductFilters,
   parseCollectionSort,
 } from '~/lib/collection-product-filters';
-import {preferVariantOptionsForLinia} from '~/lib/kazka-collection-nav';
+import {
+  liniaFromCollectionHandle,
+  preferVariantOptionsForLinia,
+} from '~/lib/kazka-collection-nav';
 import {COLLECTION_QUERY} from '~/queries/collection';
 import type {CollectionQueryData} from '~/types/collection';
 
@@ -108,7 +115,9 @@ export default function Collection() {
   const {collection, activeFilterCount} = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
   const hasProducts = Boolean(collection.products?.nodes?.length);
-  const activeLinia = searchParams.get('linia') ?? '';
+  const activeLinia =
+    searchParams.get('linia')?.trim() ||
+    liniaFromCollectionHandle(collection.handle);
   const activeKat = searchParams.get('kat') ?? '';
   const hasLiniaFilter = Boolean(activeLinia);
   const hasKatFilter = Boolean(activeKat);
@@ -123,12 +132,12 @@ export default function Collection() {
       <KazkaCollectionNav />
 
       <header className="grid w-full gap-6 py-6 md:py-8 fadeIn">
-        <h1 className="text-3xl md:text-4xl font-bold text-[rgb(var(--color-primary))]">
+        <h1 className="font-serif text-3xl font-bold text-[rgb(var(--color-primary))] md:text-4xl">
           {collection.title}
         </h1>
 
         {collection.description && (
-          <p className="max-w-2xl text-[rgb(var(--color-primary))]/70 whitespace-pre-wrap">
+          <p className="max-w-[45ch] font-sans leading-[1.6] text-[rgb(var(--color-primary))]/80 whitespace-pre-wrap">
             {collection.description}
           </p>
         )}
@@ -150,6 +159,8 @@ export default function Collection() {
             key={`${collection.handle}-${activeFilterCount}-${activeLinia}-${activeKat}`}
             connection={collection.products}
             preferVariantOptions={preferVariantOptions}
+            titleClassName={KAZKA_PRODUCT_TITLE_CLASS}
+            priceClassName={KAZKA_PRODUCT_PRICE_CLASS}
           />
         ) : (
           <KazkaEmptyCollectionState

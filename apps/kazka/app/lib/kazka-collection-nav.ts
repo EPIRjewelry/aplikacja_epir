@@ -5,6 +5,35 @@ import {
 
 export type VariantOptionPreference = {name: string; value: string};
 
+/** Osobne smart kolekcje linii (zamiast ?linia=). */
+export const LINIA_COLLECTION_HANDLES: Record<string, string> = {
+  '': 'kazka',
+  classic: 'kazka-classic',
+  lab: 'kazka-big-lab',
+  fancy: 'kazka-fancy-cut',
+};
+
+export function buildLiniaHref(linia: string): string {
+  const handle = LINIA_COLLECTION_HANDLES[linia] ?? 'kazka';
+  return `/collections/${handle}`;
+}
+
+/** Aktywna zakładka linii z pathname; null = brak (np. kategoria typu). */
+export function activeLiniaFromPath(pathname: string): string | null {
+  if (pathname.includes('kazka-classic')) return 'classic';
+  if (pathname.includes('kazka-big-lab')) return 'lab';
+  if (pathname.includes('kazka-fancy-cut')) return 'fancy';
+  if (/\/collections\/kazka\/?$/.test(pathname)) return '';
+  return null;
+}
+
+export function liniaFromCollectionHandle(handle: string): string {
+  if (handle === 'kazka-classic') return 'classic';
+  if (handle === 'kazka-big-lab') return 'lab';
+  if (handle === 'kazka-fancy-cut') return 'fancy';
+  return '';
+}
+
 const PAGINATION_KEYS = ['cursor', 'direction'] as const;
 
 /** Usuwa parametry paginacji — zmiana filtra wraca na pierwszą stronę. */

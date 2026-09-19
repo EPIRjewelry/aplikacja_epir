@@ -4,6 +4,10 @@ import type {
   CampaignLandingData,
   CampaignLandingProduct,
 } from '~/lib/campaign-landing.server';
+import {
+  KAZKA_PRODUCT_PRICE_CLASS,
+  KAZKA_PRODUCT_TITLE_CLASS,
+} from '~/lib/kazka-typography';
 
 type CampaignLandingPageProps = {
   landing: CampaignLandingData;
@@ -21,11 +25,11 @@ export function CampaignLandingPage({landing, products}: CampaignLandingPageProp
   return (
     <div className="w-full">
       <div className="text-center mb-10 md:mb-14 fadeIn">
-        <h1 className="text-3xl md:text-5xl font-bold text-[rgb(var(--color-primary))] mb-4 tracking-tight">
+        <h1 className="mb-4 font-serif text-3xl font-bold tracking-tight text-[rgb(var(--color-primary))] md:text-5xl">
           {landing.heroTitle}
         </h1>
         {landing.heroSubtitle ? (
-          <p className="text-[rgb(var(--color-primary))]/70 max-w-2xl mx-auto text-sm md:text-base font-light whitespace-pre-line">
+          <p className="mx-auto max-w-[45ch] font-sans text-sm font-normal leading-[1.6] text-[rgb(var(--color-primary))]/80 md:text-base whitespace-pre-line">
             {landing.heroSubtitle}
           </p>
         ) : null}
@@ -55,7 +59,12 @@ export function CampaignLandingPage({landing, products}: CampaignLandingPageProp
       {products.length > 0 ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
           {products.map((product) => (
-            <ProductCard key={product.id} product={product} />
+            <ProductCard
+              key={product.id}
+              product={product}
+              titleClassName={KAZKA_PRODUCT_TITLE_CLASS}
+              priceClassName={KAZKA_PRODUCT_PRICE_CLASS}
+            />
           ))}
         </div>
       ) : null}

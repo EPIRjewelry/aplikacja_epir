@@ -9,7 +9,7 @@ export function CartSummary({cost}: {cost: CartCost}) {
           <dt>Subtotal</dt>
           <dd>
             {cost?.subtotalAmount?.amount ? (
-              <Money data={cost?.subtotalAmount} />
+              <Money data={cost?.subtotalAmount} className="tabular-nums" />
             ) : (
               '-'
             )}

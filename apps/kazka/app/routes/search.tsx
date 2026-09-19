@@ -4,6 +4,10 @@ import {getSeoMeta} from '@shopify/hydrogen';
 import type {Product} from '@shopify/hydrogen-react/storefront-api-types';
 import {ProductCard} from '@epir/ui';
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
+import {
+  KAZKA_PRODUCT_PRICE_CLASS,
+  KAZKA_PRODUCT_TITLE_CLASS,
+} from '~/lib/kazka-typography';
 import {storefrontProductSearchQuery} from '~/lib/storefront-product-search-query';
 
 export const meta: MetaFunction<typeof loader> = ({data}) =>
@@ -207,7 +211,12 @@ export default function Search() {
                 return !!(variant && variant.price && variant.price.amount);
               })
               .map((p) => (
-                <ProductCard key={p.id} product={p as Product} />
+                <ProductCard
+                  key={p.id}
+                  product={p as Product}
+                  titleClassName={KAZKA_PRODUCT_TITLE_CLASS}
+                  priceClassName={KAZKA_PRODUCT_PRICE_CLASS}
+                />
               ))}
           </div>
         </section>

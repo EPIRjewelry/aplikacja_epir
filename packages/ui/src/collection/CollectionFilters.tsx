@@ -111,11 +111,14 @@ export function CollectionFilters({
     Boolean(sort);
 
   const fieldClass =
-    'rounded-md border border-black/15 bg-[rgb(var(--color-contrast))] px-2 py-1.5 text-sm text-[rgb(var(--color-primary))] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgb(var(--color-accent))] focus-visible:outline-offset-2';
+    'rounded-md border border-black/15 bg-[rgb(var(--color-contrast))] px-2 py-1.5 font-sans text-sm text-[rgb(var(--color-primary))] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgb(var(--color-accent))] focus-visible:outline-offset-2';
+  const priceFieldClass = `${fieldClass} tabular-nums`;
   const legendClass =
-    'text-xs font-medium uppercase tracking-wide text-[rgb(var(--color-primary))]/60 mb-2';
+    'mb-2 font-sans text-[11px] font-medium uppercase tracking-[0.15em] text-[rgb(var(--color-primary))]/80';
   const labelClass =
-    'flex items-center gap-2 text-sm text-[rgb(var(--color-primary))] cursor-pointer';
+    'flex cursor-pointer items-center gap-2 font-sans text-sm text-[rgb(var(--color-primary))]';
+  const filterButtonClass =
+    'rounded-md border border-black/20 px-6 py-3 font-sans text-[11px] font-medium uppercase tracking-[0.15em] text-[rgb(var(--color-primary))] transition-colors hover:bg-black/5';
 
   return (
     <Form
@@ -257,7 +260,7 @@ export function CollectionFilters({
               inputMode="numeric"
               placeholder="Od"
               defaultValue={priceMin}
-              className={`w-24 ${fieldClass}`}
+              className={`w-24 ${priceFieldClass}`}
             />
             <span className="text-[rgb(var(--color-primary))]/40" aria-hidden>
               –
@@ -274,7 +277,7 @@ export function CollectionFilters({
               inputMode="numeric"
               placeholder="Do"
               defaultValue={priceMax}
-              className={`w-24 ${fieldClass}`}
+              className={`w-24 ${priceFieldClass}`}
             />
           </div>
           <div>
@@ -297,7 +300,7 @@ export function CollectionFilters({
           <div className="flex flex-wrap gap-2 pt-1">
             <button
               type="submit"
-              className="rounded-md bg-[rgb(var(--color-primary))] px-4 py-2 text-sm font-medium text-[rgb(var(--color-contrast))] transition-colors hover:bg-[rgb(var(--color-primary))]/90"
+              className="rounded-md border border-[rgb(var(--color-primary))] bg-[rgb(var(--color-primary))] px-6 py-3 font-sans text-[11px] font-medium uppercase tracking-[0.15em] text-[rgb(var(--color-contrast))] transition-colors hover:bg-[rgb(var(--color-primary))]/90"
             >
               Zastosuj
             </button>
@@ -305,7 +308,7 @@ export function CollectionFilters({
               <Link
                 to="."
                 preventScrollReset
-                className="rounded-md border border-black/20 px-4 py-2 text-sm font-medium text-[rgb(var(--color-primary))] hover:bg-black/5"
+                className={filterButtonClass}
               >
                 Wyczyść
               </Link>

@@ -2,8 +2,16 @@
 
 export const KAZKA_HEADER_BRAND = 'EPIR Art Jewellery';
 export const KAZKA_HEADER_DESCRIPTOR = 'Kazka Jewelry';
-export const KAZKA_HEADER_TRUST =
-  'Projekt i selekcja: EPIR · Złoto 585 / 750';
+export const KAZKA_HEADER_PRESENTS = 'przedstawia: KAZKA Jewelry';
+export const KAZKA_HEADER_PHONE = '+48 696 55 33 46';
+export const KAZKA_HEADER_PHONE_TEL = '+48696553346';
+export const KAZKA_HEADER_EMAIL = 'epir@epirbizuteria.pl';
+export const KAZKA_HEADER_WHATSAPP_URL = 'https://wa.me/48696553346';
+
+/** Logo graficzne — ten sam asset co na epirbizuteria.pl. */
+export const EPIR_HEADER_LOGO_URL =
+  'https://cdn.shopify.com/s/files/1/0249/9756/0425/files/logo-strona.png?v=1711211444';
+export const EPIR_HEADER_LOGO_ALT = 'EPIR Art Jewellery';
 
 export const EPIR_GOLD_COLLECTION_URL =
   'https://epirbizuteria.pl/collections/zlota-bizuteria?utm_source=kazka&utm_medium=header&utm_campaign=kazka_to_epir_gold';

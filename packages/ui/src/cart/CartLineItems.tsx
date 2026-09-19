@@ -45,7 +45,7 @@ function LineItem({lineItem}: {lineItem: LineItemData}) {
         <div className="text-gray-800 text-sm">Qty: {quantity}</div>
         <ItemRemoveButton lineIds={[lineItem.id]} />
       </div>
-      <Money data={lineItem.cost.totalAmount} />
+      <Money data={lineItem.cost.totalAmount} className="tabular-nums" />
     </div>
   );
 }

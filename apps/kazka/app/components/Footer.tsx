@@ -15,15 +15,15 @@ export function Footer() {
   return (
     <footer role="contentinfo" className="bg-[rgb(var(--color-primary))] text-[rgb(var(--color-contrast))]">
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-10 px-6 py-12 md:grid-cols-3 md:gap-12 md:px-8 lg:gap-16 lg:px-12">
-        <section className="flex flex-col gap-2 text-sm leading-relaxed text-[rgb(var(--color-contrast))]/95">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-[rgb(var(--color-accent))]">
+        <section className="flex flex-col gap-2 font-sans text-sm leading-relaxed text-[rgb(var(--color-contrast))]/95">
+          <h2 className="kazka-editorial-label text-[rgb(var(--color-accent))]">
             Pracownia biżuterii
           </h2>
           <p className="font-semibold">EPIR Art Jewellery — Kazka</p>
           <p>50-419 Wrocław</p>
           <p>ul. Gen. R. Traugutta 123/5-6</p>
           <p>
-            <a className="hover:text-[rgb(var(--color-accent))] hover:underline underline-offset-4" href="tel:+48698718564">
+            <a className="tabular-nums hover:text-[rgb(var(--color-accent))] hover:underline underline-offset-4" href="tel:+48698718564">
               +48 698 718 564
             </a>
           </p>
@@ -38,10 +38,10 @@ export function Footer() {
         </section>
 
         <nav aria-labelledby="footer-informacje-heading" className="flex flex-col gap-4">
-          <h2 id="footer-informacje-heading" className="font-semibold text-[rgb(var(--color-accent))]">
+          <h2 id="footer-informacje-heading" className="kazka-editorial-label text-[rgb(var(--color-accent))]">
             Informacje
           </h2>
-          <ul className="flex flex-col gap-2 text-sm">
+          <ul className="flex flex-col gap-2 font-sans text-sm">
             {INFO_LINKS.map(([label, to]) => (
               <li key={to}>
                 <Link
@@ -60,10 +60,10 @@ export function Footer() {
             to="/"
             className="flex flex-col items-start gap-3 rounded-sm outline-offset-4 transition-opacity hover:opacity-90 md:items-end"
           >
-            <span className="text-2xl font-bold tracking-wide text-[rgb(var(--color-accent))] md:text-3xl">
+            <span className="font-serif text-2xl font-bold tracking-wide text-[rgb(var(--color-accent))] md:text-3xl">
               EPIR
             </span>
-            <span className="text-lg font-semibold tracking-wide md:text-xl">
+            <span className="font-serif text-lg font-semibold tracking-wide md:text-xl">
               Kazka
             </span>
           </Link>

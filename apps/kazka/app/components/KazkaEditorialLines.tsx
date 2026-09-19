@@ -13,11 +13,11 @@ export function KazkaEditorialLines() {
     >
       <h2
         id="kazka-lines-heading"
-        className="kazka-editorial-label mb-2 text-center text-[#2c3238]"
+        className="kazka-section-heading mb-3 text-center"
       >
         Linie
       </h2>
-      <p className="mx-auto mb-8 max-w-md px-4 text-center text-xs leading-relaxed text-[#2c3238]/70 md:mb-10">
+      <p className="kazka-section-lead mx-auto mb-8 max-w-xl px-4 text-center md:mb-10">
         Trzy koncepty w złocie i brylancie — ten sam spokój formy, różny wybór
         kamienia i szlifu.
       </p>
@@ -38,14 +38,14 @@ export function KazkaEditorialLines() {
                 loading="lazy"
                 decoding="async"
               />
+              <span className="kazka-odkryj-label absolute bottom-4 left-4">
+                {line.label}
+              </span>
             </div>
-            <span className="kazka-editorial-label mt-4 text-[#2c3238]">
-              {line.label}
-            </span>
-            <p className="mt-2 text-xs leading-relaxed text-[#2c3238]/70">
+            <p className="mt-2 font-sans text-xs leading-relaxed text-[#2c3238]/80">
               {line.body}
             </p>
-            <span className="kazka-editorial-label mt-3 text-[0.65rem] tracking-[0.14em] text-[#2c3238]/55 transition-colors duration-150 group-hover:text-[rgb(var(--color-accent))]">
+            <span className="kazka-editorial-label mt-3 text-[rgb(var(--color-primary))]/80 transition-colors duration-150 group-hover:text-[rgb(var(--color-accent))]">
               Zobacz →
             </span>
           </Link>

@@ -1,19 +1,22 @@
-import {Link, useSearchParams} from '@remix-run/react';
+import {Link, useLocation} from '@remix-run/react';
 import {LINIA_NAV_OPTIONS} from '~/lib/collection-product-filters';
-import {buildLiniaParams} from '~/lib/kazka-collection-nav';
+import {
+  activeLiniaFromPath,
+  buildLiniaHref,
+} from '~/lib/kazka-collection-nav';
 
 function navTabClass(isActive: boolean): string {
   return [
-    'kazka-editorial-label shrink-0 snap-start border-b-2 px-3 py-3 text-[0.6875rem] tracking-[0.12em] transition-colors duration-150',
+    'font-sans text-[12px] uppercase tracking-[0.12em] font-medium shrink-0 snap-start border-b-2 px-3 py-3 transition-colors duration-150',
     isActive
       ? 'border-[rgb(var(--color-accent))] text-[rgb(var(--color-primary))]'
-      : 'border-transparent text-[rgb(var(--color-primary))]/55 hover:text-[rgb(var(--color-primary))]/85',
+      : 'border-transparent text-[rgb(var(--color-primary))]/80 hover:text-[rgb(var(--color-primary))]',
   ].join(' ');
 }
 
 export function KazkaCollectionNav() {
-  const [searchParams] = useSearchParams();
-  const activeLinia = searchParams.get('linia') ?? '';
+  const {pathname} = useLocation();
+  const activeLinia = activeLiniaFromPath(pathname);
 
   return (
     <nav
@@ -22,15 +25,14 @@ export function KazkaCollectionNav() {
     >
       <div className="hiddenScroll flex overflow-x-auto snap-x snap-mandatory">
         {LINIA_NAV_OPTIONS.map(({value, label}) => {
-          const next = buildLiniaParams(searchParams, value);
           const isActive = activeLinia === value;
-          const href = next ? `?${next}` : '.';
+          const href = buildLiniaHref(value);
 
           return (
             <Link
               key={value || 'all'}
               to={href}
-              preventScrollReset
+              prefetch="intent"
               className={navTabClass(isActive)}
               aria-current={isActive ? 'page' : undefined}
             >

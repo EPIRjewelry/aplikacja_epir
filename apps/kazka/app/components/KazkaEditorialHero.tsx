@@ -138,19 +138,21 @@ export function KazkaEditorialHero({slides: cmsSlides}: {slides: CmsHeroSlide[]}
 
       <div className="absolute bottom-0 left-0 right-0 p-6 md:p-10 lg:p-12">
         {heading ? (
-          <h1 className="kazka-editorial-label text-[1.125rem] tracking-[0.06em] text-white">
+          <h1 className="font-serif text-2xl uppercase tracking-[0.08em] text-white md:text-4xl">
             {heading}
           </h1>
         ) : (
           <>
-            <p className="kazka-editorial-label mb-1 text-white/75">Kazka Jewelry</p>
-            <h1 className="kazka-editorial-label text-[1.125rem] tracking-[0.06em] text-white">
+            <p className="kazka-editorial-label mb-1 text-white/90">Kazka Jewelry</p>
+            <h1 className="font-serif text-2xl uppercase tracking-[0.08em] text-white md:text-4xl">
               Kolekcja
             </h1>
           </>
         )}
         {subheading ? (
-          <p className="mt-2 max-w-md text-xs leading-relaxed text-white/80">{subheading}</p>
+          <p className="mt-2 max-w-[45ch] font-sans text-xs font-medium leading-relaxed text-white">
+            {subheading}
+          </p>
         ) : null}
         {ctaHref ? (
           <div className="pointer-events-auto mt-4">

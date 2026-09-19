@@ -5,7 +5,8 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"Cormorant Garamond"', 'Georgia', 'Times New Roman', 'serif'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        serif: ['"Cormorant Garamond"', 'Georgia', 'Times New Roman', 'serif'],
         kazka: ['"Cormorant Garamond"', 'Georgia', 'Times New Roman', 'serif'],
       },
     },
