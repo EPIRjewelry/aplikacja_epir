@@ -24,6 +24,10 @@ MARKETING_ICEBERG_BUCKET = "epir-analytics-iceberg-warehouse"
 MARKETING_SQL_NAMESPACE = "marketing"
 # Numeryczne Property ID z GA4 Admin (nie Measurement ID / prefiks analytics_*).
 GA4_PROPERTY_ID = "435783047"
+# Merchant Center — EPIR Jewellery (diagnostyka Merchant API; feed CSV to osobna ścieżka R2).
+GOOGLE_MERCHANT_ID = "136678353"
+GOOGLE_MERCHANT_CLIENT_ID = "580145215562-93vj4thfnku6ielb2nk2kulonf502oh3.apps.googleusercontent.com"
+GOOGLE_ADS_CLIENT_ID = "662978008085-vjh2dn5377nlgjmkgq6ld9tngh3a6m1o.apps.googleusercontent.com"
 
 # Połączenia GA4 + Google Ads — krok po kroku: README.md w tym katalogu.
 #

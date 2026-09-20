@@ -6,6 +6,8 @@ Szerszy kontekst deployu: [`docs/EPIR_DEPLOYMENT_AND_OPERATIONS.md`](../../docs/
 
 **Uwaga:** pipeline feedu CSV Shopify → R2 → GMC Scheduled fetch to osobny katalog [`epir-marketing-ingest/`](../../epir-marketing-ingest/) — ten worker **nie** zastępuje feedu; czyta statusy/issues z Merchant API.
 
+**Dostęp do ADS i Merchant (dla agentów):** nie szukaj OAuth od zera. Mapa konta, klienta, scope i odnowienia refresh jest w [`.cursor/rules/epir-ads-merchant-access.mdc`](../../.cursor/rules/epir-ads-merchant-access.mdc). Sekretów tam nie ma.
+
 ---
 
 ## 1. Zmienne środowiskowe — mapowanie
@@ -51,7 +53,7 @@ Scope używany w kodzie: `https://www.googleapis.com/auth/analytics.readonly`.
 1. W **Google Ads** (*Tools & settings* → *API Center*) uzyskaj **developer token** (poziom *Test* działa na kontach testowych; produkcja wymaga zatwierdzenia *Basic* / *Standard* według polityki Google).
 2. **Google Cloud Console** — ten sam lub osobny projekt:
    - Włącz **Google Ads API**.
-   - *Credentials* → *Create credentials* → **OAuth client ID** (np. *Desktop app*).
+   - *Credentials* → *Create credentials* → **OAuth client ID** typu **Aplikacja internetowa**, redirect `https://developers.google.com/oauthplayground`. Klient Komputer nie działa z Playground (`redirect_uri_mismatch`). Żywy klient: **MasterADS** — patrz reguła `epir-ads-merchant-access`.
 3. OAuth **refresh token** (jednorazowo, poza Workerem):
    - [OAuth 2.0 Playground](https://developers.google.com/oauthplayground/) → *OAuth 2.0 configuration* → zaznacz **Use your own OAuth credentials** → wklej Client ID i Secret.
    - W kolumnie *Select & authorize APIs* wybierz scope **`https://www.googleapis.com/auth/adwords`** (lub wpisz ręcznie).
@@ -73,12 +75,7 @@ Osobny klient OAuth (nie ten od Ads). Ads na Cloudflare zostaje nietknięty.
    - Typ: Aplikacja komputerowa (Desktop). Redirect jest już `http://localhost` — skrypt używa `http://localhost:8766/`.
 2. Konto Google użyte do OAuth musi mieć dostęp do Merchant Center (min. odczyt).
 3. W root `.dev.vars`: `GOOGLE_MERCHANT_CLIENT_ID` + `GOOGLE_MERCHANT_CLIENT_SECRET`.
-4. Refresh token (scope **content**):
-
-   ```bash
-   node scripts/gmc-oauth-refresh.mjs
-   # opcjonalnie: node scripts/gmc-oauth-refresh.mjs --push-worker
-   ```
+4. Refresh token (scope **content**). Skrypt `scripts/gmc-oauth-refresh.mjs` **nie istnieje** w repo — nie uruchamiaj go. Odnowienie: reguła `.cursor/rules/epir-ads-merchant-access.mdc`.
 
 5. Na workerze: `GOOGLE_MERCHANT_ID` (już w `[vars]`), plus sekrety:
 

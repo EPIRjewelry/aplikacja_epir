@@ -1,0 +1,53 @@
+---
+description: Dostęp do ADS i Merchant — gdzie są Client ID i sekrety, jak odnowić refresh. Nie szukaj OAuth od zera.
+globs: workers/marketing-ingest/**
+alwaysApply: false
+---
+
+⚠️ SSOT ROUTING: Nie parsuj własnych założeń. Twoim jedynym punktem wejścia do wiedzy jest /EPIR_AI_BIBLE.md. Sprawdź w nim, z jakich modułów domenowych masz skorzystać.
+
+# Dostęp do ADS
+
+Stan na 2026-09-19. Sekretów (client secret, refresh, developer token) **nie ma w repo** i nie wolno ich tu dopisywać. Żyją tylko jako sekrety Cloudflare na workerze `epir-marketing-ingest` (top-level, `wrangler … --env=""`).
+
+## Ads — to jest właściwa trójka
+
+| Co | Gdzie |
+|----|--------|
+| Projekt GCP (ekran zgody) | **Asystent EPIR**. To nie jest `epir-adk-agent-v2` / `48a86e6f` (to BigQuery/dbt). |
+| Konto Google do OAuth | `krzysztofdzugaj@gmail.com` (dostęp do konta Ads). Nie `epir@epirbizuteria.pl`. |
+| Klient OAuth | Nazwa **MasterADS**, typ **Aplikacja internetowa**. Client ID w `[vars]` `GOOGLE_ADS_CLIENT_ID` w `workers/marketing-ingest/wrangler.toml`. |
+| Secret + refresh | Sekrety `GOOGLE_ADS_CLIENT_SECRET` i `GOOGLE_ADS_REFRESH_TOKEN`. Wgrane 2026-09-19. Scope: `https://www.googleapis.com/auth/adwords`. |
+| Jeszcze osobno | `GOOGLE_ADS_DEVELOPER_TOKEN` (sekret, API Center w Google Ads) i `GOOGLE_ADS_CUSTOMER_ID` (var, 10 cyfr). **Nie** są w `wrangler.toml`. Nie zakładaj, że są na workerze. |
+
+Ekran zgody tego projektu: **Odbiorcy → W wersji produkcyjnej** (zewnętrzna). Branding: strona `https://epirbizuteria.pl`, polityka `https://epirbizuteria.pl/pages/polityka-prywatnosci`, regulamin `https://epirbizuteria.pl/pages/regulamin-epir-art-jewellery`, domena `epirbizuteria.pl`.
+
+Klient **Komputer** o nazwie „EPIR Ads OAuth” **nie** jest tym z workera. Playground go odrzuca (`redirect_uri_mismatch`). Nie podmieniaj nim MasterADS.
+
+## Odnowienie refresh (Ads)
+
+Tylko gdy token padnie (`invalid_grant`). Nie rób tego „na zapas”.
+
+1. [OAuth Playground](https://developers.google.com/oauthplayground/).
+2. Koło zębate → **Use your own OAuth credentials** → Client ID + Secret **MasterADS** (ta sama para co na workerze).
+3. W **Input your own scopes** wklej wyłącznie `https://www.googleapis.com/auth/adwords` → **Authorize APIs**.
+4. Zaloguj `krzysztofdzugaj@gmail.com`. Ostrzeżenie „aplikacja niezweryfikowana” → **Zaawansowane** → przejdź dalej.
+5. **Step 2** → **Exchange authorization code for tokens** → skopiuj **Refresh token**. **Step 3 zostaw pusty** — nie wysyłaj scope jako URL.
+6. `npx wrangler secret put GOOGLE_ADS_REFRESH_TOKEN --env=""` z katalogu `workers/marketing-ingest`. Client ID/Secret zmieniaj tylko razem z nowym tokenem (trójka z jednego klienta).
+
+Na kliencie Web w **Autoryzowane identyfikatory URI przekierowania** musi być dokładnie `https://developers.google.com/oauthplayground`. Źródła JavaScriptu puste.
+
+Bez własnych credentials w Playground Google kasuje refresh po 24 h. Z własnymi — nie.
+
+## Merchant — osobna para, nie mieszaj z Ads
+
+| Co | Gdzie |
+|----|--------|
+| ID konta | `[vars]` `GOOGLE_MERCHANT_ID` = `136678353` |
+| Client ID | `[vars]` `GOOGLE_MERCHANT_CLIENT_ID` (inny numer projektu GCP niż Ads: prefiks `580145215562`, nie `662978008085`) |
+| Secret | Sekret `GOOGLE_MERCHANT_CLIENT_SECRET` (wgrany 2026-09-19) |
+| Refresh | Sekret `GOOGLE_MERCHANT_REFRESH_TOKEN`. **W tej sesji nie był wgrywany.** Nie zgaduj, że jest. Scope: `https://www.googleapis.com/auth/content`. |
+
+Skrypt `scripts/gmc-oauth-refresh.mjs` jest tylko w README — **pliku nie ma w repo**. Nie uruchamiaj go. Odnowienie: ten sam Playground, ale credentials **klienta Merchant**, scope `content`, potem `wrangler secret put GOOGLE_MERCHANT_REFRESH_TOKEN`. Klient typu Komputer nie przyjmie redirectu Playground — wtedy najpierw klient Web z tym URI, i cała trójka Merchant z tego nowego klienta.
+
+Feed CSV Shopify → R2 to inny katalog (`epir-marketing-ingest/` w root). Ten worker tylko czyta diagnostykę Merchant API.
