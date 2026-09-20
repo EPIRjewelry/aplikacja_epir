@@ -1,28 +1,43 @@
 import {Dialog, Transition} from '@headlessui/react';
 import {Fragment, useState} from 'react';
 
+export type DrawerSide = 'left' | 'right';
+
+export type DrawerProps = {
+  open: boolean;
+  onClose: (value: unknown) => void;
+  children: React.ReactNode;
+  /** Panel slides from the left (filters) or right (cart). Default: right. */
+  side?: DrawerSide;
+  /** Header title. Default: Koszyk */
+  title?: React.ReactNode;
+  panelClassName?: string;
+};
+
 /**
  * A Drawer component that opens on user click.
- * @param open - Boolean state. If `true`, then the drawer opens.
- * @param onClose - Function should set the open state.
- * @param children - React children node.
  */
 function Drawer({
   open,
   onClose,
   children,
-}: {
-  open: boolean;
-  onClose: (value: unknown) => void;
-  children: React.ReactNode;
-}) {
+  side = 'right',
+  title = 'Koszyk',
+  panelClassName = '',
+}: DrawerProps) {
+  const isLeft = side === 'left';
+  const positionClass = isLeft
+    ? 'fixed inset-y-0 left-0 flex max-w-full pr-10'
+    : 'fixed inset-y-0 right-0 flex max-w-full pl-10';
+  const slideFrom = isLeft ? '-translate-x-full' : 'translate-x-full';
+
   return (
     <Transition appear show={open} as={Fragment}>
       <Dialog as="div" className="relative z-50" onClose={onClose}>
         <Transition.Child
           as={Fragment}
           enter="ease-out duration-300"
-          enterFrom="opacity-0 left-0"
+          enterFrom="opacity-0"
           enterTo="opacity-100"
           leave="ease-in duration-200"
           leaveFrom="opacity-100"
@@ -33,30 +48,31 @@ function Drawer({
 
         <div className="fixed inset-0">
           <div className="absolute inset-0 overflow-hidden">
-            <div className="fixed inset-y-0 right-0 flex max-w-full pl-10">
+            <div className={positionClass}>
               <Transition.Child
                 as={Fragment}
                 enter="transform transition ease-in-out duration-500"
-                enterFrom="translate-x-full"
+                enterFrom={slideFrom}
                 enterTo="translate-x-0"
                 leave="transform transition ease-in-out duration-500"
                 leaveFrom="translate-x-0"
-                leaveTo="translate-x-full"
+                leaveTo={slideFrom}
               >
-                <Dialog.Panel className="max-w-lg transform text-left align-middle shadow-xl transition-all antialiased bg-neutral-50 flex flex-col">
-                  <header className="sticky top-0 flex items-center justify-between px-4 h-24 sm:px-8 md:px-12 flex-0">
-                    <h2
-                      id="cart-contents"
-                      className="whitespace-pre-wrap max-w-prose font-bold text-lg"
+                <Dialog.Panel
+                  className={`flex h-full w-screen flex-col transform bg-neutral-50 text-left align-middle shadow-xl transition-all antialiased ${panelClassName || 'max-w-lg'}`.trim()}
+                >
+                  <header className="sticky top-0 z-10 flex flex-none items-center justify-between border-b border-black/10 bg-neutral-50 px-4 py-4 sm:px-6">
+                    <Dialog.Title
+                      className="font-sans text-[11px] font-medium uppercase tracking-[0.15em] text-[rgb(var(--color-primary))]"
                     >
-                      Koszyk
-                    </h2>
+                      {title}
+                    </Dialog.Title>
                     <button
                       type="button"
-                      className="p-4 my-4 transition text-primary hover:text-primary/50"
+                      className="p-2 transition text-[rgb(var(--color-primary))] hover:text-[rgb(var(--color-primary))]/60"
                       onClick={() => onClose(null)}
                     >
-                      <IconClose aria-label="Close panel" />
+                      <IconClose aria-label="Zamknij panel" />
                     </button>
                   </header>
                   {children}
@@ -97,9 +113,9 @@ function IconClose() {
     <svg
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 20 20"
-      className="w-5 h-5"
+      className="h-5 w-5"
+      aria-hidden
     >
-      <title>Close</title>
       <line
         x1="4.44194"
         y1="4.30806"

@@ -1,4 +1,4 @@
-export {Drawer, useDrawer} from './Drawer';
+export {Drawer, useDrawer, type DrawerProps, type DrawerSide} from './Drawer';
 export {Layout, type LayoutProps, type NavCollection} from './Layout';
 export {default as ProductCard} from './product/ProductCard';
 export {ProductGallery} from './product/ProductGallery';

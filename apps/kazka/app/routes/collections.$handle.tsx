@@ -131,7 +131,7 @@ export default function Collection() {
     <section className="mx-auto w-full max-w-7xl gap-8">
       <KazkaCollectionNav />
 
-      <header className="grid w-full gap-6 py-6 md:py-8 fadeIn">
+      <header className="grid w-full gap-3 py-4 md:gap-4 md:py-6 fadeIn">
         <h1 className="font-serif text-3xl font-bold text-[rgb(var(--color-primary))] md:text-4xl">
           {collection.title}
         </h1>
@@ -144,6 +144,7 @@ export default function Collection() {
       </header>
 
       <CollectionFilters
+        className="fadeIn"
         metalOptions={METAL_FILTER_OPTIONS}
         probaOptions={PROBA_FILTER_OPTIONS}
         shapeOptions={SHAPE_FILTER_OPTIONS}
@@ -153,7 +154,7 @@ export default function Collection() {
         sortOptions={SORT_FILTER_OPTIONS}
       />
 
-      <div className="fadeIn" style={{animationDelay: '100ms'}}>
+      <div className="fadeIn pt-2" style={{animationDelay: '100ms'}}>
         {hasProducts ? (
           <ProductGrid
             key={`${collection.handle}-${activeFilterCount}-${activeLinia}-${activeKat}`}
