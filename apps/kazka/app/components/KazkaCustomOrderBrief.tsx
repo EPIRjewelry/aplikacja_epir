@@ -48,16 +48,12 @@ const labelClass =
   'mb-1.5 block font-sans text-[11px] font-medium uppercase tracking-[0.18em] text-[rgb(var(--color-accent))]';
 
 const STONE_OPTIONS = [
-  {value: 'brylant biały', label: 'Brylant biały'},
-  {value: 'brylant czarny', label: 'Brylant czarny (Fancy Black)'},
-  {value: 'morganit', label: 'Morganit'},
-  {value: 'turmalin', label: 'Turmalin'},
-  {value: 'salt & pepper', label: 'Salt & Pepper'},
-  {value: 'szmaragd', label: 'Szmaragd'},
+  {value: 'brylant', label: 'Brylant'},
+  {value: 'brylant salt & pepper', label: 'Brylant Salt & Pepper'},
   {value: 'szafir', label: 'Szafir'},
-  {value: 'bez kamienia', label: 'Bez kamienia'},
-  {value: 'inne kamienie szlachetne', label: 'Inne kamienie szlachetne'},
-  {value: 'omówię z złotnikiem', label: 'Omówię z złotnikiem'},
+  {value: 'szmaragd', label: 'Szmaragd'},
+  {value: 'rubin', label: 'Rubin'},
+  {value: 'inne', label: 'Inne — napiszę w opisie'},
 ] as const;
 
 const METAL_OPTIONS = [
@@ -82,7 +78,7 @@ function visionPlaceholderForSelections(
 ): string {
   const needsDetail =
     jewelryType === 'inne' ||
-    stone === 'inne kamienie szlachetne' ||
+    stone === 'inne' ||
     metal === 'inne';
   if (needsDetail) {
     return 'Opisz formę, geometrię i okazję — jeśli wybrałeś/aś „Inne”, doprecyzuj materiał lub kamień.';
@@ -176,7 +172,7 @@ export function KazkaCustomOrderBrief() {
     <section
       id="kazka-custom-order"
       aria-labelledby="kazka-custom-order-heading"
-      className="relative w-full overflow-hidden bg-[rgb(var(--color-primary))] text-[rgb(var(--color-contrast))]"
+      className="kazka-brief-section relative w-full overflow-hidden bg-[rgb(var(--color-section-brief))] text-[rgb(var(--color-contrast))]"
     >
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.07]"
@@ -186,18 +182,18 @@ export function KazkaCustomOrderBrief() {
 
       <div className="relative mx-auto max-w-2xl px-6 py-16 md:px-10 md:py-24">
         <div className="mb-10 text-center md:mb-12">
-          <p className="kazka-editorial-label mb-4 text-[rgb(var(--color-accent))]">
+          <p className="kazka-editorial-label kazka-editorial-label--on-dark mb-4">
             KAZKA · ZAMÓWIENIE INDYWIDUALNE
           </p>
           <h2
             id="kazka-custom-order-heading"
             className="font-serif text-3xl leading-tight md:text-4xl md:leading-[1.15]"
           >
-            Jeden projekt. Jeden pierścionek.
+            Wspólnie zrealizujmy Twój pomysł
           </h2>
           <p className="mx-auto mt-5 max-w-[45ch] font-sans text-base leading-[1.6] text-[rgb(var(--color-contrast))]/90 md:text-lg">
             Każde zamówienie zaczyna się od rozmowy. Opisz kształt, kamień i
-            okazję — zaprojektujemy geometrię pod Twój palec.
+            okazję — zrealizujemy to razem.
           </p>
         </div>
 

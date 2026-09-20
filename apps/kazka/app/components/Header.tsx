@@ -5,12 +5,9 @@ import {
   EPIR_GOLD_HEADER_CTA,
   EPIR_HEADER_LOGO_ALT,
   EPIR_HEADER_LOGO_URL,
-  KAZKA_CATEGORY_NAV,
-  KAZKA_HEADER_EMAIL,
-  KAZKA_HEADER_PHONE,
-  KAZKA_HEADER_PHONE_TEL,
+  KAZKA_HEADER_NAV_GROUPS,
   KAZKA_HEADER_PRESENTS,
-  KAZKA_HEADER_WHATSAPP_URL,
+  type KazkaNavGroup,
 } from '~/lib/kazka-header';
 
 export type NavCollection = {id: string; title: string; handle: string};
@@ -26,18 +23,41 @@ export type HeaderProps = {
   }) => React.ReactNode;
 };
 
-const NAV_LINK =
-  'site-header__nav-link font-sans text-[12px] uppercase tracking-[0.12em] font-medium shrink-0 snap-start text-[rgb(var(--color-primary))] no-underline transition-[color,opacity] duration-150 ease-out hover:text-[rgb(var(--color-accent))] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgb(var(--color-accent))] focus-visible:outline-offset-2';
+const NAV_SUB_LINK =
+  'site-header__nav-link font-sans text-[12px] uppercase tracking-[0.12em] font-medium text-[rgb(var(--color-primary))] no-underline transition-[color,opacity] duration-150 ease-out hover:text-[rgb(var(--color-accent))] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgb(var(--color-accent))] focus-visible:outline-offset-2';
 
-function categoryNavLinkClass({isActive}: {isActive: boolean}) {
+function navSubLinkClass(isActive: boolean): string {
   return [
-    NAV_LINK,
+    NAV_SUB_LINK,
     isActive
       ? 'text-[rgb(var(--color-accent))]'
       : 'text-[rgb(var(--color-primary))]/80',
-  ]
-    .filter(Boolean)
-    .join(' ');
+  ].join(' ');
+}
+
+function isGroupActive(group: KazkaNavGroup, pathname: string): boolean {
+  return group.items.some((item) => pathname.includes(item.handle));
+}
+
+function ChevronDown({expanded}: {expanded?: boolean}) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className={expanded ? 'rotate-180 transition-transform duration-150' : 'transition-transform duration-150'}
+    >
+      <path
+        d="M6 9l6 6 6-6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 const iconBtnClass =
@@ -58,6 +78,9 @@ export function Header({
 
   const [isScrolled, setIsScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [expandedMobileGroup, setExpandedMobileGroup] = useState<string | null>(
+    null,
+  );
   const {pathname} = useLocation();
   const menuId = useId();
 
@@ -76,6 +99,7 @@ export function Header({
 
   useEffect(() => {
     setMenuOpen(false);
+    setExpandedMobileGroup(null);
   }, [pathname]);
 
   useEffect(() => {
@@ -129,18 +153,6 @@ export function Header({
           </button>
 
           <div className="site-header__brand-column min-w-0">
-            <div className="site-header__contact">
-              <a href={`tel:${KAZKA_HEADER_PHONE_TEL}`}>
-                tel/WhatsApp {KAZKA_HEADER_PHONE}
-              </a>
-              <span className="site-header__contact-sep" aria-hidden>·</span>
-              <a href={KAZKA_HEADER_WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
-                WhatsApp
-              </a>
-              <span className="site-header__contact-sep" aria-hidden>·</span>
-              <a href={`mailto:${KAZKA_HEADER_EMAIL}`}>{KAZKA_HEADER_EMAIL}</a>
-            </div>
-
             <Link
               to="/"
               className="site-header__brand group inline-flex max-w-full items-center gap-2 rounded-sm no-underline transition-opacity hover:opacity-85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgb(var(--color-accent))] focus-visible:outline-offset-2 sm:gap-3"
@@ -149,7 +161,7 @@ export function Header({
               <img
                 src={EPIR_HEADER_LOGO_URL}
                 alt={EPIR_HEADER_LOGO_ALT}
-                className="site-header__logo-img h-11 w-auto object-contain md:h-[4.5rem]"
+                className="site-header__logo-img h-14 w-auto object-contain md:h-20"
                 width={250}
                 height={250}
                 decoding="async"
@@ -159,21 +171,52 @@ export function Header({
           </div>
         </div>
 
-        <div className="site-header__center hidden min-w-0 justify-self-center overflow-hidden md:block">
+        <div className="site-header__center hidden min-w-0 justify-self-center overflow-visible md:block">
           <nav className="site-header__nav" aria-label="Kategorie biżuterii">
-            <ul className="flex max-w-full items-center justify-center gap-x-5 lg:gap-x-6">
-              {KAZKA_CATEGORY_NAV.map(({handle, label, path}) => {
-                const isActive = pathname.includes(handle);
+            <ul className="flex max-w-full items-center justify-center gap-x-5 lg:gap-x-8">
+              {KAZKA_HEADER_NAV_GROUPS.map((group) => {
+                const groupActive = isGroupActive(group, pathname);
+                const submenuId = `header-nav-${group.id}`;
                 return (
-                  <li key={handle} className="site-header__nav-item shrink-0">
-                    <NavLink
-                      to={path}
-                      prefetch="intent"
-                      className={() => categoryNavLinkClass({isActive})}
-                      aria-current={isActive ? 'page' : undefined}
+                  <li
+                    key={group.id}
+                    className="site-header__nav-dropdown shrink-0"
+                  >
+                    <button
+                      type="button"
+                      className={[
+                        'site-header__nav-trigger',
+                        groupActive ? 'site-header__nav-trigger--active' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      aria-expanded="false"
+                      aria-controls={submenuId}
                     >
-                      {label}
-                    </NavLink>
+                      {group.label}
+                      <ChevronDown />
+                    </button>
+                    <ul
+                      id={submenuId}
+                      className="site-header__nav-submenu"
+                      role="list"
+                    >
+                      {group.items.map(({handle, label, path}) => {
+                        const isActive = pathname.includes(handle);
+                        return (
+                          <li key={handle}>
+                            <NavLink
+                              to={path}
+                              prefetch="intent"
+                              className={() => navSubLinkClass(isActive)}
+                              aria-current={isActive ? 'page' : undefined}
+                            >
+                              {label}
+                            </NavLink>
+                          </li>
+                        );
+                      })}
+                    </ul>
                   </li>
                 );
               })}
@@ -237,26 +280,58 @@ export function Header({
             aria-label="Menu kategorii"
           >
             <ul className="flex flex-col gap-1 px-2 py-4">
-              {KAZKA_CATEGORY_NAV.map(({handle, label, path}) => {
-                const isActive = pathname.includes(handle);
+              {KAZKA_HEADER_NAV_GROUPS.map((group) => {
+                const groupActive = isGroupActive(group, pathname);
+                const expanded = expandedMobileGroup === group.id;
+                const panelId = `mobile-nav-${group.id}`;
                 return (
-                  <li key={handle}>
-                    <NavLink
-                      to={path}
-                      prefetch="intent"
-                      className={() =>
-                        [
-                          'block px-4 py-3 font-sans text-[12px] uppercase tracking-[0.12em] font-medium text-[rgb(var(--color-primary))] no-underline transition-colors',
-                          isActive
-                            ? 'text-[rgb(var(--color-accent))]'
-                            : 'hover:text-[rgb(var(--color-accent))]',
-                        ].join(' ')
+                  <li key={group.id}>
+                    <button
+                      type="button"
+                      className={[
+                        'site-header__mobile-trigger flex w-full items-center justify-between px-4 py-3 text-left font-sans text-[1.05rem] uppercase tracking-[0.12em] font-medium text-[rgb(var(--color-primary))] transition-colors',
+                        groupActive || expanded
+                          ? 'text-[rgb(var(--color-accent))]'
+                          : 'hover:text-[rgb(var(--color-accent))]',
+                      ].join(' ')}
+                      aria-expanded={expanded}
+                      aria-controls={panelId}
+                      onClick={() =>
+                        setExpandedMobileGroup((current) =>
+                          current === group.id ? null : group.id,
+                        )
                       }
-                      aria-current={isActive ? 'page' : undefined}
-                      onClick={() => setMenuOpen(false)}
                     >
-                      {label}
-                    </NavLink>
+                      {group.label}
+                      <ChevronDown expanded={expanded} />
+                    </button>
+                    {expanded ? (
+                      <ul id={panelId} className="flex flex-col gap-1 pb-2 pl-2">
+                        {group.items.map(({handle, label, path}) => {
+                          const isActive = pathname.includes(handle);
+                          return (
+                            <li key={handle}>
+                              <NavLink
+                                to={path}
+                                prefetch="intent"
+                                className={() =>
+                                  [
+                                    'block px-4 py-2 font-sans text-[12px] uppercase tracking-[0.12em] font-medium text-[rgb(var(--color-primary))] no-underline transition-colors',
+                                    isActive
+                                      ? 'text-[rgb(var(--color-accent))]'
+                                      : 'hover:text-[rgb(var(--color-accent))]',
+                                  ].join(' ')
+                                }
+                                aria-current={isActive ? 'page' : undefined}
+                                onClick={() => setMenuOpen(false)}
+                              >
+                                {label}
+                              </NavLink>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : null}
                   </li>
                 );
               })}

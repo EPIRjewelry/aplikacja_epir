@@ -366,18 +366,20 @@ function KazkaConsentAndChat({
           consentGranted={consentGranted}
         />
       ) : null}
-      <ChatWidget
-        chatApiUrl={chatApiUrl}
-        cartId={cartId}
-        brand={brand}
-        personaUi={personaUi}
-        storefrontId={storefrontId}
-        channel={channel}
-        route={route}
-        locale={analyticsConsent.language}
-        consentGranted={consentGranted}
-        onCommerceAction={onCommerceAction}
-      />
+      <div className="kazka-chat-shell">
+        <ChatWidget
+          chatApiUrl={chatApiUrl}
+          cartId={cartId}
+          brand={brand}
+          personaUi={personaUi}
+          storefrontId={storefrontId}
+          channel={channel}
+          route={route}
+          locale={analyticsConsent.language}
+          consentGranted={consentGranted}
+          onCommerceAction={onCommerceAction}
+        />
+      </div>
     </>
   );
 }

@@ -10,8 +10,9 @@ export function OrganicEpirBridge() {
   return (
     <section
       aria-labelledby="organic-epir-bridge-heading"
-      className="relative w-full overflow-hidden bg-[rgb(var(--color-primary))] text-[rgb(var(--color-contrast))]"
+      className="kazka-bridge-section relative w-full overflow-hidden bg-[rgb(var(--color-section-bridge))] text-[rgb(var(--color-contrast))]"
     >
+      <div className="kazka-section-accent-band" aria-hidden="true" />
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.07]"
         aria-hidden="true"
@@ -20,7 +21,7 @@ export function OrganicEpirBridge() {
         }}
       />
       <div className="relative mx-auto flex max-w-5xl flex-col items-center px-6 py-16 text-center md:px-10 md:py-24">
-        <p className="kazka-editorial-label mb-4 text-[rgb(var(--color-accent))]">
+        <p className="kazka-editorial-label kazka-editorial-label--on-dark mb-4">
           Inny język formy
         </p>
         <h2

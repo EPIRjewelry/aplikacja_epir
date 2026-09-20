@@ -1,4 +1,9 @@
 import {Link} from '@remix-run/react';
+import {
+  KAZKA_HEADER_EMAIL,
+  KAZKA_HEADER_PHONE,
+  KAZKA_HEADER_PHONE_TEL,
+} from '~/lib/kazka-header';
 
 const INFO_LINKS: [string, string][] = [
   ['Regulamin', '/pages/regulamin-epir-art-jewellery'],
@@ -23,16 +28,19 @@ export function Footer() {
           <p>50-419 Wrocław</p>
           <p>ul. Gen. R. Traugutta 123/5-6</p>
           <p>
-            <a className="tabular-nums hover:text-[rgb(var(--color-accent))] hover:underline underline-offset-4" href="tel:+48698718564">
-              +48 698 718 564
+            <a
+              className="font-serif text-base tracking-[0.06em] tabular-nums hover:text-[rgb(var(--color-accent))] hover:underline underline-offset-4"
+              href={`tel:${KAZKA_HEADER_PHONE_TEL}`}
+            >
+              {KAZKA_HEADER_PHONE}
             </a>
           </p>
           <p>
             <a
               className="hover:text-[rgb(var(--color-accent))] hover:underline underline-offset-4"
-              href="mailto:epir@epirbizuteria.pl"
+              href={`mailto:${KAZKA_HEADER_EMAIL}`}
             >
-              epir@epirbizuteria.pl
+              {KAZKA_HEADER_EMAIL}
             </a>
           </p>
         </section>

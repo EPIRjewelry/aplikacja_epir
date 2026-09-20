@@ -2,9 +2,9 @@ import {describe, expect, it} from 'vitest';
 import {
   EPIR_GOLD_COLLECTION_URL,
   EPIR_HEADER_LOGO_URL,
-  KAZKA_CATEGORY_NAV,
   KAZKA_HEADER_BRAND,
   KAZKA_HEADER_EMAIL,
+  KAZKA_HEADER_NAV_GROUPS,
   KAZKA_HEADER_PHONE,
   KAZKA_HEADER_PHONE_TEL,
   KAZKA_HEADER_PRESENTS,
@@ -22,7 +22,7 @@ describe('kazka-header', () => {
     expect(EPIR_HEADER_LOGO_URL).toContain('cdn.shopify.com');
   });
 
-  it('exposes header contact details', () => {
+  it('exposes contact constants for footer and other surfaces', () => {
     expect(KAZKA_HEADER_PHONE).toBe('+48 696 55 33 46');
     expect(KAZKA_HEADER_PHONE_TEL).toBe('+48696553346');
     expect(KAZKA_HEADER_EMAIL).toBe('epir@epirbizuteria.pl');
@@ -36,15 +36,32 @@ describe('kazka-header', () => {
     expect(EPIR_GOLD_COLLECTION_URL).toContain('utm_source=kazka');
   });
 
-  it('maps category nav to dedicated Shopify collections', () => {
-    expect(KAZKA_CATEGORY_NAV.map((cat) => cat.handle)).toEqual([
+  it('maps header nav groups to dedicated Shopify collections', () => {
+    const goldItems = KAZKA_HEADER_NAV_GROUPS.find((g) => g.id === 'gold');
+    expect(goldItems?.label).toBe('Biżuteria Złota z Brylantami');
+    expect(goldItems?.items.map((item) => item.handle)).toEqual([
       'kazka-pierscionki',
-      'kazka-naszyjniki',
       'kazka-kolczyki',
+      'kazka-naszyjniki',
       'kazka-bransoletki',
     ]);
+
+    const gemstoneItems = KAZKA_HEADER_NAV_GROUPS.find(
+      (g) => g.id === 'gemstone',
+    );
+    expect(gemstoneItems?.label).toBe(
+      'Biżuteria Złota z Kamieniami Szlachetnymi',
+    );
+    expect(gemstoneItems?.items.map((item) => item.path)).toEqual([
+      '/collections/kazka-szafiry',
+      '/collections/kazka-szmaragdy',
+      '/collections/kazka-rubiny',
+    ]);
+
     expect(
-      KAZKA_CATEGORY_NAV.every((cat) => cat.path.startsWith('/collections/')),
+      KAZKA_HEADER_NAV_GROUPS.flatMap((group) => group.items).every((item) =>
+        item.path.startsWith('/collections/'),
+      ),
     ).toBe(true);
   });
 });
