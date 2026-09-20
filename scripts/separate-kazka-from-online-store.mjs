@@ -53,6 +53,15 @@ const KAZKA_COLLECTION_TAG_RULES = {
   'kazka-bransoletki': [
     {column: 'TAG', relation: 'EQUALS', condition: 'kazka-bransoletka'},
   ],
+  'kazka-classic': [
+    {column: 'TAG', relation: 'EQUALS', condition: 'kazka-classic'},
+  ],
+  'kazka-big-lab': [
+    {column: 'TAG', relation: 'EQUALS', condition: 'kazka-lab'},
+  ],
+  'kazka-fancy-cut': [
+    {column: 'TAG', relation: 'EQUALS', condition: 'FANCY_CUT'},
+  ],
 };
 
 function trimVal(line) {
