@@ -85,7 +85,7 @@ export type EditorialLineTile = {
   alt: string;
 };
 
-/** Home — discovery of curated lines (Classic / Big Lab / Fancy Cut). */
+/** Home — discovery of curated lines (Classic / Big Lab / Fancy Cut / Gemstone). */
 export const KAZKA_EDITORIAL_LINES: EditorialLineTile[] = [
   {
     href: '/collections/kazka-classic',
@@ -107,6 +107,13 @@ export const KAZKA_EDITORIAL_LINES: EditorialLineTile[] = [
     label: 'Fancy Cut',
     body: 'Szlify poza okrągłym — kamień jako forma, nie tylko błysk.',
     alt: 'Linia Fancy Cut — Kazka Jewelry',
+  },
+  {
+    href: '/collections/kazka-kamienie-szlachetne',
+    image: `${SHOPIFY_CDN}/nowy-ciasny-kadr-editorialowy-z-dekoltem-i-bi-uteri.png?v=1789928822`,
+    label: 'Kamienie szlachetne',
+    body: 'Szafir, rubin i szmaragd w geometrycznej oprawie złota — kolor bez hałasu.',
+    alt: 'Linia Kamienie szlachetne — Kazka Jewelry',
   },
 ];
 

@@ -2,16 +2,18 @@ import {describe, expect, it} from 'vitest';
 import {KAZKA_EDITORIAL_LINES} from './kazka-editorial-assets';
 
 describe('KAZKA_EDITORIAL_LINES', () => {
-  it('exposes three curated lines linked to dedicated collections', () => {
+  it('exposes four curated lines linked to dedicated collections', () => {
     expect(KAZKA_EDITORIAL_LINES.map((line) => line.label)).toEqual([
       'Classic',
       'Big Lab',
       'Fancy Cut',
+      'Kamienie szlachetne',
     ]);
     expect(KAZKA_EDITORIAL_LINES.map((line) => line.href)).toEqual([
       '/collections/kazka-classic',
       '/collections/kazka-big-lab',
       '/collections/kazka-fancy-cut',
+      '/collections/kazka-kamienie-szlachetne',
     ]);
   });
 

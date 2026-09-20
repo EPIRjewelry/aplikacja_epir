@@ -4,6 +4,7 @@ import {CollectionFilters, ProductGrid} from '@epir/ui';
 import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {KazkaCollectionNav} from '~/components/KazkaCollectionNav';
 import {KazkaEmptyCollectionState} from '~/components/KazkaEmptyCollectionState';
+import {KazkaGemstoneStoneNav} from '~/components/KazkaGemstoneStoneNav';
 import {
   KAZKA_PRODUCT_PRICE_CLASS,
   KAZKA_PRODUCT_TITLE_CLASS,
@@ -130,6 +131,7 @@ export default function Collection() {
   return (
     <section className="mx-auto w-full max-w-7xl gap-8">
       <KazkaCollectionNav />
+      <KazkaGemstoneStoneNav collectionHandle={collection.handle} />
 
       <header className="grid w-full gap-3 py-4 md:gap-4 md:py-6 fadeIn">
         <h1 className="font-serif text-3xl font-bold text-[rgb(var(--color-primary))] md:text-4xl">

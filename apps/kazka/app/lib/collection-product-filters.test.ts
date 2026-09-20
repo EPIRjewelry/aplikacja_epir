@@ -100,6 +100,13 @@ describe('parseCollectionProductFilters', () => {
       {tag: 'kazka-classic'},
     ]);
   });
+
+  it('maps linia=gemstone to kazka-gemstone tag', () => {
+    const params = new URLSearchParams('linia=gemstone');
+    expect(parseCollectionProductFilters(params)).toEqual([
+      {tag: 'kazka-gemstone'},
+    ]);
+  });
 });
 
 describe('parseCollectionSort', () => {

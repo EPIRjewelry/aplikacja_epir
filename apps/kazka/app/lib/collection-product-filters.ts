@@ -137,6 +137,7 @@ export const LINIA_URL_TO_FILTER: Record<string, CollectionProductFilter> = {
   lab: {variantOption: {name: 'Jakość', value: 'LAB'}},
   fancy: {tag: 'FANCY_CUT'},
   classic: {tag: 'kazka-classic'},
+  gemstone: {tag: 'kazka-gemstone'},
 };
 
 export const LINIA_NAV_OPTIONS = [
@@ -144,6 +145,7 @@ export const LINIA_NAV_OPTIONS = [
   {value: 'classic', label: 'Classic'},
   {value: 'lab', label: 'Big Lab'},
   {value: 'fancy', label: 'Fancy Cut'},
+  {value: 'gemstone', label: 'Kamienie szlachetne'},
 ] as const;
 
 /** Wymiar 2 — typ biżuterii (tagi produktu). */

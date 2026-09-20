@@ -18,11 +18,11 @@ export function KazkaEditorialLines() {
         Linie
       </h2>
       <p className="kazka-section-lead mx-auto mb-8 max-w-xl px-4 text-center md:mb-10">
-        Trzy koncepty w złocie i brylancie — ten sam spokój formy, różny wybór
-        kamienia i szlifu.
+        Cztery linie w złocie — brylant, szlif i kamień kolorowy w tej samej
+        geometrii formy.
       </p>
 
-      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-4 sm:grid-cols-3 sm:gap-4 md:gap-6 md:px-6">
+      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-4 sm:grid-cols-2 lg:grid-cols-4 sm:gap-4 md:gap-6 md:px-6">
         {KAZKA_EDITORIAL_LINES.map((line) => (
           <Link
             key={line.href}

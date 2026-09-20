@@ -11,6 +11,7 @@ export const LINIA_COLLECTION_HANDLES: Record<string, string> = {
   classic: 'kazka-classic',
   lab: 'kazka-big-lab',
   fancy: 'kazka-fancy-cut',
+  gemstone: 'kazka-kamienie-szlachetne',
 };
 
 export function buildLiniaHref(linia: string): string {
@@ -23,6 +24,14 @@ export function activeLiniaFromPath(pathname: string): string | null {
   if (pathname.includes('kazka-classic')) return 'classic';
   if (pathname.includes('kazka-big-lab')) return 'lab';
   if (pathname.includes('kazka-fancy-cut')) return 'fancy';
+  if (
+    pathname.includes('kazka-kamienie-szlachetne') ||
+    pathname.includes('kazka-szafiry') ||
+    pathname.includes('kazka-rubiny') ||
+    pathname.includes('kazka-szmaragdy')
+  ) {
+    return 'gemstone';
+  }
   if (/\/collections\/kazka\/?$/.test(pathname)) return '';
   return null;
 }
@@ -31,6 +40,14 @@ export function liniaFromCollectionHandle(handle: string): string {
   if (handle === 'kazka-classic') return 'classic';
   if (handle === 'kazka-big-lab') return 'lab';
   if (handle === 'kazka-fancy-cut') return 'fancy';
+  if (
+    handle === 'kazka-kamienie-szlachetne' ||
+    handle === 'kazka-szafiry' ||
+    handle === 'kazka-rubiny' ||
+    handle === 'kazka-szmaragdy'
+  ) {
+    return 'gemstone';
+  }
   return '';
 }
 

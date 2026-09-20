@@ -65,18 +65,29 @@ describe('kazka-collection-nav', () => {
     expect(buildLiniaHref('classic')).toBe('/collections/kazka-classic');
     expect(buildLiniaHref('lab')).toBe('/collections/kazka-big-lab');
     expect(buildLiniaHref('fancy')).toBe('/collections/kazka-fancy-cut');
+    expect(buildLiniaHref('gemstone')).toBe(
+      '/collections/kazka-kamienie-szlachetne',
+    );
   });
 
   it('activeLiniaFromPath detects line from pathname', () => {
     expect(activeLiniaFromPath('/collections/kazka-classic')).toBe('classic');
     expect(activeLiniaFromPath('/collections/kazka-big-lab')).toBe('lab');
     expect(activeLiniaFromPath('/collections/kazka-fancy-cut')).toBe('fancy');
+    expect(
+      activeLiniaFromPath('/collections/kazka-kamienie-szlachetne'),
+    ).toBe('gemstone');
+    expect(activeLiniaFromPath('/collections/kazka-szafiry')).toBe('gemstone');
     expect(activeLiniaFromPath('/collections/kazka')).toBe('');
     expect(activeLiniaFromPath('/collections/kazka-pierscionki')).toBeNull();
   });
 
   it('liniaFromCollectionHandle maps collection handle to linia key', () => {
     expect(liniaFromCollectionHandle('kazka-big-lab')).toBe('lab');
+    expect(liniaFromCollectionHandle('kazka-kamienie-szlachetne')).toBe(
+      'gemstone',
+    );
+    expect(liniaFromCollectionHandle('kazka-rubiny')).toBe('gemstone');
     expect(liniaFromCollectionHandle('kazka-pierscionki')).toBe('');
   });
 });
