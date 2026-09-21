@@ -150,7 +150,7 @@ export function KazkaEditorialHero({slides: cmsSlides}: {slides: CmsHeroSlide[]}
           </>
         )}
         {subheading ? (
-          <p className="mt-2 max-w-[45ch] font-sans text-xs font-medium leading-relaxed text-white">
+          <p className="kazka-home-hero__subheading mt-2 max-w-[45ch] font-sans font-medium leading-relaxed text-white">
             {subheading}
           </p>
         ) : null}

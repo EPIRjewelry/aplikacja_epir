@@ -89,6 +89,10 @@ a.active {
   }
 }
 
+.kazka-home-hero__subheading {
+  font-size: 1.125rem; /* 1.5 × 0.75rem (poprzednie text-xs) */
+}
+
 .kazka-home-tile {
   aspect-ratio: 4 / 5;
   width: 100%;
