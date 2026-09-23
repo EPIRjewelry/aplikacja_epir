@@ -166,7 +166,9 @@ export function Header({
                 height={250}
                 decoding="async"
               />
-              <span className="site-header__presents">{KAZKA_HEADER_PRESENTS}</span>
+              <span className="site-header__presents hidden md:inline">
+                {KAZKA_HEADER_PRESENTS}
+              </span>
             </Link>
           </div>
         </div>

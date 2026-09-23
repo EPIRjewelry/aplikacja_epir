@@ -232,6 +232,7 @@ a.active {
 }
 
 .site-header__presents {
+  display: none;
   font-family: var(--font-family-ui);
   font-size: 0.9375rem;
   font-weight: 400;
@@ -315,6 +316,7 @@ a.active {
 
 @media (min-width: 48em) {
   .site-header__presents {
+    display: inline;
     font-size: 1.125rem;
     letter-spacing: 0.04em;
   }
