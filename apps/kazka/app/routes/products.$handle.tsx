@@ -9,6 +9,7 @@ import {
   kazkaProductStoneLabel,
 } from '~/lib/kazka-pdp-trust';
 import {buildProductJsonLd} from '~/lib/product-json-ld';
+import {MetaPixelProduct} from '~/components/MetaPixel';
 
 type KazkaProductGalleryProps = {
   medias: Parameters<typeof ProductGallery>[0]['medias'];
@@ -147,6 +148,11 @@ export default function ProductHandle() {
 
   return (
     <section className="kazka-pdp grid w-full gap-4 md:gap-8">
+      <MetaPixelProduct
+        handle={product.handle}
+        priceAmount={selectedVariant?.price?.amount}
+        currencyCode={selectedVariant?.price?.currencyCode}
+      />
       <div className="grid items-start gap-6 md:grid-cols-2 md:gap-10 lg:grid-cols-3 lg:gap-12">
         <KazkaProductGallery
           medias={product.media.nodes}

@@ -54,6 +54,8 @@ import {
 import {Footer} from '~/components/Footer';
 import {Header} from '~/components/Header';
 import {OrganicEpirBridge} from '~/components/OrganicEpirBridge';
+import {MetaPixelPageView} from '~/components/MetaPixel';
+import {dispatchKazkaConsentChange} from '~/lib/use-kazka-consent';
 
 function privacyPolicyUrlFromShop(domain: string | undefined): string | undefined {
   if (!domain?.trim()) return undefined;
@@ -253,9 +255,11 @@ function KazkaConsentAndChat({
   );
 
   useEffect(() => {
-    if (getStoredConsent(KAZKA_CONSENT_STORAGE_KEY) === true) {
+    const stored = getStoredConsent(KAZKA_CONSENT_STORAGE_KEY) === true;
+    if (stored) {
       setConsentGranted(true);
     }
+    dispatchKazkaConsentChange(stored);
   }, []);
 
   const onConsentChange = useCallback(
@@ -264,6 +268,7 @@ function KazkaConsentAndChat({
       if (!next) {
         storeConsent(false, KAZKA_CONSENT_STORAGE_KEY);
         setConsentGranted(false);
+        dispatchKazkaConsentChange(false);
         return;
       }
       setPendingConsent(true);
@@ -301,6 +306,7 @@ function KazkaConsentAndChat({
         }
         storeConsent(true, KAZKA_CONSENT_STORAGE_KEY);
         setConsentGranted(true);
+        dispatchKazkaConsentChange(true);
       } catch (e) {
         setConsentError(
           e instanceof Error ? e.message : 'Nie udało się zapisać zgody.',
@@ -481,6 +487,7 @@ export default function App() {
             shell
           )}
         </ShopifyProvider>
+        <MetaPixelPageView />
         <ScrollRestoration nonce={nonce} />
         <Scripts nonce={nonce} />
       </body>
