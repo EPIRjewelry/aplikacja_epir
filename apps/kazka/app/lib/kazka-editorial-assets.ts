@@ -77,6 +77,34 @@ export const KAZKA_EDITORIAL_STRIP_IMAGE = {
   alt: 'Złoty soliter — detal w szkle',
 };
 
+/** O KAZKA JEWELRY — assety lokalne (źródło: kazkaj.com/about). */
+const ABOUT_ASSET_BASE = '/editorial/about';
+
+export const KAZKA_ABOUT_CRAFTSMANSHIP_IMAGE = {
+  src: `${ABOUT_ASSET_BASE}/production-workshop.webp`,
+  alt: 'Pracownia jubilerska — pierścionek w imadle podczas wykończenia',
+};
+
+export const KAZKA_ABOUT_PRODUCTION_TECHNOLOGY_IMAGE = {
+  src: `${ABOUT_ASSET_BASE}/production-technology.webp`,
+  alt: 'Pracownia jubilerska — precyzyjne wykończenie biżuterii',
+};
+
+export const KAZKA_ABOUT_PRODUCTION_DETAIL_IMAGE = {
+  src: `${ABOUT_ASSET_BASE}/production-detail.webp`,
+  alt: 'Detal biżuterii Kazka — kontrola jakości w pracowni',
+};
+
+export const KAZKA_ABOUT_DIAMOND_HERO_IMAGE = {
+  src: `${ABOUT_ASSET_BASE}/diamond-selection-hero.webp`,
+  alt: 'Luźne diamenty — selekcja gemmologiczna Kazka Jewelry',
+};
+
+export const KAZKA_ABOUT_DIAMOND_RING_VIDEO = {
+  src: `${ABOUT_ASSET_BASE}/diamond-selection-ring.mp4`,
+  alt: 'Pierścionek z brylantem — detal selekcji kamienia',
+};
+
 export type EditorialLineTile = {
   href: string;
   image: string;

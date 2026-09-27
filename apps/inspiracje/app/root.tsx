@@ -8,7 +8,7 @@ import {
 } from '@remix-run/react';
 import styles from './styles/app.css';
 import tailwind from './styles/tailwind-build.css';
-import favicon from '../public/favicon.svg';
+import favicon from '../public/favicon.png';
 import type {LinksFunction, LoaderFunctionArgs} from '@remix-run/cloudflare';
 import {json} from '@remix-run/cloudflare';
 import {Footer} from '~/components/Footer';
@@ -35,7 +35,7 @@ export const links: LinksFunction = () => {
       rel: 'stylesheet',
       href: 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&display=swap',
     },
-    {rel: 'icon', type: 'image/svg+xml', href: favicon},
+    {rel: 'icon', type: 'image/png', href: favicon},
   ];
 };
 

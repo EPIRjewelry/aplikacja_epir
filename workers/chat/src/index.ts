@@ -3457,15 +3457,16 @@ async function streamAssistantResponse(
 
       if (
         !operatorMode &&
-        isKazkaHeadlessChannel(storefrontContext?.channel, storefrontContext?.storefrontId) &&
-        (storefrontContext?.productHandle || storefrontContext?.collectionHandle)
+        isKazkaHeadlessChannel(storefrontContext?.channel, storefrontContext?.storefrontId)
       ) {
-        const kazkaHydrated = await buildKazkaHeadlessStorefrontContext(env, {
-          productHandle: storefrontContext?.productHandle,
-          collectionHandle: storefrontContext?.collectionHandle,
-        });
-        if (kazkaHydrated) {
-          dynamicContext.push(kazkaHydrated);
+        if (storefrontContext?.productHandle || storefrontContext?.collectionHandle) {
+          const kazkaHydrated = await buildKazkaHeadlessStorefrontContext(env, {
+            productHandle: storefrontContext?.productHandle,
+            collectionHandle: storefrontContext?.collectionHandle,
+          });
+          if (kazkaHydrated) {
+            dynamicContext.push(kazkaHydrated);
+          }
         }
 
         const kazkaRag = await fetchKazkaDropRagContext(userMessage, env, {

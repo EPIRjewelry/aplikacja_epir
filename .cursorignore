@@ -179,6 +179,7 @@ themes/epir-online-store/sections/*
 !themes/epir-online-store/sections/collection-gold-manifesto.liquid
 !themes/epir-online-store/sections/collection-gold-realizations.liquid
 !themes/epir-online-store/sections/collection-workshop-proof.liquid
+!themes/epir-online-store/sections/collection-gold-process.liquid
 !themes/epir-online-store/sections/collection-cocreate-teaser.liquid
 !themes/epir-online-store/sections/zaprojektuj-swoj-model.liquid
 !themes/epir-online-store/sections/main-product.liquid

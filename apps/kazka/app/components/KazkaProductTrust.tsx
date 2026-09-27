@@ -1,6 +1,47 @@
 import {Link} from '@remix-run/react';
 import type {ProductTrustItem} from '~/lib/kazka-pdp-trust';
 
+const linkClassName =
+  'text-[rgb(var(--color-primary))]/80 underline-offset-4 hover:text-[rgb(var(--color-accent))] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgb(var(--color-accent))] focus-visible:outline-offset-2';
+
+function ProductTrustValue({item}: {item: ProductTrustItem}) {
+  if (item.contact) {
+    const {prefix, whatsappLabel, suffix, phoneDisplay, phoneTel, whatsappHref} =
+      item.contact;
+    return (
+      <span className="kazka-figure text-[rgb(var(--color-primary))]/80">
+        {prefix}
+        <a
+          href={whatsappHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={linkClassName}
+        >
+          {whatsappLabel}
+        </a>
+        {suffix}
+        <a href={phoneTel} className={linkClassName}>
+          {phoneDisplay}
+        </a>
+      </span>
+    );
+  }
+
+  if (item.href) {
+    return (
+      <Link to={item.href} className={linkClassName}>
+        {item.value ?? item.label}
+      </Link>
+    );
+  }
+
+  return (
+    <span className="kazka-figure text-[rgb(var(--color-primary))]/80">
+      {item.value}
+    </span>
+  );
+}
+
 export function KazkaProductTrust({items}: {items: ProductTrustItem[]}) {
   if (!items.length) return null;
 
@@ -18,16 +59,7 @@ export function KazkaProductTrust({items}: {items: ProductTrustItem[]}) {
             <span className="font-medium text-[rgb(var(--color-primary))]">
               {item.label}
             </span>
-            {item.href ? (
-              <Link
-                to={item.href}
-                className="text-[rgb(var(--color-primary))]/80 underline-offset-4 hover:text-[rgb(var(--color-accent))] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgb(var(--color-accent))] focus-visible:outline-offset-2"
-              >
-                {item.value ?? item.label}
-              </Link>
-            ) : (
-              <span className="kazka-figure text-[rgb(var(--color-primary))]/80">{item.value}</span>
-            )}
+            <ProductTrustValue item={item} />
           </li>
         ))}
       </ul>

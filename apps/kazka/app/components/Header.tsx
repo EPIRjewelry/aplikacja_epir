@@ -116,14 +116,14 @@ export function Header({
   return (
     <header
       role="banner"
-      className="site-header sticky top-0 z-50 flex h-[var(--height-nav)] w-full items-center px-4 leading-none transition-[box-shadow] duration-200 ease-out data-[scrolled=true]:shadow-[0_2px_12px_rgba(201,169,110,0.18)] sm:px-6 md:px-8 lg:px-12"
+      className="site-header sticky top-0 z-50 flex h-[var(--height-nav)] w-full items-center px-4 leading-none transition-[box-shadow] duration-200 ease-out data-[scrolled=true]:shadow-[0_2px_12px_rgba(201,169,110,0.18)] max-md:h-auto max-md:flex-col max-md:items-stretch sm:px-6 md:px-8 lg:px-12"
       {...(isScrolled ? {'data-scrolled': 'true'} : {})}
     >
-      <div className="site-header__inner grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:gap-4 md:gap-6">
-        <div className="site-header__left flex min-w-0 items-center gap-2 justify-self-start sm:gap-3">
+      <div className="site-header__inner grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 max-md:h-[var(--height-nav)] max-md:grid-cols-[1fr_auto_1fr] sm:gap-4 md:gap-6">
+        <div className="site-header__left flex min-w-0 items-center gap-2 justify-self-start max-md:contents sm:gap-3">
           <button
             type="button"
-            className={`${iconBtnClass} shrink-0 self-center md:hidden`}
+            className={`${iconBtnClass} shrink-0 self-center max-md:justify-self-start md:hidden`}
             aria-label={menuOpen ? 'Zamknij menu' : 'Otwórz menu'}
             aria-expanded={menuOpen}
             aria-controls={menuId}
@@ -152,7 +152,7 @@ export function Header({
             </span>
           </button>
 
-          <div className="site-header__brand-column min-w-0">
+          <div className="site-header__brand-column min-w-0 max-md:justify-self-center">
             <Link
               to="/"
               className="site-header__brand group inline-flex max-w-full items-center gap-2 rounded-sm no-underline transition-opacity hover:opacity-85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[rgb(var(--color-accent))] focus-visible:outline-offset-2 sm:gap-3"
@@ -161,7 +161,7 @@ export function Header({
               <img
                 src={EPIR_HEADER_LOGO_URL}
                 alt={EPIR_HEADER_LOGO_ALT}
-                className="site-header__logo-img h-14 w-auto object-contain md:h-20"
+                className="site-header__logo-img h-[4.25rem] w-auto object-contain md:h-20"
                 width={250}
                 height={250}
                 decoding="async"
@@ -226,7 +226,7 @@ export function Header({
           </nav>
         </div>
 
-        <div className="site-header__right flex shrink-0 items-center justify-end gap-x-1 sm:gap-x-3 md:gap-x-4">
+        <div className="site-header__right flex shrink-0 items-center justify-end gap-x-1 max-md:col-start-3 max-md:justify-self-end sm:gap-x-3 md:gap-x-4">
           <a
             href={EPIR_GOLD_COLLECTION_URL}
             target="_blank"
@@ -268,6 +268,8 @@ export function Header({
           </button>
         </div>
       </div>
+
+      <p className="site-header__kazka-strip md:hidden">{KAZKA_HEADER_PRESENTS}</p>
 
       {menuOpen ? (
         <div className="site-header__mobile-layer md:hidden" id={menuId}>

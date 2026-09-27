@@ -1,3 +1,5 @@
+import {Link} from '@remix-run/react';
+
 /** Editorial manifesto bridge — smooth transition between category tiles and video. */
 export function KazkaEditorialManifestoBridge() {
   return (
@@ -18,6 +20,13 @@ export function KazkaEditorialManifestoBridge() {
         <p className="kazka-editorial-label mt-6 text-[rgb(var(--color-primary))]/80">
           ZŁOTO 18K · BRYLANTY · PRACOWNIA WROCŁAW
         </p>
+        <Link
+          to="/pages/o-nas"
+          className="kazka-editorial-label mt-8 inline-block text-[rgb(var(--color-primary))] no-underline transition-colors hover:text-[rgb(var(--color-accent))]"
+          prefetch="intent"
+        >
+          O KAZKA JEWELRY
+        </Link>
       </div>
     </section>
   );

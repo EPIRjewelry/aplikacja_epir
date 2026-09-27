@@ -69,7 +69,7 @@
         "trust_badge_NyBMd4": {
           "type": "trust_badge",
           "settings": {
-            "trust_badges_text": "<p>Guarantee safe & secure checkout</p>",
+            "trust_badges_text": "<p>Wysyłka z pracowni we Wrocławiu. Realizacja zwykle 4–7 dni.</p>",
             "trust_badges_image_width": "60%",
             "position": "below"
           }
@@ -77,9 +77,9 @@
         "shipping_VBJFtx": {
           "type": "shipping",
           "settings": {
-            "show_delivery_times": false,
-            "deliver_text": "Przewidywany czas dostawy",
-            "deliver_days": "5",
+            "show_delivery_times": true,
+            "deliver_text": "Realizacja w pracowni",
+            "deliver_days": "7",
             "date_format": "%Y-%m_%d",
             "show_shipping_text": false,
             "shipping_text": ""

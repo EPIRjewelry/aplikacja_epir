@@ -184,7 +184,7 @@ export async function buildKazkaHeadlessStorefrontContext(
 
   const sections: string[] = [
     '[KONTEKST KANAŁU KAZKA — runtime Storefront API, bez RAG]',
-    'Poniższe dane pochodzą ze sklepu Kazka Jewelry (aktualny drop). Korzystaj z nich przed ogólnym wyszukiwaniem katalogu.',
+    'Poniższe dane pochodzą z katalogu sklepu Kazka Jewelry. Korzystaj z nich przed ogólnym wyszukiwaniem katalogu.',
   ];
 
   if (input.productHandle) {

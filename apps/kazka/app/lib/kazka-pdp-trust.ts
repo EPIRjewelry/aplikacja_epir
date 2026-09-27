@@ -1,8 +1,24 @@
+import {
+  KAZKA_HEADER_PHONE,
+  KAZKA_HEADER_PHONE_TEL,
+  KAZKA_HEADER_WHATSAPP_URL,
+} from './kazka-header';
+
+export type ProductTrustContact = {
+  prefix: string;
+  whatsappLabel: string;
+  suffix: string;
+  phoneDisplay: string;
+  phoneTel: string;
+  whatsappHref: string;
+};
+
 export type ProductTrustItem = {
   id: string;
   label: string;
   value?: string;
   href?: string;
+  contact?: ProductTrustContact;
 };
 
 /** Linki do stron sklepu — bez twierdzeń produktowych, których nie da się zweryfikować per SKU. */
@@ -20,10 +36,16 @@ const SERVICE_LINK_ITEMS: ProductTrustItem[] = [
     value: 'Polityka zwrotów',
   },
   {
-    id: 'chat',
+    id: 'advisory',
     label: 'Doradztwo',
-    href: '/chat',
-    value: 'Pytania o rozmiar lub konfigurację — czat',
+    contact: {
+      prefix: 'Zamówienia przez telefonem/',
+      whatsappLabel: 'WhatsApp',
+      suffix: ', pytania o szczegóły- ',
+      phoneDisplay: KAZKA_HEADER_PHONE,
+      phoneTel: `tel:${KAZKA_HEADER_PHONE_TEL}`,
+      whatsappHref: KAZKA_HEADER_WHATSAPP_URL,
+    },
   },
 ];
 

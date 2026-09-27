@@ -35,8 +35,18 @@ describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
 
   it('includes Kazka headless persona addon', () => {
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('Kazka Jewelry');
-    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('aktualny drop Kazka');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('katalog sklepu');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('Nigdy nie używaj słowa „drop”');
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('EPIR');
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('geometryczny spokój');
+  });
+
+  it('forbids hallucinated Kazka contact details', () => {
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('Zakaz zmyślonych numerów');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('+48 696 55 33 46');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('epir@epirbizuteria.pl');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('wyłącznie numerem +48 696 55 33 46');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('000 000 000');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('nie podawaj zmyślonych danych kontaktowych');
   });
 });

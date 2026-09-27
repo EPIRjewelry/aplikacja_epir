@@ -1,17 +1,19 @@
 import {json, type LoaderFunctionArgs} from '@remix-run/cloudflare';
-import {type MetaFunction} from '@remix-run/react';
+import {Link, type MetaFunction} from '@remix-run/react';
 import {getSeoMeta} from '@shopify/hydrogen';
-import {
-  CraftsmanshipStory,
-  GemologySection,
-  SocialProofBanner,
-} from '@epir/ui';
+import {CraftsmanshipStory, SocialProofBanner} from '@epir/ui';
+import {KazkaAboutGemologySection} from '~/components/KazkaAboutGemologySection';
+import {KazkaAboutProductionCards} from '~/components/KazkaAboutProductionCards';
+import {KazkaEditorialVideoSection} from '~/components/KazkaEditorialVideoSection';
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 import {
+  KAZKA_ABOUT_COLLECTION_CTA,
+  KAZKA_ABOUT_GEMOLOGY,
   KAZKA_ABOUT_HERO,
   KAZKA_ABOUT_HISTORY,
+  KAZKA_ABOUT_INSTAGRAM,
+  KAZKA_ABOUT_PRODUCTION_CARDS,
   KAZKA_CRAFTSMANSHIP,
-  KAZKA_GEMOLOGY,
   KAZKA_SOCIAL_PROOF,
 } from '~/lib/kazka-brand-copy';
 
@@ -23,9 +25,9 @@ export async function loader({context, request}: LoaderFunctionArgs) {
 
 export const meta: MetaFunction<typeof loader> = ({data}) =>
   getSeoMeta({
-    title: 'O marce KAZKA — EPIR Art Jewellery',
+    title: 'O KAZKA JEWELRY — EPIR Art Jewellery',
     description:
-      'Historia marki KAZKA od 2014 roku: lokalne rzemiosło w Polsce, selekcja diamentów przez gemmologów i Geometria Ciszy.',
+      'O KAZKA JEWELRY: historia od 2014, produkcja w Polsce, selekcja diamentów przez gemmologów i Geometria Ciszy — bezpośrednio dla Ciebie.',
     url: data?.canonicalUrl,
   });
 
@@ -74,8 +76,23 @@ export default function AboutPage() {
       </section>
 
       <CraftsmanshipStory {...KAZKA_CRAFTSMANSHIP} />
-      <GemologySection {...KAZKA_GEMOLOGY} />
+      <KazkaAboutProductionCards cards={KAZKA_ABOUT_PRODUCTION_CARDS} />
+      <KazkaEditorialVideoSection />
+      <KazkaAboutGemologySection
+        {...KAZKA_ABOUT_GEMOLOGY}
+        instagram={KAZKA_ABOUT_INSTAGRAM}
+      />
       <SocialProofBanner {...KAZKA_SOCIAL_PROOF} />
+
+      <section className="mx-auto max-w-3xl px-4 pb-16 pt-4 text-center md:px-8 md:pb-24">
+        <Link
+          to={KAZKA_ABOUT_COLLECTION_CTA.href}
+          className="kazka-editorial-cta inline-block no-underline"
+          prefetch="intent"
+        >
+          {KAZKA_ABOUT_COLLECTION_CTA.label}
+        </Link>
+      </section>
     </div>
   );
 }

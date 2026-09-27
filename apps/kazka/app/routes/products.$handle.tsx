@@ -150,6 +150,7 @@ export default function ProductHandle() {
     <section className="kazka-pdp grid w-full gap-4 md:gap-8">
       <MetaPixelProduct
         handle={product.handle}
+        sku={selectedVariant?.sku}
         priceAmount={selectedVariant?.price?.amount}
         currencyCode={selectedVariant?.price?.currencyCode}
       />

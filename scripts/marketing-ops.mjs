@@ -17,7 +17,15 @@
  *   node scripts/marketing-ops.mjs search-themes audit|apply --asset-group EPIR_Srebro [--dry-run]
  *   node scripts/marketing-ops.mjs search-terms [--days 14] [--campaign Epir_Forest-Dark]
  *   node scripts/marketing-ops.mjs search-negatives audit|apply [--dry-run]
+ *   node scripts/marketing-ops.mjs search-negatives add-shared [--apply]
+ *   node scripts/marketing-ops.mjs pmax-url-expansion [--apply]
+ *   node scripts/marketing-ops.mjs pmax-landings [--days 14] [--campaign Epir_Forest-Dark]
+ *   node scripts/marketing-ops.mjs search-landings [--days 14]
+ *   node scripts/marketing-ops.mjs ads-account-audit
+ *   node scripts/marketing-ops.mjs ads-exclude-home [--apply]
+ *   node scripts/marketing-ops.mjs pmax-page-feed [--apply]
  *   node scripts/marketing-ops.mjs preview [--date YYYY-MM-DD]
+ *   node scripts/marketing-ops.mjs gmc-mca [--mca-id 5858051677]
  */
 
 import { readFileSync, existsSync } from 'fs';
@@ -56,7 +64,8 @@ Komendy:
   audit | expand | expand-metal | shopping-count | asset-group-status | asset-group-rename | asset-group-clone | forest-utm | landings-off | search-utm | preview
   search-themes audit|apply
   search-terms
-  search-negatives audit|apply
+  search-negatives audit|apply|add-shared
+  pmax-landings | search-landings | ads-account-audit | ads-exclude-home | pmax-page-feed | pmax-url-expansion | gmc-mca
 
 Opcje:
   --campaign <nazwa>       kampania PMax (domyślnie Epir_Forest-Dark)
@@ -67,6 +76,7 @@ Opcje:
   --dry-run                tylko symulacja (mutacje)
   --days <N>               okres search-terms (domyślnie 14)
   --date YYYY-MM-DD        data preview GA4+Ads
+  --mca-id <id>            MCA Merchant (domyślnie 5858051677)
 `);
   process.exit(1);
 }
@@ -101,12 +111,13 @@ const status = readFlag('--status');
 const dryRun = args.includes('--dry-run');
 const date = readFlag('--date');
 const days = readFlag('--days') || '14';
+const mcaId = readFlag('--mca-id') || '5858051677';
 
 function buildPath(route) {
   return `${origin}${route}`;
 }
 
-async function fetchOps(route) {
+async function fetchOps(route, { summary } = {}) {
   const url = buildPath(route);
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${key}` },
@@ -116,10 +127,55 @@ async function fetchOps(route) {
     console.error(`HTTP ${res.status}: ${text.slice(0, 800)}`);
     process.exit(1);
   }
+  let data;
   try {
-    console.log(JSON.stringify(JSON.parse(text), null, 2));
+    data = JSON.parse(text);
+    console.log(JSON.stringify(data, null, 2));
   } catch {
     console.log(text);
+    return;
+  }
+  if (summary === 'pmax-landings') printPmaxLandingsSummary(data);
+  if (summary === 'search-landings') printSearchLandingsSummary(data);
+}
+
+function printPmaxLandingsSummary(data) {
+  if (!data?.ok) return;
+  console.error('\n--- PMax landing summary ---');
+  console.error(`Campaign: ${data.campaign} | ${data.days}d | clicks: ${data.totals?.clicks ?? 0}`);
+  if (data.truncated) console.error('(truncated at row limit — tail URLs may be missing)');
+  const top = (data.byUrl ?? []).slice(0, 5);
+  if (top.length) {
+    console.error('Top URLs:');
+    for (const row of top) {
+      console.error(`  ${row.clickSharePct}% (${row.clicks}) ${row.url}`);
+    }
+  }
+  const gold = (data.freezeTargets ?? []).find((t) => t.label === 'zlota-bizuteria');
+  if (gold) {
+    console.error(
+      `Freeze zlota-bizuteria: ${gold.clickSharePct}% (${gold.clicks} clicks, matched=${gold.matched})`,
+    );
+  }
+  const nets = data.byNetwork ?? [];
+  if (nets.length) {
+    console.error('Networks:');
+    for (const n of nets) {
+      console.error(`  ${n.network}: ${n.clickSharePct}% (${n.clicks})`);
+    }
+  }
+}
+
+function printSearchLandingsSummary(data) {
+  if (!data?.ok) return;
+  console.error('\n--- Search landing summary ---');
+  console.error(`Campaign: ${data.campaign} | ${data.days}d | clicks: ${data.clickedTotals?.clicks ?? 0}`);
+  const top = (data.clickedLastNDays ?? []).slice(0, 5);
+  if (top.length) {
+    console.error('Top clicked URLs:');
+    for (const row of top) {
+      console.error(`  ${row.clickSharePct ?? '?'}% (${row.clicks}) ${row.url}`);
+    }
   }
 }
 
@@ -161,6 +217,21 @@ if (cmd === 'search-themes') {
   } else usage();
 } else if (cmd === 'search-terms') {
   route = `/ops/search-terms-audit?days=${encodeURIComponent(days)}&campaign=${encodeURIComponent(campaign)}`;
+} else if (cmd === 'pmax-url-expansion') {
+  const apply = args.includes('--apply');
+  route = `/ops/pmax-url-expansion?dryRun=${apply ? '0' : '1'}&campaign=${encodeURIComponent(campaign)}`;
+} else if (cmd === 'pmax-landings') {
+  route = `/ops/pmax-landing-audit?days=${encodeURIComponent(days)}&campaign=${encodeURIComponent(campaign)}`;
+} else if (cmd === 'search-landings') {
+  route = `/ops/search-landing-audit?days=${encodeURIComponent(days)}`;
+} else if (cmd === 'ads-account-audit') {
+  route = '/ops/ads-account-change-audit';
+} else if (cmd === 'ads-exclude-home') {
+  const apply = args.includes('--apply');
+  route = `/ops/ads-exclude-home?dryRun=${apply ? '0' : '1'}`;
+} else if (cmd === 'pmax-page-feed') {
+  const apply = args.includes('--apply');
+  route = `/ops/pmax-page-feed?dryRun=${apply ? '0' : '1'}&campaign=${encodeURIComponent(campaign)}`;
 } else if (cmd === 'search-negatives') {
   const sub = args[1];
   if (sub === 'audit') {
@@ -171,6 +242,9 @@ if (cmd === 'search-themes') {
     route = '/ops/shared-negatives-audit';
   } else if (sub === 'shared-apply') {
     route = `/ops/shared-negatives-apply?dryRun=${dryRun ? '1' : '0'}`;
+  } else if (sub === 'add-shared') {
+    const apply = args.includes('--apply');
+    route = `/ops/shared-negatives-keywords-apply?dryRun=${apply ? '0' : '1'}&list=${encodeURIComponent('Safety Filter - Marki')}`;
   } else usage();
 } else if (cmd === 'expand-metal') {
   if (!assetGroup || !metal) {
@@ -208,9 +282,13 @@ if (cmd === 'search-themes') {
     'landings-off': `/ops/pmax-landings-disable?dryRun=${dryRun ? '1' : '0'}&campaign=${encodeURIComponent(campaign)}`,
     'search-utm': `/ops/search-utm-suffixes?dryRun=${dryRun ? '1' : '0'}`,
     preview: `/ops/marketing-preview${date ? `?date=${encodeURIComponent(date)}` : ''}`,
+    'gmc-mca': `/ops/gmc-mca-overview?mcaId=${encodeURIComponent(mcaId)}`,
   };
   route = routes[cmd] ?? null;
 }
 
 if (!route) usage();
-await fetchOps(route);
+
+const summary =
+  cmd === 'pmax-landings' ? 'pmax-landings' : cmd === 'search-landings' ? 'search-landings' : null;
+await fetchOps(route, { summary });

@@ -42,7 +42,7 @@ invocation_logs = true
 [vars]
 SHOP_DOMAIN = "epir-art-silver-jewellery.myshopify.com"
 CANONICAL_MCP_URL = "https://epir-art-silver-jewellery.myshopify.com/api/mcp"
-KAZKA_COLLECTION_FILTER = "kazka,kazka-kolczyki,kazka-naszyjniki,kazka-pierscionki,kazka-bransoletki"
+KAZKA_COLLECTION_FILTER = "kazka,kazka-kolczyki,kazka-naszyjniki,kazka-pierscionki,kazka-bransoletki,kazka-kamienie-szlachetne,kazka-szafiry,kazka-szmaragdy,kazka-rubiny"
 # Admin token for protected endpoints:
 # wrangler secret put ADMIN_TOKEN
 # Kazka Storefront ingest (reuse token from chat worker):

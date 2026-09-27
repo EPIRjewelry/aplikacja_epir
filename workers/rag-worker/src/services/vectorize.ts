@@ -256,7 +256,7 @@ export function formatKazkaDropResultsForPrompt(items: VectorizeResultItem[]): s
     return `${i + 1}. [${meta.type ?? 'doc'}] ${item.title} (handle: ${handle})\n${item.snippet || item.text}`;
   });
   return [
-    '[WIEDZA RAG — drop Kazka Jewelry (Vectorize, nie zastępuje runtime Storefront)]',
+    '[WIEDZA RAG — katalog sklepu Kazka Jewelry (Vectorize, nie zastępuje runtime Storefront)]',
     ...lines,
   ].join('\n');
 }

@@ -98,7 +98,7 @@ Kanon: [`docs/kb/DESIGN_TOKENS.md`](../kb/DESIGN_TOKENS.md) + `workers/dynamic-l
 ## Otwarte / nie wdrożone
 
 - [x] Deploy workera z paletą v1 + `LANDINGS_ENABLED=true` na `l.` (2026-08-12) — **Ads Final URL nadal off**
-- [ ] Grafiki Hero 2048 + tekstury organiczne (len/kora) — następny wątek
+- [ ] Grafiki Hero 2048 + tekstury organiczne (len/kora) — kod `hero-picture` już prosi CDN o 2048; brakuje kadrów. Ads Final URL nadal off (raport: `ADS_TRAFFIC_MONETIZE_2026-09-27.md`).
 - [ ] Hero image jako pole `campaign_landing` (organic_art)
 - [ ] `accentStone` z metafieldu kolekcji (nie hardcode)
 - [ ] Backend formularza współtworzenia (organic_art — UI-only)

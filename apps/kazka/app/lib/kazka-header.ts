@@ -8,6 +8,9 @@ export const KAZKA_HEADER_PHONE_TEL = '+48696553346';
 export const KAZKA_HEADER_EMAIL = 'epir@epirbizuteria.pl';
 export const KAZKA_HEADER_WHATSAPP_URL = 'https://wa.me/48696553346';
 
+/** Oficjalny profil marki Kazka Jewelry (źródło: kazkaj.com). */
+export const KAZKA_JEWELRY_INSTAGRAM_URL = 'https://www.instagram.com/kazkajewelry';
+
 /** Logo graficzne — ten sam asset co na epirbizuteria.pl. */
 export const EPIR_HEADER_LOGO_URL =
   'https://cdn.shopify.com/s/files/1/0249/9756/0425/files/logo-strona.png?v=1711211444';

@@ -1,5 +1,10 @@
 import {describe, expect, it} from 'vitest';
 import {
+  KAZKA_HEADER_PHONE,
+  KAZKA_HEADER_PHONE_TEL,
+  KAZKA_HEADER_WHATSAPP_URL,
+} from './kazka-header';
+import {
   buildKazkaProductTrustItems,
   kazkaProductStoneLabel,
 } from './kazka-pdp-trust';
@@ -28,7 +33,7 @@ describe('buildKazkaProductTrustItems', () => {
     const items = buildKazkaProductTrustItems({});
     expect(items.some((i) => i.id === 'shipping')).toBe(true);
     expect(items.some((i) => i.id === 'returns')).toBe(true);
-    expect(items.some((i) => i.id === 'chat')).toBe(true);
+    expect(items.some((i) => i.id === 'advisory')).toBe(true);
     expect(items.some((i) => i.id === 'workshop')).toBe(false);
     expect(items.some((i) => i.id === 'packaging')).toBe(false);
     expect(items.some((i) => i.id === 'stone')).toBe(false);
@@ -39,5 +44,22 @@ describe('buildKazkaProductTrustItems', () => {
       mainStone: {value: 'Brylant'},
     });
     expect(items.some((i) => i.id === 'stone')).toBe(false);
+  });
+
+  it('exposes phone and WhatsApp contact for advisory without chat link', () => {
+    const advisory = buildKazkaProductTrustItems({}).find(
+      (item) => item.id === 'advisory',
+    );
+
+    expect(advisory).toBeDefined();
+    expect(advisory?.href).toBeUndefined();
+    expect(advisory?.contact).toEqual({
+      prefix: 'Zamówienia przez telefonem/',
+      whatsappLabel: 'WhatsApp',
+      suffix: ', pytania o szczegóły- ',
+      phoneDisplay: KAZKA_HEADER_PHONE,
+      phoneTel: `tel:${KAZKA_HEADER_PHONE_TEL}`,
+      whatsappHref: KAZKA_HEADER_WHATSAPP_URL,
+    });
   });
 });

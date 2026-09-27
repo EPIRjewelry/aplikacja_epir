@@ -10,7 +10,7 @@ const INFO_LINKS: [string, string][] = [
   ['Polityka Prywatności', '/pages/polityka-prywatnosci'],
   ['Wysyłka', '/pages/wysylka'],
   ['Płatność', '/pages/platnosc'],
-  ['O nas', '/pages/o-nas'],
+  ['O KAZKA JEWELRY', '/pages/o-nas'],
   ['Kontakt', '/pages/kontakt'],
   ['Polityka Cookies', '/pages/polityka-cookies'],
   ['Polityka Zwrotów', '/pages/polityka-zwrotow'],
