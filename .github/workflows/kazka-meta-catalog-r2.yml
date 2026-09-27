@@ -1,0 +1,60 @@
+name: Kazka Meta catalog (R2)
+
+# Same token path as GMC feed: GitHub secrets CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID.
+# CSV is a short-lived release asset (too large for git). The job uploads it to R2, then deletes the release.
+# Does not touch gmc_feed.csv.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: kazka-meta-catalog-r2
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: epir-marketing-ingest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      KAZKA_META_CSV_PATH: ${{ runner.temp }}/kazka-meta-catalog.csv
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: epir-marketing-ingest/package-lock.json
+
+      - name: Require secrets
+        run: |
+          if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
+            echo "Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID."
+            exit 1
+          fi
+
+      - name: Download catalog asset
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download kazka-meta-catalog-r2 --pattern kazka-meta-catalog.csv --dir "${{ runner.temp }}"
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Upload to R2
+        run: node scripts/upload-kazka-meta-catalog-r2.mjs
+
+      - name: Remove temporary release
+        if: always()
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete kazka-meta-catalog-r2 --yes --cleanup-tag

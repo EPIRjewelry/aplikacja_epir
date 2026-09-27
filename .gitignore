@@ -104,6 +104,7 @@ epir-marketing-ingest/scripts/mcp-run-*.mjs
 epir-marketing-ingest/scripts/mcp-upload-part*.mjs
 epir-marketing-ingest/scripts/upload-*.mjs
 !epir-marketing-ingest/scripts/upload-r2.mjs
+!epir-marketing-ingest/scripts/upload-kazka-meta-catalog-r2.mjs
 epir-marketing-ingest/scripts/gen-*.mjs
 epir-marketing-ingest/scripts/prepare-*.mjs
 epir-marketing-ingest/scripts/split-*.mjs
