@@ -23,7 +23,6 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      KAZKA_META_CSV_PATH: ${{ runner.temp }}/kazka-meta-catalog.csv
     steps:
       - uses: actions/checkout@v4
 
@@ -44,7 +43,9 @@ jobs:
         working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download kazka-meta-catalog-r2 --pattern kazka-meta-catalog.csv --dir "${{ runner.temp }}"
+        run: |
+          gh release download kazka-meta-catalog-r2 --pattern kazka-meta-catalog.csv --dir "${{ runner.temp }}"
+          echo "KAZKA_META_CSV_PATH=${{ runner.temp }}/kazka-meta-catalog.csv" >> "$GITHUB_ENV"
 
       - name: Install
         run: npm ci --no-audit --no-fund
