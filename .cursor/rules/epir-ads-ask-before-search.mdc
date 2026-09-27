@@ -1,0 +1,16 @@
+---
+description: Ads / URL sklepu — najpierw pytaj operatora, nie szukaj samodzielnie.
+globs: workers/marketing-ingest/**
+alwaysApply: false
+---
+
+# Ads: nie szukaj stron na własną rękę
+
+Gdy brakuje URL-a kolekcji, PDP lub Final URL kampanii: **zapytaj operatora**. Nie dumpuj kolekcji Shopify, nie zgaduj handle’ów, nie mieszaj Kazki z EPIR.
+
+Zatwierdzona lista (2026-09-20), poza nią nic:
+
+1. `https://epirbizuteria.pl/collections/zlota-bizuteria`
+2. `https://epirbizuteria.pl/collections/pierscionki-obraczki`
+3. `https://epirbizuteria.pl/products/pierscionek-galazki-z-czarnym-turmalinem`
+4. `https://epirbizuteria.pl/collections/kolekcja-galazki`

@@ -1,0 +1,58 @@
+{
+  "ssot": "D:\\marketing\\csv\\kazka_27_wrzesien.csv",
+  "products": 625,
+  "variantRowsInSsot": 110052,
+  "metaRows": 110052,
+  "skipped": {
+    "noTitle": 0,
+    "noImage": 0,
+    "badPrice": 0,
+    "notActive": 0,
+    "notKazka": 0,
+    "orphan": 0
+  },
+  "orphanErrors": 0,
+  "orphanSamples": [],
+  "validation": {
+    "issueCount": 0,
+    "issues": [],
+    "uniqueIds": 110052,
+    "uniqueGroups": 625
+  },
+  "sample": [
+    {
+      "id": "104-10692 S-14-karatow-gemstone",
+      "title": "Naszyjnik Szafir — 14 karatów",
+      "description": "Naszyjnik Szafir prowadzi niebieski blask kamienia wzdłuż dekoltu — linia złota, owalny szafir jako punkt światła. Geometryczna oprawa nie rozprasza: skupia wzrok na barwie i ruchu. Leży na skórze swobodnie; blask reaguje na światło dzienne i wieczorne bez przesady. Specyfikacja Kategoria: Naszyjnik Kamień: Szafir Kształt kamienia: Owalny Masa kamienia centralnego: 0.56 ct Liczba kamieni: 1 Masa wyrobu: 3.0 g Kruszec: złoto (dostępne w próbach 9, 14 i 18 karatów) Kolekcja: Classic Dostawa: 10 dni",
+      "availability": "in stock",
+      "condition": "new",
+      "price": "7044.26 PLN",
+      "link": "https://kazka.epirbizuteria.pl/products/104-10692-s",
+      "image_link": "https://cdn.shopify.com/s/files/1/0249/9756/0425/files/large_570f381d-f6a6-4d96-8968-fbc48580bb26.webp?v=1789925913",
+      "brand": "Kazka Jewelry",
+      "item_group_id": "104-10692-s",
+      "mpn": "104-10692 S-14-karatow-gemstone",
+      "material": "14 karatów",
+      "size": "",
+      "pattern": "",
+      "google_product_category": "Apparel & Accessories > Jewelry > Necklaces"
+    },
+    {
+      "id": "104-10692 S-18-karatow-gemstone",
+      "title": "Naszyjnik Szafir — 18 karatów",
+      "description": "Naszyjnik Szafir prowadzi niebieski blask kamienia wzdłuż dekoltu — linia złota, owalny szafir jako punkt światła. Geometryczna oprawa nie rozprasza: skupia wzrok na barwie i ruchu. Leży na skórze swobodnie; blask reaguje na światło dzienne i wieczorne bez przesady. Specyfikacja Kategoria: Naszyjnik Kamień: Szafir Kształt kamienia: Owalny Masa kamienia centralnego: 0.56 ct Liczba kamieni: 1 Masa wyrobu: 3.0 g Kruszec: złoto (dostępne w próbach 9, 14 i 18 karatów) Kolekcja: Classic Dostawa: 10 dni",
+      "availability": "in stock",
+      "condition": "new",
+      "price": "8453.11 PLN",
+      "link": "https://kazka.epirbizuteria.pl/products/104-10692-s",
+      "image_link": "https://cdn.shopify.com/s/files/1/0249/9756/0425/files/large_570f381d-f6a6-4d96-8968-fbc48580bb26.webp?v=1789925913",
+      "brand": "Kazka Jewelry",
+      "item_group_id": "104-10692-s",
+      "mpn": "104-10692 S-18-karatow-gemstone",
+      "material": "18 karatów",
+      "size": "",
+      "pattern": "",
+      "google_product_category": "Apparel & Accessories > Jewelry > Necklaces"
+    }
+  ]
+}

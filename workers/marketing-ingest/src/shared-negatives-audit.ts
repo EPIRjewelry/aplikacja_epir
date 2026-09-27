@@ -11,9 +11,10 @@ const FOCUS_CAMPAIGNS = ['Epir_Forest-Dark', 'Search-27.04.2026'];
 export const LEAK_PATTERNS: Array<{ label: string; re: RegExp }> = [
   { label: 'generic_jewelry', re: /^(biżuteria|bizuteria|jubiler|jubilo)\b/i },
   { label: 'mass_brand', re: /\b(apart|swarovski|pandora|briju|yes|apart)\b/i },
-  { label: 'artisan_competitor', re: /\b(kopiszka|mokave|dwa\s*głosy|dwa\s*glosy)\b/i },
+  { label: 'artisan_competitor', re: /\b(kopiszka|mokave|dwa\s*głosy|dwa\s*glosy|shambala|lovrin|andel|azzurro|prana|kamyki\s*monik[ai]?)\b/i },
   { label: 'excluded_content', re: /\b(lego|peppa|roblox|skup\s*złota|skup\s*zlota)\b/i },
-  { label: 'stone_filter', re: /\b(sułtanit|sultanit|mołdawit|moldawit)\b/i },
+  { label: 'stone_filter', re: /\b(sułtanit|sultanit|mołdawit|moldawit|zultanite|zultanit)\b/i },
+  { label: 'vintage_used', re: /\b(vintage|u[żz]ywan\w*|second\s*hand|komis|olx|starym\s+stylu)\b/i },
 ];
 
 function str(v: unknown): string {

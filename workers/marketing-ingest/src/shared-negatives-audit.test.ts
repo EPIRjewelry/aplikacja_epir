@@ -8,4 +8,9 @@ describe('classifyLeakTerm', () => {
     expect(classifyLeakTerm('kopiszka pierścionek')).toBe('artisan_competitor');
     expect(classifyLeakTerm('epir biżuteria')).toBeNull();
   });
+
+  it('flags vintage used and kamyki moniki', () => {
+    expect(classifyLeakTerm('vintage biżuteria')).toBe('vintage_used');
+    expect(classifyLeakTerm('kamyki moniki pierścionek')).toBe('artisan_competitor');
+  });
 });

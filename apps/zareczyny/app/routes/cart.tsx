@@ -13,6 +13,10 @@ import {
 } from '@shopify/hydrogen/dist/storefront-api-types';
 import {CartLineItems, CartSummary, CartActions, queryFullCartAfterMutation} from '@epir/ui';
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
+import {
+  ensureStorefrontCartAttribute,
+  withStorefrontCartInput,
+} from '@epir/utils';
 
 export const meta: MetaFunction<typeof loader> = ({data}) =>
   getSeoMeta({
@@ -92,12 +96,16 @@ export async function action({request, context}: LoaderFunctionArgs) {
         : [];
 
       if (!cartId) {
-        const input: CartInput = {
-          lines,
-          buyerIdentity: {countryCode: buyerCountryCode},
-        };
+        const input: CartInput = withStorefrontCartInput(
+          {
+            lines,
+            buyerIdentity: {countryCode: buyerCountryCode},
+          },
+          'zareczyny',
+        );
         result = await cartCreate(input, storefront);
       } else {
+        await ensureStorefrontCartAttribute(storefront, cartId, 'zareczyny');
         const addResult = await cartAdd(cartId, lines, storefront);
         result = addResult;
       }
@@ -113,6 +121,7 @@ export async function action({request, context}: LoaderFunctionArgs) {
         );
       }
       cartId = result.cart.id;
+      await ensureStorefrontCartAttribute(storefront, cartId, 'zareczyny');
 
       // Zapisz cartId w sesji OD RAZU dla obu akcji (kazka tak robi)
       session.set('cartId', cartId);

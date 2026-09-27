@@ -22,6 +22,8 @@
     "pages:deploy:kazka": "npm run deploy -w kazka",
     "pages:deploy:inspiracje": "npm run deploy -w inspiracje",
     "export:archive-inspirations": "node scripts/export-archive-inspirations.mjs",
+    "export:kazka-meta-catalog": "node scripts/export-kazka-meta-catalog.mjs",
+    "upload:kazka-meta-catalog-r2": "node scripts/upload-kazka-meta-catalog-r2.mjs",
     "build:operator-studio": "npm run build -w operator-studio"
   },
   "dependencies": {

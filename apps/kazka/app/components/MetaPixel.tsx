@@ -30,13 +30,16 @@ type CartActionJson = {
   cart?: unknown;
 };
 
-/** PDP: ViewContent + AddToCart (content_ids = product handle). */
+/** PDP: ViewContent + AddToCart (content_ids = Variant SKU = Meta catalog id). */
 export function MetaPixelProduct({
   handle,
+  sku,
   priceAmount,
   currencyCode,
 }: {
   handle: string;
+  /** Variant SKU — must match Meta catalog `id` from kazka_27_wrzesien export. */
+  sku?: string | null;
   priceAmount?: string | null;
   currencyCode?: string | null;
 }) {
@@ -45,33 +48,34 @@ export function MetaPixelProduct({
   const lastViewKey = useRef<string | null>(null);
   const lastCartSync = useRef<unknown>(null);
 
+  const contentId = (sku?.trim() || handle || '').trim();
   const value = priceAmount ? Number.parseFloat(priceAmount) : undefined;
   const currency = currencyCode?.trim() || 'PLN';
 
   useEffect(() => {
-    if (!consentGranted || !handle) return;
-    const key = `${handle}:${priceAmount ?? ''}`;
+    if (!consentGranted || !contentId) return;
+    const key = `${contentId}:${priceAmount ?? ''}`;
     if (lastViewKey.current === key) return;
     lastViewKey.current = key;
     trackMetaViewContent({
-      contentId: handle,
+      contentId,
       value: value != null && !Number.isNaN(value) ? value : undefined,
       currency,
     });
-  }, [consentGranted, handle, priceAmount, currency, value]);
+  }, [consentGranted, contentId, priceAmount, currency, value]);
 
   useEffect(() => {
-    if (!consentGranted) return;
+    if (!consentGranted || !contentId) return;
     if (fetcher.state !== 'idle' || !fetcher.data?.cart) return;
     if (fetcher.data === lastCartSync.current) return;
     if (fetcher.data.error) return;
     lastCartSync.current = fetcher.data;
     trackMetaAddToCart({
-      contentId: handle,
+      contentId,
       value: value != null && !Number.isNaN(value) ? value : undefined,
       currency,
     });
-  }, [consentGranted, fetcher.state, fetcher.data, handle, value, currency]);
+  }, [consentGranted, fetcher.state, fetcher.data, contentId, value, currency]);
 
   return null;
 }

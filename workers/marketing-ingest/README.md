@@ -161,6 +161,9 @@ Jeśli deployujesz z innym środowiskiem Wrangler (`--env production` itd.), prz
    node scripts/marketing-ops.mjs search-terms --days 14
    node scripts/marketing-ops.mjs search-negatives audit
    node scripts/marketing-ops.mjs search-negatives apply --dry-run
+   node scripts/marketing-ops.mjs pmax-landings --days 14
+   node scripts/marketing-ops.mjs search-landings --days 14
+   node scripts/marketing-ops.mjs ads-account-audit
    node scripts/marketing-ops.mjs customer-match sync --dry-run
    node scripts/marketing-ops.mjs audience-signals audit --asset-group EPIR_Srebro
    node scripts/marketing-ops.mjs audience-signals apply --asset-group EPIR_Srebro --dry-run
@@ -185,6 +188,9 @@ Jeśli deployujesz z innym środowiskiem Wrangler (`--env production` itd.), prz
    | `GET /ops/pmax-search-themes-audit?assetGroup=EPIR_Srebro` | Audyt Search Themes per AG |
    | `GET /ops/pmax-search-themes-apply?assetGroup=EPIR_Srebro&dryRun=1` | Plan zmian Search Themes |
    | `GET /ops/pmax-search-themes-apply?assetGroup=EPIR_Zloto&dryRun=0` | Apply Search Themes (HITL) |
+   | `GET /ops/pmax-landing-audit?days=14&campaign=Epir_Forest-Dark` | PMax: kliknięcia per URL + sieć + freeze targets |
+   | `GET /ops/search-landing-audit?days=14` | Search: Final URL reklam + kliknięte lądowania |
+   | `GET /ops/ads-account-change-audit` | Snapshot konta: cele, kampanie, network_settings, change_event |
    | `GET /ops/search-terms-audit?days=14&campaign=…` | Audyt fraz wyszukiwania (read-only) |
    | `GET /ops/search-negatives-audit` | Audyt negatywów Search |
    | `GET /ops/search-negatives-apply?dryRun=0` | Dodaj brakujące negatywy z blocklisty |

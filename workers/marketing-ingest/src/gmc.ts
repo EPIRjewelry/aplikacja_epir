@@ -524,6 +524,185 @@ export async function fetchGmcDiagnostics(env: GmcEnv): Promise<GmcDiagnosticsBo
   };
 }
 
+export type GmcMcaOverview = {
+  ok: boolean;
+  skipped?: boolean;
+  skipReason?: string;
+  mcaId: string | null;
+  epirId: string | null;
+  mca: { id: string; name: string; websiteUrl: string } | null;
+  subAccounts: Array<{ id: string; name: string; websiteUrl: string }>;
+  epirUnderMca: { id: string; name: string; websiteUrl: string } | null;
+  dataSourcesEpir: Array<{
+    name: string;
+    displayName: string;
+    input: string;
+    type: string;
+  }>;
+  apiErrors: Array<{ endpoint: string; status: number; message: string }>;
+};
+
+/**
+ * Read-only MCA / sub-account tree (Merchant Accounts API + dataSources).
+ * EPIR = GOOGLE_MERCHANT_ID; MCA via query mcaId.
+ */
+export async function fetchGmcMcaOverview(
+  env: GmcEnv,
+  opts?: { mcaId?: string },
+): Promise<GmcMcaOverview> {
+  const epirId = normalizeMerchantId(env.GOOGLE_MERCHANT_ID ?? '') || null;
+  const mcaId = normalizeMerchantId(opts?.mcaId ?? '') || null;
+  const empty = (reason: string): GmcMcaOverview => ({
+    ok: false,
+    skipped: true,
+    skipReason: reason,
+    mcaId,
+    epirId,
+    mca: null,
+    subAccounts: [],
+    epirUnderMca: null,
+    dataSourcesEpir: [],
+    apiErrors: [],
+  });
+
+  if (!mcaId) return empty('missing mcaId');
+  if (!epirId) return empty('missing GOOGLE_MERCHANT_ID');
+  if (!(env.GOOGLE_MERCHANT_REFRESH_TOKEN ?? '').trim()) {
+    return empty('missing GOOGLE_MERCHANT_REFRESH_TOKEN');
+  }
+  if (
+    !(env.GOOGLE_MERCHANT_CLIENT_ID ?? '').trim() ||
+    !(env.GOOGLE_MERCHANT_CLIENT_SECRET ?? '').trim()
+  ) {
+    return empty('missing GOOGLE_MERCHANT_CLIENT_ID or GOOGLE_MERCHANT_CLIENT_SECRET');
+  }
+
+  const access = await refreshMerchantAccessToken(env);
+  if (!access) return empty('token_refresh_failed');
+
+  const apiErrors: Array<{ endpoint: string; status: number; message: string }> = [];
+
+  type Acc = {
+    name?: string;
+    accountId?: string | number;
+    accountName?: string;
+    homepageUri?: string;
+  };
+
+  const mapAcc = (a: Acc | undefined | null) => {
+    if (!a) return null;
+    const id = String(a.accountId ?? '').replace(/\D/g, '') || (a.name || '').split('/').pop() || '';
+    if (!id) return null;
+    return {
+      id,
+      name: String(a.accountName ?? a.name ?? ''),
+      websiteUrl: String(a.homepageUri ?? ''),
+    };
+  };
+
+  const listUrl =
+    `https://merchantapi.googleapis.com/accounts/v1/accounts/${mcaId}:listSubaccounts` +
+    `?pageSize=50`;
+  const listRes = await merchantGet<{ accounts?: Acc[] }>(access, listUrl);
+  if (!listRes.ok) {
+    apiErrors.push({
+      endpoint: 'accounts.listSubaccounts',
+      status: listRes.status,
+      message: listRes.body,
+    });
+  }
+
+  const mcaRes = await merchantGet<Acc>(
+    access,
+    `https://merchantapi.googleapis.com/accounts/v1/accounts/${mcaId}`,
+  );
+  if (!mcaRes.ok) {
+    apiErrors.push({
+      endpoint: 'accounts.getMca',
+      status: mcaRes.status,
+      message: mcaRes.body,
+    });
+  }
+
+  const epirRes = await merchantGet<Acc>(
+    access,
+    `https://merchantapi.googleapis.com/accounts/v1/accounts/${epirId}`,
+  );
+  if (!epirRes.ok) {
+    apiErrors.push({
+      endpoint: 'accounts.getEpir',
+      status: epirRes.status,
+      message: epirRes.body,
+    });
+  }
+
+  // Homepage (website claim) — optional enrichment
+  const homeMca = await merchantGet<{ uri?: string }>(
+    access,
+    `https://merchantapi.googleapis.com/accounts/v1/accounts/${mcaId}/homepage`,
+  );
+  const homeEpir = await merchantGet<{ uri?: string }>(
+    access,
+    `https://merchantapi.googleapis.com/accounts/v1/accounts/${epirId}/homepage`,
+  );
+
+  const dsUrl = `https://merchantapi.googleapis.com/datasources/v1/accounts/${epirId}/dataSources`;
+  const dsRes = await merchantGet<{
+    dataSources?: Array<{
+      name?: string;
+      displayName?: string;
+      input?: string;
+      primaryProductDataSource?: unknown;
+      supplementalProductDataSource?: unknown;
+    }>;
+  }>(access, dsUrl);
+  if (!dsRes.ok) {
+    apiErrors.push({ endpoint: 'datasources.list', status: dsRes.status, message: dsRes.body });
+  }
+
+  const subAccounts =
+    listRes.ok && Array.isArray(listRes.data.accounts)
+      ? listRes.data.accounts
+          .map((r) => mapAcc(r))
+          .filter((x): x is NonNullable<typeof x> => Boolean(x))
+      : [];
+
+  const mca = mapAcc(mcaRes.ok ? mcaRes.data : undefined);
+  if (mca && homeMca.ok && homeMca.data.uri) mca.websiteUrl = homeMca.data.uri;
+
+  const epirUnderMca = mapAcc(epirRes.ok ? epirRes.data : undefined);
+  if (epirUnderMca && homeEpir.ok && homeEpir.data.uri) {
+    epirUnderMca.websiteUrl = homeEpir.data.uri;
+  }
+
+  const dataSourcesEpir =
+    dsRes.ok && Array.isArray(dsRes.data.dataSources)
+      ? dsRes.data.dataSources.map((d) => ({
+          name: String(d.name ?? ''),
+          displayName: String(d.displayName ?? ''),
+          input: String(d.input ?? ''),
+          type: d.primaryProductDataSource
+            ? 'primary'
+            : d.supplementalProductDataSource
+              ? 'supplemental'
+              : 'other',
+        }))
+      : [];
+
+  return {
+    ok:
+      apiErrors.filter((e) => e.endpoint.startsWith('accounts.')).length === 0 ||
+      Boolean(mca || subAccounts.length || epirUnderMca),
+    mcaId,
+    epirId,
+    mca,
+    subAccounts,
+    epirUnderMca,
+    dataSourcesEpir,
+    apiErrors,
+  };
+}
+
 /** Compact summary for marketing-preview / RPC. */
 export async function fetchGmcPreviewSummary(env: GmcEnv): Promise<{
   skipped: boolean;

@@ -5,6 +5,7 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 import type { WarehouseCqrsEnv } from './cqrs/types';
 import { handleWarehouseChartsGet } from './cqrs/serving-charts';
 import { isDirectLikeSource, parseAttribution } from '@epir/ham-core';
+import { maybeSendMetaCapiPurchaseForOrder } from './meta-capi';
 
 // ============================================================================
 // ANALYTICS WORKER - Shopify Web Pixel Event Tracking
@@ -25,6 +26,13 @@ interface Env {
   AI_WORKER?: Fetcher; // Removed - analytics skips AI analysis when undefined (graceful degradation)
   ALLOWED_ORIGINS?: string; // Comma-separated whitelist for CORS
   SHOPIFY_WEBHOOK_SECRET?: string;
+  /** Meta Conversions API (Kazka Purchase) — wrangler secret put META_CAPI_ACCESS_TOKEN */
+  META_CAPI_ACCESS_TOKEN?: string;
+  /** Optional Test events code while validating in Events Manager */
+  META_CAPI_TEST_EVENT_CODE?: string;
+  /** Optional — product handle lookup for CAPI content_ids (same name as chat worker) */
+  SHOPIFY_ADMIN_TOKEN?: string;
+  SHOP_DOMAIN?: string;
   R2_SQL_ACCOUNT_ID?: string;
   R2_SQL_WAREHOUSE_BUCKET?: string;
   R2_SQL_API_TOKEN?: string;
@@ -562,6 +570,13 @@ async function handleOrdersCreateWebhook(request: Request, env: Env): Promise<Re
     )
     .bind(shopifyGid, orderName, epirSessionId, 'webhook_orders_create', receivedAt)
     .run();
+
+  try {
+    await maybeSendMetaCapiPurchaseForOrder(order, env, request);
+  } catch (err) {
+    console.error('[ANALYTICS_WORKER] Meta CAPI side-effect failed:', err);
+  }
+
   return json({ ok: true }, 200);
 }
 

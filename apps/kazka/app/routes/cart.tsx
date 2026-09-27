@@ -13,6 +13,10 @@ import {
 import {CART_QUERY} from '~/queries/cart';
 import {CartLineItems, CartSummary, CartActions, queryFullCartAfterMutation} from '@epir/ui';
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
+import {
+  ensureStorefrontCartAttribute,
+  withStorefrontCartInput,
+} from '@epir/utils';
 
 export const meta: MetaFunction<typeof loader> = ({data}) =>
   getSeoMeta({
@@ -92,17 +96,22 @@ export async function action({request, context}: LoaderFunctionArgs) {
 
       if (!cartId) {
         result = await cartCreate(
-          {
-            lines,
-            buyerIdentity: {countryCode: buyerCountryCode},
-          },
+          withStorefrontCartInput(
+            {
+              lines,
+              buyerIdentity: {countryCode: buyerCountryCode},
+            },
+            'kazka',
+          ),
           storefront,
         );
       } else {
+        await ensureStorefrontCartAttribute(storefront, cartId, 'kazka');
         result = await cartAdd(cartId, lines, storefront);
       }
 
       cartId = result.cart.id;
+      await ensureStorefrontCartAttribute(storefront, cartId, 'kazka');
       session.set('cartId', cartId);
       headers.set('Set-Cookie', await session.commit());
       if (cartAction === 'BUY_NOW') {

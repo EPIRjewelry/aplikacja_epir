@@ -27,6 +27,11 @@ WAREHOUSE_SQL_TABLE = "epir_pixel_events_raw"
 WAREHOUSE_DISTINCT_COLUMN = "session_id"
 # Webhook secret:
 # wrangler secret put SHOPIFY_WEBHOOK_SECRET
+# Meta CAPI (Kazka Purchase on orders/create — optional):
+# wrangler secret put META_CAPI_ACCESS_TOKEN
+# wrangler secret put META_CAPI_TEST_EVENT_CODE
+# Optional handle lookup when webhook line_items omit handle (reuse chat token):
+# wrangler secret put SHOPIFY_ADMIN_TOKEN
 # Chronione odczyty CQRS/charts/pixel są wyłączone przez publiczny HTTP — wyłącznie Workers RPC (`AnalyticsS2SRpc`)
 # przez service bindings z czatu (`ctx.props`; żadnego statycznego klucza współdzielonego dla S2S w kodzie analytics).
 # R2 SQL read token (Workers R2 SQL Read + Data Catalog + storage read per Cloudflare docs):

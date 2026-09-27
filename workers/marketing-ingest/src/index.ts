@@ -4,7 +4,7 @@ import type { Env } from './env';
 import { fetchAdsMarketingRows } from './ads';
 import { fetchGa4MarketingRows, yesterdayUtcDate } from './ga4';
 import { handleMarketingPreview } from './ops-preview';
-import { fetchGmcDiagnostics } from './gmc';
+import { fetchGmcDiagnostics, fetchGmcMcaOverview } from './gmc';
 import { buildGmcSnapshotRecords } from './gmc-snapshot';
 import { postPipelineIngestBatch } from './pipeline-post';
 import {
@@ -31,6 +31,14 @@ import {
   auditSearchNegatives,
 } from './search-negatives';
 import { auditSharedNegativeCoverage, applySharedNegativeAttachments } from './shared-negatives-audit';
+import { addSharedMarkiNegatives } from './ads-shared-negatives-add';
+import { auditAdsAccountChanges } from './ads-account-change-audit';
+import { applyAdsFreeze } from './ads-freeze-apply';
+import { auditSearchLandings } from './ads-search-landing-audit';
+import { auditPmaxLandings } from './ads-pmax-landing-audit';
+import { setPmaxUrlExpansionOptOut } from './ads-pmax-url-expansion';
+import { applyAdsExcludeHome } from './ads-exclude-home';
+import { applyPmaxPageFeed } from './ads-pmax-page-feed';
 
 export { MarketingAnalystAgent } from './marketing-analyst-agent';
 export { MarketingIngestS2SRpc } from './rpc';
@@ -71,12 +79,20 @@ async function handlePmaxOps(req: Request, env: Env): Promise<Response | null> {
   const isOps =
     path.startsWith('/ops/pmax-') ||
     path === '/ops/gmc-diagnostics' ||
+    path === '/ops/gmc-mca-overview' ||
     path === '/ops/search-utm-suffixes' ||
     path === '/ops/search-terms-audit' ||
     path.startsWith('/ops/search-negatives') ||
     path === '/ops/shared-negatives-audit' ||
     path === '/ops/shared-negatives-apply' ||
-    path === '/ops/pmax-landings-disable';
+    path === '/ops/shared-negatives-keywords-apply' ||
+    path === '/ops/pmax-landings-disable' ||
+    path === '/ops/ads-account-change-audit' ||
+    path === '/ops/ads-freeze-apply' ||
+    path === '/ops/search-landing-audit' ||
+    path === '/ops/pmax-landing-audit' ||
+    path === '/ops/ads-exclude-home' ||
+    path === '/ops/pmax-page-feed';
   if (!isOps) return null;
   const key = (env.MARKETING_OPS_PREVIEW_KEY ?? '').trim();
   if (!key) return new Response('Not Found', { status: 404 });
@@ -84,6 +100,57 @@ async function handlePmaxOps(req: Request, env: Env): Promise<Response | null> {
 
   if (path === '/ops/gmc-diagnostics' && req.method === 'GET') {
     return opsJson(await fetchGmcDiagnostics(env));
+  }
+
+  if (path === '/ops/gmc-mca-overview' && req.method === 'GET') {
+    const mcaId = u.searchParams.get('mcaId') ?? '5858051677';
+    return opsJson(await fetchGmcMcaOverview(env, { mcaId }));
+  }
+
+  if (path === '/ops/ads-account-change-audit' && req.method === 'GET') {
+    return opsJson(await auditAdsAccountChanges(env));
+  }
+
+  if (path === '/ops/search-landing-audit' && req.method === 'GET') {
+    const days = Number.parseInt(u.searchParams.get('days') ?? '14', 10);
+    return opsJson(
+      await auditSearchLandings(env, {
+        days: Number.isFinite(days) ? days : 14,
+      }),
+    );
+  }
+
+  if (path === '/ops/pmax-url-expansion' && (req.method === 'GET' || req.method === 'POST')) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    const campaignName = u.searchParams.get('campaign') ?? undefined;
+    return opsJson(await setPmaxUrlExpansionOptOut(env, { campaign: campaignName, dryRun }));
+  }
+
+  if (path === '/ops/ads-exclude-home' && (req.method === 'GET' || req.method === 'POST')) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    return opsJson(await applyAdsExcludeHome(env, { dryRun }));
+  }
+
+  if (path === '/ops/pmax-page-feed' && (req.method === 'GET' || req.method === 'POST')) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    const campaignName = u.searchParams.get('campaign') ?? undefined;
+    return opsJson(await applyPmaxPageFeed(env, { campaign: campaignName, dryRun }));
+  }
+
+  if (path === '/ops/pmax-landing-audit' && req.method === 'GET') {
+    const days = Number.parseInt(u.searchParams.get('days') ?? '14', 10);
+    const campaignName = u.searchParams.get('campaign') ?? undefined;
+    return opsJson(
+      await auditPmaxLandings(env, {
+        campaign: campaignName,
+        days: Number.isFinite(days) ? days : 14,
+      }),
+    );
+  }
+
+  if (path === '/ops/ads-freeze-apply' && (req.method === 'GET' || req.method === 'POST')) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    return opsJson(await applyAdsFreeze(env, { dryRun }));
   }
 
   if (path === '/ops/pmax-listing-audit' && req.method === 'GET') {
@@ -263,6 +330,15 @@ async function handlePmaxOps(req: Request, env: Env): Promise<Response | null> {
   }
 
   if (
+    path === '/ops/shared-negatives-keywords-apply' &&
+    (req.method === 'POST' || req.method === 'GET')
+  ) {
+    const dryRun = u.searchParams.get('dryRun') !== '0';
+    const listName = u.searchParams.get('list') ?? undefined;
+    return opsJson(await addSharedMarkiNegatives(env, { dryRun, listName }));
+  }
+
+  if (
     path === '/ops/shared-negatives-apply' &&
     (req.method === 'POST' || req.method === 'GET')
   ) {
@@ -336,6 +412,23 @@ export default {
       const obj = await bucket.get('gmc_feed.csv');
       if (!obj) {
         return new Response('gmc_feed.csv not generated yet', { status: 404 });
+      }
+      return new Response(obj.body, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Cache-Control': 'public, max-age=300',
+        },
+      });
+    }
+    if (req.method === 'GET' && u.pathname === '/feed/kazka-meta-catalog.csv') {
+      const bucket = env.GMC_FEED;
+      if (!bucket) {
+        return new Response('GMC feed binding missing', { status: 503 });
+      }
+      const obj = await bucket.get('kazka-meta-catalog.csv');
+      if (!obj) {
+        return new Response('kazka-meta-catalog.csv not uploaded yet', { status: 404 });
       }
       return new Response(obj.body, {
         status: 200,
