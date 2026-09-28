@@ -47,6 +47,7 @@ Te pliki **muszą** być w tym samym drzewie co NotebookLM (mirror 1:1), ale **n
 - [`working/KUSTOSZ_BRIEF_LATEST.md`](working/KUSTOSZ_BRIEF_LATEST.md) — ostatni brief Cursor Kustosza (ops desk); niewiążący, odnawiany przy audycie.
 - [`working/EPIR_COPY_PHILOSOPHY.md`](working/EPIR_COPY_PHILOSOPHY.md) — **język marki EPIR Art Jewellery** (5 zasad; default total: Gemma, sklep, landingu, Zaręczyny, Inspiracje); wyjątek: Kazka Jewelry. Reguła: `.cursor/rules/epir-copywriting.mdc` (`alwaysApply`).
 - [`working/COCREATE_ORDER_FREEZE.md`](working/COCREATE_ORDER_FREEZE.md) — zamrożenie kolejności CoCreate (niewiążący, operacyjny).
+- [`working/PDP_APEX_FREEZE_2026-09-28.md`](working/PDP_APEX_FREEZE_2026-09-28.md) — zamrożenie PDP apex (pracownia + galeria mobile); tag `pdp-apex-2026-09-28` / motyw `#186221691212`; niewiążący, operacyjny.
 - [`working/ADS_ACCOUNT_FREEZE_2026-09-20.md`](working/ADS_ACCOUNT_FREEZE_2026-09-20.md) — zamrożenie konta Google Ads po apply planu A–C (cele Purchase-only, PMax URL, Search negatywy); niewiążący, operacyjny.
 - [`working/LANDINGS_APEX_HANDOFF.md`](working/LANDINGS_APEX_HANDOFF.md) — handoff landingów Ads Apex (routing UTM, paleta, stan deploy, otwarte); start nowego wątku Cursor.
 - [`working/GENIALNY_PLAN_CURSOR_GROKA_4_5.md`](working/GENIALNY_PLAN_CURSOR_GROKA_4_5.md) — decyzja robocza: 3 aktywne landingu Apex + mosty EPIR↔Kazka; niewiążący.
