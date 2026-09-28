@@ -524,6 +524,46 @@ a.active {
   max-width: 100%;
 }
 
+/* Mobile PDP — horizontal thumb strip instead of tall 2-col stack */
+@media (max-width: 47.99em) {
+  .kazka-pdp-gallery .product-gallery-editorial > .grid {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.25rem;
+  }
+
+  .kazka-pdp-gallery .product-gallery-editorial > .grid > button {
+    flex: 0 0 auto;
+    width: 4.5rem;
+    min-width: 4.5rem;
+  }
+
+  .kazka-pdp-gallery .product-gallery-editorial > .grid > button.card-image {
+    aspect-ratio: 1 / 1;
+  }
+}
+
+/* Sticky ATC + consent/chat clearance on mobile */
+.kazka-pdp {
+  padding-bottom: 0;
+}
+
+html.kazka-pdp-sticky-active .kazka-pdp {
+  padding-bottom: 5.5rem;
+}
+
+html.kazka-pdp-sticky-active .kazka-chat-shell > div > button.rounded-full {
+  bottom: 5.75rem !important;
+}
+
+html.kazka-pdp-sticky-active .fixed.bottom-4.left-4.z-50 {
+  bottom: 5.75rem;
+}
+
 .kazka-pdp-gallery .product-gallery-editorial button img {
   pointer-events: none;
 }

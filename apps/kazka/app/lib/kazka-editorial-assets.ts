@@ -119,7 +119,7 @@ export const KAZKA_EDITORIAL_LINES: EditorialLineTile[] = [
     href: '/collections/kazka-classic',
     image: `${SHOPIFY_CDN}/classic.png?v=1789721037`,
     label: 'Classic',
-    body: 'Geometryczna czystość soliterów — złoto 18K i naturalny brylant.',
+    body: 'Geometryczna czystość soliterów — złoto 9K, 14K i 18K oraz naturalny brylant.',
     alt: 'Linia Classic — Kazka Jewelry',
   },
   {

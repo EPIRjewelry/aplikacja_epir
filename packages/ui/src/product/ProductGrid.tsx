@@ -14,6 +14,7 @@ export type ProductGridProps<T extends {id: string} = Product> = {
   preferVariantOptions?: VariantOptionPreference[];
   titleClassName?: string;
   priceClassName?: string;
+  getPriceLabel?: (product: T) => string | null | undefined;
 };
 
 export default function ProductGrid<T extends {id: string} = Product>({
@@ -22,6 +23,7 @@ export default function ProductGrid<T extends {id: string} = Product>({
   preferVariantOptions,
   titleClassName,
   priceClassName,
+  getPriceLabel,
 }: ProductGridProps<T>) {
   return (
     <Pagination connection={connection}>
@@ -35,6 +37,7 @@ export default function ProductGrid<T extends {id: string} = Product>({
                 preferVariantOptions={preferVariantOptions}
                 titleClassName={titleClassName}
                 priceClassName={priceClassName}
+                priceLabel={getPriceLabel?.(product)}
               />
             ))}
           </div>

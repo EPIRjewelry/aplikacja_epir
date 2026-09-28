@@ -10,6 +10,8 @@ export type ProductCardProps = {
   preferVariantOptions?: VariantOptionPreference[];
   titleClassName?: string;
   priceClassName?: string;
+  /** Gdy podane — zastępuje domyślną cenę z pierwszego wariantu. */
+  priceLabel?: string | null;
 };
 
 const DEFAULT_TITLE_CLASS =
@@ -64,6 +66,7 @@ export default function ProductCard({
   preferVariantOptions,
   titleClassName = DEFAULT_TITLE_CLASS,
   priceClassName = DEFAULT_PRICE_CLASS,
+  priceLabel: priceLabelOverride,
 }: ProductCardProps) {
   const variant = pickPreferredVariant(
     product.variants?.nodes,
@@ -73,7 +76,8 @@ export default function ProductCard({
   const priceAmount = Number(price?.amount ?? 0);
   const compareAmount = Number(compareAtPrice?.amount ?? 0);
   const isDiscounted = compareAmount > priceAmount;
-  const priceLabel = formatMoneyPl(price);
+  const priceLabel =
+    priceLabelOverride ?? formatMoneyPl(price);
   const compareLabel = isDiscounted ? formatMoneyPl(compareAtPrice) : null;
   const imageUrl = image?.url;
   const imageAlt = image?.altText || product.title;

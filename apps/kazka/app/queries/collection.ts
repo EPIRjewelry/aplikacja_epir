@@ -34,6 +34,16 @@ export const COLLECTION_QUERY = `#graphql
           title
           publishedAt
           handle
+          priceRange {
+            minVariantPrice {
+              amount
+              currencyCode
+            }
+            maxVariantPrice {
+              amount
+              currencyCode
+            }
+          }
           variants(first: 10) {
             nodes {
               id

@@ -27,6 +27,7 @@ import {
 } from '~/lib/kazka-collection-nav';
 import {COLLECTION_QUERY} from '~/queries/collection';
 import type {CollectionQueryData} from '~/types/collection';
+import {formatProductTilePriceLabel} from '~/lib/kazka-pdp-variant';
 
 type CollectionsQueryData = {
   collections: {nodes: {handle: string}[]};
@@ -164,6 +165,12 @@ export default function Collection() {
             preferVariantOptions={preferVariantOptions}
             titleClassName={KAZKA_PRODUCT_TITLE_CLASS}
             priceClassName={KAZKA_PRODUCT_PRICE_CLASS}
+            getPriceLabel={(product) =>
+              formatProductTilePriceLabel(
+                product.priceRange?.minVariantPrice ?? null,
+                product.priceRange?.maxVariantPrice ?? null,
+              ) ?? null
+            }
           />
         ) : (
           <KazkaEmptyCollectionState

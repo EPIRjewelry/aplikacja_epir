@@ -1,4 +1,5 @@
 import {hoverMedia, type RouteContentProps} from '@epir/ui';
+import {formatProductTilePriceLabel} from './kazka-pdp-variant';
 
 type ProductMediaNode = {
   mediaContentType?: string | null;
@@ -23,6 +24,7 @@ type ProductNode = {
   media?: {nodes?: ProductMediaNode[]};
   priceRange?: {
     minVariantPrice?: {amount?: string; currencyCode?: string} | null;
+    maxVariantPrice?: {amount?: string; currencyCode?: string} | null;
   };
 };
 
@@ -70,19 +72,6 @@ function featuredSectionNodes(
   return nodes.filter((node) => node.type === 'section_featured_products');
 }
 
-function formatMoneyPl(
-  money: {amount?: string; currencyCode?: string} | null | undefined,
-): string | undefined {
-  if (!money?.amount || !money.currencyCode) return undefined;
-  const amount = Number(money.amount);
-  if (!Number.isFinite(amount)) return undefined;
-  return new Intl.NumberFormat('pl-PL', {
-    style: 'currency',
-    currency: money.currencyCode,
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
 function primaryImage(product: ProductNode): {
   url?: string;
   alt: string;
@@ -105,7 +94,10 @@ function parseProduct(product: ProductNode): CmsFeaturedProductTile | null {
     imageUrl: image.url,
     imageAlt: image.alt || product.title,
     hover: hoverMedia(product.media?.nodes),
-    priceLabel: formatMoneyPl(product.priceRange?.minVariantPrice),
+    priceLabel: formatProductTilePriceLabel(
+      product.priceRange?.minVariantPrice ?? null,
+      product.priceRange?.maxVariantPrice ?? null,
+    ),
   };
 }
 

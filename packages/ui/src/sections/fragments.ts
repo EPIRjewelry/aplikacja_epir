@@ -122,6 +122,10 @@ const SECTION_FEATURED_PRODUCTS_FRAGMENT = `#graphql
                 amount
                 currencyCode
               }
+              maxVariantPrice {
+                amount
+                currencyCode
+              }
             }
           }
         }

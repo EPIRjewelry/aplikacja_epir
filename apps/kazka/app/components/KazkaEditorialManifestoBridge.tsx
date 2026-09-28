@@ -18,7 +18,7 @@ export function KazkaEditorialManifestoBridge() {
           Diament w złocie — precyzja, którą czujesz na skórze.
         </blockquote>
         <p className="kazka-editorial-label mt-6 text-[rgb(var(--color-primary))]/80">
-          ZŁOTO 18K · BRYLANTY · PRACOWNIA WROCŁAW
+          ZŁOTO 9K · 14K · 18K · BRYLANTY · PRACOWNIA WROCŁAW
         </p>
         <Link
           to="/pages/o-nas"

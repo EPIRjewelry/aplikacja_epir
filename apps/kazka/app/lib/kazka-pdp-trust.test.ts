@@ -54,7 +54,7 @@ describe('buildKazkaProductTrustItems', () => {
     expect(advisory).toBeDefined();
     expect(advisory?.href).toBeUndefined();
     expect(advisory?.contact).toEqual({
-      prefix: 'Zamówienia przez telefonem/',
+      prefix: 'Zamówienia przez telefon/',
       whatsappLabel: 'WhatsApp',
       suffix: ', pytania o szczegóły- ',
       phoneDisplay: KAZKA_HEADER_PHONE,

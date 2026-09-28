@@ -2,7 +2,7 @@ import type {Product} from '@shopify/hydrogen-react/storefront-api-types';
 
 export type CollectionProductNode = Pick<
   Product,
-  'id' | 'title' | 'handle' | 'publishedAt' | 'variants'
+  'id' | 'title' | 'handle' | 'publishedAt' | 'variants' | 'priceRange'
 > & {
   media?: Product['media'];
 };

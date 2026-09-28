@@ -1,15 +1,28 @@
-import {json, redirect, type LoaderFunctionArgs} from '@remix-run/cloudflare';
-import {type MetaFunction, useLoaderData} from '@remix-run/react';
-import {ProductGallery, ProductOptions, ProductForm} from '@epir/ui';
+import {json, type LoaderFunctionArgs} from '@remix-run/cloudflare';
+import {type MetaFunction, useLoaderData, useSearchParams} from '@remix-run/react';
+import {useCallback, useEffect, useMemo, useState} from 'react';
+import {ProductGallery} from '@epir/ui';
 import {getSeoMeta, Money} from '@shopify/hydrogen';
+import {KazkaPurchaseButton} from '~/components/KazkaPurchaseButton';
+import {KazkaPdpStickyBar} from '~/components/KazkaPdpStickyBar';
+import {KazkaProductOptions} from '~/components/KazkaProductOptions';
 import {KazkaProductTrust} from '~/components/KazkaProductTrust';
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 import {
   buildKazkaProductTrustItems,
   kazkaProductStoneLabel,
 } from '~/lib/kazka-pdp-trust';
+import {
+  areRequiredOptionsSelected,
+  canAddToCart,
+  listMissingOptionNames,
+  nextPromptOptionName,
+  resolvePdpDisplayPrice,
+} from '~/lib/kazka-pdp-variant';
 import {buildProductJsonLd} from '~/lib/product-json-ld';
 import {MetaPixelProduct} from '~/components/MetaPixel';
+
+const ATC_ANCHOR_ID = 'kazka-pdp-atc-anchor';
 
 type KazkaProductGalleryProps = {
   medias: Parameters<typeof ProductGallery>[0]['medias'];
@@ -48,30 +61,8 @@ export async function loader({params, context, request}: LoaderFunctionArgs) {
     throw new Response(null, {status: 404});
   }
 
-  const variantNodes = product.variants?.nodes ?? [];
+  const selectedVariant = product.selectedVariant ?? null;
 
-  if (selectedOptions.length === 0 && !product.selectedVariant && variantNodes.length > 0) {
-    const defaultVariant =
-      variantNodes.find((v: {availableForSale?: boolean}) => v.availableForSale) ??
-      variantNodes[0];
-    if (defaultVariant?.selectedOptions?.length) {
-      const next = new URL(request.url);
-      for (const {name, value} of defaultVariant.selectedOptions) {
-        next.searchParams.set(name, value);
-      }
-      if (next.search !== url.search) {
-        return redirect(`${next.pathname}${next.search}`, 302);
-      }
-    }
-  }
-
-  const selectedVariant =
-    product.selectedVariant ??
-    product.variants?.nodes?.find(
-      (v: {availableForSale?: boolean}) => v.availableForSale,
-    ) ??
-    product.variants?.nodes?.[0] ??
-    null;
   return json({
     product,
     selectedVariant,
@@ -132,10 +123,24 @@ function splitDescriptionHtml(html: string): {
 }
 
 export default function ProductHandle() {
-  const {product, selectedVariant, countryCode} = useLoaderData<typeof loader>();
-  const variantId = selectedVariant?.id;
-  const hasPrice = Boolean(selectedVariant?.price?.amount);
-  const showPurchaseForm = Boolean(variantId && hasPrice);
+  const {product, selectedVariant, countryCode} =
+    useLoaderData<typeof loader>();
+  const [searchParams] = useSearchParams();
+
+  const optionsComplete = areRequiredOptionsSelected(
+    product.options,
+    searchParams,
+  );
+  const canPurchase = canAddToCart(
+    product.options,
+    searchParams,
+    selectedVariant?.id,
+  );
+  const priceDisplay = resolvePdpDisplayPrice(
+    selectedVariant,
+    product.priceRange,
+    optionsComplete,
+  );
   const trustItems = buildKazkaProductTrustItems(product);
   const stoneLabel = kazkaProductStoneLabel(product);
   const {visibleHtml, specHtml} = splitDescriptionHtml(product.descriptionHtml ?? '');
@@ -145,6 +150,27 @@ export default function ProductHandle() {
   const featuredFit = product.tags?.includes('kazka-naszyjnik')
     ? 'cover'
     : 'contain';
+
+  const showPurchaseBlock = Boolean(product.priceRange?.minVariantPrice?.amount);
+  const [promptOption, setPromptOption] = useState<string | null>(null);
+  const missingOptions = useMemo(
+    () => listMissingOptionNames(product.options, searchParams),
+    [product.options, searchParams],
+  );
+
+  useEffect(() => {
+    if (canPurchase) {
+      setPromptOption(null);
+      return;
+    }
+    if (promptOption && !missingOptions.includes(promptOption)) {
+      setPromptOption(null);
+    }
+  }, [canPurchase, missingOptions, promptOption]);
+
+  const handleIncompleteClick = useCallback(() => {
+    setPromptOption((current) => nextPromptOptionName(missingOptions, current));
+  }, [missingOptions]);
 
   return (
     <section className="kazka-pdp grid w-full gap-4 md:gap-8">
@@ -162,42 +188,56 @@ export default function ProductHandle() {
           featuredObjectPosition={featuredObjectPosition}
           featuredBackground="#f5f0e6"
         />
-        <div className="kazka-pdp-panel grid w-full max-w-xl gap-8 px-6 md:sticky md:top-[6rem] md:max-w-none md:px-8 lg:top-[8rem] lg:pl-8 lg:pr-12 xl:top-[10rem]">
+        <div className="kazka-pdp-panel grid w-full max-w-xl gap-6 px-6 md:sticky md:top-[6rem] md:max-w-none md:gap-8 md:px-8 lg:top-[8rem] lg:pl-8 lg:pr-12 xl:top-[10rem]">
           <div className="grid gap-2">
             <p className="kazka-editorial-label">Kazka</p>
             <h1 className="font-serif text-4xl font-normal leading-10 whitespace-normal">
               {product.title}
             </h1>
           </div>
-          <ProductOptions
-            options={product.options}
-            selectedVariant={selectedVariant}
-          />
-          {selectedVariant?.price ? (
-            <Money
-              withoutTrailingZeros
-              data={selectedVariant.price}
-              className="font-sans text-xl font-semibold tabular-nums mb-2 text-[rgb(var(--color-primary))]"
-            />
+          {priceDisplay?.money ? (
+            optionsComplete && selectedVariant?.price ? (
+              <Money
+                withoutTrailingZeros
+                data={selectedVariant.price}
+                className="font-sans text-xl font-semibold tabular-nums text-[rgb(var(--color-primary))]"
+              />
+            ) : (
+              <p
+                className="font-sans text-xl font-semibold tabular-nums text-[rgb(var(--color-primary))]"
+              >
+                {priceDisplay.label}
+              </p>
+            )
           ) : (
-            <p className="font-sans text-xl font-medium mb-2 text-[rgb(var(--color-primary))]/80">
+            <p className="font-sans text-xl font-medium text-[rgb(var(--color-primary))]/80">
               Wybierz wariant, aby zobaczyć cenę.
             </p>
           )}
+          <KazkaProductOptions
+            options={product.options}
+            selectedVariant={selectedVariant}
+          />
           {stoneLabel ? (
             <p className="font-sans text-[12px] uppercase tracking-[0.08em] font-medium text-[rgb(var(--color-primary))]/80">
               Kamień · {stoneLabel}
             </p>
           ) : null}
-          {showPurchaseForm ? (
-            <div className="space-y-2">
-              {selectedVariant?.availableForSale === false ? (
+          {showPurchaseBlock ? (
+            <div id={ATC_ANCHOR_ID} className="space-y-2">
+              {selectedVariant?.availableForSale === false && canPurchase ? (
                 <p className="text-sm text-amber-900" role="status">
                   Weryfikujemy dostępność tego wariantu — jeśli „Do koszyka” nie zadziała,
                   wybierz inną konfigurację lub napisz na czacie.
                 </p>
               ) : null}
-              <ProductForm countryCode={countryCode} variantId={variantId} />
+              <KazkaPurchaseButton
+                countryCode={countryCode}
+                variantId={selectedVariant?.id}
+                canPurchase={canPurchase}
+                promptOption={promptOption}
+                onIncompleteClick={handleIncompleteClick}
+              />
             </div>
           ) : null}
           <KazkaProductTrust items={trustItems} />
@@ -228,6 +268,15 @@ export default function ProductHandle() {
           )}
         </div>
       </div>
+      <KazkaPdpStickyBar
+        observeTargetId={ATC_ANCHOR_ID}
+        priceLabel={priceDisplay?.label ?? null}
+        variantId={selectedVariant?.id}
+        countryCode={countryCode}
+        canPurchase={canPurchase}
+        promptOption={promptOption}
+        onIncompleteClick={handleIncompleteClick}
+      />
     </section>
   );
 }
@@ -259,6 +308,13 @@ const PRODUCT_QUERY = `#graphql
           amount
           currencyCode
         }
+        maxVariantPrice {
+          amount
+          currencyCode
+        }
+      }
+      czasWykonania: metafield(namespace: "custom", key: "czas_wykonania") {
+        value
       }
       stoneProfile: metafield(namespace: "custom", key: "stone_profile") {
         reference {

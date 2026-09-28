@@ -39,7 +39,7 @@ const SERVICE_LINK_ITEMS: ProductTrustItem[] = [
     id: 'advisory',
     label: 'Doradztwo',
     contact: {
-      prefix: 'Zamówienia przez telefonem/',
+      prefix: 'Zamówienia przez telefon/',
       whatsappLabel: 'WhatsApp',
       suffix: ', pytania o szczegóły- ',
       phoneDisplay: KAZKA_HEADER_PHONE,
