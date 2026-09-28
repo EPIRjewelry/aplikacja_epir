@@ -78,16 +78,10 @@
           {% render 'product-media', section: section, template_product: true, class: 'm:hidden md:m:block' %}
         </div>
         <div class="m-product-media--mobile m-product-media--{{ section.settings.layout }} md:m:hidden">
-          {%- liquid
-            assign epir_mobile_show_pagination = section.settings.show_pagination_mobile
-            if product.media.size > 1
-              assign epir_mobile_show_pagination = true
-            endif
-          -%}
           {%- render 'product-media-mobile',
             show_nav: false,
             show_thumbnails: section.settings.show_nav_media_mobile,
-            show_pagination: epir_mobile_show_pagination,
+            show_pagination: section.settings.show_pagination_mobile,
             section: section
           -%}
           {% if section.settings.show_atwl %}
