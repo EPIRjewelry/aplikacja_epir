@@ -11,7 +11,8 @@ Read-only MCP dla **EDOG** i **Kustosza EPIR** — audyt przepływu + hurtownia 
 | `EPIR_BATCH_WORKER_ORIGIN` | URL `epir-bigquery-batch` (opcjonalnie / legacy) |
 | `DATA_GUARDIAN_OPS_KEY` | Ops key batch (gdy używasz bezpośredniego flow-health na batch) |
 | `EPIR_CHAT_WORKER_ORIGIN` lub `WORKER_ORIGIN` | Domyślnie `https://asystent.epirbizuteria.pl` — proxy flow-health |
-| `EPIR_OPERATOR_PANEL_SECRET` | `X-Admin-Key` do `/internal/operator-studio/api/flow-health` |
+| `EPIR_READONLY_ANALYTICS_KEY` | Preferowany `X-Admin-Key` do flow-health / reports (tylko odczyt) |
+| `EPIR_OPERATOR_PANEL_SECRET` | Fallback pełnego klucza Studio (gdy brak readonly) |
 
 Opcjonalnie (hurtownia Q1–Q10): `EPIR_ANALYST_WORKER_ORIGIN` + `ANALYST_HTTP_BEARER`.
 
@@ -34,7 +35,7 @@ Playbook: [`.cursor/skills/epir-kustosz-agent/SKILL.md`](../../.cursor/skills/ep
 
 ## Smoke (IDE)
 
-1. Ustaw User env: `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` (D1 Read), `ANALYST_HTTP_BEARER`, `EPIR_ANALYST_WORKER_ORIGIN`, `EPIR_OPERATOR_PANEL_SECRET`.
+1. Ustaw User env: `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` (D1 Read), `ANALYST_HTTP_BEARER`, `EPIR_ANALYST_WORKER_ORIGIN`, `EPIR_READONLY_ANALYTICS_KEY` (lub legacy `EPIR_OPERATOR_PANEL_SECRET`).
 2. Restart serwera MCP `epir-data-ops` w Cursorze.
 3. `npm test -w @epir/mcp-data-ops`
 4. Oczekiwane bez sekretów: analyst `GET /healthz` → 200; `POST /v1/warehouse/query` bez Bearer → 401; flow-health bez klucza → 401.
