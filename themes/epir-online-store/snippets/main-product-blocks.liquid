@@ -29,9 +29,23 @@
   unless section.settings.show_featured_media
     assign selected_variant_id = product.selected_variant.id
   endunless
+  if section.settings.disable_selected_variant_default and product.has_only_default_variant == false
+    unless product.selected_variant
+      assign variant_id = ''
+    endunless
+  endif
+
+  assign epir_pdp_is_gold = false
+  if template.suffix == 'pierscionek-zloto-turmali'
+    assign epir_pdp_is_gold = true
+  endif
+  assign epir_pdp_is_silver = false
+  if template.suffix == 'nowy-szablon'
+    assign epir_pdp_is_silver = true
+  endif
 %}
 {% comment %} Fallback for case not show block price, buy buttons {% endcomment %}
-<input type="hidden" name="id" value="{{ variant_id }}" data-selected-variant="{{ selected_variant_id }}" disabled>
+<input type="hidden" name="id" value="{{ variant_id }}" data-selected-variant="{{ selected_variant_id }}" data-epir-variant-id disabled>
 {% comment %} End comment {% endcomment %}
 {%- for block in section.blocks -%}
   <div
@@ -349,10 +363,31 @@
               name="id"
               value="{{ variant_id }}"
               data-selected-variant="{{ selected_variant_id }}"
+              data-epir-variant-id
               disabled
             >
             {%- if gift_card_recipient_feature_active -%}
               {%- render 'gift-card-recipient-form', product: product, form: form, section: section -%}
+            {%- endif -%}
+
+            {%- if section.settings.epir_engraving and epir_pdp_is_gold -%}
+              <div class="epir-pdp-engraving m-product-custom-field m:mb-4 m:w-full">
+                <label class="m-product-option--label" for="EpirEngraving-{{ section.id }}">
+                  Grawer (opcjonalnie, max 20 znaków)
+                </label>
+                <input
+                  id="EpirEngraving-{{ section.id }}"
+                  type="text"
+                  name="properties[Grawer]"
+                  maxlength="20"
+                  class="form-field m:w-full"
+                  autocomplete="off"
+                >
+                <p class="epir-pdp-engraving__legal m:text-sm m:mt-2 m:text-color-subtext m:leading-relaxed">
+                  Wyroby wykonane na indywidualne zamówienie konsumenta, w tym z grawerem, nie podlegają zwrotowi —
+                  art. 38 pkt 3 ustawy o prawach konsumenta.
+                </p>
+              </div>
             {%- endif -%}
 
             <div class="m-product-form--wrapper m:display-flex m:flex-wrap m:items-end">
@@ -460,6 +495,202 @@
           </template>
         </pickup-availability>
         <script src="{{ 'pickup-availability.js' | asset_url }}" defer="defer"></script>
+        <div class="epir-pdp-workshop-trust" role="list">
+          <ul class="epir-pdp-workshop-trust__list m:text-sm m:leading-relaxed m:text-color-subtext">
+            <li class="epir-pdp-workshop-trust__item m:display-flex m:items-start">
+              <span class="epir-pdp-workshop-trust__icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 3L4 9v12h16V9l-8-6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  <path d="M9 21v-6h6v6" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                </svg>
+              </span>
+              <span>Ręcznie we Wrocławiu, specjalnie dla Ciebie</span>
+            </li>
+            <li class="epir-pdp-workshop-trust__item m:display-flex m:items-start">
+              <span class="epir-pdp-workshop-trust__icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M12 7v5l3 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </span>
+              <span>Czas wykonania: 7 dni roboczych</span>
+            </li>
+            <li class="epir-pdp-workshop-trust__item m:display-flex m:items-start">
+              <span class="epir-pdp-workshop-trust__icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M3 7h11v10H3V7z" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M14 10h4l3 3v4h-7v-7z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  <circle cx="7" cy="19" r="2" stroke="currentColor" stroke-width="1.5"/>
+                  <circle cx="18" cy="19" r="2" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </span>
+              <span>
+                {%- if epir_pdp_is_gold -%}
+                  Darmowa, ubezpieczona dostawa
+                {%- else -%}
+                  Wysyłka 15 zł, darmowa od 500 zł
+                {%- endif -%}
+              </span>
+            </li>
+            <li class="epir-pdp-workshop-trust__item m:display-flex m:items-start">
+              <span class="epir-pdp-workshop-trust__icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M7 12l3 3 7-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+              </span>
+              <span>Jedna bezpłatna zmiana rozmiaru</span>
+            </li>
+            <li class="epir-pdp-workshop-trust__item m:display-flex m:items-start">
+              <span class="epir-pdp-workshop-trust__icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M5 4h4l2 5-2 1a11 11 0 004 4l1-2 5 2v4c0 1-1 2-2 2A16 16 0 013 5c0-1 1-2 2-2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                </svg>
+              </span>
+              <span>
+                Masz pytanie? Zadzwoń:
+                <a href="tel:+48698718564" class="m:text-inherit m:underline">698&nbsp;718&nbsp;564</a>
+              </span>
+            </li>
+          </ul>
+        </div>
+        <script>
+          (function () {
+            var sectionId = {{ section.id | json }};
+            var requireSize = {{ section.settings.disable_selected_variant_default | json }};
+
+            function getPicker() {
+              return document.querySelector('[data-variant-picker][data-section="' + sectionId + '"]');
+            }
+
+            function sizeFieldMissing(picker) {
+              if (!picker || picker.dataset.hasOnlyDefaultVariant === 'true') return false;
+              var sizeWrap = picker.querySelector('[data-epir-size-option]');
+              if (!sizeWrap) return false;
+              var field = sizeWrap.querySelector('[data-picker-field]');
+              if (!field) return false;
+              return !field.getAttribute('data-selected-value');
+            }
+
+            function showSizeError(picker) {
+              var sizeWrap = picker && picker.querySelector('[data-epir-size-option]');
+              if (!sizeWrap) return;
+              var err = sizeWrap.querySelector('.m-product-option-error');
+              if (err) err.textContent = 'Wybierz rozmiar';
+              var label = sizeWrap.querySelector('.option-label--selected');
+              if (label) label.classList.add('m:text-color-error');
+            }
+
+            function clearSizeError(picker) {
+              var sizeWrap = picker && picker.querySelector('[data-epir-size-option]');
+              if (!sizeWrap) return;
+              var err = sizeWrap.querySelector('.m-product-option-error');
+              if (err) err.textContent = '';
+            }
+
+            function guardSubmit(event) {
+              if (!requireSize) return;
+              var picker = getPicker();
+              var form = event.target;
+              var idInput = form.querySelector('[name="id"]');
+              if (!idInput || !picker) return;
+              if (sizeFieldMissing(picker) || !idInput.value) {
+                event.preventDefault();
+                event.stopPropagation();
+                showSizeError(picker);
+                var wrap = picker.querySelector('[data-epir-size-option]');
+                if (wrap && wrap.scrollIntoView) wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+            }
+
+            function bindForms() {
+              document
+                .querySelectorAll('#product-form-' + sectionId + ', #sticky-atc-form-' + sectionId)
+                .forEach(function (form) {
+                  form.addEventListener('submit', guardSubmit, true);
+                });
+            }
+
+            document.addEventListener('DOMContentLoaded', bindForms);
+            document.addEventListener('shopify:section:load', bindForms);
+
+            document.addEventListener('change', function (event) {
+              var picker = getPicker();
+              if (!picker || !picker.contains(event.target)) return;
+              clearSizeError(picker);
+            });
+          })();
+        </script>
+        <style>
+          .product__pickup-availabilities {
+            display: none !important;
+          }
+          .epir-pdp-workshop-trust {
+            margin-top: 1.75rem;
+          }
+          .epir-pdp-workshop-trust__list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: grid;
+            gap: 0.5rem;
+          }
+          .epir-pdp-workshop-trust__icon {
+            flex-shrink: 0;
+            margin-right: 0.5rem;
+            margin-top: 0.1rem;
+            opacity: 0.85;
+          }
+          .epir-size-unit {
+            text-transform: none;
+          }
+          [data-epir-size-option] .m-product-option--content,
+          .m-product-option--button .m-product-option--content {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin: 0;
+          }
+          [data-epir-size-option] .m-product-option--node__label,
+          .m-product-option--button .m-product-option--node__label {
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            min-width: 2.75rem !important;
+            min-height: 2.75rem;
+            padding: 0.5rem 0.75rem !important;
+            margin: 0 !important;
+            border: 1px solid #f2f2f2 !important;
+            border-radius: 0 !important;
+            background: #fff !important;
+            color: inherit !important;
+            font-size: 0.875rem !important;
+            line-height: 1.2;
+            text-transform: none !important;
+            box-sizing: border-box;
+            cursor: pointer;
+          }
+          [data-epir-size-option] .m-product-option--node:has(input:checked) .m-product-option--node__label,
+          [data-epir-size-option] .m-product-option--node input:checked + .m-product-option--node__label,
+          .m-product-option--button .m-product-option--node:has(input:checked) .m-product-option--node__label,
+          .m-product-option--button .m-product-option--node input:checked + .m-product-option--node__label {
+            border-color: currentColor !important;
+            background: rgba(0, 0, 0, 0.04) !important;
+          }
+          @media (max-width: 767px) {
+            [data-epir-size-option] .m-product-option--content,
+            .m-product-option--button .m-product-option--content {
+              gap: 0.35rem;
+            }
+            [data-epir-size-option] .m-product-option--node__label,
+            .m-product-option--button .m-product-option--node__label {
+              min-width: 2.4rem !important;
+              min-height: 2.4rem;
+              padding: 0.35rem 0.5rem !important;
+              font-size: 0.8125rem !important;
+            }
+          }
+        </style>
 
       {%- when 'collapsible_tab' -%}
         {% if block.settings.heading != blank %}

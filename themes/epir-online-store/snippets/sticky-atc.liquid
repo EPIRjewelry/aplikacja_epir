@@ -25,6 +25,11 @@
       assign image = media
     endfor
   endif
+
+  assign epir_preselect_variant = true
+  if section.settings.disable_selected_variant_default and product.has_only_default_variant == false
+    assign epir_preselect_variant = false
+  endif
 -%}
 {{ 'sticky-add-to-cart.css' | asset_url | stylesheet_tag }}
 <div
@@ -73,11 +78,17 @@
             </label>
             <select
               name="id"
-              data-epir-sticky-variant-select class="m-product-option--dropdown-select{% if product.has_only_default_variant %} m:hidden{% endif %}"
+              data-epir-sticky-variant-select
+              class="m-product-option--dropdown-select{% if product.has_only_default_variant %} m:hidden{% endif %}"
             >
+              {% unless product.has_only_default_variant %}
+                <option value="" disabled{% if section.settings.disable_selected_variant_default %} selected{% elsif product.selected_variant == blank %} selected{% endif %}>
+                  Wybierz rozmiar
+                </option>
+              {% endunless %}
               {% for variant in product.variants %}
                 {% assign selected = false %}
-                {%- if variant.id == product.selected_or_first_available_variant.id -%}
+                {%- if epir_preselect_variant and variant.id == product.selected_or_first_available_variant.id -%}
                   {% assign selected = true %}
                 {%- endif -%}
                 <option

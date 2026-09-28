@@ -44,6 +44,11 @@
   if show_featured_media == null
     assign show_featured_media = section.settings.show_featured_media
   endif
+
+  assign epir_preselect_variant = true
+  if section.settings.disable_selected_variant_default and product.has_only_default_variant == false
+    assign epir_preselect_variant = false
+  endif
 %}
 
 <div
@@ -81,8 +86,18 @@
           if is_size and option_label == option.name
             assign option_label = 'Rozmiar'
           endif
+          if option_name_downcase contains 'jewelry' or option_name_downcase contains 'material' or option_name_downcase contains 'materiał' or option_name_downcase contains 'material'
+            assign option_label = 'Materiał'
+          endif
+          if option_name_downcase contains 'próba' or option_name_downcase contains 'proba' or option_name_downcase contains 'prob'
+            assign option_label = 'Próba'
+          endif
+          if option_name_downcase contains 'jakość' or option_name_downcase contains 'quality' or option_name_downcase contains 'kamien'
+            assign option_label = 'Jakość kamienia'
+          endif
+          assign selected_display = option.selected_value
         %}
-        <div class="m-product-option m-product-option--{{ picker_type }}">
+        <div class="m-product-option m-product-option--{{ picker_type }}"{% if is_size %} data-epir-size-option{% endif %}>
           {%- case picker_type -%}
             {% when 'dropdown' %}
               <variant-select
@@ -93,10 +108,10 @@
                 <div class="m-product-option--label">
                   <label class="option-label" for="Option-{{ section.id }}-{{ forloop.index0 }}">
                     <span class="option-label--title">{{ option_label }}:</span>
-                    <span class="option-label--selected">{{ option.selected_value }}</span>
+                    <span class="option-label--selected">{{ selected_display }}</span>
                   </label>
                   {% if is_size %}
-                    <button data-open-sizeguide class="foxkit-sizechart-button m:inline-flex m:items-center m:hidden">
+                    <button data-open-sizeguide class="foxkit-sizechart-button m:inline-flex m:items-center">
                       <svg
                         class="m-svg-icon--large"
                         fill="currentColor"
@@ -117,14 +132,14 @@
                       name="options[{{ option.name | escape }}]"
                       form="{{ product_form_id }}"
                     >
-                      <option value="" disabled>{{ option.name }}</option>
+                      <option value="" disabled{% unless epir_preselect_variant and option.selected_value %} selected{% endunless %}>{% if is_size %}Wybierz rozmiar{% else %}{{ option_label }}{% endif %}</option>
                       {%- for value in option.values -%}
                         <option
                           value="{{ value | escape }}"
                           class="m-product-option--node"
                           data-value="{{- value | escape -}}"
                           data-option-position="{{ option.position }}"
-                          {% if option.selected_value == value %}
+                          {% if epir_preselect_variant and option.selected_value == value %}
                             selected="selected"
                           {% endif %}
                         >
@@ -144,10 +159,10 @@
                 <div class="m-product-option--label">
                   <label class="option-label">
                     <span class="option-label--title">{{ option_label }}:</span>
-                    <span class="option-label--selected">{{ option.selected_value }}</span>
+                    <span class="option-label--selected">{{ selected_display }}</span>
                   </label>
                   {% if is_size %}
-                    <button data-open-sizeguide class="foxkit-sizechart-button m:inline-flex m:items-center m:hidden">
+                    <button data-open-sizeguide class="foxkit-sizechart-button m:inline-flex m:items-center">
                       <svg
                         class="m-svg-icon--large"
                         fill="currentColor"
@@ -177,7 +192,7 @@
                           value="{{ value | escape }}"
                           form="{{ product_form_id }}"
                           class="vissu"
-                          {% if option.selected_value == value %}
+                          {% if epir_preselect_variant and option.selected_value == value %}
                             checked
                           {% endif %}
                         >
@@ -205,10 +220,10 @@
                 <div class="m-product-option--label">
                   <label class="option-label">
                     <span class="option-label--title">{{ option_label }}:</span>
-                    <span class="option-label--selected">{{ option.selected_value }}</span>
+                    <span class="option-label--selected">{{ selected_display }}</span>
                   </label>
                   {% if is_size %}
-                    <button data-open-sizeguide class="foxkit-sizechart-button m:inline-flex m:items-center m:hidden">
+                    <button data-open-sizeguide class="foxkit-sizechart-button m:inline-flex m:items-center">
                       <svg
                         class="m-svg-icon--large"
                         fill="currentColor"
@@ -237,7 +252,7 @@
                         name="{{ option.name }}"
                         value="{{ value | escape }}"
                         form="{{ product_form_id }}"
-                        {% if option.selected_value == value %}
+                        {% if epir_preselect_variant and option.selected_value == value %}
                           checked
                         {% endif %}
                       >
@@ -264,10 +279,10 @@
                 <div class="m-product-option--label">
                   <label class="option-label">
                     <span class="option-label--title">{{ option_label }}:</span>
-                    <span class="option-label--selected">{{ option.selected_value }}</span>
+                    <span class="option-label--selected">{{ selected_display }}</span>
                   </label>
                   {% if is_size %}
-                    <button data-open-sizeguide class="foxkit-sizechart-button m:inline-flex m:items-center m:hidden">
+                    <button data-open-sizeguide class="foxkit-sizechart-button m:inline-flex m:items-center">
                       <svg
                         class="m-svg-icon--large"
                         fill="currentColor"
@@ -295,7 +310,7 @@
                         name="{{ option.name }}"
                         value="{{ value | escape }}"
                         form="{{ product_form_id }}"
-                        {% if option.selected_value == value %}
+                        {% if epir_preselect_variant and option.selected_value == value %}
                           checked
                         {% endif %}
                       >
@@ -319,10 +334,10 @@
                 <div class="m-product-option--label">
                   <label class="option-label">
                     <span class="option-label--title">{{ option_label }}:</span>
-                    <span class="option-label--selected">{{ option.selected_value }}</span>
+                    <span class="option-label--selected">{{ selected_display }}</span>
                   </label>
                   {% if is_size %}
-                    <button data-open-sizeguide class="foxkit-sizechart-button m:inline-flex m:items-center m:hidden">
+                    <button data-open-sizeguide class="foxkit-sizechart-button m:inline-flex m:items-center">
                       <svg
                         class="m-svg-icon--large"
                         fill="currentColor"
@@ -352,7 +367,7 @@
                           value="{{ value | escape }}"
                           form="{{ product_form_id }}"
                           class="vissu"
-                          {% if option.selected_value == value %}
+                          {% if epir_preselect_variant and option.selected_value == value %}
                             checked
                           {% endif %}
                         >
