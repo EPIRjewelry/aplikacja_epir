@@ -135,7 +135,8 @@ themes/epir-online-store/assets/
 !themes/epir-online-store/assets/epir-inpost-geowidget-v4.js
 themes/epir-online-store/blocks/
 themes/epir-online-store/config/
-themes/epir-online-store/layout/
+themes/epir-online-store/layout/*
+!themes/epir-online-store/layout/theme.liquid
 themes/epir-online-store/locales/
 themes/epir-online-store/scripts/
 themes/epir-online-store/snippets/*
@@ -143,6 +144,7 @@ themes/epir-online-store/snippets/*
 !themes/epir-online-store/snippets/product-option.liquid
 !themes/epir-online-store/snippets/sticky-atc.liquid
 !themes/epir-online-store/snippets/product-card-quick-add-btn.liquid
+!themes/epir-online-store/snippets/epir-session-cart-attr.liquid
 themes/epir-online-store/sections/*
 !themes/epir-online-store/sections/collection-gold-manifesto.liquid
 !themes/epir-online-store/sections/collection-gold-realizations.liquid

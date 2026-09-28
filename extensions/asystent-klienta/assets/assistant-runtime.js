@@ -8,6 +8,35 @@ var EPIR_LOGGED_IN_CUSTOMER_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 var EPIR_LOGGED_IN_CUSTOMER_PREFLIGHT_ATTEMPTS = 3;
 var EPIR_LOGGED_IN_CUSTOMER_PREFLIGHT_DELAY_MS = 75;
 var EPIR_ASSISTANT_SESSION_KEY = 'epir-assistant-session';
+var EPIR_ANALYTICS_SESSION_COOKIE = '_epir_session_id';
+
+function readEpirAnalyticsSessionCookie() {
+  try {
+    var parts = document.cookie.split(';');
+    for (var i = 0; i < parts.length; i++) {
+      var seg = parts[i].trim().split('=');
+      if (seg[0] === EPIR_ANALYTICS_SESSION_COOKIE && seg[1]) {
+        try { return decodeURIComponent(seg[1]).trim(); } catch (e) { return String(seg[1]).trim(); }
+      }
+    }
+  } catch (e) {}
+  return '';
+}
+
+/** Istniejąca sesja czatu w sessionStorage ma pierwszeństwo; inaczej cookie piksela. */
+function resolveEffectiveAssistantSessionId(sessionIdKey) {
+  var key = sessionIdKey || EPIR_ASSISTANT_SESSION_KEY;
+  try {
+    var existing = sessionStorage.getItem(key);
+    if (existing && String(existing).trim()) return String(existing).trim();
+    var fromCookie = readEpirAnalyticsSessionCookie();
+    if (fromCookie) {
+      sessionStorage.setItem(key, fromCookie);
+      return fromCookie;
+    }
+  } catch (e) {}
+  return null;
+}
 var EPIR_ASSISTANT_TRANSCRIPT_STORAGE_PREFIX = 'epir-assistant-transcript';
 var EPIR_ASSISTANT_HISTORY_ENDPOINT = '/apps/assistant/history';
 var EPIR_ASSISTANT_TRANSCRIPT_MAX_ENTRIES = 100;
@@ -1651,7 +1680,7 @@ async function sendMessageToWorker(
       channel: channel,
       locale: locale,
       message: (text && String(text).trim()) || (attachment ? '' : ''),
-      session_id: (() => { try { return sessionStorage.getItem(sessionIdKey); } catch { return null; } })(),
+      session_id: resolveEffectiveAssistantSessionId(sessionIdKey),
       cart_id: cartId,
       brand,
       stream: true,

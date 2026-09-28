@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {
+  EPIR_SESSION_CART_ATTR_KEY,
   EPIR_STOREFRONT_CART_ATTR_KEY,
   readEpirStorefrontFromAttributes,
   withStorefrontCartInput,
@@ -11,6 +12,16 @@ describe('epir-cart-attributes', () => {
     expect(input.attributes).toEqual([
       {key: EPIR_STOREFRONT_CART_ATTR_KEY, value: 'kazka'},
     ]);
+  });
+
+  it('merges session attribute when provided', () => {
+    const input = withStorefrontCartInput({lines: []}, 'zareczyny', 'sess-cookie-1');
+    expect(input.attributes).toEqual(
+      expect.arrayContaining([
+        {key: EPIR_STOREFRONT_CART_ATTR_KEY, value: 'zareczyny'},
+        {key: EPIR_SESSION_CART_ATTR_KEY, value: 'sess-cookie-1'},
+      ]),
+    );
   });
 
   it('reads storefront from attribute list', () => {

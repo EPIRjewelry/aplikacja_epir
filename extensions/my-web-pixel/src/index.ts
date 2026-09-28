@@ -71,7 +71,8 @@ function extractClientIdFromEvent(event: unknown): string | null {
 }
 
 /**
- * Tożsamość analityczna: wyłącznie cookie `_epir_session_id` (Hydrogen) lub clientId z API Shopify.
+ * Tożsamość analityczna: cookie `_epir_session_id`, inaczej `clientId` z API Shopify
+ * (to samo co cookie `_shopify_y` — SSOT w `resolveEpirAnalyticsSessionId` / snippet apex).
  * Bez generowania ID po stronie klienta (Date/Math.random).
  */
 async function resolveEpirSessionId(

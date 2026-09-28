@@ -1520,9 +1520,17 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
     // Store full event as JSON for debugging
     const rawData = JSON.stringify({ event: eventType, data: eventData, timestamp });
 
-    // Normalize identifiers (avoid NULLs in D1 schemas)
     const normalizedCustomerId = customerId ?? 'anonymous';
-    const normalizedSessionId = sessionId ?? `session_${timestamp}_${Math.random().toString(36).slice(2, 8)}`;
+    const normalizedSessionId =
+      sessionId != null && String(sessionId).trim() !== '' ? String(sessionId).trim() : null;
+
+    if (!normalizedSessionId) {
+      console.error('[ANALYTICS_WORKER] Missing session_id on pixel event', {
+        eventType,
+        customerId,
+        pageUrl,
+      });
+    }
 
     const isDirectLike = isDirectLikeSource(trafficSource);
     if (normalizedSessionId && isDirectLike) {
@@ -1650,6 +1658,7 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
     // Upsert customer session and trigger AI analysis for behavior scoring
     let activateChat = false;
 
+    if (normalizedSessionId) {
       // Upsert session counters (enables AI trigger cadence)
       await upsertCustomerSession(pixelDb, normalizedCustomerId, normalizedSessionId, timestamp);
 
@@ -1719,7 +1728,8 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
           }
         }
       }
-    
+    }
+
     // ============================================================================
     // INTEGRATION: Analytics Worker → Session DO (product view tracking)
     // ============================================================================

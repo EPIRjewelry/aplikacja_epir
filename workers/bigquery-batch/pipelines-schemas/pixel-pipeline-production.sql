@@ -13,11 +13,13 @@ INSERT INTO epir_pixel_events_sink (
   user_agent,
   ip_address,
   shop_domain,
+  customer_id,
+  order_id,
   timestamp,
   created_at
 )
 SELECT
-  0 AS id,
+  id,
   session_id,
   event_type,
   page_url,
@@ -28,6 +30,8 @@ SELECT
   user_agent,
   CAST(NULL AS VARCHAR) AS ip_address,
   shop_domain,
+  customer_id,
+  order_id,
   timestamp,
   FROM_UNIXTIME(CAST(timestamp AS BIGINT) / 1000) AS created_at
 FROM epir_pixel_events_stream;

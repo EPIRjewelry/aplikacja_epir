@@ -1,0 +1,77 @@
+{% comment %}
+  EPIR session → cart attribute (apex / Online Store).
+  SSOT = packages/utils resolveEpirAnalyticsSessionId:
+    session_id = _epir_session_id || _shopify_y (= Web Pixel clientId)
+  Na apex nikt wcześniej nie ustawiał _epir_session_id (landing Ads tak; Hydrogen tylko czyta).
+  Snippet zapisuje cookie z _shopify_y, żeby atrybut koszyka = to, co Web Pixel wysyła jako session_id.
+  Podpięty w layout/theme.liquid. Theme push — tylko po OK operatora (najpierw motyw podglądowy).
+{% endcomment %}
+<script>
+(function () {
+  var EPIR_COOKIE = '_epir_session_id';
+  var SHOPIFY_Y = '_shopify_y';
+  var ATTR = '_epir_session_id';
+  var MAX_AGE = 60 * 60 * 24 * 30;
+
+  function readCookie(name) {
+    var parts = document.cookie.split(';');
+    for (var i = 0; i < parts.length; i++) {
+      var seg = parts[i].trim().split('=');
+      if (seg[0] === name) {
+        try {
+          return decodeURIComponent(seg[1] || '').trim();
+        } catch (e) {
+          return (seg[1] || '').trim();
+        }
+      }
+    }
+    return '';
+  }
+
+  function writeCookie(name, value) {
+    document.cookie =
+      name + '=' + encodeURIComponent(value) +
+      '; path=/; max-age=' + MAX_AGE + '; SameSite=Lax; Secure';
+  }
+
+  /** Mirrors resolveEpirAnalyticsSessionId — no random s_* ids. */
+  function resolveSessionId() {
+    var epir = readCookie(EPIR_COOKIE);
+    if (epir) return epir;
+    var y = readCookie(SHOPIFY_Y);
+    if (y) {
+      writeCookie(EPIR_COOKIE, y);
+      return y;
+    }
+    return '';
+  }
+
+  function syncCartAttribute(sessionId) {
+    if (!sessionId) return;
+    fetch('/cart.js', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (cart) {
+        if (!cart) return;
+        var attrs = cart.attributes || {};
+        if (attrs[ATTR] === sessionId) return;
+        var next = {};
+        next[ATTR] = sessionId;
+        return fetch('/cart/update.js', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ attributes: next })
+        });
+      })
+      .catch(function () {});
+  }
+
+  var sid = resolveSessionId();
+  if (!sid) return;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { syncCartAttribute(sid); });
+  } else {
+    syncCartAttribute(sid);
+  }
+})();
+</script>

@@ -10,6 +10,7 @@ import remarkGfm from 'remark-gfm';
 import {DEFAULT_PERSONA_UI, type PersonaUi} from './persona-ui';
 import {parseChatPathContext} from './chat-path-context';
 import {resolveShopAuthTokenForChat} from './commerce/shop-sign-in';
+import {resolveEffectiveChatSessionId} from './epir-session-browser';
 
 /** Global Shopify (Customer Account UI extensions / App Bridge) — opcjonalnie. */
 type ShopifyWindowGlobal = {
@@ -516,7 +517,7 @@ function ChatWidgetFallback({
       setErrorMessage(null);
 
       const sessionId =
-        typeof window !== 'undefined' ? sessionStorage.getItem(SESSION_ID_KEY) : null;
+        typeof window !== 'undefined' ? resolveEffectiveChatSessionId(SESSION_ID_KEY) : null;
 
       try {
         const parts: ChatRequestPart[] = [];

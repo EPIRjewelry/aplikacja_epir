@@ -39,6 +39,7 @@ describe('getR2AnalyticsSql', () => {
     const q1 = getR2AnalyticsSql(env, 'Q1_CONVERSION_CHAT')!;
     expect(q1).toContain('approx_distinct');
     expect(q1).toContain('GROUP BY session_id');
+    expect(q1).toContain('order_attributed');
     expect(q1).toMatch(/CASE\s*\n?\s*WHEN total_pixel_sessions >= sessions_with_chat/i);
     expect(q1).toContain('checkout_completed');
     expect(q1).not.toMatch(/\bUNION\b/i);
