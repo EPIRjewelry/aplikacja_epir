@@ -89,13 +89,51 @@ describe('operator studio ingress', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       ok?: boolean;
-      gates?: { operatorPanelSecret?: boolean; chatSharedSecret?: boolean };
+      gates?: {
+        operatorPanelSecret?: boolean;
+        chatSharedSecret?: boolean;
+        readonlyAnalyticsKey?: boolean;
+      };
       note?: string;
     };
     expect(body.ok).toBe(true);
     expect(body.gates?.operatorPanelSecret).toBe(true);
+    expect(body.gates?.readonlyAnalyticsKey).toBe(false);
     expect(body.gates?.chatSharedSecret).toBe(false);
     expect(body.note).toContain('EPIR_OPERATOR_PANEL_SECRET');
+  });
+
+  it('allows flow-health with EPIR_READONLY_ANALYTICS_KEY but rejects chat', async () => {
+    const env = {
+      EPIR_OPERATOR_PANEL_SECRET: 'full',
+      EPIR_READONLY_ANALYTICS_KEY: 'ro-key',
+      BIGQUERY_BATCH_RPC: {
+        getFlowHealth: async () => ({
+          edog_verdict: 'PASS' as const,
+          reasons: ['ok'],
+          checked_at: '2026-09-29T00:00:00.000Z',
+        }),
+      },
+    } as unknown as Env;
+    const health = await worker.fetch(
+      new Request('https://asystent.test/internal/operator-studio/api/flow-health', {
+        method: 'GET',
+        headers: { 'X-Admin-Key': 'ro-key' },
+      }),
+      env,
+      noopCtx,
+    );
+    expect(health.status).toBe(200);
+    const chat = await worker.fetch(
+      new Request('https://asystent.test/internal/operator-studio/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Key': 'ro-key' },
+        body: JSON.stringify({ message: 'hi', stream: false }),
+      }),
+      env,
+      noopCtx,
+    );
+    expect(chat.status).toBe(401);
   });
 
   it('GET reports returns 503 when DB_CHATBOT missing', async () => {

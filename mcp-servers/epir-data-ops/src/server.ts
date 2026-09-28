@@ -33,9 +33,16 @@ export function createDataOpsMcpServer(): McpServer {
         resolveEnv('EPIR_CHAT_WORKER_ORIGIN') ||
         resolveEnv('WORKER_ORIGIN') ||
         'https://asystent.epirbizuteria.pl';
-      const legacyKey = resolveEnv('EPIR_OPERATOR_PANEL_SECRET');
-      const headers: Record<string, string> = { Accept: 'application/json' };
-      if (legacyKey) headers['X-Admin-Key'] = legacyKey;
+      const readKey = resolveEnv('EPIR_READONLY_ANALYTICS_KEY');
+      if (!readKey) {
+        return textResult(
+          'Brak EPIR_READONLY_ANALYTICS_KEY. MCP epir-data-ops działa tylko na kluczu tylko do odczytu — ustaw go w env (nie używaj EPIR_OPERATOR_PANEL_SECRET).',
+        );
+      }
+      const headers: Record<string, string> = {
+        Accept: 'application/json',
+        'X-Admin-Key': readKey,
+      };
       const res = await fetch(`${origin.replace(/\/$/, '')}/internal/operator-studio/api/flow-health`, {
         headers,
       });

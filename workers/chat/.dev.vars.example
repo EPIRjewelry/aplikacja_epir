@@ -1,4 +1,5 @@
 # Kopiuj do .dev.vars (nie commituj). Lokalny dev.
 #
 # EPIR_OPERATOR_PANEL_SECRET=<klucz Operator Studio (X-Admin-Key)>
+# EPIR_READONLY_ANALYTICS_KEY=<tylko odczyt: flow-health / reports / analytics/query>
 # EPIR_CHAT_SHARED_SECRET=<ten sam co na Hydrogen Pages, jeśli testujesz S2S /chat>

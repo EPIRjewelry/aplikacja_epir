@@ -27,6 +27,14 @@ import { RateLimiterDO, checkRateLimit } from './rate-limiter';
 import { TokenVaultDO, TokenVault, getTokenVaultStub } from './token-vault';
 import { guardAssistantPricingAgainstCatalog } from './pricing-guard';
 import { buildCommerceActionPayload, isLikelyAjaxCartFakeGid } from './utils/commerce-result';
+import {
+  analyticsReadUnauthorizedResponse,
+  isReadonlyAnalyticsCredential,
+  isReadonlySafeAnalyticsQueryId,
+  isWhitelistedAnalyticsQueryId,
+  verifyAnalyticsReadAccess,
+  verifyOperatorPanelKey,
+} from './operator/operator-auth';
 
 // Importy AI i Narzędzi (BEZPOŚREDNIO z ai-client.ts)
 import {
@@ -1100,17 +1108,12 @@ function responseFromRpcSerializedHttp(env: Env, request: Request, payload: RpcS
   });
 }
 
-/** Chronione odczyty analityki z edge czatu — operator (`EPIR_OPERATOR_PANEL_SECRET`) lub S2S (ten sam kontrakt co `/chat`). */
+/** Chronione odczyty PII / surowych danych pixel — wyłącznie pełny panel lub S2S (nie readonly). */
 function authorizeChatGatewayPrivilegedRead(request: Request, env: Env): { ok: true } | { response: Response } {
-  const secret = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
-  if (secret) {
-    const bearer = parseAuthorizationBearer(request);
-    const headerKey =
-      request.headers.get('X-Admin-Key')?.trim()
-      ?? request.headers.get('x-admin-key')?.trim()
-      ?? '';
-    if (bearer && timingSafeEqualText(bearer, secret)) return { ok: true };
-    if (headerKey && timingSafeEqualText(headerKey, secret)) return { ok: true };
+  if (verifyOperatorPanelKey(request, env)) return { ok: true };
+  // Klucz tylko do odczytu nie otwiera /pixel/events, /journey, /sessions (PII).
+  if (isReadonlyAnalyticsCredential(request, env)) {
+    return { response: analyticsReadUnauthorizedResponse(cors(env, request)) };
   }
   const s2s = verifyS2SChatRequest(request, env);
   return s2s.ok ? { ok: true } : { response: s2s.response };
@@ -4404,15 +4407,12 @@ function configuredChatSharedSecretForSoloProxy(env: Env): string {
   return '';
 }
 
-function verifyOperatorPanelKey(request: Request, env: Env): boolean {
-  const provided = request.headers.get('X-Admin-Key')?.trim() ?? '';
-  const expected = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
-  return Boolean(expected && provided && timingSafeEqualText(expected, provided));
-}
+// verifyOperatorPanelKey — `./operator/operator-auth`
 
 function operatorStudioGateSnapshot(env: Env): Record<string, boolean> {
   return {
     operatorPanelSecret: Boolean(env.EPIR_OPERATOR_PANEL_SECRET?.trim()),
+    readonlyAnalyticsKey: Boolean(env.EPIR_READONLY_ANALYTICS_KEY?.trim()),
     chatSharedSecret: Boolean(configuredChatSharedSecretForSoloProxy(env)),
     openrouterKey: Boolean(env.OPENROUTER_API_KEY?.trim()),
     aiGatewayToken: Boolean(env.AI_GATEWAY_TOKEN?.trim()),
@@ -4475,29 +4475,23 @@ async function handleOperatorStudioIngress(
   const path = rawPath;
 
   if (path === `${OPERATOR_API_PREFIX}/ready` && method === 'GET') {
-    if (!verifyOperatorPanelKey(request, env)) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
-      });
+    if (!verifyAnalyticsReadAccess(request, env)) {
+      return analyticsReadUnauthorizedResponse(cors(env, request));
     }
     const gates = operatorStudioGateSnapshot(env);
     return new Response(
       JSON.stringify({
         ok: true,
         gates,
-        note: 'Operator Studio: EPIR_OPERATOR_PANEL_SECRET w UI. EPIR_CHAT_SHARED_SECRET tylko dla BFF Hydrogen.',
+        note: 'Operator Studio: EPIR_OPERATOR_PANEL_SECRET (pełny). EPIR_READONLY_ANALYTICS_KEY — ready / flow-health / steward/insights / raporty / analytics/query (bez Q3). EPIR_CHAT_SHARED_SECRET tylko dla BFF Hydrogen.',
       }),
       { status: 200, headers: { 'Content-Type': 'application/json', ...cors(env, request) } },
     );
   }
 
   if (path === '/internal/operator-studio/api/flow-health' && method === 'GET') {
-    if (!verifyOperatorPanelKey(request, env)) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
-      });
+    if (!verifyAnalyticsReadAccess(request, env)) {
+      return analyticsReadUnauthorizedResponse(cors(env, request));
     }
     const rpc = env.BIGQUERY_BATCH_RPC;
     if (!rpc?.getFlowHealth) {
@@ -4519,6 +4513,64 @@ async function handleOperatorStudioIngress(
         headers: { 'Content-Type': 'application/json', ...cors(env, request) },
       });
     }
+  }
+
+  if (path === '/internal/operator-studio/api/analytics/query' && (method === 'GET' || method === 'POST')) {
+    if (!verifyAnalyticsReadAccess(request, env)) {
+      return analyticsReadUnauthorizedResponse(cors(env, request));
+    }
+    let queryId = url.searchParams.get('queryId')?.trim() ?? '';
+    if (method === 'POST' && !queryId) {
+      try {
+        const body = (await request.json()) as { queryId?: string };
+        queryId = typeof body?.queryId === 'string' ? body.queryId.trim() : '';
+      } catch {
+        queryId = '';
+      }
+    }
+    if (!queryId) {
+      return new Response(JSON.stringify({ ok: false, error: 'queryId_required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    if (!isWhitelistedAnalyticsQueryId(queryId)) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: 'queryId_not_whitelisted',
+          hint: 'Tylko Q1–Q10 z whitelisty; brak własnego SQL.',
+        }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+        },
+      );
+    }
+    if (isReadonlyAnalyticsCredential(request, env) && !isReadonlySafeAnalyticsQueryId(queryId)) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: 'queryId_forbidden_for_readonly_key',
+          hint: 'Q3_TOP_CHAT_QUESTIONS zwraca treść wiadomości — wymaga EPIR_OPERATOR_PANEL_SECRET.',
+        }),
+        {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+        },
+      );
+    }
+    const out = await runWarehouseAnalyticsQuery(env, { queryId, skipEdogGate: true });
+    if (out.error) {
+      return new Response(JSON.stringify({ ok: false, error: out.error }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
+    }
+    return new Response(JSON.stringify({ ok: true, result: out.result }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+    });
   }
 
   if (path === '/internal/operator-studio/api/steward/aggregate' && method === 'POST') {
@@ -4550,11 +4602,8 @@ async function handleOperatorStudioIngress(
   }
 
   if (path === '/internal/operator-studio/api/steward/insights' && method === 'GET') {
-    if (!verifyOperatorPanelKey(request, env)) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
-      });
+    if (!verifyAnalyticsReadAccess(request, env)) {
+      return analyticsReadUnauthorizedResponse(cors(env, request));
     }
     if (!env.STORE_STEWARD_RPC) {
       return new Response(JSON.stringify({ error: 'STORE_STEWARD_RPC binding missing' }), {
@@ -4717,11 +4766,8 @@ async function handleOperatorStudioIngress(
   }
 
   if (path === '/internal/operator-studio/api/operator-report/latest' && method === 'GET') {
-    if (!verifyOperatorPanelKey(request, env)) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
-      });
+    if (!verifyAnalyticsReadAccess(request, env)) {
+      return analyticsReadUnauthorizedResponse(cors(env, request));
     }
     const report = await getLatestOperatorReport(env);
     return new Response(JSON.stringify({ ok: true, report }), {
@@ -4731,11 +4777,8 @@ async function handleOperatorStudioIngress(
   }
 
   if (path === '/internal/operator-studio/api/reports' && method === 'GET') {
-    if (!verifyOperatorPanelKey(request, env)) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
-      });
+    if (!verifyAnalyticsReadAccess(request, env)) {
+      return analyticsReadUnauthorizedResponse(cors(env, request));
     }
     if (!env.DB_CHATBOT) {
       return new Response(JSON.stringify({ ok: false, error: 'db_not_configured' }), {
@@ -4764,11 +4807,8 @@ async function handleOperatorStudioIngress(
     /^\/internal\/operator-studio\/api\/reports\/(\d{4}-\d{2}-\d{2})$/,
   );
   if (reportDateMatch && method === 'GET') {
-    if (!verifyOperatorPanelKey(request, env)) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
-      });
+    if (!verifyAnalyticsReadAccess(request, env)) {
+      return analyticsReadUnauthorizedResponse(cors(env, request));
     }
     const report = await getOperatorReportByDate(env, reportDateMatch[1]!);
     if (!report) {
@@ -4861,7 +4901,12 @@ export default {
     }
 
     // 1. Proxy /pixel (+ Shopify Flow webhooks) – na początku, przed routingiem czatu (Gateway pattern)
-    if (isPixelPath(pathname) || isAnalyticsShopifyWebhookPath(pathname)) {
+    // Privileged GET /journey|/sessions|/pixel/events — ten sam blok (PII; nie readonly).
+    if (
+      isPixelPath(pathname) ||
+      isAnalyticsShopifyWebhookPath(pathname) ||
+      (method === 'GET' && privilegedAnalyticsPixelPath(pathname))
+    ) {
       // OPTIONS (preflight CORS) – zwróć CORS headers
       if (method === 'OPTIONS') {
         return new Response(null, {
@@ -4991,13 +5036,8 @@ export default {
       });
     }
     if (url.pathname === '/admin/api/leads' && request.method === 'GET') {
-      const provided = (request.headers.get('X-Admin-Key') || url.searchParams.get('key'))?.trim() ?? '';
-      const expected = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
-      if (!expected || !provided || !timingSafeEqualText(provided, expected)) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json', ...cors(env, request) },
-        });
+      if (!verifyOperatorPanelKey(request, env)) {
+        return analyticsReadUnauthorizedResponse(cors(env, request));
       }
       if (!env.DB_CHATBOT) {
         return new Response(JSON.stringify({ error: 'DB_CHATBOT not configured' }), {
@@ -5136,13 +5176,8 @@ export default {
     // Autoryzacja: nagłówek `X-Admin-Key` dopasowany do `EPIR_OPERATOR_PANEL_SECRET`.
     // Osobny przepływ Shopify: `POST /webhooks/customers/redact` (HMAC z `SHOPIFY_APP_SECRET`).
     if (request.method === 'DELETE' && url.pathname.startsWith('/memory/customer/')) {
-      const headerKey = request.headers.get('X-Admin-Key')?.trim() ?? '';
-      const expectedOp = env.EPIR_OPERATOR_PANEL_SECRET?.trim() ?? '';
-      if (!expectedOp || !headerKey || !timingSafeEqualText(headerKey, expectedOp)) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json', ...cors(env, request) },
-        });
+      if (!verifyOperatorPanelKey(request, env)) {
+        return analyticsReadUnauthorizedResponse(cors(env, request));
       }
       const customerId = decodeURIComponent(url.pathname.replace(/^\/memory\/customer\//, '')).trim();
       if (!customerId) {

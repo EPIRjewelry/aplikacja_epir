@@ -66,11 +66,22 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         </div>
     </div>
     <script>
-        const params = new URLSearchParams(window.location.search);
-        const apiKey = params.get('key');
+        function resolveAdminKey() {
+            try {
+                const stored = sessionStorage.getItem('epir_admin_key');
+                if (stored && stored.trim()) return stored.trim();
+            } catch (_) {}
+            const entered = window.prompt('Wklej EPIR_OPERATOR_PANEL_SECRET (nagłówek X-Admin-Key; bez ?key= w URL)');
+            const v = (entered || '').trim();
+            if (v) {
+                try { sessionStorage.setItem('epir_admin_key', v); } catch (_) {}
+            }
+            return v;
+        }
         async function loadData() {
             try {
-                if (!apiKey) { throw new Error("Brak klucza autoryzacji w URL (?key=...)"); }
+                const apiKey = resolveAdminKey();
+                if (!apiKey) { throw new Error('Brak klucza — wymagany nagłówek X-Admin-Key'); }
                 const response = await fetch('/admin/api/leads', { headers: { 'X-Admin-Key': apiKey } });
                 if (!response.ok) throw new Error("Błąd autoryzacji lub serwera");
                 const data = await response.json();

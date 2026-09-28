@@ -210,6 +210,11 @@ export interface Env {
    * Panel operatorski: `X-Admin-Key` / Bearer. Odczyty R2 SQL: `BIGQUERY_BATCH_RPC`, nie ten sekret.
    */
   EPIR_OPERATOR_PANEL_SECRET?: string;
+  /**
+   * Klucz tylko do odczytu (agenci / MCP): flow-health, raporty, `api/analytics/query` (Q1–Q10).
+   * Bez mutacji Studio (czat, steward aggregate, warehouse export trigger).
+   */
+  EPIR_READONLY_ANALYTICS_KEY?: string;
   /** OpenRouter API key – wymagany dla wariantów modelu `openrouter/*`. */
   OPENROUTER_API_KEY?: string;
   /**
@@ -246,6 +251,7 @@ export const OPTIONAL_SECRETS = [
   'GCP_SERVICE_ACCOUNT_KEY',
   'AI_GATEWAY_TOKEN',
   'EPIR_OPERATOR_PANEL_SECRET',
+  'EPIR_READONLY_ANALYTICS_KEY',
   'OPENROUTER_API_KEY',
   'RESEND_API_KEY',
 ] as const;

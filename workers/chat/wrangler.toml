@@ -200,6 +200,8 @@ MCP_ENDPOINT = "https://epir-art-silver-jewellery.myshopify.com/api/mcp"
 # W dev: https://asystent-epir.YOUR-NAME.workers.dev
 WORKER_ORIGIN = "https://asystent.epirbizuteria.pl"
 # Operator Studio: wrangler secret put EPIR_OPERATOR_PANEL_SECRET
+# Read-only analytics (agenci): wrangler secret put EPIR_READONLY_ANALYTICS_KEY
+#   — tylko po zgodzie operatora; otwiera flow-health / reports / analytics/query
 # Hydrogen BFF → /chat: wrangler secret put EPIR_CHAT_SHARED_SECRET (ten sam co na Pages)
 # Opcjonalna twarda bramka przed run_analytics_query (domyślnie wyłączona — EDOG to monitoring/audyt).
 EDOG_GATE_ENABLED = "false"
