@@ -10,13 +10,18 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 // ============================================================================
 
 import { getR2AnalyticsSql, getQ9ToolUsageFallbackSql, isMissingIcebergNameColumnError, VALID_QUERY_IDS } from './analytics-queries';
-import { PIXEL_CREATED_AT_MS_SQL, pixelCreatedAtMs } from './d1-timestamps';
 import { buildFlowHealthReport } from './edog-flow-health-runner';
 import { buildEdogNarrative } from './edog-reason-narrative';
 import { runOperatorDailyReport } from './operator-daily-report';
 import { runWarehouseExportCatchUp } from './warehouse-export-catchup';
-import { mapPixelRowToPipelineRecord } from './pixel-pipeline-record';
-import { postPipelineIngestBatch } from './pipeline-ingest';
+import {
+  countPendingPixel,
+  exportMessages,
+  exportOrderAttributions,
+  exportPixelEvents,
+  loadExportWatermark,
+  type ExportWatermark,
+} from './warehouse-pixel-export';
 import { isR2SqlQueryConfigured, runR2SqlJob } from './r2-sql-client';
 import { epirDebugLog } from './epir-debug-log';
 
@@ -44,6 +49,8 @@ interface Env {
   };
   /** Opcjonalny webhook (np. Google Apps Script) — zapis raportu na Drive. */
   GWORKSPACE_REPORT_WEBHOOK_URL?: string;
+  /** `1` / `true` — id, customer_id, order_id w streamie + eksport order_attributions. */
+  PIPELINE_EXPORT_EXTENDED_FIELDS?: string;
 }
 
 const EDOG_KV_KEY = 'edog:latest';
@@ -109,10 +116,8 @@ async function runOperatorReportCron(env: Env): Promise<void> {
   );
 }
 
-const BATCH_SIZE = 100;
 /** Maks. wierszy na jedno wywołanie (cron / trigger) — unika przekroczenia limitu subrequestów (~25 POST ingest). */
-const MAX_PIXEL_ROWS_PER_RUN = 2500;
-const MAX_MESSAGES_ROWS_PER_RUN = 2500;
+const MAX_ROWS_PER_RUN = 2500;
 
 export type WarehouseExportSummary = {
   pixelExported: number;
@@ -126,110 +131,47 @@ export type WarehouseExportSummary = {
 
 
 // ============================================================================
-// Eksport pixel_events → Pipelines
-// ============================================================================
-
-async function exportPixelEvents(
-  env: Env,
-  lastExportAt: number,
-): Promise<{ exported: number; maxTimestamp: number; pipelineError?: string }> {
-  const pipelineUrl = (env.PIPELINE_PIXEL_INGEST_URL ?? '').trim();
-  if (!pipelineUrl) {
-    return { exported: 0, maxTimestamp: lastExportAt };
-  }
-  try {
-    const stmt = env.DB.prepare(
-      `SELECT * FROM pixel_events WHERE ${PIXEL_CREATED_AT_MS_SQL} > ?1 ORDER BY ${PIXEL_CREATED_AT_MS_SQL} ASC LIMIT ?2`,
-    ).bind(lastExportAt, MAX_PIXEL_ROWS_PER_RUN);
-    const result = await stmt.all<Record<string, unknown>>();
-    const rows = result.results ?? [];
-    if (rows.length === 0) return { exported: 0, maxTimestamp: lastExportAt };
-
-    let totalInserted = 0;
-    let maxTs = lastExportAt;
-
-    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-      const chunk = rows.slice(i, i + BATCH_SIZE);
-      const records = chunk.map((r) => mapPixelRowToPipelineRecord(r));
-
-      const pr = await postPipelineIngestBatch(pipelineUrl, undefined, records);
-      if (!pr.ok) {
-        console.error(`[WAREHOUSE_BATCH] pixel_events Pipeline chunk failed at offset ${i}:`, pr);
-        return {
-          exported: totalInserted,
-          maxTimestamp: maxTs,
-          pipelineError: `pixel ingest HTTP ${pr.status}: ${pr.body.slice(0, 120)}`,
-        };
-      }
-
-      totalInserted += chunk.length;
-      for (const r of chunk) {
-        const ts = pixelCreatedAtMs(r.created_at);
-        if (ts > maxTs) maxTs = ts;
-      }
-    }
-
-    return { exported: totalInserted, maxTimestamp: maxTs };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error('[WAREHOUSE_BATCH] pixel_events export failed:', msg);
-    return { exported: 0, maxTimestamp: lastExportAt, pipelineError: `pixel export: ${msg}` };
-  }
-}
-
-// ============================================================================
-// Eksport messages → Pipelines
-// ============================================================================
-
-async function exportMessages(env: Env, lastExportAt: number): Promise<{ exported: number; maxTimestamp: number }> {
-  const pipelineUrl = (env.PIPELINE_MESSAGES_INGEST_URL ?? '').trim();
-  if (!pipelineUrl) {
-    return { exported: 0, maxTimestamp: lastExportAt };
-  }
-  const stmt = env.DB_CHATBOT.prepare(
-    `SELECT * FROM messages WHERE timestamp > ?1 ORDER BY timestamp ASC LIMIT ?2`,
-  ).bind(lastExportAt, MAX_MESSAGES_ROWS_PER_RUN);
-  const result = await stmt.all<Record<string, unknown>>();
-  const rows = result.results ?? [];
-  if (rows.length === 0) return { exported: 0, maxTimestamp: lastExportAt };
-
-  let totalInserted = 0;
-  let maxTs = lastExportAt;
-
-  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-    const chunk = rows.slice(i, i + BATCH_SIZE);
-    const records = chunk.map((r) => ({
-      id: r.id,
-      session_id: r.session_id,
-      role: r.role,
-      content: r.content,
-      timestamp: r.timestamp,
-      tool_calls: r.tool_calls,
-      tool_call_id: r.tool_call_id,
-      name: r.name,
-      storefront_id: r.storefront_id ?? null,
-      channel: r.channel ?? null,
-    }));
-
-    const pr = await postPipelineIngestBatch(pipelineUrl, undefined, records);
-    if (!pr.ok) {
-      console.error(`[WAREHOUSE_BATCH] messages Pipeline chunk failed at offset ${i}:`, pr);
-      break;
-    }
-
-    totalInserted += chunk.length;
-    for (const r of chunk) {
-      const ts = (r.timestamp as number) ?? 0;
-      if (ts > maxTs) maxTs = ts;
-    }
-  }
-
-  return { exported: totalInserted, maxTimestamp: maxTs };
-}
-
-// ============================================================================
 // Scheduled handler
 // ============================================================================
+
+async function persistWatermark(env: Env, wm: ExportWatermark, now: number): Promise<void> {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO batch_exports (
+         id, last_pixel_export_at, last_pixel_export_id, last_messages_export_at,
+         last_orders_export_at, last_orders_export_id, updated_at
+       )
+       VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)
+       ON CONFLICT(id) DO UPDATE SET
+         last_pixel_export_at = excluded.last_pixel_export_at,
+         last_pixel_export_id = excluded.last_pixel_export_id,
+         last_messages_export_at = excluded.last_messages_export_at,
+         last_orders_export_at = excluded.last_orders_export_at,
+         last_orders_export_id = excluded.last_orders_export_id,
+         updated_at = excluded.updated_at`,
+    )
+      .bind(
+        wm.last_pixel_export_at,
+        wm.last_pixel_export_id,
+        wm.last_messages_export_at,
+        wm.last_orders_export_at,
+        wm.last_orders_export_id,
+        now,
+      )
+      .run();
+  } catch {
+    await env.DB.prepare(
+      `INSERT INTO batch_exports (id, last_pixel_export_at, last_messages_export_at, updated_at)
+       VALUES (1, ?1, ?2, ?3)
+       ON CONFLICT(id) DO UPDATE SET
+         last_pixel_export_at = excluded.last_pixel_export_at,
+         last_messages_export_at = excluded.last_messages_export_at,
+         updated_at = excluded.updated_at`,
+    )
+      .bind(wm.last_pixel_export_at, wm.last_messages_export_at, now)
+      .run();
+  }
+}
 
 async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null> {
   console.log('[WAREHOUSE_BATCH] Starting scheduled export');
@@ -244,28 +186,11 @@ async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null>
     return null;
   }
 
-  let lastPixel = 0;
-  let lastMessages = 0;
-  try {
-    const row = await env.DB.prepare(
-      'SELECT last_pixel_export_at, last_messages_export_at FROM batch_exports WHERE id = 1'
-    ).first<{ last_pixel_export_at: number; last_messages_export_at: number }>();
-    if (row) {
-      lastPixel = row.last_pixel_export_at ?? 0;
-      lastMessages = row.last_messages_export_at ?? 0;
-    }
-  } catch (e) {
-    console.warn('[WAREHOUSE_BATCH] batch_exports table missing or empty, using 0:', e);
-  }
+  const wm = await loadExportWatermark(env.DB);
 
   let pendingPixel = 0;
   try {
-    const pendingRow = await env.DB.prepare(
-      `SELECT COUNT(*) AS cnt FROM pixel_events WHERE ${PIXEL_CREATED_AT_MS_SQL} > ?1`,
-    )
-      .bind(lastPixel)
-      .first<{ cnt: number }>();
-    pendingPixel = pendingRow?.cnt ?? 0;
+    pendingPixel = await countPendingPixel(env.DB, wm);
   } catch {
     pendingPixel = -1;
   }
@@ -273,46 +198,45 @@ async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null>
     pixelPipeline,
     messagesPipeline,
     pendingPixel,
-    lastPixelWatermark: lastPixel,
-    lastMessagesWatermark: lastMessages,
+    watermark: wm,
   });
 
   const now = Date.now();
 
-  const pixelResult = await exportPixelEvents(env, lastPixel);
-  const pipelineError = pixelResult.pipelineError;
-  console.log(`[WAREHOUSE_BATCH] pixel_events: exported ${pixelResult.exported} rows`);
+  const pixelResult = await exportPixelEvents(env, wm, MAX_ROWS_PER_RUN);
+  const ordersResult = await exportOrderAttributions(env, wm, MAX_ROWS_PER_RUN);
+  const messagesResult = await exportMessages(env, wm, MAX_ROWS_PER_RUN);
 
-  const messagesResult = await exportMessages(env, lastMessages);
+  const pipelineError =
+    pixelResult.pipelineError ?? ordersResult.pipelineError ?? messagesResult.pipelineError;
+
+  console.log(`[WAREHOUSE_BATCH] pixel_events: exported ${pixelResult.exported} rows`);
+  console.log(`[WAREHOUSE_BATCH] order_attributions: exported ${ordersResult.exported} rows`);
   console.log(`[WAREHOUSE_BATCH] messages: exported ${messagesResult.exported} rows`);
 
-  const newPixelTs = pixelResult.exported > 0 ? pixelResult.maxTimestamp : lastPixel;
-  const newMessagesTs = messagesResult.exported > 0 ? messagesResult.maxTimestamp : lastMessages;
+  const nextWm: ExportWatermark = {
+    last_pixel_export_at:
+      pixelResult.exported > 0 ? pixelResult.cursor.last_pixel_export_at : wm.last_pixel_export_at,
+    last_pixel_export_id:
+      pixelResult.exported > 0 ? pixelResult.cursor.last_pixel_export_id : wm.last_pixel_export_id,
+    last_messages_export_at:
+      messagesResult.exported > 0
+        ? messagesResult.cursor.last_messages_export_at
+        : wm.last_messages_export_at,
+    last_orders_export_at:
+      ordersResult.exported > 0 ? ordersResult.cursor.last_orders_export_at : wm.last_orders_export_at,
+    last_orders_export_id:
+      ordersResult.exported > 0 ? ordersResult.cursor.last_orders_export_id : wm.last_orders_export_id,
+  };
 
-  try {
-    await env.DB.prepare(
-      `INSERT INTO batch_exports (id, last_pixel_export_at, last_messages_export_at, updated_at)
-       VALUES (1, ?1, ?2, ?3)
-       ON CONFLICT(id) DO UPDATE SET
-         last_pixel_export_at = excluded.last_pixel_export_at,
-         last_messages_export_at = excluded.last_messages_export_at,
-         updated_at = excluded.updated_at`
-    )
-      .bind(newPixelTs, newMessagesTs, now)
-      .run();
-    console.log('[WAREHOUSE_BATCH] batch_exports updated');
-  } catch (e) {
-    console.error('[WAREHOUSE_BATCH] Failed to update batch_exports:', e);
+  if (pipelineError) {
+    console.error('[WAREHOUSE_BATCH] pipeline error (partial watermark may still advance):', pipelineError);
   }
+  await persistWatermark(env, nextWm, now);
 
   let pendingAfter = 0;
   try {
-    const pendingRow = await env.DB.prepare(
-      `SELECT COUNT(*) AS cnt FROM pixel_events WHERE ${PIXEL_CREATED_AT_MS_SQL} > ?1`,
-    )
-      .bind(newPixelTs)
-      .first<{ cnt: number }>();
-    pendingAfter = pendingRow?.cnt ?? 0;
+    pendingAfter = await countPendingPixel(env.DB, nextWm);
   } catch {
     pendingAfter = -1;
   }
@@ -320,8 +244,8 @@ async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null>
   const summary: WarehouseExportSummary = {
     pixelExported: pixelResult.exported,
     messagesExported: messagesResult.exported,
-    last_pixel_export_at: newPixelTs,
-    last_messages_export_at: newMessagesTs,
+    last_pixel_export_at: nextWm.last_pixel_export_at,
+    last_messages_export_at: nextWm.last_messages_export_at,
     pending_pixel_after: pendingAfter,
     partial: pendingAfter > 0,
     ...(pipelineError ? { pipeline_error: pipelineError } : {}),
@@ -462,10 +386,8 @@ export default {
       let batchRow: { last_pixel_export_at: number; last_messages_export_at: number; updated_at: number } | null =
         null;
       try {
-        const pending = await env.DB.prepare(
-          `SELECT COUNT(*) AS cnt FROM pixel_events WHERE ${PIXEL_CREATED_AT_MS_SQL} > COALESCE((SELECT last_pixel_export_at FROM batch_exports WHERE id = 1), 0)`,
-        ).first<{ cnt: number }>();
-        pendingPixel = pending?.cnt ?? -1;
+        const wm = await loadExportWatermark(env.DB);
+        pendingPixel = await countPendingPixel(env.DB, wm);
         batchRow = await env.DB.prepare(
           'SELECT last_pixel_export_at, last_messages_export_at, updated_at FROM batch_exports WHERE id = 1',
         ).first();

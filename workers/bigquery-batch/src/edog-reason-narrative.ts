@@ -34,7 +34,14 @@ function estimateExportRuns(pending: number): number {
 function layerFromReasons(reasons: string[]): EdogLayerId[] {
   const layers = new Set<EdogLayerId>();
   for (const r of reasons) {
-    if (r.startsWith('pipeline_') || r === 'pipeline_pixel_not_configured') layers.add('pipeline');
+    if (
+      r.startsWith('pipeline_') ||
+      r === 'pipeline_pixel_not_configured' ||
+      r === 'pipeline_messages_not_configured'
+    )
+      layers.add('pipeline');
+    if (r.startsWith('pixel_null_session') || r.startsWith('chat_pixel_session')) layers.add('capture');
+    if (r.startsWith('d1_')) layers.add('d1');
     if (r.includes('pending_pixel') || r.includes('batch_exports') || r === 'batch_exports_or_pending_unavailable')
       layers.add('batch');
     if (r.startsWith('warehouse_')) layers.add('warehouse');
@@ -49,6 +56,18 @@ function decodeReason(reason: string): string {
   if (reason === 'ok') return 'Wszystkie progi EDOG w normie.';
   if (reason === 'pipeline_pixel_not_configured')
     return 'Brak sekretu PIPELINE_PIXEL_INGEST_URL na workerze epir-bigquery-batch — eksport D1→Iceberg nie startuje.';
+  if (reason === 'pipeline_messages_not_configured')
+    return 'Brak PIPELINE_MESSAGES_INGEST_URL — wiadomości czatu nie trafiają do Iceberg (EDOG: FAIL).';
+  if (reason === 'd1_pixel_count_unavailable')
+    return 'Nie udało się policzyć zdarzeń pixel w D1 (24 h).';
+  if (reason === 'd1_messages_count_unavailable')
+    return 'Nie udało się policzyć wiadomości czatu w D1 (24 h).';
+  if (reason.startsWith('pixel_null_session_rate:'))
+    return `Wysoki odsetek zdarzeń pixel bez session_id (24 h): ${reason.split(':')[1]} — sprawdź cookie _epir_session_id i Web Pixel.`;
+  if (reason === 'chat_pixel_session_mismatch')
+    return 'Sesje czatu (24 h) nie mają pasujących zdarzeń pixel z tym samym session_id — sprawdź cookie i atrybut koszyka _epir_session_id.';
+  if (reason.startsWith('chat_pixel_session_match_low:'))
+    return `Niski wskaźnik zgodności session_id czat↔pixel: ${reason.split(':')[1]}.`;
   if (reason === 'batch_exports_never_updated')
     return 'Tabela batch_exports nigdy nie została zaktualizowana (watermark = 0).';
   if (reason === 'batch_exports_or_pending_unavailable')

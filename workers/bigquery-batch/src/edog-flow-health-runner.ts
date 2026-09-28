@@ -9,6 +9,8 @@ export interface EdogFlowHealthEnv {
   PIPELINE_MESSAGES_INGEST_URL?: string;
 }
 import { PIXEL_CREATED_AT_MS_SQL } from './d1-timestamps';
+import { computeChatPixelSessionMatch, countPixelNullSessions24h } from './edog-chat-pixel-match';
+import { loadExportWatermark, countPendingPixel } from './warehouse-pixel-export';
 import {
   computeEdogVerdict,
   shouldProbeWarehouseQ1,
@@ -25,7 +27,6 @@ type Q1Probe = {
   rowCount: number | null;
   skipped: boolean;
   error?: string;
-  /** total_pixel_sessions from Q1 metrics row (null when skipped/error/missing). */
   totalPixelSessions?: number | null;
 };
 
@@ -64,10 +65,8 @@ async function loadExportStatus(env: EdogFlowHealthEnv): Promise<{
   let pendingPixel = -1;
   let batchRow: FlowHealthSnapshot['batch_exports'] = null;
   try {
-    const pending = await env.DB.prepare(
-      `SELECT COUNT(*) AS cnt FROM pixel_events WHERE ${PIXEL_CREATED_AT_MS_SQL} > COALESCE((SELECT last_pixel_export_at FROM batch_exports WHERE id = 1), 0)`,
-    ).first<{ cnt: number }>();
-    pendingPixel = pending?.cnt ?? -1;
+    const wm = await loadExportWatermark(env.DB);
+    pendingPixel = await countPendingPixel(env.DB, wm);
     batchRow = await env.DB.prepare(
       'SELECT last_pixel_export_at, last_messages_export_at, updated_at FROM batch_exports WHERE id = 1',
     ).first();
@@ -91,6 +90,8 @@ export async function buildFlowHealthReport(
   const status = await loadExportStatus(env);
   const d1_pixel_events_24h = await countPixel24h(env, sinceMs);
   const d1_messages_24h = await countMessages24h(env, sinceMs);
+  const nullStats = await countPixelNullSessions24h(env.DB, sinceMs);
+  const chatMatch = await computeChatPixelSessionMatch(env.DB, env.DB_CHATBOT, sinceMs);
 
   const inputBase = {
     pending_pixel_events: status.pending_pixel_events,
@@ -98,8 +99,12 @@ export async function buildFlowHealthReport(
     now_ms: nowMs,
     pipeline_pixel_configured: status.pipeline_pixel_configured,
     pipeline_messages_configured: status.pipeline_messages_configured,
-    d1_pixel_events_24h: d1_pixel_events_24h < 0 ? 0 : d1_pixel_events_24h,
-    d1_messages_24h: d1_messages_24h < 0 ? 0 : d1_messages_24h,
+    d1_pixel_events_24h,
+    d1_messages_24h,
+    pixel_null_session_24h: nullStats.nullCount < 0 ? 0 : nullStats.nullCount,
+    pixel_null_session_rate_24h: nullStats.rate,
+    chat_pixel_session_match_rate: chatMatch.chat_pixel_session_match_rate,
+    chat_sessions_24h: chatMatch.chat_sessions_24h,
     warehouse_q1_row_count: null as number | null,
     warehouse_q1_skipped: true,
     warehouse_q1_error: undefined as string | undefined,
@@ -127,8 +132,12 @@ export async function buildFlowHealthReport(
     batch_exports: status.batch_exports,
     pipeline_pixel_configured: status.pipeline_pixel_configured,
     pipeline_messages_configured: status.pipeline_messages_configured,
-    d1_pixel_events_24h: input.d1_pixel_events_24h,
-    d1_messages_24h: input.d1_messages_24h,
+    d1_pixel_events_24h,
+    d1_messages_24h,
+    pixel_null_session_24h: input.pixel_null_session_24h,
+    pixel_null_session_rate_24h: input.pixel_null_session_rate_24h,
+    chat_pixel_session_match_rate: input.chat_pixel_session_match_rate,
+    chat_sessions_24h: input.chat_sessions_24h,
     warehouse_q1_ok: !q1.skipped && !q1.error && (q1.rowCount ?? 0) > 0,
     warehouse_q1_row_count: q1.rowCount,
     warehouse_q1_skipped: q1.skipped,

@@ -3,7 +3,8 @@ import { mapPixelRowToPipelineRecord } from './pixel-pipeline-record';
 
 describe('mapPixelRowToPipelineRecord', () => {
   it('maps D1 row to Cloudflare stream schema (timestamp + page_url)', () => {
-    const rec = mapPixelRowToPipelineRecord({
+    const rec = mapPixelRowToPipelineRecord(
+      {
       session_id: 's1',
       event_type: 'page_viewed',
       created_at: 1_700_000_000_000,
@@ -16,7 +17,9 @@ describe('mapPixelRowToPipelineRecord', () => {
       product_id: 'gid://shopify/Product/1',
       product_title: 'Ring',
       product_price: 1200,
-    });
+      },
+      false,
+    );
     expect(rec.session_id).toBe('s1');
     expect(rec.event_type).toBe('page_viewed');
     expect(rec.timestamp).toBe(1_700_000_000_000);

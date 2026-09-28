@@ -127,6 +127,27 @@ describe('Analytics Worker - /pixel endpoint', () => {
         expect(event?.page_url).toContain('products/ring');
     });
 
+    it('stores NULL session_id when missing (no random fallback)', async () => {
+        const response = await SELF.fetch('https://example.com/pixel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'page_viewed',
+                data: {
+                    customerId: 'anon-customer',
+                    sessionId: '',
+                    url: 'https://shop.example.com/',
+                },
+            }),
+        });
+
+        expect(response.status).toBe(200);
+        const event = await env.DB.prepare('SELECT session_id FROM pixel_events LIMIT 1').first<{
+            session_id: string | null;
+        }>();
+        expect(event?.session_id).toBeNull();
+    });
+
     it('should accept valid product_viewed event', async () => {
         const response = await SELF.fetch('https://example.com/pixel', {
             method: 'POST',

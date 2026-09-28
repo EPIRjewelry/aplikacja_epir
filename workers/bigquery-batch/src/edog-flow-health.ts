@@ -16,11 +16,14 @@ export type FlowHealthSnapshot = {
   pipeline_messages_configured: boolean;
   d1_pixel_events_24h: number;
   d1_messages_24h: number;
+  pixel_null_session_24h: number;
+  pixel_null_session_rate_24h: number | null;
+  chat_pixel_session_match_rate: number | null;
+  chat_sessions_24h: number;
   warehouse_q1_ok: boolean;
   warehouse_q1_row_count: number | null;
   warehouse_q1_skipped: boolean;
   warehouse_q1_error?: string;
-  /** approx_distinct(session_id) z Q1 na tabeli pixel — 0 przy żywym D1 = Iceberg pixel pusty. */
   warehouse_pixel_sessions: number | null;
   checked_at: string;
 };
@@ -33,6 +36,10 @@ export type FlowHealthInput = {
   pipeline_messages_configured: boolean;
   d1_pixel_events_24h: number;
   d1_messages_24h: number;
+  pixel_null_session_24h: number;
+  pixel_null_session_rate_24h: number | null;
+  chat_pixel_session_match_rate: number | null;
+  chat_sessions_24h: number;
   warehouse_q1_row_count: number | null;
   warehouse_q1_skipped: boolean;
   warehouse_q1_error?: string;
@@ -44,6 +51,9 @@ const PENDING_FAIL = 10_000;
 const PENDING_DEGRADED = 1_000;
 const BATCH_STALE_FAIL_H = 48;
 const BATCH_STALE_DEGRADED_H = 26;
+const NULL_SESSION_DEGRADED_RATE = 0.05;
+const CHAT_MATCH_DEGRADED_RATE = 0.5;
+const CHAT_MATCH_MIN_SESSIONS = 5;
 
 export function computeEdogVerdict(input: FlowHealthInput): { verdict: EdogVerdict; reasons: string[] } {
   const reasons: string[] = [];
@@ -52,6 +62,11 @@ export function computeEdogVerdict(input: FlowHealthInput): { verdict: EdogVerdi
 
   if (!input.pipeline_pixel_configured) {
     reasons.push('pipeline_pixel_not_configured');
+    fail = true;
+  }
+
+  if (!input.pipeline_messages_configured) {
+    reasons.push('pipeline_messages_not_configured');
     fail = true;
   }
 
@@ -64,6 +79,16 @@ export function computeEdogVerdict(input: FlowHealthInput): { verdict: EdogVerdi
   } else if (input.pending_pixel_events >= PENDING_DEGRADED) {
     reasons.push(`pending_pixel_events_elevated:${input.pending_pixel_events}`);
     degraded = true;
+  }
+
+  if (input.d1_pixel_events_24h < 0) {
+    reasons.push('d1_pixel_count_unavailable');
+    fail = true;
+  }
+
+  if (input.d1_messages_24h < 0) {
+    reasons.push('d1_messages_count_unavailable');
+    fail = true;
   }
 
   const batchAgeH =
@@ -85,6 +110,27 @@ export function computeEdogVerdict(input: FlowHealthInput): { verdict: EdogVerdi
   if (input.d1_pixel_events_24h === 0 && input.pending_pixel_events === 0 && !fail) {
     reasons.push('no_pixel_events_24h');
     degraded = true;
+  }
+
+  if (
+    !fail &&
+    input.d1_pixel_events_24h > 0 &&
+    input.pixel_null_session_rate_24h != null &&
+    input.pixel_null_session_rate_24h > NULL_SESSION_DEGRADED_RATE
+  ) {
+    reasons.push(`pixel_null_session_rate:${(input.pixel_null_session_rate_24h * 100).toFixed(1)}%`);
+    degraded = true;
+  }
+
+  if (!fail && input.chat_sessions_24h > 0) {
+    const rate = input.chat_pixel_session_match_rate;
+    if (rate === null || rate === 0) {
+      reasons.push('chat_pixel_session_mismatch');
+      fail = true;
+    } else if (input.chat_sessions_24h >= CHAT_MATCH_MIN_SESSIONS && rate < CHAT_MATCH_DEGRADED_RATE) {
+      reasons.push(`chat_pixel_session_match_low:${(rate * 100).toFixed(0)}%`);
+      degraded = true;
+    }
   }
 
   if (!fail && !input.warehouse_q1_skipped) {

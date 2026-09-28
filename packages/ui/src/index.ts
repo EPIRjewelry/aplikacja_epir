@@ -57,6 +57,10 @@ export {
   type CommerceAction,
 } from './ChatWidget';
 export {
+  readEpirSessionIdFromDocumentCookie,
+  resolveEffectiveChatSessionId,
+} from './epir-session-browser';
+export {
   type ConsentPayload,
   buildConsentPayload,
   getStoredConsent,

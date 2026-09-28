@@ -28,7 +28,7 @@ export interface WarehouseTableEnv {
 }
 
 /** Zakup: Shopify często emituje checkout_completed; pixel EPIR też purchase_completed. */
-const PURCHASE_EVENT_TYPES = `'purchase_completed', 'checkout_completed'`;
+const PURCHASE_EVENT_TYPES = `'purchase_completed', 'checkout_completed', 'order_attributed'`;
 
 function fqTables(env: WarehouseTableEnv): { pixel: string; messages: string } {
   const ns = assertSqlIdentifier((env.WAREHOUSE_SQL_NAMESPACE ?? 'analytics').trim(), 'namespace');

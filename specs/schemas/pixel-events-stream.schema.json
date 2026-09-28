@@ -1,12 +1,21 @@
 {
   "fields": [
-    { "name": "event_type", "type": "string", "required": true },
+    { "name": "id", "type": "string", "required": true },
     { "name": "session_id", "type": "string", "required": true },
+    { "name": "event_type", "type": "string", "required": true },
+    { "name": "timestamp", "type": "int64", "required": true },
+    { "name": "page_url", "type": "string", "required": true },
     { "name": "customer_id", "type": "string", "required": false },
-    { "name": "storefront_id", "type": "string", "required": false },
-    { "name": "channel", "type": "string", "required": false },
-    { "name": "url", "type": "string", "required": true },
-    { "name": "payload", "type": "string", "required": true },
-    { "name": "created_at", "type": "timestamp", "required": true }
+    { "name": "order_id", "type": "string", "required": false },
+    { "name": "referrer", "type": "string", "required": false },
+    { "name": "user_agent", "type": "string", "required": false },
+    { "name": "utm_source", "type": "string", "required": false },
+    { "name": "utm_medium", "type": "string", "required": false },
+    { "name": "utm_campaign", "type": "string", "required": false },
+    { "name": "product_id", "type": "string", "required": false },
+    { "name": "product_name", "type": "string", "required": false },
+    { "name": "price", "type": "float64", "required": false },
+    { "name": "currency", "type": "string", "required": false },
+    { "name": "shop_domain", "type": "string", "required": false }
   ]
 }

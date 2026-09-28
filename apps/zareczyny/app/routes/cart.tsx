@@ -15,6 +15,7 @@ import {CartLineItems, CartSummary, CartActions, queryFullCartAfterMutation} fro
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 import {
   ensureStorefrontCartAttribute,
+  readEpirSessionIdFromCookieHeader,
   withStorefrontCartInput,
 } from '@epir/utils';
 
@@ -76,6 +77,8 @@ export async function action({request, context}: LoaderFunctionArgs) {
   let status = 200;
   let result: CartMutationResult;
 
+  const epirSessionId = readEpirSessionIdFromCookieHeader(request.headers.get('Cookie'));
+
   const cartAction = formData.get('cartAction');
   const countryCode = formData.get('countryCode')
     ? formData.get('countryCode')
@@ -102,10 +105,11 @@ export async function action({request, context}: LoaderFunctionArgs) {
             buyerIdentity: {countryCode: buyerCountryCode},
           },
           'zareczyny',
+          epirSessionId,
         );
         result = await cartCreate(input, storefront);
       } else {
-        await ensureStorefrontCartAttribute(storefront, cartId, 'zareczyny');
+        await ensureStorefrontCartAttribute(storefront, cartId, 'zareczyny', epirSessionId);
         const addResult = await cartAdd(cartId, lines, storefront);
         result = addResult;
       }
@@ -121,7 +125,7 @@ export async function action({request, context}: LoaderFunctionArgs) {
         );
       }
       cartId = result.cart.id;
-      await ensureStorefrontCartAttribute(storefront, cartId, 'zareczyny');
+      await ensureStorefrontCartAttribute(storefront, cartId, 'zareczyny', epirSessionId);
 
       // Zapisz cartId w sesji OD RAZU dla obu akcji (kazka tak robi)
       session.set('cartId', cartId);

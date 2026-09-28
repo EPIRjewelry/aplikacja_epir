@@ -110,22 +110,24 @@ Pozostałe kolumny (heatmap, scroll, cart, order, …) istnieją w D1 i trafiaj�
 
 ## 2. HTTP ingest — stream Pipelines (batch export)
 
-**Kod:** [`workers/bigquery-batch/src/index.ts`](../workers/bigquery-batch/src/index.ts) — `exportPixelEvents`, `exportMessages`.
+**Kod:** [`workers/bigquery-batch/src/warehouse-pixel-export.ts`](../workers/bigquery-batch/src/warehouse-pixel-export.ts) — `exportPixelEvents`, `exportOrderAttributions`, `exportMessages`.
+
+**Flaga:** `PIPELINE_EXPORT_EXTENDED_FIELDS` (`1` / `true`) — włącza `id`, `customer_id`, `order_id` oraz eksport `order_attributions` jako `event_type = order_attributed` (domyślnie wyłączone w deploy).
 
 ### Pixel stream (`epir_pixel_events_stream`)
 
-Schemat: [`pixel-events-stream.schema.json`](../specs/schemas/pixel-events-stream.schema.json).
+Schemat: [`pixel-events-stream.schema.json`](../specs/schemas/pixel-events-stream.schema.json). Mapowanie: [`pixel-pipeline-record.ts`](../workers/bigquery-batch/src/pixel-pipeline-record.ts), zamówienia: [`order-pipeline-record.ts`](../workers/bigquery-batch/src/order-pipeline-record.ts).
 
 | Pole ingest JSON | Źródło D1 | Typ stream |
 |------------------|-----------|------------|
-| `event_type` | `event_type` | string |
-| `session_id` | `session_id` | string |
-| `customer_id` | `customer_id` | string |
-| `storefront_id` | `storefront_id` | string |
-| `channel` | `channel` | string |
-| `url` | **`page_url`** | string |
-| `payload` | **cały wiersz** `JSON.stringify(row)` | string |
-| `created_at` | `created_at` | timestamp |
+| `id` | `pixel_events.id` lub `order:` + `shopify_order_gid` | string |
+| `session_id` | `session_id` / `epir_session_id` | string |
+| `event_type` | `event_type` lub `order_attributed` | string |
+| `timestamp` | `created_at` (ms) / `received_at` zamówienia | int64 |
+| `page_url` | `page_url` (placeholder dla order) | string |
+| `customer_id` | `customer_id` (extended) | string |
+| `order_id` | `order_id` / GID zamówienia (extended) | string |
+| `referrer`, `utm_*`, `product_id`, `product_name`, `price`, … | jak w mapperze | opcjonalne |
 
 ### Messages stream (`epir_messages_stream`)
 
@@ -222,7 +224,7 @@ ID: [`analytics-query-ids.ts`](../workers/bigquery-batch/src/analytics-query-ids
 | **Q4_STOREFRONT_SEGMENTATION** | tak | `page_url`, `event_type`, `created_at` | — | — |
 | **Q5_TOP_PRODUCTS** | tak | `page_url`, `event_type`, `created_at` | — | — |
 | **Q6_CHAT_ENGAGEMENT** | — | — | tak | `session_id`, `role`, `timestamp` |
-| **Q7_PRODUCT_TO_PURCHASE** | tak | `session_id`, `event_type` | — | — |
+| **Q7_PRODUCT_TO_PURCHASE** | tak | `session_id`, `event_type` (`purchase_completed`, `checkout_completed`, `order_attributed`) | — | — |
 | **Q8_DAILY_EVENTS** | tak | `created_at`, `event_type` | — | — |
 | **Q9_TOOL_USAGE** | — | — | tak | `name`, `role`, `timestamp` |
 | **Q10_SESSION_DURATION** | tak | `session_id`, `created_at` | — | — |

@@ -12,6 +12,10 @@ function base(overrides: Partial<Parameters<typeof computeEdogVerdict>[0]> = {})
     pipeline_messages_configured: true,
     d1_pixel_events_24h: 100,
     d1_messages_24h: 50,
+    pixel_null_session_24h: 0,
+    pixel_null_session_rate_24h: 0,
+    chat_pixel_session_match_rate: 1,
+    chat_sessions_24h: 0,
     warehouse_q1_row_count: 3,
     warehouse_q1_skipped: false,
     warehouse_pixel_sessions: 50,
@@ -29,6 +33,24 @@ describe('computeEdogVerdict', () => {
     const r = computeEdogVerdict(base({ pipeline_pixel_configured: false }));
     expect(r.verdict).toBe('FAIL');
     expect(r.reasons).toContain('pipeline_pixel_not_configured');
+  });
+
+  it('returns FAIL when messages pipeline not configured', () => {
+    const r = computeEdogVerdict(base({ pipeline_messages_configured: false }));
+    expect(r.verdict).toBe('FAIL');
+    expect(r.reasons).toContain('pipeline_messages_not_configured');
+  });
+
+  it('returns DEGRADED when null session rate above 5%', () => {
+    const r = computeEdogVerdict(
+      base({
+        d1_pixel_events_24h: 100,
+        pixel_null_session_24h: 10,
+        pixel_null_session_rate_24h: 0.1,
+      }),
+    );
+    expect(r.verdict).toBe('DEGRADED');
+    expect(r.reasons.some((x) => x.startsWith('pixel_null_session_rate'))).toBe(true);
   });
 
   it('returns FAIL when pending critical', () => {

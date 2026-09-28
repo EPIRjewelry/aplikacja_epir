@@ -15,6 +15,7 @@ import {CartLineItems, CartSummary, CartActions, queryFullCartAfterMutation} fro
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
 import {
   ensureStorefrontCartAttribute,
+  readEpirSessionIdFromCookieHeader,
   withStorefrontCartInput,
 } from '@epir/utils';
 
@@ -75,6 +76,8 @@ export async function action({request, context}: LoaderFunctionArgs) {
   let status = 200;
   let result;
 
+  const epirSessionId = readEpirSessionIdFromCookieHeader(request.headers.get('Cookie'));
+
   const cartAction = formData.get('cartAction');
   const countryCode = formData.get('countryCode')
     ? formData.get('countryCode')
@@ -102,16 +105,17 @@ export async function action({request, context}: LoaderFunctionArgs) {
               buyerIdentity: {countryCode: buyerCountryCode},
             },
             'kazka',
+            epirSessionId,
           ),
           storefront,
         );
       } else {
-        await ensureStorefrontCartAttribute(storefront, cartId, 'kazka');
+        await ensureStorefrontCartAttribute(storefront, cartId, 'kazka', epirSessionId);
         result = await cartAdd(cartId, lines, storefront);
       }
 
       cartId = result.cart.id;
-      await ensureStorefrontCartAttribute(storefront, cartId, 'kazka');
+      await ensureStorefrontCartAttribute(storefront, cartId, 'kazka', epirSessionId);
       session.set('cartId', cartId);
       headers.set('Set-Cookie', await session.commit());
       if (cartAction === 'BUY_NOW') {

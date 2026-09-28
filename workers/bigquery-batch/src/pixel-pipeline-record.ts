@@ -16,11 +16,18 @@ export type PixelPipelineStreamRecord = {
   price?: number | null;
   currency?: string | null;
   shop_domain?: string | null;
+  /** Tylko przy PIPELINE_EXPORT_EXTENDED_FIELDS. */
+  id?: string;
+  customer_id?: string | null;
+  order_id?: string | null;
 };
 
 const UNKNOWN_PAGE = 'https://epir.local/unknown';
 
-export function mapPixelRowToPipelineRecord(row: Record<string, unknown>): PixelPipelineStreamRecord {
+export function mapPixelRowToPipelineRecord(
+  row: Record<string, unknown>,
+  extendedFields = false,
+): PixelPipelineStreamRecord {
   const pageUrl = String(row.page_url ?? '').trim();
   const tsMs = pixelCreatedAtMs(row.created_at);
   const priceRaw = row.product_price;
@@ -31,7 +38,7 @@ export function mapPixelRowToPipelineRecord(row: Record<string, unknown>): Pixel
         ? Number(priceRaw)
         : null;
 
-  return {
+  const rec: PixelPipelineStreamRecord = {
     session_id: String(row.session_id ?? ''),
     event_type: String(row.event_type ?? ''),
     timestamp: tsMs > 0 ? tsMs : Date.now(),
@@ -47,4 +54,14 @@ export function mapPixelRowToPipelineRecord(row: Record<string, unknown>): Pixel
     currency: null,
     shop_domain: null,
   };
+
+  if (extendedFields) {
+    rec.id = String(row.id ?? '');
+    const cid = row.customer_id;
+    rec.customer_id =
+      cid != null && String(cid).trim() && String(cid) !== 'anonymous' ? String(cid) : null;
+    rec.order_id = row.order_id != null && String(row.order_id).trim() ? String(row.order_id) : null;
+  }
+
+  return rec;
 }
