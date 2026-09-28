@@ -35,6 +35,8 @@
     endunless
   endif
 
+  assign gallery_variant_id = product.selected_or_first_available_variant.id
+
   assign epir_pdp_is_gold = false
   if template.suffix == 'pierscionek-zloto-turmali'
     assign epir_pdp_is_gold = true
@@ -45,7 +47,7 @@
   endif
 %}
 {% comment %} Fallback for case not show block price, buy buttons {% endcomment %}
-<input type="hidden" name="id" value="{{ variant_id }}" data-selected-variant="{{ selected_variant_id }}" data-epir-variant-id disabled>
+<input type="hidden" name="id" value="{{ gallery_variant_id }}" data-selected-variant="{{ selected_variant_id }}" data-epir-variant-id disabled>
 {% comment %} End comment {% endcomment %}
 {%- for block in section.blocks -%}
   <div
