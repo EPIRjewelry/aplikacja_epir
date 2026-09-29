@@ -181,6 +181,7 @@ Sygnał D1 niesie `product_id` / `product_handle` / `storefront_id`. Sygnał hur
 7. **Q8 w raporcie** odpada przy werdykcie innym niż PASS. Raport i tak się zapisuje — wygląda na kompletny, sekcja hurtowni jest pusta z jednego zdania.
 8. **Steward TIME_FILTER** porównuje INTEGER ms albo TEXT z `datetime(cutoff)`. ISO z `toISOString()` (z `T` i `Z`) nie jest tym samym co `datetime()`. Część wierszy może nie wejść w sygnał, bez wyjątku.
 9. **Leady** (`/admin/api/leads`) i **pamięć klienta** nie są w tym łańcuchu.
+10. **Historyczny backlog pixel** — gdy `pending_pixel_events` ≥ 10 000 i kursor `last_pixel_export_at` jest wielomiesięcznie w tyle, sam catch-up (12×2500/wywołanie) nie zejdzie z progu FAIL w jednej nocy. Opcja operacyjna na workerze `epir-bigquery-batch`: `WAREHOUSE_PIXEL_HISTORY_TRIAGE_ENABLED=true` + `WAREHOUSE_PIXEL_TRIAGE_KEEP_DAYS=7` — po catch-up **forward skip** watermarka na granicę (now − 7 dni) **bez** ingestu pominiętych wierszy (audit: log `watermark_history_triage`). D1 zostaje; w Icebergu jest świadoma luka; nowsze dni idą normalnym eksportem. **Nie** resetuj watermarka przy `read_error` (`export_aborted_watermark_unread`). Ręczny `UPDATE batch_exports` kursora na `0` odtwarza cały backlog — unikać po wdrożeniu #106.
 
 ---
 
@@ -256,6 +257,7 @@ Q1 liczy sesje czatu z `role='user'`, sesje zakupu po `event_type`, join po `ses
 | SQL Q1–Q10 (dialekt, brak `DISTINCT`) | `analytics-queries.test.ts` |
 | Parser odpowiedzi R2 SQL | `r2-sql-client.test.ts` |
 | Pętla catch-up (mock) | `warehouse-export-catchup.test.ts` |
+| Triage backlogu pixel / forward watermark | `warehouse-watermark-triage.test.ts` |
 | Markdown raportu, webhook, maska PII, digest Gemmy (render) | `operator-daily-report.test.ts`, `operator-daily-report.webhook.test.ts`, `operator-gemma-digest.test.ts`, `report-pii-mask.test.ts` |
 | Odczyt listy raportów w Studio (mock D1) | `workers/chat/test/operator_studio_ingress.test.ts` |
 | Reguły insightów stewarda (czyste funkcje) | `workers/store-steward/src/index.test.ts` |

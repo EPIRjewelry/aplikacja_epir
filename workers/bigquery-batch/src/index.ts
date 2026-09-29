@@ -13,6 +13,7 @@ import { getR2AnalyticsSql, getQ9ToolUsageFallbackSql, isMissingIcebergNameColum
 import { buildFlowHealthReport } from './edog-flow-health-runner';
 import { buildEdogNarrative } from './edog-reason-narrative';
 import { runOperatorDailyReport } from './operator-daily-report';
+import { resolveCatchupMaxRuns } from './warehouse-batch-env';
 import { runWarehouseExportCatchUp } from './warehouse-export-catchup';
 import {
   countPendingPixel,
@@ -21,8 +22,14 @@ import {
   exportPixelEvents,
   loadExportWatermark,
   loadExportWatermarkResult,
+  persistExportWatermark,
   type ExportWatermark,
 } from './warehouse-pixel-export';
+import {
+  applyHistoricalBacklogTriage,
+  shouldAttemptHistoricalTriage,
+  type HistoricalTriageResult,
+} from './warehouse-watermark-triage';
 import { isR2SqlQueryConfigured, runR2SqlJob } from './r2-sql-client';
 import { epirDebugLog } from './epir-debug-log';
 
@@ -52,6 +59,12 @@ interface Env {
   GWORKSPACE_REPORT_WEBHOOK_URL?: string;
   /** `1` / `true` — id, customer_id, order_id w streamie + eksport order_attributions. */
   PIPELINE_EXPORT_EXTENDED_FIELDS?: string;
+  /** `1` / `true` — forward skip backlogu pixel starszego niż TRIAGE_KEEP_DAYS (bez ingestu). */
+  WAREHOUSE_PIXEL_HISTORY_TRIAGE_ENABLED?: string;
+  /** Domyślnie 7 — horyzont D1 zostawiony za watermarkem do normalnego eksportu. */
+  WAREHOUSE_PIXEL_TRIAGE_KEEP_DAYS?: string;
+  /** Domyślnie 12 — max przebiegów catch-up na wywołanie (cron / trigger). */
+  WAREHOUSE_CATCHUP_MAX_RUNS?: string;
 }
 
 const EDOG_KV_KEY = 'edog:latest';
@@ -101,13 +114,17 @@ async function runEdogHealthMonitor(env: Env): Promise<void> {
 }
 
 async function runOperatorReportCron(env: Env): Promise<void> {
-  const catchUp = await runWarehouseExportCatchUp(() => handleScheduled(env));
+  const { catchUp, triage } = await runWarehouseCatchUpWithOptionalTriage(env);
+  const triageNote =
+    triage?.applied
+      ? ` Triage historii: pending ${triage.pending_before}→${triage.pending_after} (skip ~${triage.skipped_estimate}).`
+      : '';
   const exportCatchUpNote =
     catchUp.runs > 0
-      ? `Automatyczny catch-up przed raportem: ${catchUp.runs} przebieg(ów), pending_pixel po eksporcie: ${catchUp.lastPending}${catchUp.pipelineError ? `; pipeline: ${catchUp.pipelineError}` : ''}.`
-      : undefined;
+      ? `Automatyczny catch-up przed raportem: ${catchUp.runs} przebieg(ów), pending_pixel po eksporcie: ${catchUp.lastPending}${catchUp.pipelineError ? `; pipeline: ${catchUp.pipelineError}` : ''}.${triageNote}`
+      : triageNote.trim() || undefined;
   if (catchUp.runs > 0) {
-    console.log('[operator-report] warehouse catch-up', catchUp);
+    console.log('[operator-report] warehouse catch-up', catchUp, triage ?? null);
   }
   await runOperatorDailyReport(
     env,
@@ -136,42 +153,38 @@ export type WarehouseExportSummary = {
 // ============================================================================
 
 async function persistWatermark(env: Env, wm: ExportWatermark, now: number): Promise<void> {
-  try {
-    await env.DB.prepare(
-      `INSERT INTO batch_exports (
-         id, last_pixel_export_at, last_pixel_export_id, last_messages_export_at,
-         last_orders_export_at, last_orders_export_id, updated_at
-       )
-       VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)
-       ON CONFLICT(id) DO UPDATE SET
-         last_pixel_export_at = excluded.last_pixel_export_at,
-         last_pixel_export_id = excluded.last_pixel_export_id,
-         last_messages_export_at = excluded.last_messages_export_at,
-         last_orders_export_at = excluded.last_orders_export_at,
-         last_orders_export_id = excluded.last_orders_export_id,
-         updated_at = excluded.updated_at`,
-    )
-      .bind(
-        wm.last_pixel_export_at,
-        wm.last_pixel_export_id,
-        wm.last_messages_export_at,
-        wm.last_orders_export_at,
-        wm.last_orders_export_id,
-        now,
-      )
-      .run();
-  } catch {
-    await env.DB.prepare(
-      `INSERT INTO batch_exports (id, last_pixel_export_at, last_messages_export_at, updated_at)
-       VALUES (1, ?1, ?2, ?3)
-       ON CONFLICT(id) DO UPDATE SET
-         last_pixel_export_at = excluded.last_pixel_export_at,
-         last_messages_export_at = excluded.last_messages_export_at,
-         updated_at = excluded.updated_at`,
-    )
-      .bind(wm.last_pixel_export_at, wm.last_messages_export_at, now)
-      .run();
+  await persistExportWatermark(env.DB, wm, now);
+}
+
+type CatchUpWithTriage = {
+  catchUp: Awaited<ReturnType<typeof runWarehouseExportCatchUp>>;
+  triage: HistoricalTriageResult | null;
+  postTriageExport: WarehouseExportSummary | null;
+};
+
+async function runWarehouseCatchUpWithOptionalTriage(env: Env): Promise<CatchUpWithTriage> {
+  const maxRuns = resolveCatchupMaxRuns(env);
+  const catchUp = await runWarehouseExportCatchUp(() => handleScheduled(env), {
+    maxRuns,
+    targetPending: 1000,
+  });
+
+  let triage: HistoricalTriageResult | null = null;
+  let postTriageExport: WarehouseExportSummary | null = null;
+
+  const blockage = catchUp.blockageDiag?.blockage;
+  if (
+    shouldAttemptHistoricalTriage(env, catchUp.lastPending, blockage) &&
+    catchUp.pipelineError !== 'export_aborted_watermark_unread'
+  ) {
+    const wmLoad = await loadExportWatermarkResult(env.DB);
+    triage = await applyHistoricalBacklogTriage(env, wmLoad, catchUp.lastPending, { maxRuns });
+    if (triage.applied) {
+      postTriageExport = await handleScheduled(env);
+    }
   }
+
+  return { catchUp, triage, postTriageExport };
 }
 
 async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null> {
@@ -363,27 +376,33 @@ export class BigQueryBatchS2SRpc extends WorkerEntrypoint<Env, BigQueryS2SProps>
     ok: true;
     summary: WarehouseExportSummary | null;
     catchUp: { runs: number; lastPending: number; pipelineError?: string };
+    triage?: HistoricalTriageResult;
+    postTriageExport?: WarehouseExportSummary | null;
   }> {
     requireBigQueryS2SScopes(this.ctx.props, 'bigquery.analytics_query');
-    epirDebugLog('index.ts:triggerWarehouseExport', 'catchup_start', { maxRuns: 12, targetPending: 1000 }, 'H-A');
-    const catchUp = await runWarehouseExportCatchUp(() => handleScheduled(this.env), {
-      maxRuns: 12,
-      targetPending: 1000,
-    });
+    const maxRuns = resolveCatchupMaxRuns(this.env);
+    epirDebugLog('index.ts:triggerWarehouseExport', 'catchup_start', { maxRuns, targetPending: 1000 }, 'H-A');
+    const { catchUp, triage, postTriageExport } = await runWarehouseCatchUpWithOptionalTriage(this.env);
     epirDebugLog('index.ts:triggerWarehouseExport', 'catchup_done', {
       runs: catchUp.runs,
       lastPending: catchUp.lastPending,
       pipelineError: catchUp.pipelineError ?? null,
+      triageApplied: triage?.applied ?? false,
     }, 'H-C');
-    console.log('[WAREHOUSE_BATCH] triggerWarehouseExport catch-up', catchUp);
+    console.log('[WAREHOUSE_BATCH] triggerWarehouseExport catch-up', catchUp, triage ?? null);
+    const summary =
+      (postTriageExport as WarehouseExportSummary | null) ??
+      (catchUp.lastSummary as WarehouseExportSummary | null);
     return {
       ok: true,
-      summary: (catchUp.lastSummary as WarehouseExportSummary | null) ?? null,
+      summary,
       catchUp: {
         runs: catchUp.runs,
-        lastPending: catchUp.lastPending,
+        lastPending: triage?.applied ? (triage.pending_after ?? catchUp.lastPending) : catchUp.lastPending,
         ...(catchUp.pipelineError ? { pipelineError: catchUp.pipelineError } : {}),
       },
+      ...(triage ? { triage } : {}),
+      ...(postTriageExport ? { postTriageExport } : {}),
     };
   }
 
@@ -450,38 +469,41 @@ export default {
     }
     if (cron === CRON_EXPORT) {
       ctx.waitUntil(
-        runWarehouseExportCatchUp(() => handleScheduled(env), { maxRuns: 12, targetPending: 1000 }).then(
-          (catchUp) => {
-            if (catchUp.runs > 0) {
-              console.log('[WAREHOUSE_BATCH] Nightly catch-up', {
-                runs: catchUp.runs,
-                lastPending: catchUp.lastPending,
-                pipelineError: catchUp.pipelineError,
-                blockage: catchUp.blockageDiag?.blockage,
-                catchupCapacity: catchUp.blockageDiag?.catchupCapacity,
-                last_pixel_export_at: catchUp.lastSummary?.last_pixel_export_at,
-              });
-            }
-            if (catchUp.pipelineError) {
-              console.warn('[WAREHOUSE_BATCH] Nightly catch-up pipeline error:', catchUp.pipelineError);
-            }
-            if (catchUp.lastPending > 1000) {
-              const d = catchUp.blockageDiag;
-              console.warn(
-                '[WAREHOUSE_BATCH] Nightly catch-up partial; pending pixel:',
-                catchUp.lastPending,
-                d
-                  ? {
-                      blockage: d.blockage,
-                      catchupCapacity: d.catchupCapacity,
-                      last_pixel_export_at: d.last_pixel_export_at,
-                      simulatedPendingAfter: d.simulatedPendingAfter,
-                    }
-                  : {},
-              );
-            }
-          },
-        ),
+        runWarehouseCatchUpWithOptionalTriage(env).then(({ catchUp, triage, postTriageExport }) => {
+          if (catchUp.runs > 0) {
+            console.log('[WAREHOUSE_BATCH] Nightly catch-up', {
+              runs: catchUp.runs,
+              lastPending: catchUp.lastPending,
+              pipelineError: catchUp.pipelineError,
+              blockage: catchUp.blockageDiag?.blockage,
+              catchupCapacity: catchUp.blockageDiag?.catchupCapacity,
+              last_pixel_export_at: catchUp.lastSummary?.last_pixel_export_at,
+              triage,
+              postTriagePending: postTriageExport?.pending_pixel_after,
+            });
+          }
+          if (catchUp.pipelineError) {
+            console.warn('[WAREHOUSE_BATCH] Nightly catch-up pipeline error:', catchUp.pipelineError);
+          }
+          const pendingReport = triage?.applied
+            ? (triage.pending_after ?? catchUp.lastPending)
+            : catchUp.lastPending;
+          if (pendingReport > 1000) {
+            const d = catchUp.blockageDiag;
+            console.warn(
+              '[WAREHOUSE_BATCH] Nightly catch-up partial; pending pixel:',
+              pendingReport,
+              d
+                ? {
+                    blockage: d.blockage,
+                    catchupCapacity: d.catchupCapacity,
+                    last_pixel_export_at: d.last_pixel_export_at,
+                    simulatedPendingAfter: d.simulatedPendingAfter,
+                  }
+                : {},
+            );
+          }
+        }),
       );
       return;
     }
