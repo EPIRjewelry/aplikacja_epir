@@ -309,6 +309,51 @@ export async function exportMessages(
   }
 }
 
+export async function persistExportWatermark(
+  db: D1Database,
+  wm: ExportWatermark,
+  now: number,
+): Promise<void> {
+  try {
+    await db
+      .prepare(
+        `INSERT INTO batch_exports (
+           id, last_pixel_export_at, last_pixel_export_id, last_messages_export_at,
+           last_orders_export_at, last_orders_export_id, updated_at
+         )
+         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(id) DO UPDATE SET
+           last_pixel_export_at = excluded.last_pixel_export_at,
+           last_pixel_export_id = excluded.last_pixel_export_id,
+           last_messages_export_at = excluded.last_messages_export_at,
+           last_orders_export_at = excluded.last_orders_export_at,
+           last_orders_export_id = excluded.last_orders_export_id,
+           updated_at = excluded.updated_at`,
+      )
+      .bind(
+        wm.last_pixel_export_at,
+        wm.last_pixel_export_id,
+        wm.last_messages_export_at,
+        wm.last_orders_export_at,
+        wm.last_orders_export_id,
+        now,
+      )
+      .run();
+  } catch {
+    await db
+      .prepare(
+        `INSERT INTO batch_exports (id, last_pixel_export_at, last_messages_export_at, updated_at)
+         VALUES (1, ?1, ?2, ?3)
+         ON CONFLICT(id) DO UPDATE SET
+           last_pixel_export_at = excluded.last_pixel_export_at,
+           last_messages_export_at = excluded.last_messages_export_at,
+           updated_at = excluded.updated_at`,
+      )
+      .bind(wm.last_pixel_export_at, wm.last_messages_export_at, now)
+      .run();
+  }
+}
+
 /** Liczba wierszy pixel jeszcze za watermarkiem (przybliżenie pending). */
 export async function countPendingPixel(
   db: D1Database,
