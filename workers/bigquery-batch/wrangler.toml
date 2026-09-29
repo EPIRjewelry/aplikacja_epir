@@ -54,8 +54,8 @@ WAREHOUSE_SQL_NAMESPACE = "analytics"
 WAREHOUSE_SQL_PIXEL_TABLE = "epir_pixel_events_raw"
 WAREHOUSE_SQL_MESSAGES_TABLE = "messages_raw"
 # Historyczny backlog pixel (forward skip bez ingestu — luka w Iceberg, pełny D1):
-# WAREHOUSE_PIXEL_HISTORY_TRIAGE_ENABLED = "true"
-# WAREHOUSE_PIXEL_TRIAGE_KEEP_DAYS = "7"
+WAREHOUSE_PIXEL_HISTORY_TRIAGE_ENABLED = "true"
+WAREHOUSE_PIXEL_TRIAGE_KEEP_DAYS = "7"
 # WAREHOUSE_CATCHUP_MAX_RUNS = "12"
 
 # [[kv_namespaces]]
