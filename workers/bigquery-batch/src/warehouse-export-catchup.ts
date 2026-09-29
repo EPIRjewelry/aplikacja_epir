@@ -3,18 +3,24 @@
  */
 
 import { epirDebugLog } from './epir-debug-log';
+import {
+  classifyWarehouseCatchUpBlockage,
+  type ClassifyCatchUpResult,
+} from './warehouse-catchup-blockage';
 
 export type WarehouseExportSummaryLite = {
   pixelExported: number;
   messagesExported: number;
   pending_pixel_after: number;
   pipeline_error?: string;
+  last_pixel_export_at?: number;
 };
 
 export type ExportRunner = () => Promise<WarehouseExportSummaryLite | null>;
 
-const MAX_CATCHUP_RUNS = 12;
-const TARGET_PENDING = 1000;
+export const MAX_CATCHUP_RUNS = 12;
+export const TARGET_PENDING = 1000;
+export const CATCHUP_ROWS_PER_RUN = 2500;
 
 export async function runWarehouseExportCatchUp(
   runExport: ExportRunner,
@@ -24,6 +30,8 @@ export async function runWarehouseExportCatchUp(
   lastPending: number;
   pipelineError?: string;
   lastSummary: WarehouseExportSummaryLite | null;
+  /** Klasyfikacja po pętli (do logu Nightly catch-up partial). */
+  blockageDiag: ClassifyCatchUpResult | null;
 }> {
   const maxRuns = opts?.maxRuns ?? MAX_CATCHUP_RUNS;
   const target = opts?.targetPending ?? TARGET_PENDING;
@@ -66,5 +74,36 @@ export async function runWarehouseExportCatchUp(
     if (summary.pixelExported === 0 && summary.messagesExported === 0) break;
   }
 
-  return { runs, lastPending, pipelineError, lastSummary };
+  const blockageDiag =
+    lastPending < 0
+      ? null
+      : classifyWarehouseCatchUpBlockage({
+          pendingBefore: lastPending,
+          last_pixel_export_at: lastSummary?.last_pixel_export_at ?? 0,
+          pipelineConfigured: pipelineError !== 'export_skipped_no_pipeline',
+          maxRuns,
+          rowsPerRun: CATCHUP_ROWS_PER_RUN,
+        });
+
+  return { runs, lastPending, pipelineError, lastSummary, blockageDiag };
+}
+
+/**
+ * Dry-run catch-upu: tylko klasyfikacja + log, bez ingestu i bez persist watermarka.
+ */
+export function dryRunWarehouseCatchUpClassify(input: {
+  pendingBefore: number;
+  last_pixel_export_at: number;
+  last_pixel_export_id?: string | null;
+  pipelineConfigured: boolean;
+  totalPixelApprox?: number;
+  nowMs?: number;
+}): ClassifyCatchUpResult {
+  const diag = classifyWarehouseCatchUpBlockage({
+    ...input,
+    maxRuns: MAX_CATCHUP_RUNS,
+    rowsPerRun: CATCHUP_ROWS_PER_RUN,
+  });
+  console.log(diag.logLine);
+  return diag;
 }

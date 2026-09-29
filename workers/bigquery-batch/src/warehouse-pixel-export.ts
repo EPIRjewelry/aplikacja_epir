@@ -24,6 +24,14 @@ export const DEFAULT_WATERMARK: ExportWatermark = {
   last_orders_export_id: '',
 };
 
+/** Wynik odczytu watermarka — przy `read_error` nie wolno robić persist (nadpisanie zerami). */
+export type WatermarkLoadStatus = 'ok' | 'missing' | 'read_error';
+
+export type WatermarkLoadResult = {
+  status: WatermarkLoadStatus;
+  watermark: ExportWatermark;
+};
+
 type ExportEnv = {
   DB: D1Database;
   DB_CHATBOT: D1Database;
@@ -34,7 +42,17 @@ type ExportEnv = {
 
 const BATCH_SIZE = 100;
 
-export async function loadExportWatermark(db: D1Database): Promise<ExportWatermark> {
+function rowToWatermark(row: ExportWatermark): ExportWatermark {
+  return {
+    last_pixel_export_at: row.last_pixel_export_at ?? 0,
+    last_pixel_export_id: row.last_pixel_export_id ?? '',
+    last_messages_export_at: row.last_messages_export_at ?? 0,
+    last_orders_export_at: row.last_orders_export_at ?? 0,
+    last_orders_export_id: row.last_orders_export_id ?? '',
+  };
+}
+
+export async function loadExportWatermarkResult(db: D1Database): Promise<WatermarkLoadResult> {
   try {
     const row = await db
       .prepare(
@@ -43,29 +61,31 @@ export async function loadExportWatermark(db: D1Database): Promise<ExportWaterma
          FROM batch_exports WHERE id = 1`,
       )
       .first<ExportWatermark>();
-    if (!row) return { ...DEFAULT_WATERMARK };
-    return {
-      last_pixel_export_at: row.last_pixel_export_at ?? 0,
-      last_pixel_export_id: row.last_pixel_export_id ?? '',
-      last_messages_export_at: row.last_messages_export_at ?? 0,
-      last_orders_export_at: row.last_orders_export_at ?? 0,
-      last_orders_export_id: row.last_orders_export_id ?? '',
-    };
+    if (!row) return { status: 'missing', watermark: { ...DEFAULT_WATERMARK } };
+    return { status: 'ok', watermark: rowToWatermark(row) };
   } catch {
     try {
       const row = await db
         .prepare('SELECT last_pixel_export_at, last_messages_export_at FROM batch_exports WHERE id = 1')
         .first<{ last_pixel_export_at: number; last_messages_export_at: number }>();
-      if (!row) return { ...DEFAULT_WATERMARK };
+      if (!row) return { status: 'missing', watermark: { ...DEFAULT_WATERMARK } };
       return {
-        ...DEFAULT_WATERMARK,
-        last_pixel_export_at: row.last_pixel_export_at ?? 0,
-        last_messages_export_at: row.last_messages_export_at ?? 0,
+        status: 'ok',
+        watermark: {
+          ...DEFAULT_WATERMARK,
+          last_pixel_export_at: row.last_pixel_export_at ?? 0,
+          last_messages_export_at: row.last_messages_export_at ?? 0,
+        },
       };
     } catch {
-      return { ...DEFAULT_WATERMARK };
+      return { status: 'read_error', watermark: { ...DEFAULT_WATERMARK } };
     }
   }
+}
+
+export async function loadExportWatermark(db: D1Database): Promise<ExportWatermark> {
+  const r = await loadExportWatermarkResult(db);
+  return r.watermark;
 }
 
 export async function exportPixelEvents(

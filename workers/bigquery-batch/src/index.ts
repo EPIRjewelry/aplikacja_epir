@@ -20,6 +20,7 @@ import {
   exportOrderAttributions,
   exportPixelEvents,
   loadExportWatermark,
+  loadExportWatermarkResult,
   type ExportWatermark,
 } from './warehouse-pixel-export';
 import { isR2SqlQueryConfigured, runR2SqlJob } from './r2-sql-client';
@@ -186,7 +187,30 @@ async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null>
     return null;
   }
 
-  const wm = await loadExportWatermark(env.DB);
+  const wmLoad = await loadExportWatermarkResult(env.DB);
+  const wm = wmLoad.watermark;
+
+  if (wmLoad.status === 'read_error') {
+    console.error(
+      '[WAREHOUSE_BATCH] export_aborted_watermark_unread — skip persist (avoid zeroing cursor)',
+    );
+    epirDebugLog('index.ts:handleScheduled', 'export_aborted_watermark_unread', {}, 'H-E');
+    return {
+      pixelExported: 0,
+      messagesExported: 0,
+      last_pixel_export_at: wm.last_pixel_export_at,
+      last_messages_export_at: wm.last_messages_export_at,
+      pending_pixel_after: -1,
+      partial: true,
+      pipeline_error: 'export_aborted_watermark_unread',
+    };
+  }
+
+  if (wmLoad.status === 'missing') {
+    console.warn(
+      '[WAREHOUSE_BATCH] batch_exports row missing — using DEFAULT_WATERMARK; first successful export will seed id=1',
+    );
+  }
 
   let pendingPixel = 0;
   try {
@@ -198,6 +222,7 @@ async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null>
     pixelPipeline,
     messagesPipeline,
     pendingPixel,
+    watermarkLoadStatus: wmLoad.status,
     watermark: wm,
   });
 
@@ -428,13 +453,32 @@ export default {
         runWarehouseExportCatchUp(() => handleScheduled(env), { maxRuns: 12, targetPending: 1000 }).then(
           (catchUp) => {
             if (catchUp.runs > 0) {
-              console.log('[WAREHOUSE_BATCH] Nightly catch-up', catchUp);
+              console.log('[WAREHOUSE_BATCH] Nightly catch-up', {
+                runs: catchUp.runs,
+                lastPending: catchUp.lastPending,
+                pipelineError: catchUp.pipelineError,
+                blockage: catchUp.blockageDiag?.blockage,
+                catchupCapacity: catchUp.blockageDiag?.catchupCapacity,
+                last_pixel_export_at: catchUp.lastSummary?.last_pixel_export_at,
+              });
             }
             if (catchUp.pipelineError) {
               console.warn('[WAREHOUSE_BATCH] Nightly catch-up pipeline error:', catchUp.pipelineError);
             }
             if (catchUp.lastPending > 1000) {
-              console.warn('[WAREHOUSE_BATCH] Nightly catch-up partial; pending pixel:', catchUp.lastPending);
+              const d = catchUp.blockageDiag;
+              console.warn(
+                '[WAREHOUSE_BATCH] Nightly catch-up partial; pending pixel:',
+                catchUp.lastPending,
+                d
+                  ? {
+                      blockage: d.blockage,
+                      catchupCapacity: d.catchupCapacity,
+                      last_pixel_export_at: d.last_pixel_export_at,
+                      simulatedPendingAfter: d.simulatedPendingAfter,
+                    }
+                  : {},
+              );
             }
           },
         ),
