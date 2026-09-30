@@ -163,6 +163,43 @@ describe('web-pixel extension – identity resolution (cookie + clientId)', () =
         expect(body.data.sessionId).toBe('pixel-native-client-id-xyz');
         expect(body.data.session_id).toBe('pixel-native-client-id-xyz');
     });
+
+    it('falls back to init.clientId when cookie and event clientId are missing', async () => {
+        const { subscriptions } = await invokePixelCallback({
+            init: { clientId: 'init-shopify-client-abc' },
+            browser: {
+                cookie: {
+                    get: vi.fn().mockResolvedValue(null),
+                },
+            },
+        });
+
+        const handler = subscriptions.get('page_viewed');
+        await handler!(withAnalyticsConsent({}));
+
+        const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+        const body = JSON.parse(fetchCall[1].body);
+        expect(body.data.sessionId).toBe('init-shopify-client-abc');
+        expect(body.data.session_id).toBe('init-shopify-client-abc');
+    });
+
+    it('sends empty session_id when cookie, event clientId, and init clientId are absent (§A.2)', async () => {
+        const { subscriptions } = await invokePixelCallback({
+            browser: {
+                cookie: {
+                    get: vi.fn().mockResolvedValue(null),
+                },
+            },
+        });
+
+        const handler = subscriptions.get('page_viewed');
+        await handler!(withAnalyticsConsent({}));
+
+        const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+        const body = JSON.parse(fetchCall[1].body);
+        expect(body.data.sessionId).toBe('');
+        expect(body.data.session_id).toBe('');
+    });
 });
 
 describe('web-pixel extension – customer identification', () => {
