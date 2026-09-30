@@ -62,10 +62,22 @@ function isAnalyticsProcessingExplicitlyAllowedOnEvent(event: unknown): boolean 
 function extractClientIdFromEvent(event: unknown): string | null {
   if (!event || typeof event !== 'object') return null;
   const e = event as Record<string, unknown>;
-  if (typeof e.clientId === 'string' && e.clientId.length > 0) return e.clientId;
+  if (typeof e.clientId === 'string' && e.clientId.trim().length > 0) return e.clientId.trim();
   if (e.data && typeof e.data === 'object') {
     const d = e.data as Record<string, unknown>;
-    if (typeof d.clientId === 'string' && d.clientId.length > 0) return d.clientId;
+    if (typeof d.clientId === 'string' && d.clientId.trim().length > 0) return d.clientId.trim();
+  }
+  return null;
+}
+
+/** `clientId` z `register(api)` → `api.init` (strict sandbox często bez cookie storefrontu). */
+function extractClientIdFromInit(initApi: unknown): string | null {
+  if (!initApi || typeof initApi !== 'object') return null;
+  const i = initApi as Record<string, unknown>;
+  if (typeof i.clientId === 'string' && i.clientId.trim().length > 0) return i.clientId.trim();
+  if (i.data && typeof i.data === 'object') {
+    const d = i.data as Record<string, unknown>;
+    if (typeof d.clientId === 'string' && d.clientId.trim().length > 0) return d.clientId.trim();
   }
   return null;
 }
@@ -78,6 +90,7 @@ function extractClientIdFromEvent(event: unknown): string | null {
 async function resolveEpirSessionId(
   browserApi: PixelBrowser,
   event: unknown,
+  initApi: unknown,
 ): Promise<string> {
   try {
     const getCookie = browserApi.cookie?.get;
@@ -88,7 +101,11 @@ async function resolveEpirSessionId(
   } catch (_) {
     /* sandbox / brak uprawnień do cookie */
   }
-  return extractClientIdFromEvent(event) ?? '';
+  const fromEvent = extractClientIdFromEvent(event);
+  if (fromEvent) return fromEvent;
+  const fromInit = extractClientIdFromInit(initApi);
+  if (fromInit) return fromInit;
+  return '';
 }
 
 register(async (api) => {
@@ -377,7 +394,7 @@ register(async (api) => {
         }
 
         const sourceForIdentity = pixelEvent;
-        const resolvedSessionId = await resolveEpirSessionId(browserApi, sourceForIdentity);
+        const resolvedSessionId = await resolveEpirSessionId(browserApi, sourceForIdentity, init);
         const storefront = await getStorefrontForEvent(pixelEvent);
         const attribution = await getAttributionForEvent(pixelEvent);
         // Enrich event data with customer_id, session_id (cookie lub clientId), storefront_id, channel

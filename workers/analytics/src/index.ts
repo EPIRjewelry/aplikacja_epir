@@ -1295,8 +1295,14 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
       if (data.customerId) {
         customerId = String(data.customerId);
       }
-      if (data.sessionId) {
-        sessionId = String(data.sessionId);
+      const sessionFromBody =
+        typeof data.sessionId === 'string' && data.sessionId.trim() !== ''
+          ? data.sessionId.trim()
+          : typeof data.session_id === 'string' && data.session_id.trim() !== ''
+            ? data.session_id.trim()
+            : null;
+      if (sessionFromBody) {
+        sessionId = sessionFromBody;
       }
       // Storefront & channel (zgodnie z kanonicznym kontraktem danych EPIR)
       if (typeof data.storefront_id === 'string' && data.storefront_id.trim()) {

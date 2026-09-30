@@ -148,6 +148,48 @@ describe('Analytics Worker - /pixel endpoint', () => {
         expect(event?.session_id).toBeNull();
     });
 
+    it('stores session_id from data.session_id when sessionId omitted', async () => {
+        const response = await SELF.fetch('https://example.com/pixel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'page_viewed',
+                data: {
+                    customerId: 'anon-customer',
+                    session_id: 'snake-session-789',
+                    url: 'https://shop.example.com/',
+                },
+            }),
+        });
+
+        expect(response.status).toBe(200);
+        const event = await env.DB.prepare('SELECT session_id FROM pixel_events ORDER BY id DESC LIMIT 1').first<{
+            session_id: string | null;
+        }>();
+        expect(event?.session_id).toBe('snake-session-789');
+    });
+
+    it('prefers sessionId over session_id when both present', async () => {
+        const response = await SELF.fetch('https://example.com/pixel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'page_viewed',
+                data: {
+                    sessionId: 'camel-wins',
+                    session_id: 'snake-loses',
+                    url: 'https://shop.example.com/',
+                },
+            }),
+        });
+
+        expect(response.status).toBe(200);
+        const event = await env.DB.prepare('SELECT session_id FROM pixel_events ORDER BY id DESC LIMIT 1').first<{
+            session_id: string | null;
+        }>();
+        expect(event?.session_id).toBe('camel-wins');
+    });
+
     it('should accept valid product_viewed event', async () => {
         const response = await SELF.fetch('https://example.com/pixel', {
             method: 'POST',
