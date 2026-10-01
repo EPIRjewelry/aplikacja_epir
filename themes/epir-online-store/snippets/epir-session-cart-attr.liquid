@@ -5,7 +5,7 @@
   Na apex nikt wcześniej nie ustawiał _epir_session_id (landing Ads tak; Hydrogen tylko czyta).
   Snippet zapisuje cookie z _shopify_y, żeby atrybut koszyka = to, co Web Pixel wysyła jako session_id.
   Podpięty w layout/theme.liquid. Theme push — tylko po OK operatora (najpierw motyw podglądowy).
-  Web Pixel (strict sandbox) nie widzi tego cookie — session_id w evencie = clientId w rozszerzeniu my-web-pixel.
+  Cookie jest dla atrybutu koszyka. POST /pixel na apex idzie z custom pixela (Customer Events), nie z tego cookie: body musi nieść event.clientId jako session_id (storefront-custom-pixel.js).
 {% endcomment %}
 <script>
 (function () {
