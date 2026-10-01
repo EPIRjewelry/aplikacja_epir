@@ -190,6 +190,42 @@ describe('Analytics Worker - /pixel endpoint', () => {
         expect(event?.session_id).toBe('camel-wins');
     });
 
+    it('stores NULL for the live custom-pixel body (event + data, no clientId)', async () => {
+        const response = await SELF.fetch('https://example.com/pixel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                event: 'page_viewed',
+                data: {},
+                timestamp: 1,
+            }),
+        });
+
+        expect(response.status).toBe(200);
+        const event = await env.DB.prepare(
+            'SELECT event_type, session_id FROM pixel_events ORDER BY id DESC LIMIT 1',
+        ).first<{ event_type: string | null; session_id: string | null }>();
+        expect(event?.event_type).toBe('page_viewed');
+        expect(event?.session_id).toBeNull();
+    });
+
+    it('stores session_id from data.clientId when session fields are absent', async () => {
+        const response = await SELF.fetch('https://example.com/pixel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                event: 'page_viewed',
+                data: { clientId: 'shopify-client-from-body' },
+            }),
+        });
+
+        expect(response.status).toBe(200);
+        const event = await env.DB.prepare(
+            'SELECT session_id FROM pixel_events ORDER BY id DESC LIMIT 1',
+        ).first<{ session_id: string | null }>();
+        expect(event?.session_id).toBe('shopify-client-from-body');
+    });
+
     it('should accept valid product_viewed event', async () => {
         const response = await SELF.fetch('https://example.com/pixel', {
             method: 'POST',

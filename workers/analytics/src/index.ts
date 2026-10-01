@@ -1300,7 +1300,9 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
           ? data.sessionId.trim()
           : typeof data.session_id === 'string' && data.session_id.trim() !== ''
             ? data.session_id.trim()
-            : null;
+            : typeof data.clientId === 'string' && data.clientId.trim() !== ''
+              ? data.clientId.trim()
+              : null;
       if (sessionFromBody) {
         sessionId = sessionFromBody;
       }
