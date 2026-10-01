@@ -1,5 +1,10 @@
 import type {CommerceContext} from '../config/commerce-context';
 import {mergeCatalogCommerceContext} from '../config/commerce-context';
+import {
+  appendKazkaAssortmentClause,
+  isKazkaCatalogBrand,
+  KAZKA_CATALOG_SEARCH_CANDIDATES,
+} from './kazka-assortment';
 import {buildUcpAgentMeta} from './ucp-agent-meta';
 
 function isNonEmptyString(value: unknown): value is string {
@@ -35,6 +40,9 @@ export function normalizeCatalogSearchArgs(
   if (isNonEmptyString(catalog.query)) {
     catalog.query = catalog.query.trim();
   }
+  if (isKazkaCatalogBrand(brand)) {
+    catalog.query = appendKazkaAssortmentClause(isNonEmptyString(catalog.query) ? catalog.query : '');
+  }
 
   const context =
     catalog.context && typeof catalog.context === 'object'
@@ -58,7 +66,9 @@ export function normalizeCatalogSearchArgs(
       : {};
   const limitRaw = pagination.limit ?? source.limit ?? source.first ?? 3;
   const limitNum = typeof limitRaw === 'number' ? Math.trunc(limitRaw) : 3;
-  pagination.limit = Math.max(1, Math.min(limitNum, 10));
+  pagination.limit = isKazkaCatalogBrand(brand)
+    ? KAZKA_CATALOG_SEARCH_CANDIDATES
+    : Math.max(1, Math.min(limitNum, 10));
   catalog.pagination = pagination;
 
   return {

@@ -44,6 +44,15 @@ import {
 } from './config/commerce-context';
 import { getSizeTable } from './size-table';
 import { compactCatalogResult } from './mcp/catalog-result-compact';
+import {
+  appendKazkaAssortmentClause,
+  enforceKazkaAssortmentOnCatalogResult,
+  isKazkaCatalogBrand,
+  isKazkaCatalogSearchTool,
+  isKazkaFilteredCatalogTool,
+  KAZKA_CATALOG_SEARCH_CANDIDATES,
+  KAZKA_CATALOG_SEARCH_LIMIT,
+} from './catalog/kazka-assortment';
 import { getAccessTokenFromServiceAccount, clearAccessTokenCache } from './utils/google-auth';
 type JsonRpcId = string | number | null;
 
@@ -196,7 +205,7 @@ function normalizeSearchCatalogArgs(
   if (!isNonEmptyString(context.intent)) {
     context.intent = 'biżuteria';
   }
-  if (brand === 'kazka' && isNonEmptyString(context.intent)) {
+  if (isKazkaCatalogBrand(brand) && isNonEmptyString(context.intent)) {
     context.intent = `${context.intent} z kolekcji Kazka Jewelry`;
   }
   if (brand === 'zareczyny' && isNonEmptyString(context.intent)) {
@@ -206,6 +215,10 @@ function normalizeSearchCatalogArgs(
     ? mergeCatalogCommerceContext(context as Record<string, unknown>, commerce)
     : context;
   catalog.context = mergedContext;
+
+  if (isKazkaCatalogBrand(brand)) {
+    catalog.query = appendKazkaAssortmentClause(isNonEmptyString(catalog.query) ? String(catalog.query) : '');
+  }
 
   const pagination = catalog.pagination && typeof catalog.pagination === 'object'
     ? { ...(catalog.pagination as Record<string, unknown>) }
@@ -221,8 +234,13 @@ function normalizeSearchCatalogArgs(
   if (limitNum === null) {
     limitNum = 3;
   }
-  /** Twardy limit czatu: max 3 wyniki katalogu (prompt + MCP). */
-  pagination.limit = Math.max(1, Math.min(limitNum, 3));
+  /**
+   * EPIR: max 3 wyniki katalogu (prompt + MCP).
+   * Kazka: szersza próbka, potem twardy filtr asortymentu ucina do 3.
+   */
+  pagination.limit = isKazkaCatalogBrand(brand)
+    ? KAZKA_CATALOG_SEARCH_CANDIDATES
+    : Math.max(1, Math.min(limitNum, 3));
   catalog.pagination = pagination;
 
   if (!catalog.filters && source.filters && typeof source.filters === 'object') {
@@ -707,6 +725,11 @@ async function callShopMcp(
         tool: toolName,
         productCount,
         parseError: parseError ?? false,
+      });
+    }
+    if (isKazkaCatalogBrand(brand) && isKazkaFilteredCatalogTool(toolName)) {
+      resultPayload = await enforceKazkaAssortmentOnCatalogResult(resultPayload, env, {
+        maxProducts: isKazkaCatalogSearchTool(toolName) ? KAZKA_CATALOG_SEARCH_LIMIT : undefined,
       });
     }
     return { result: resultPayload };

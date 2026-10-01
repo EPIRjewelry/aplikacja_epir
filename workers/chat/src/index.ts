@@ -57,6 +57,7 @@ import {
 import { LUXURY_SYSTEM_PROMPT, KAZKA_HEADLESS_PERSONA_ADDON } from './prompts/luxury-system-prompt'; // 🟢 Używa nowego promptu v2
 import { parseStorefrontPathContext } from './storefront/path-context';
 import { buildKazkaHeadlessStorefrontContext, isKazkaHeadlessChannel } from './storefront/kazka-hydrate';
+import { resolveCatalogToolBrand } from './catalog/kazka-assortment';
 import { TOOL_SCHEMAS, resolveToolSchemas, shouldUseSlimToolSchemas } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2 (+ slim wariant za flagą)
 import { sanitizeHarmonyHistory } from './utils/sanitizeHarmonyHistory';
 import { detectPolicyInformationIntent } from './intent/policy-information';
@@ -4095,9 +4096,11 @@ async function streamAssistantResponse(
                     },
                   };
                 }
-                const brandForMcp = (storefrontContext?.storefrontId === 'kazka' || storefrontContext?.storefrontId === 'zareczyny')
-                  ? storefrontContext.storefrontId
-                  : brand;
+                const brandForMcp = resolveCatalogToolBrand({
+                  storefrontId: storefrontContext?.storefrontId,
+                  channel: storefrontContext?.channel,
+                  brand,
+                });
                 return callMcpToolDirect(env, call.name, safeArgs, {
                   brand: brandForMcp,
                   sessionCartId: cartId ?? null,
