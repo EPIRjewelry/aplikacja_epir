@@ -3,13 +3,8 @@
  * @see https://shopify.dev/docs/agents/catalog/storefront-catalog
  */
 
-/**
- * Fixture Shopify documents as negotiating a full catalog capability set
- * (dev.ucp.shopping.catalog.search + dev.shopify.catalog).
- * @see https://shopify.dev/docs/agents/profiles
- */
-export const SHOPIFY_CATALOG_UCP_AGENT_PROFILE =
-  'https://shopify.dev/ucp/agent-profiles/2026-08-25/valid-with-capabilities.json';
+const DEFAULT_UCP_AGENT_PROFILE =
+  'https://shopify.dev/ucp/agent-profiles/examples/2026-04-08/valid-with-capabilities.json';
 
 export function resolveUcpAgentProfileUrl(env: {
   UCP_AGENT_PROFILE_URL?: string;
@@ -17,12 +12,11 @@ export function resolveUcpAgentProfileUrl(env: {
 }): string {
   const configured = env.UCP_AGENT_PROFILE_URL?.trim();
   if (configured) return configured;
-  // Do not send WORKER_ORIGIN/.well-known/ucp-agent-profile.json.
-  // Live retest 2026-10-02: Shopify fetched that URL during search_catalog and
-  // answered HTTP 422. The document had no ucp.version and no catalog capabilities,
-  // so negotiation failed before any products were returned.
-  void env.WORKER_ORIGIN;
-  return SHOPIFY_CATALOG_UCP_AGENT_PROFILE;
+  const origin = env.WORKER_ORIGIN?.trim().replace(/\/$/, '');
+  if (origin) {
+    return `${origin}/.well-known/ucp-agent-profile.json`;
+  }
+  return DEFAULT_UCP_AGENT_PROFILE;
 }
 
 export function buildUcpAgentMeta(env: {

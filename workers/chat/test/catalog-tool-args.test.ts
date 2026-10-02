@@ -11,9 +11,7 @@ describe('normalizeCatalogSearchArgs', () => {
   it('wraps legacy query into catalog.query with UCP meta', () => {
     const out = normalizeCatalogSearchArgs({query: 'pierścionek'}, env);
     expect(out.meta).toEqual({
-      'ucp-agent': {
-        profile: 'https://shopify.dev/ucp/agent-profiles/2026-08-25/valid-with-capabilities.json',
-      },
+      'ucp-agent': {profile: 'https://asystent.epirbizuteria.pl/.well-known/ucp-agent-profile.json'},
     });
     const catalog = out.catalog as Record<string, unknown>;
     expect(catalog.query).toBe('pierścionek');
@@ -57,9 +55,7 @@ describe('normalizeCatalogSearchArgs', () => {
       categories: ['gid://shopify/TaxonomyCategory/aa-1'],
     });
     expect(out.meta).toEqual({
-      'ucp-agent': {
-        profile: 'https://shopify.dev/ucp/agent-profiles/2026-08-25/valid-with-capabilities.json',
-      },
+      'ucp-agent': {profile: 'https://asystent.epirbizuteria.pl/.well-known/ucp-agent-profile.json'},
     });
   });
 
