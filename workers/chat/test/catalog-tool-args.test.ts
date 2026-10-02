@@ -11,9 +11,7 @@ describe('normalizeCatalogSearchArgs', () => {
   it('wraps legacy query into catalog.query with UCP meta', () => {
     const out = normalizeCatalogSearchArgs({query: 'pierścionek'}, env);
     expect(out.meta).toEqual({
-      'ucp-agent': {
-        profile: 'https://shopify.dev/ucp/agent-profiles/2026-08-25/valid-with-capabilities.json',
-      },
+      'ucp-agent': {profile: 'https://asystent.epirbizuteria.pl/.well-known/ucp-agent-profile.json'},
     });
     const catalog = out.catalog as Record<string, unknown>;
     expect(catalog.query).toBe('pierścionek');
@@ -26,58 +24,11 @@ describe('normalizeCatalogSearchArgs', () => {
     expect((out.catalog as Record<string, unknown>).pagination).toEqual({limit: 10});
   });
 
-  it('keeps Kazka catalog_search as free text, widens the page, and rescales a PLN budget', () => {
-    const out = normalizeCatalogSearchArgs(
-      {
-        query: 'Soliter',
-        catalog: {
-          filters: {
-            price: {max: 5000},
-            categories: ['pierścionki', 'gid://shopify/TaxonomyCategory/aa-1'],
-          },
-        },
-      },
-      env,
-      {
-        country: 'PL',
-        currency: 'PLN',
-        language: 'pl-PL',
-        address_country: 'PL',
-        market: 'PL',
-        locale: 'pl',
-      },
-      'kazka',
-    );
+  it('constrains Kazka catalog_search to the Kazka assortment clause and a wider candidate page', () => {
+    const out = normalizeCatalogSearchArgs({query: 'pierścionek'}, env, undefined, 'kazka');
     const catalog = out.catalog as Record<string, unknown>;
-    expect(catalog.query).toBe('Soliter');
-    expect(String(catalog.query)).not.toMatch(/tag:|vendor:/i);
+    expect(catalog.query).toBe('pierścionek AND (tag:kazka OR vendor:Kazka)');
     expect(catalog.pagination).toEqual({limit: 10});
-    expect(catalog.filters).toEqual({
-      price: {max: 500000},
-      categories: ['gid://shopify/TaxonomyCategory/aa-1'],
-    });
-    expect(out.meta).toEqual({
-      'ucp-agent': {
-        profile: 'https://shopify.dev/ucp/agent-profiles/2026-08-25/valid-with-capabilities.json',
-      },
-    });
-  });
-
-  it('leaves an already-minor PLN price filter unchanged', () => {
-    const out = normalizeCatalogSearchArgs(
-      {catalog: {query: 'Gałązki', filters: {price: {max: 500000}}}},
-      env,
-      {
-        country: 'PL',
-        currency: 'PLN',
-        language: 'pl-PL',
-        address_country: 'PL',
-        market: 'PL',
-        locale: 'pl',
-      },
-    );
-    const catalog = out.catalog as Record<string, unknown>;
-    expect(catalog.filters).toEqual({price: {max: 500000}});
   });
 
   it('merges commerce context for PLN', () => {

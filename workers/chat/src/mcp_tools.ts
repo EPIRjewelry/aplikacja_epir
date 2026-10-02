@@ -507,10 +507,9 @@ export const TOOL_SCHEMAS_SLIM = {
                 categories: { type: 'array', items: { type: 'string' } },
                 price: {
                   type: 'object',
-                  description: 'Price range in minor units. PLN: 500000 means 5000 zł. Never send 5000 for a 5000 zł budget.',
                   properties: {
-                    min: { type: 'number', description: 'Minimum price in minor units (grosze). 500000 = 5000 zł.' },
-                    max: { type: 'number', description: 'Maximum price in minor units (grosze). 500000 = 5000 zł.' },
+                    min: { type: 'number' },
+                    max: { type: 'number' },
                   },
                 },
               },
