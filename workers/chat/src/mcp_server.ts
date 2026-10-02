@@ -134,11 +134,17 @@ function shouldRetryPoliciesMcpFetch(err: unknown): boolean {
 }
 
 /** Liczy produkty w odpowiedzi MCP search_catalog (JSON w content[0].text). */
-function summarizeSearchCatalogResult(result: unknown): { productCount: number | null; parseError?: boolean } {
+function summarizeSearchCatalogResult(result: unknown): {
+  productCount: number | null;
+  parseError?: boolean;
+  titles?: string[];
+  textPreview?: string;
+} {
   if (!result || typeof result !== 'object') return { productCount: null };
   const content = (result as { content?: Array<{ type?: string; text?: string }> }).content;
   const text = Array.isArray(content) ? content[0]?.text : undefined;
   if (typeof text !== 'string' || !text.trim()) return { productCount: null };
+  const textPreview = text.slice(0, 400);
   try {
     const parsed = JSON.parse(text) as {
       products?: unknown;
@@ -151,10 +157,22 @@ function summarizeSearchCatalogResult(result: unknown): { productCount: number |
       || (Array.isArray(parsed?.items) && parsed.items)
       || (Array.isArray(parsed?.results) && parsed.results)
       || (Array.isArray(parsed?.catalog?.products) && parsed.catalog.products);
-    if (!Array.isArray(products)) return { productCount: null, parseError: true };
-    return { productCount: products.length };
+    if (!Array.isArray(products)) return { productCount: null, parseError: true, textPreview };
+    const titles = products
+      .slice(0, 3)
+      .map((product) =>
+        product && typeof product === 'object' && typeof (product as { title?: unknown }).title === 'string'
+          ? (product as { title: string }).title.slice(0, 80)
+          : '',
+      )
+      .filter(Boolean);
+    return {
+      productCount: products.length,
+      titles,
+      textPreview: products.length === 0 ? textPreview : undefined,
+    };
   } catch {
-    return { productCount: null, parseError: true };
+    return { productCount: null, parseError: true, textPreview };
   }
 }
 
@@ -696,17 +714,27 @@ async function callShopMcp(
     }
 
     if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      const isCatalogSearch =
+        toolName === 'search_catalog' ||
+        toolName === 'catalog_search' ||
+        toolName === 'catalog_image_search';
+      if (isCatalogSearch) {
+        console.warn('[mcp] catalog http error', {
+          tool: toolName,
+          status: res.status,
+          bodyPreview: body.slice(0, 500),
+          profile:
+            typeof args?.meta?.['ucp-agent']?.profile === 'string'
+              ? args.meta['ucp-agent'].profile
+              : undefined,
+        });
+      }
       // Plan B: Safe fallback for search_catalog on network/service errors
-      if (
-        (toolName === 'search_catalog' ||
-          toolName === 'catalog_search' ||
-          toolName === 'catalog_image_search') &&
-        (res.status === 522 || res.status === 503 || res.status >= 500)
-      ) {
+      if (isCatalogSearch && (res.status === 522 || res.status === 503 || res.status >= 500)) {
         console.warn(`[mcp] Shop MCP ${res.status} for ${toolName}, returning safe fallback`);
         return { result: CATALOG_FALLBACK };
       }
-      const body = await res.text().catch(() => '');
       return { error: { code: res.status, message: `Shop MCP HTTP ${res.status}`, details: body.slice(0, 500) } };
     }
 
@@ -723,6 +751,18 @@ async function callShopMcp(
       return { error: { code: -32700, message: 'Invalid JSON response from shop MCP' } };
     }
     if ((json as any).error) {
+      if (
+        toolName === 'search_catalog' ||
+        toolName === 'catalog_search' ||
+        toolName === 'catalog_image_search' ||
+        toolName === 'lookup_catalog' ||
+        toolName === 'catalog_lookup'
+      ) {
+        console.warn('[mcp] catalog jsonrpc error', {
+          tool: toolName,
+          error: (json as any).error,
+        });
+      }
       return { error: (json as any).error };
     }
     let resultPayload = (json as any).result ?? json;
@@ -732,17 +772,31 @@ async function callShopMcp(
       toolName === 'catalog_image_search'
     ) {
       resultPayload = compactCatalogResult(resultPayload);
-      const { productCount, parseError } = summarizeSearchCatalogResult(resultPayload);
+      const beforeFilter = summarizeSearchCatalogResult(resultPayload);
       console.log('[mcp] catalog search outcome', {
         tool: toolName,
-        productCount,
-        parseError: parseError ?? false,
+        productCount: beforeFilter.productCount,
+        titles: beforeFilter.titles,
+        parseError: beforeFilter.parseError ?? false,
+        textPreview: beforeFilter.textPreview,
       });
     }
     if (isKazkaCatalogBrand(brand) && isKazkaFilteredCatalogTool(toolName)) {
       resultPayload = await enforceKazkaAssortmentOnCatalogResult(resultPayload, env, {
         maxProducts: isKazkaCatalogSearchTool(toolName) ? KAZKA_CATALOG_SEARCH_LIMIT : undefined,
       });
+      if (
+        toolName === 'search_catalog' ||
+        toolName === 'catalog_search' ||
+        toolName === 'catalog_image_search'
+      ) {
+        const afterFilter = summarizeSearchCatalogResult(resultPayload);
+        console.log('[mcp] catalog search after kazka filter', {
+          tool: toolName,
+          productCount: afterFilter.productCount,
+          titles: afterFilter.titles,
+        });
+      }
     }
     return { result: resultPayload };
   } catch (err: any) {

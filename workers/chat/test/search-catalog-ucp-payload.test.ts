@@ -60,7 +60,7 @@ describe('search_catalog UCP payload', () => {
     const body = JSON.parse(String(init.body));
     expect(body.params.name).toBe('search_catalog');
     expect(body.params.arguments.meta['ucp-agent'].profile).toBe(
-      'https://asystent.epirbizuteria.pl/.well-known/ucp-agent-profile.json',
+      'https://shopify.dev/ucp/agent-profiles/2026-08-25/valid-with-capabilities.json',
     );
     expect(body.params.arguments.catalog.query).toBe('Gałązki ametyst');
     expect(body.params.arguments.catalog.pagination.limit).toBe(3);
@@ -99,6 +99,46 @@ describe('search_catalog UCP payload', () => {
     expect(body.params.arguments.catalog.query).toBe('Soliter');
     expect(body.params.arguments.catalog.filters.price.max).toBe(500000);
     expect(body.params.arguments.catalog.pagination.limit).toBe(10);
-    expect(body.params.arguments.meta['ucp-agent'].profile).toContain('ucp-agent-profile.json');
+    expect(body.params.arguments.meta['ucp-agent'].profile).toBe(
+      'https://shopify.dev/ucp/agent-profiles/2026-08-25/valid-with-capabilities.json',
+    );
+  });
+
+  it('logs and returns the Shopify HTTP 422 body instead of an empty product list', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          error: {code: -32001, message: 'UCP discovery failed', data: {code: 'profile_malformed'}},
+        }),
+        {status: 422, headers: {'Content-Type': 'application/json'}},
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const out = await callMcpToolDirect(
+      {
+        SHOP_DOMAIN: SHOP,
+        WORKER_ORIGIN: 'https://asystent.epirbizuteria.pl',
+      } as any,
+      'search_catalog',
+      {catalog: {query: 'Gałązki ametyst'}},
+      {brand: 'epir'},
+    );
+
+    expect((out as {error?: {code?: number; details?: string}}).error?.code).toBe(422);
+    expect(String((out as {error?: {details?: string}}).error?.details)).toContain('UCP discovery failed');
+    expect((out as {result?: {products?: unknown}}).result?.products).toBeUndefined();
+    const logged = warn.mock.calls.find((call) => call[0] === '[mcp] catalog http error');
+    expect(logged?.[1]).toMatchObject({
+      tool: 'search_catalog',
+      status: 422,
+    });
+    expect(String((logged?.[1] as {bodyPreview?: string})?.bodyPreview)).toContain('profile_malformed');
+    expect(String((logged?.[1] as {profile?: string})?.profile)).toBe(
+      'https://shopify.dev/ucp/agent-profiles/2026-08-25/valid-with-capabilities.json',
+    );
   });
 });
