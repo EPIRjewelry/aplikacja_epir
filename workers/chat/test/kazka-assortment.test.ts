@@ -285,7 +285,10 @@ describe('callMcpToolDirect Kazka catalog filter', () => {
 
     const mcpCall = fetchMock.mock.calls.find((call) => !String(call[0]).includes('/admin/api/'));
     const mcpBody = JSON.parse(String(mcpCall?.[1]?.body));
-    expect(mcpBody.params.arguments.catalog.query).toBe('pierścionek AND (tag:kazka OR vendor:Kazka)');
+    expect(mcpBody.params.arguments.catalog.query).toBe('pierścionek');
+    expect(String(mcpBody.params.arguments.catalog.query)).not.toMatch(/tag:|vendor:/i);
+    expect(mcpBody.params.arguments.meta['ucp-agent'].profile).toContain('ucp');
+    expect(String(mcpCall?.[0])).toContain('/api/ucp/mcp');
     expect(mcpBody.params.arguments.catalog.pagination.limit).toBe(10);
     expect(mcpBody.params.arguments.catalog.context.intent).toContain('Kazka Jewelry');
 
