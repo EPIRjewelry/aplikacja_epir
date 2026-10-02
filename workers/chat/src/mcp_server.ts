@@ -1,8 +1,7 @@
 // MCP Server (JSON-RPC 2.0) dla narzędzi Shopify w trybie single-store.
 // Architektura:
-// - Katalog (search_catalog, lookup_catalog, get_product, catalog_*) →
-//     https://{shop_domain}/api/ucp/mcp  (Storefront Catalog MCP, wymagany meta.ucp-agent)
-// - Koszyk i polityki → https://{shop_domain}/api/mcp
+// - Narzędzia commerce delegują do oficjalnego endpoint MCP sklepu:
+//     https://{shop_domain}/api/mcp
 // - Narzędzia wewnętrzne workera (np. `get_size_table`) mogą korzystać bezpośrednio ze Storefront API.
 // 
 // Strategia błędów (Plan B):
@@ -45,8 +44,8 @@ import {
 } from './config/commerce-context';
 import { getSizeTable } from './size-table';
 import { compactCatalogResult } from './mcp/catalog-result-compact';
-import {sanitizeUcpCatalogFilters} from './catalog/catalog-tool-args';
 import {
+  appendKazkaAssortmentClause,
   enforceKazkaAssortmentOnCatalogResult,
   isKazkaCatalogBrand,
   isKazkaCatalogSearchTool,
@@ -54,7 +53,6 @@ import {
   KAZKA_CATALOG_SEARCH_CANDIDATES,
   KAZKA_CATALOG_SEARCH_LIMIT,
 } from './catalog/kazka-assortment';
-import {ensureUcpAgentMeta} from './catalog/ucp-agent-meta';
 import { getAccessTokenFromServiceAccount, clearAccessTokenCache } from './utils/google-auth';
 type JsonRpcId = string | number | null;
 
@@ -82,11 +80,6 @@ function rpcError(id: JsonRpcId, code: number, message: string, data?: any): Res
 }
 
 const MCP_TIMEOUT_MS = 5000;
-/**
- * Storefront Catalog MCP (`/api/ucp/mcp`) is slower than cart/policies on `/api/mcp`.
- * A 5s abort becomes `{products: []}` (CATALOG_FALLBACK), which Gemma reads as „nie znaleziono”.
- */
-const MCP_CATALOG_TIMEOUT_MS = 12000;
 /** Druga próba fetch po 401/403: wyczyszczenie cache tokenu + nowy Bearer (tylko gdy jest SA + endpoint Google). */
 const MCP_GOOGLE_AUTH_MAX_ATTEMPTS = 2;
 /** Policies/FAQ search przez Shop MCP bywa wolniejsze niż katalog — krótki timeout powodował AbortError. */
@@ -184,7 +177,6 @@ function normalizeSearchCatalogArgs(
   raw: any,
   brand?: string,
   commerce?: CommerceContext,
-  env?: {UCP_AGENT_PROFILE_URL?: string; WORKER_ORIGIN?: string},
 ): Record<string, unknown> {
   const source = raw && typeof raw === 'object' ? { ...raw } : {};
   const normalized: Record<string, unknown> = {};
@@ -224,6 +216,10 @@ function normalizeSearchCatalogArgs(
     : context;
   catalog.context = mergedContext;
 
+  if (isKazkaCatalogBrand(brand)) {
+    catalog.query = appendKazkaAssortmentClause(isNonEmptyString(catalog.query) ? String(catalog.query) : '');
+  }
+
   const pagination = catalog.pagination && typeof catalog.pagination === 'object'
     ? { ...(catalog.pagination as Record<string, unknown>) }
     : {};
@@ -250,10 +246,9 @@ function normalizeSearchCatalogArgs(
   if (!catalog.filters && source.filters && typeof source.filters === 'object') {
     catalog.filters = source.filters;
   }
-  sanitizeUcpCatalogFilters(catalog);
 
   normalized.catalog = catalog;
-  return ensureUcpAgentMeta(normalized, env ?? {});
+  return normalized;
 }
 
 function normalizeUpdateCartArgs(raw: any, sessionCartKey?: string): Record<string, unknown> {
@@ -515,7 +510,7 @@ async function callShopMcp(
   } else if (toolName === 'catalog_image_search') {
     args = normalizeCatalogImageSearchArgs(rawArgs, env, commerceContext, brand);
   } else if (toolName === 'search_catalog') {
-    args = normalizeSearchCatalogArgs(rawArgs, brand, commerceContext, env);
+    args = normalizeSearchCatalogArgs(rawArgs, brand, commerceContext);
   } else if (toolName === 'lookup_catalog' || toolName === 'get_product') {
     const source = rawArgs && typeof rawArgs === 'object' ? { ...(rawArgs as Record<string, unknown>) } : {};
     const catalog =
@@ -527,7 +522,7 @@ async function callShopMcp(
       commerceContext,
     );
     source.catalog = catalog;
-    args = ensureUcpAgentMeta(source, env);
+    args = source;
   } else if (toolName === 'update_cart') {
     const withSession = injectSessionCartIdIntoArgs(
       toolName,
@@ -587,11 +582,7 @@ async function callShopMcp(
     toolName === 'search_catalog' ||
     toolName === 'lookup_catalog' ||
     toolName === 'get_product';
-  const timeoutMs = isPoliciesTool
-    ? MCP_POLICIES_TIMEOUT_MS
-    : isCatalogTool
-      ? MCP_CATALOG_TIMEOUT_MS
-      : MCP_TIMEOUT_MS;
+  const timeoutMs = isPoliciesTool ? MCP_POLICIES_TIMEOUT_MS : MCP_TIMEOUT_MS;
 
   const mayUseGoogleAuth =
     env.MCP_AUTH_METHOD === 'SERVICE_ACCOUNT' || endpoint.includes('bigquery.googleapis.com');
@@ -653,7 +644,6 @@ async function callShopMcp(
           typeof args?.catalog?.query === 'string'
             ? args.catalog.query.slice(0, 240)
             : undefined;
-        const priceMax = args?.catalog?.filters?.price?.max;
         console.log('[mcp] call', {
           tool: toolName,
           mcpTool: mcpToolName,
@@ -661,8 +651,6 @@ async function callShopMcp(
           status: res.status,
           args: safeArgsSummary(args),
           queryPreview,
-          priceMax: typeof priceMax === 'number' ? priceMax : undefined,
-          hasUcpAgent: typeof args?.meta?.['ucp-agent']?.profile === 'string',
           duration_ms: Date.now() - fetchStarted,
           attempt,
           maxAttempts: maxFetchAttempts,

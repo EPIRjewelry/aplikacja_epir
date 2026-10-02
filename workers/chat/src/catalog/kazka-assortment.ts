@@ -6,9 +6,9 @@
  * Reszta (w tym sam tag `kazka-pierscionek` bez `kazka` i bez vendor Kazka) jest EPIR-only
  * i nie może wrócić do Gemmy na kanale Kazka.
  *
- * Shopify UCP `catalog.query` to wolny tekst, nie składnia Admin (`tag:` / `vendor:`).
- * Doklejenie tej klauzuli zerowało trafienia po nazwie na kanale Kazka (Soliter).
- * Asortyment jest wymuszany na odpowiedzi: vendor/tagi z payloadu albo odczyt Admin/Storefront.
+ * Shopify Catalog MCP nie filtruje vendora. Dlatego:
+ * 1) zapytanie search dostaje klauzulę `tag:kazka OR vendor:Kazka` (parser sklepu),
+ * 2) wynik jest docinany po vendor/tagach z payloadu albo po odczycie Admin/Storefront.
  * Brak dowodu = produkt odpada (fail closed).
  */
 
@@ -84,11 +84,6 @@ export function isKazkaAssortment(input: {
   return (input.tags ?? []).some((tag) => normalizeToken(tag) === KAZKA_ASSORTMENT_TAG);
 }
 
-/**
- * Składnia wyszukiwania Admin (`tag:` / `vendor:`).
- * Nie doklejać do UCP `catalog.query` — to wolny tekst i klauzula zeruje trafienia po nazwie.
- * Zostawione dla testów reguły asortymentu; bramka runtime jest w `enforceKazkaAssortmentOnCatalogResult`.
- */
 export function appendKazkaAssortmentClause(query: string): string {
   const trimmed = query.trim();
   if (TAG_CLAUSE_RE.test(trimmed) || VENDOR_CLAUSE_RE.test(trimmed)) return trimmed;
