@@ -53,7 +53,9 @@ import { getSizeTable } from './size-table';
 import { presentCatalogForModel } from './mcp/catalog-for-model';
 import {
   appendKazkaAssortmentClause,
+  enforceEpirAssortmentOnCatalogResult,
   enforceKazkaAssortmentOnCatalogResult,
+  isEpirCatalogBrand,
   isKazkaCatalogBrand,
   isKazkaCatalogSearchTool,
   isKazkaFilteredCatalogTool,
@@ -658,6 +660,8 @@ async function callShopMcp(
       resultPayload = await enforceKazkaAssortmentOnCatalogResult(resultPayload, env, {
         maxProducts: isKazkaCatalogSearchTool(toolName) ? KAZKA_CATALOG_SEARCH_LIMIT : undefined,
       });
+    } else if (isEpirCatalogBrand(brand) && isKazkaFilteredCatalogTool(toolName)) {
+      resultPayload = await enforceEpirAssortmentOnCatalogResult(resultPayload, env);
     }
     if (presentCatalog) {
       resultPayload = presentCatalogForModel(resultPayload, { brand });

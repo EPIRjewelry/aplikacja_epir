@@ -8,7 +8,7 @@
  * więc bez tego pola odsyła na kartę produktu albo kręci kolejne lookupy.
  */
 
-import { isKazkaCatalogBrand } from '../catalog/kazka-assortment';
+import { isEpirCatalogBrand, isKazkaCatalogBrand } from '../catalog/kazka-assortment';
 import { plnDisplayFromUcpMoney } from './catalog-price-enrich';
 
 const MAX_VARIANTS = 6;
@@ -110,17 +110,6 @@ function readUrlString(value: unknown): string | undefined {
   if (direct) return direct;
   if (!isRecord(value)) return undefined;
   return asString(value.href) ?? asString(value.url) ?? asString(value.onlineStoreUrl);
-}
-
-function isEpirCatalogBrand(brand?: string): boolean {
-  if (!brand) return false;
-  const normalized = brand.trim().toLowerCase();
-  return (
-    normalized === 'epir' ||
-    normalized === 'online-store' ||
-    normalized === 'epir-liquid' ||
-    normalized === 'epirbizuteria.pl'
-  );
 }
 
 function productOrigin(brand?: string): string | null {
