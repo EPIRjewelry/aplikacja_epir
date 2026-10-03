@@ -31,3 +31,28 @@ export function buildUcpAgentMeta(env: {
     },
   };
 }
+
+/** Wymusza meta.ucp-agent.profile na outbound UCP catalog (slim schema nie podaje meta). */
+export function ensureUcpAgentMeta(
+  args: Record<string, unknown>,
+  env: {UCP_AGENT_PROFILE_URL?: string; WORKER_ORIGIN?: string},
+): Record<string, unknown> {
+  const required = buildUcpAgentMeta(env);
+  const existingMeta =
+    args.meta && typeof args.meta === 'object' ? (args.meta as Record<string, unknown>) : {};
+  const requiredUcp = required.meta['ucp-agent'] as Record<string, unknown>;
+  const existingUcp =
+    existingMeta['ucp-agent'] && typeof existingMeta['ucp-agent'] === 'object'
+      ? (existingMeta['ucp-agent'] as Record<string, unknown>)
+      : {};
+  return {
+    ...args,
+    meta: {
+      ...existingMeta,
+      'ucp-agent': {
+        ...existingUcp,
+        profile: requiredUcp.profile,
+      },
+    },
+  };
+}

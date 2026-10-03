@@ -38,6 +38,7 @@ describe('callMcpToolDirect validation', () => {
 
     const env = {
       SHOP_DOMAIN: 'example.myshopify.com',
+      WORKER_ORIGIN: 'https://asystent.epirbizuteria.pl',
       MCP_ENDPOINT: 'https://example.myshopify.com/api/mcp',
     } as any;
 
@@ -46,8 +47,80 @@ describe('callMcpToolDirect validation', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('/api/ucp/mcp');
     const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
     expect(body.params.arguments.catalog.pagination.limit).toBe(3);
+    expect(body.params.arguments.meta).toEqual({
+      'ucp-agent': {
+        profile: 'https://asystent.epirbizuteria.pl/.well-known/ucp-agent-profile.json',
+      },
+    });
+  });
+
+  it('injects UCP agent profile on search_catalog without model-provided meta', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: { content: [{ type: 'text', text: '{"products":[{"title":"Gałązki"}]}' }] },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const env = {
+      SHOP_DOMAIN: 'example.myshopify.com',
+      WORKER_ORIGIN: 'https://asystent.epirbizuteria.pl',
+    } as any;
+
+    await callMcpToolDirect(env, 'search_catalog', {
+      catalog: { query: 'Gałązki' },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/ucp/mcp');
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.params.arguments.meta).toEqual({
+      'ucp-agent': {
+        profile: 'https://asystent.epirbizuteria.pl/.well-known/ucp-agent-profile.json',
+      },
+    });
+    expect(body.params.arguments.catalog.query).toBe('Gałązki');
+  });
+
+  it('injects UCP agent profile on lookup_catalog', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: { content: [{ type: 'text', text: '{"products":[]}' }] },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const env = {
+      SHOP_DOMAIN: 'example.myshopify.com',
+      WORKER_ORIGIN: 'https://asystent.epirbizuteria.pl',
+    } as any;
+
+    await callMcpToolDirect(env, 'lookup_catalog', {
+      ids: ['gid://shopify/Product/1'],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/ucp/mcp');
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.params.arguments.meta).toEqual({
+      'ucp-agent': {
+        profile: 'https://asystent.epirbizuteria.pl/.well-known/ucp-agent-profile.json',
+      },
+    });
   });
 
   it('returns ring size table content from Shopify metaobject for get_size_table', async () => {
@@ -114,5 +187,116 @@ describe('callMcpToolDirect validation', () => {
     const payload = (await response.json()) as { result?: { tools?: Array<{ name?: string }> } };
     const toolNames = (payload.result?.tools ?? []).map((tool) => tool.name);
     expect(toolNames).toContain('get_size_table');
+    expect(toolNames).toContain('create_cart');
+    expect(toolNames).toContain('cancel_cart');
+  });
+
+  it('sends get_cart to Cart MCP with ucp-agent profile and returns continue_url', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      cartMcpResponse({
+        id: 'gid://shopify/Cart/abc',
+        continue_url: 'https://shop.example/cart/c/abc',
+        line_items: [],
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const env = cartEnv();
+
+    const out = await callMcpToolDirect(env, 'get_cart', { cart_id: 'gid://shopify/Cart/abc' });
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/ucp/mcp');
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.params.name).toBe('get_cart');
+    expect(body.params.arguments.id).toBe('gid://shopify/Cart/abc');
+    expect(body.params.arguments.meta['ucp-agent'].profile).toBe(
+      'https://asystent.epirbizuteria.pl/.well-known/ucp-agent-profile.json',
+    );
+    expect((out as any).result.continue_url).toBe('https://shop.example/cart/c/abc');
+    expect((out as any).result.checkout_url).toBe('https://shop.example/cart/c/abc');
+  });
+
+  it('replaces the whole cart on update_cart line_items', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      cartMcpResponse({
+        id: 'gid://shopify/Cart/abc',
+        continue_url: 'https://shop.example/cart/c/abc',
+        line_items: [{ quantity: 1, item: { id: 'gid://shopify/ProductVariant/2' } }],
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await callMcpToolDirect(cartEnv(), 'update_cart', {
+      cart_id: 'gid://shopify/Cart/abc',
+      line_items: [{ quantity: 1, item: { id: 'gid://shopify/ProductVariant/2' } }],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.params.name).toBe('update_cart');
+    expect(body.params.arguments.cart.line_items).toEqual([
+      { quantity: 1, item: { id: 'gid://shopify/ProductVariant/2' } },
+    ]);
+    expect(body.params.arguments.meta['ucp-agent'].profile).toContain('ucp-agent-profile.json');
+  });
+
+  it('merges a legacy add_items patch onto the current cart before replace', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        cartMcpResponse({
+          id: 'gid://shopify/Cart/abc',
+          line_items: [
+            {
+              id: 'gid://shopify/CartLine/1',
+              quantity: 1,
+              item: { id: 'gid://shopify/ProductVariant/1' },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        cartMcpResponse({
+          id: 'gid://shopify/Cart/abc',
+          continue_url: 'https://shop.example/cart/c/abc',
+          line_items: [],
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await callMcpToolDirect(cartEnv(), 'update_cart', {
+      cart_id: 'gid://shopify/Cart/abc',
+      add_items: [{ product_variant_id: 'gid://shopify/ProductVariant/2', quantity: 1 }],
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const first = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    const second = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
+    expect(first.params.name).toBe('get_cart');
+    expect(second.params.name).toBe('update_cart');
+    expect(second.params.arguments.cart.line_items).toEqual([
+      { quantity: 1, item: { id: 'gid://shopify/ProductVariant/1' } },
+      { quantity: 1, item: { id: 'gid://shopify/ProductVariant/2' } },
+    ]);
   });
 });
+
+function cartEnv() {
+  return {
+    SHOP_DOMAIN: 'example.myshopify.com',
+    WORKER_ORIGIN: 'https://asystent.epirbizuteria.pl',
+  } as any;
+}
+
+function cartMcpResponse(cart: Record<string, unknown>) {
+  return new Response(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        structuredContent: { cart },
+        content: [{ type: 'text', text: JSON.stringify({ cart }) }],
+      },
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  );
+}

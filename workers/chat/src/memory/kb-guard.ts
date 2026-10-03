@@ -27,8 +27,10 @@ export const PRODUCT_TOOL_NAMES = new Set<string>([
 ]);
 
 export const CART_TOOL_NAMES = new Set<string>([
+  'create_cart',
   'update_cart',
   'get_cart',
+  'cancel_cart',
   'add_to_cart',
   'remove_from_cart',
 ]);

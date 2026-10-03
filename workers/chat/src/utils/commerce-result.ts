@@ -58,7 +58,7 @@ export function injectSessionCartIdIntoArgs(
   args: Record<string, unknown>,
   sessionCartId: string | null | undefined,
 ): Record<string, unknown> {
-  if (toolName !== 'get_cart' && toolName !== 'update_cart') {
+  if (toolName !== 'get_cart' && toolName !== 'update_cart' && toolName !== 'cancel_cart') {
     return args;
   }
   const next = { ...args };
@@ -77,6 +77,8 @@ export function injectSessionCartIdIntoArgs(
 function countCartLines(value: unknown): number | null {
   if (!isRecord(value)) return null;
   const cart = isRecord(value.cart) ? value.cart : value;
+  const lineItems = cart.line_items;
+  if (Array.isArray(lineItems)) return lineItems.length;
   const lines = cart.lines;
   if (Array.isArray(lines)) return lines.length;
   if (isRecord(lines) && Array.isArray(lines.edges)) return lines.edges.length;
@@ -94,8 +96,10 @@ export function extractCheckoutUrlFromMcpResult(
   if (!isRecord(result)) return null;
 
   const direct =
-    readString(result, 'checkout_url', 'checkoutUrl') ??
-    (isRecord(result.cart) ? readString(result.cart, 'checkout_url', 'checkoutUrl') : null);
+    readString(result, 'continue_url', 'continueUrl', 'checkout_url', 'checkoutUrl') ??
+    (isRecord(result.cart)
+      ? readString(result.cart, 'continue_url', 'continueUrl', 'checkout_url', 'checkoutUrl')
+      : null);
   if (direct) return direct;
 
   const cartId =

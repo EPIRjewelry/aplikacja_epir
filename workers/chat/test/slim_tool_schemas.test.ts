@@ -53,9 +53,7 @@ describe('TOOL_SCHEMAS_SLIM size reduction', () => {
 
   it('slim preserves additionalProperties: false on update_cart', () => {
     expect((TOOL_SCHEMAS_SLIM as any).update_cart.parameters.additionalProperties).toBe(false);
-    expect(
-      (TOOL_SCHEMAS_SLIM as any).update_cart.parameters.properties.buyer_identity.additionalProperties,
-    ).toBe(false);
+    expect((TOOL_SCHEMAS_SLIM as any).update_cart.parameters.required).toEqual(['line_items']);
   });
 });
 

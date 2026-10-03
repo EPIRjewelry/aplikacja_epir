@@ -416,11 +416,16 @@ export async function updateCart(
   cartId: string | null,
   lines: Array<{ merchandiseId: string; quantity: number }>
 ): Promise<string> {
+  const { callMcpToolDirect } = await import('./mcp_server');
   const add_items = lines.map((line) => ({
     product_variant_id: line.merchandiseId,
     quantity: line.quantity,
   }));
-  const result = await callShopifyMcpTool('update_cart', { cart_id: cartId, add_items }, env);
+  const result = await callMcpToolDirect(
+    env,
+    'update_cart',
+    cartId ? { cart_id: cartId, add_items } : { add_items },
+  );
   return JSON.stringify(result ?? {});
 }
 
@@ -434,7 +439,8 @@ export async function getCart(
   env: Env,
   cartId: string
 ): Promise<string> {
-  const result = await callShopifyMcpTool('get_cart', { cart_id: cartId }, env);
+  const { callMcpToolDirect } = await import('./mcp_server');
+  const result = await callMcpToolDirect(env, 'get_cart', { cart_id: cartId });
   return JSON.stringify(result ?? {});
 }
 

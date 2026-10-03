@@ -228,15 +228,44 @@ export const TOOL_SCHEMAS = {
     },
   },
 
-  get_cart: {
-    name: 'get_cart',
-    description: 'Retrieve current shopping cart contents, including item details and checkout URL.',
+  create_cart: {
+    name: 'create_cart',
+    description:
+      'Tworzy koszyk Cart MCP. line_items: [{quantity, item:{id: variant GID}}]. Wynik zawiera continue_url — to link do koszyka/kasy.',
     parameters: {
       type: 'object',
+      additionalProperties: false,
+      properties: {
+        line_items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              quantity: { type: 'integer', minimum: 1 },
+              item: {
+                type: 'object',
+                properties: { id: { type: 'string', description: 'gid://shopify/ProductVariant/…' } },
+                required: ['id'],
+              },
+            },
+            required: ['quantity', 'item'],
+          },
+        },
+      },
+      required: ['line_items'],
+    },
+  },
+
+  get_cart: {
+    name: 'get_cart',
+    description: 'Pobiera koszyk Cart MCP po id. Wynik zawiera continue_url.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
       properties: {
         cart_id: {
           type: 'string',
-          description: 'ID of an existing cart (e.g., gid://shopify/Cart/abc123def456)'
+          description: 'ID koszyka (gid://shopify/Cart/…)'
         }
       },
       required: ['cart_id']
@@ -390,75 +419,48 @@ export const TOOL_SCHEMAS = {
   update_cart: {
     name: 'update_cart',
     description:
-      'Add/update/remove cart lines. After search_catalog/lookup for a named product (e.g. Gałązki → koszyk), call this with product_variant_id, then give the buyer the checkout link from the cart result.',
+      'Podmienia cały koszyk (PUT). Wyślij wszystkie line_items, które mają zostać — pominięta pozycja znika. Bez cart_id tworzy koszyk (create_cart). Oddaj kupującemu continue_url z wyniku.',
     parameters: {
       type: 'object',
       additionalProperties: false,
       properties: {
         cart_id: {
           type: 'string',
-          description: 'Identifier for the cart being updated. If not provided, a new cart will be created.'
+          description: 'ID istniejącego koszyka. Puste = create_cart.'
         },
-        add_items: {
+        line_items: {
           type: 'array',
-          description: 'Items to add to the cart. Required when creating a new cart.',
+          description: 'Pełna lista pozycji po podmianie.',
           items: {
             type: 'object',
             properties: {
-              product_variant_id: {
-                type: 'string',
-                description: 'Product variant ID (e.g., gid://shopify/ProductVariant/789012).'
+              quantity: { type: 'integer', minimum: 1 },
+              item: {
+                type: 'object',
+                properties: { id: { type: 'string' } },
+                required: ['id'],
               },
-              quantity: {
-                type: 'integer',
-                minimum: 1,
-                description: 'Quantity to add.'
-              }
             },
-            required: ['product_variant_id', 'quantity']
+            required: ['quantity', 'item'],
           },
         },
-        update_items: {
-          type: 'array',
-          description: 'Existing cart line items to update quantities for. Use quantity 0 to remove an item.',
-          items: {
-            type: 'object',
-            properties: {
-              id: {
-                type: 'string',
-                description: 'Cart line ID to update.'
-              },
-              quantity: {
-                type: 'integer',
-                minimum: 0,
-                description: 'New quantity for the line item. Use 0 to remove.'
-              }
-            },
-            required: ['id', 'quantity']
-          }
-        },
-        remove_line_ids: {
-          type: 'array',
-          description: 'List of line item IDs to remove explicitly.',
-          items: { type: 'string' }
-        },
-        buyer_identity: {
-          type: 'object',
-          description: 'Information about the buyer including email, phone and country code.',
-          additionalProperties: false,
-          properties: {
-            email: { type: 'string', description: 'Buyer email.' },
-            phone: { type: 'string', description: 'Buyer phone number.' },
-            country_code: { type: 'string', description: 'ISO country code used for regional pricing.' }
-          }
-        },
-        note: {
-          type: 'string',
-          description: 'Optional cart note.'
-        }
-      }
-    }
-  }
+      },
+      required: ['line_items'],
+    },
+  },
+
+  cancel_cart: {
+    name: 'cancel_cart',
+    description: 'Anuluje koszyk. Wymaga cart_id.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        cart_id: { type: 'string' },
+      },
+      required: ['cart_id'],
+    },
+  },
 };
 
 /**
@@ -618,11 +620,35 @@ export const TOOL_SCHEMAS_SLIM = {
     parameters: { type: 'object', properties: {}, required: [] },
   },
 
-  get_cart: {
-    name: 'get_cart',
-    description: 'Pobiera zawartość koszyka po cart_id.',
+  create_cart: {
+    name: 'create_cart',
+    description: 'Nowy koszyk. line_items[{quantity, item.id}]. Wynik: continue_url.',
     parameters: {
       type: 'object',
+      additionalProperties: false,
+      properties: {
+        line_items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              quantity: { type: 'integer', minimum: 1 },
+              item: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+            },
+            required: ['quantity', 'item'],
+          },
+        },
+      },
+      required: ['line_items'],
+    },
+  },
+
+  get_cart: {
+    name: 'get_cart',
+    description: 'Pobiera koszyk po cart_id. Wynik: continue_url.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
       properties: {
         cart_id: { type: 'string' },
       },
@@ -757,49 +783,38 @@ export const TOOL_SCHEMAS_SLIM = {
   update_cart: {
     name: 'update_cart',
     description:
-      'Dodaj/zmień/usuń pozycje koszyka. Po search/lookup nazwy produktu (np. Gałązki) — dodaj wariant i podaj link kasy.',
+      'PUT koszyka: wyślij wszystkie line_items. Pozycja spoza listy znika. Wynik: continue_url.',
     parameters: {
       type: 'object',
       additionalProperties: false,
       properties: {
         cart_id: { type: 'string' },
-        add_items: {
+        line_items: {
           type: 'array',
           items: {
             type: 'object',
             properties: {
-              product_variant_id: { type: 'string' },
               quantity: { type: 'integer', minimum: 1 },
+              item: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
             },
-            required: ['product_variant_id', 'quantity'],
+            required: ['quantity', 'item'],
           },
         },
-        update_items: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              quantity: { type: 'integer', minimum: 0 },
-            },
-            required: ['id', 'quantity'],
-          },
-        },
-        remove_line_ids: {
-          type: 'array',
-          items: { type: 'string' },
-        },
-        buyer_identity: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            email: { type: 'string' },
-            phone: { type: 'string' },
-            country_code: { type: 'string' },
-          },
-        },
-        note: { type: 'string' },
       },
+      required: ['line_items'],
+    },
+  },
+
+  cancel_cart: {
+    name: 'cancel_cart',
+    description: 'Anuluje koszyk po cart_id.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        cart_id: { type: 'string' },
+      },
+      required: ['cart_id'],
     },
   },
 } as const;

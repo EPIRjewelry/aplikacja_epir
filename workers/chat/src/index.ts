@@ -136,6 +136,7 @@ import {
 } from './memory/queue-message';
 import { eraseCustomerMemory, handleMemoryExtractBatch, processMemoryExtractMessage } from './memory/consumer';
 import { retrieveCustomerMemory, type RetrieveMemoryOutput } from './memory/retriever';
+import { formatRecognizedMemoryLine, formatSessionPixelPlace, loadSessionPixelPlace } from './turn/session-place';
 import { emitMemoryMetric } from './memory/metrics';
 
 // Importy RAG (teraz używane tylko przez narzędzia, a nie przez index.ts)
@@ -3482,9 +3483,13 @@ async function streamAssistantResponse(
         }
       }
 
-      if (!operatorMode && crossSessionSummary) {
-        dynamicContext.push(`Zapamiętane z wcześniejszych wizyt: ${crossSessionSummary}`);
+      if (!operatorMode && env.DB && sessionId) {
+        const pixelPlace = await loadSessionPixelPlace(env.DB, sessionId);
+        const pixelLine = pixelPlace ? formatSessionPixelPlace(pixelPlace) : null;
+        if (pixelLine) dynamicContext.push(pixelLine);
       }
+
+      let recognizedMemoryLine: string | null = null;
 
       const dynamicContextLoginBranch: 'anonymous_guest_line' | 'logged_in_block' | 'none' =
         anonymousAppProxySession
@@ -3540,11 +3545,10 @@ async function streamAssistantResponse(
         ephemeralSections.push(sessionHistoryVisibilityContext);
       }
       if (memoryRetrieveResult) {
-        if (memoryRetrieveResult.deterministicSummary && !crossSessionSummary) {
-          ephemeralSections.push(
-            `Kontekst systemowy — deterministyczny skrót preferencji klienta: ${memoryRetrieveResult.deterministicSummary}`,
-          );
-        }
+        recognizedMemoryLine = formatRecognizedMemoryLine(
+          crossSessionSummary,
+          memoryRetrieveResult.deterministicSummary,
+        );
         if (memoryRetrieveResult.factsBlock) {
           ephemeralSections.push(
             `<customer_facts_retrieved>\n${memoryRetrieveResult.factsBlock}\n</customer_facts_retrieved>`,
@@ -3555,6 +3559,11 @@ async function streamAssistantResponse(
             `<customer_turns_retrieved>\n${memoryRetrieveResult.turnsBlock}\n</customer_turns_retrieved>`,
           );
         }
+      } else if (crossSessionSummary) {
+        recognizedMemoryLine = formatRecognizedMemoryLine(crossSessionSummary, null);
+      }
+      if (recognizedMemoryLine) {
+        ephemeralSections.push(recognizedMemoryLine);
       }
       if (
         memoryV2Enabled &&
@@ -4159,7 +4168,13 @@ async function streamAssistantResponse(
             const resolvedCartId =
               (parsedArgsRecord && typeof parsedArgsRecord.cart_id === 'string' ? parsedArgsRecord.cart_id : null) ??
               tryExtractCartId(toolResult.result);
-            if ((call.name === 'get_cart' || call.name === 'update_cart') && resolvedCartId) {
+            if (
+              (call.name === 'create_cart' ||
+                call.name === 'get_cart' ||
+                call.name === 'update_cart' ||
+                call.name === 'cancel_cart') &&
+              resolvedCartId
+            ) {
               await stub.fetch('https://session/set-cart-id', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

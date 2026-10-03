@@ -25,7 +25,6 @@ import {
 } from './utils/jsonrpc';
 import type { Env } from './index';
 import { TOOL_SCHEMAS } from './mcp_tools';
-import { normalizeCartId, isValidCartGid, parseCartGid } from './utils/cart';
 import { injectSessionCartIdIntoArgs } from './utils/commerce-result';
 import {
   normalizeCatalogImageSearchArgs,
@@ -37,6 +36,13 @@ import {
   mapGemmaToolToUcpMcp,
   UCP_CATALOG_TOOL_NAMES,
 } from './catalog/ucp-catalog-endpoint';
+import { ensureUcpAgentMeta } from './catalog/ucp-agent-meta';
+import {
+  isUcpCartTool,
+  lineItemsFromCartPayload,
+  prepareUcpCartCall,
+  presentCartForChat,
+} from './cart/ucp-cart';
 import {
   mergeCatalogCommerceContext,
   resolveCommerceContext,
@@ -251,104 +257,6 @@ function normalizeSearchCatalogArgs(
   return normalized;
 }
 
-function normalizeUpdateCartArgs(raw: any, sessionCartKey?: string): Record<string, unknown> {
-  const source = normalizeCartArgs(raw ?? {}, sessionCartKey);
-  const normalized: Record<string, unknown> = {};
-
-  if (isNonEmptyString(source.cart_id)) {
-    normalized.cart_id = source.cart_id.trim();
-  }
-
-  const addItemsRaw: any[] = Array.isArray(source.add_items) ? [...source.add_items] : [];
-  const updateItemsRaw: any[] = Array.isArray(source.update_items) ? [...source.update_items] : [];
-  const removeLineIdsRaw: any[] = Array.isArray(source.remove_line_ids) ? [...source.remove_line_ids] : [];
-
-  if (Array.isArray(source.lines)) {
-    for (const line of source.lines) {
-      if (!line || typeof line !== 'object') continue;
-      const lineId = isNonEmptyString((line as any).line_item_id)
-        ? String((line as any).line_item_id).trim()
-        : isNonEmptyString((line as any).id)
-          ? String((line as any).id).trim()
-          : '';
-      const variantId = isNonEmptyString((line as any).product_variant_id)
-        ? String((line as any).product_variant_id).trim()
-        : isNonEmptyString((line as any).merchandise_id)
-          ? String((line as any).merchandise_id).trim()
-          : isNonEmptyString((line as any).variant_id)
-            ? String((line as any).variant_id).trim()
-            : '';
-      const quantityRaw = toFiniteNumber((line as any).quantity);
-      if (quantityRaw === null) continue;
-      const quantity = Math.max(0, Math.trunc(quantityRaw));
-
-      if (lineId) {
-        updateItemsRaw.push({ id: lineId, quantity });
-      } else if (variantId && quantity > 0) {
-        addItemsRaw.push({ product_variant_id: variantId, quantity });
-      }
-    }
-  }
-
-  const add_items = addItemsRaw
-    .map((item) => {
-      if (!item || typeof item !== 'object') return null;
-      const productVariantId = isNonEmptyString((item as any).product_variant_id)
-        ? String((item as any).product_variant_id).trim()
-        : isNonEmptyString((item as any).merchandise_id)
-          ? String((item as any).merchandise_id).trim()
-          : isNonEmptyString((item as any).variant_id)
-            ? String((item as any).variant_id).trim()
-            : '';
-      const quantityRaw = toFiniteNumber((item as any).quantity);
-      if (!productVariantId || quantityRaw === null) return null;
-      const quantity = Math.trunc(quantityRaw);
-      if (quantity < 1) return null;
-      return { product_variant_id: productVariantId, quantity };
-    })
-    .filter((item): item is { product_variant_id: string; quantity: number } => Boolean(item));
-
-  const update_items = updateItemsRaw
-    .map((item) => {
-      if (!item || typeof item !== 'object') return null;
-      const id = isNonEmptyString((item as any).id)
-        ? String((item as any).id).trim()
-        : isNonEmptyString((item as any).line_item_id)
-          ? String((item as any).line_item_id).trim()
-          : '';
-      const quantityRaw = toFiniteNumber((item as any).quantity);
-      if (!id || quantityRaw === null) return null;
-      const quantity = Math.max(0, Math.trunc(quantityRaw));
-      return { id, quantity };
-    })
-    .filter((item): item is { id: string; quantity: number } => Boolean(item));
-
-  const remove_line_ids = removeLineIdsRaw
-    .map((id) => (isNonEmptyString(id) ? id.trim() : null))
-    .filter((id): id is string => Boolean(id));
-
-  if (add_items.length > 0) normalized.add_items = add_items;
-  if (update_items.length > 0) normalized.update_items = update_items;
-  if (remove_line_ids.length > 0) normalized.remove_line_ids = remove_line_ids;
-
-  if (source.buyer_identity && typeof source.buyer_identity === 'object') {
-    const buyerIdentity = source.buyer_identity as Record<string, unknown>;
-    const normalizedBuyerIdentity: Record<string, string> = {};
-    if (isNonEmptyString(buyerIdentity.email)) normalizedBuyerIdentity.email = buyerIdentity.email.trim();
-    if (isNonEmptyString(buyerIdentity.phone)) normalizedBuyerIdentity.phone = buyerIdentity.phone.trim();
-    if (isNonEmptyString(buyerIdentity.country_code)) normalizedBuyerIdentity.country_code = buyerIdentity.country_code.trim();
-    if (Object.keys(normalizedBuyerIdentity).length > 0) {
-      normalized.buyer_identity = normalizedBuyerIdentity;
-    }
-  }
-
-  if (isNonEmptyString(source.note)) {
-    normalized.note = source.note.trim();
-  }
-
-  return normalized;
-}
-
 function hasCatalogQueryOrFilters(args: any): boolean {
   const query = args?.catalog?.query;
   if (isNonEmptyString(query)) return true;
@@ -399,21 +307,6 @@ function validateNormalizedToolArgs(toolName: string, args: any): { code: number
   return null;
 }
 
-function assertCartIdFormat(toolName: string, args: any): { code: number; message: string } | null {
-  if (args.cart_id && !isValidCartGid(args.cart_id) && !String(args.cart_id).startsWith('?key=')) {
-    console.warn(`[callShopMcp] Invalid cart_id format for ${toolName}:`, args.cart_id);
-    return {
-      code: -32602,
-      message: 'Invalid cart_id format. Expected a Shopify Cart GID (e.g., \'gid://shopify/Cart/<id>?key=...\')',
-    };
-  }
-  return null;
-}
-
-/**
- * Normalize cart-related arguments before calling MCP
- * Fixes cart_id format issues (spaces, missing key, invalid GID)
- */
 /**
  * Zwraca URL endpointu MCP z env (zmienna MCP_ENDPOINT) lub fallback z SHOP_DOMAIN.
  * CHAT_SPEC: shopify-admin-mcp = https://{shop_domain}/api/mcp
@@ -426,30 +319,39 @@ export function getMcpEndpoint(env: { MCP_ENDPOINT?: string; SHOP_DOMAIN?: strin
   return `https://${String(domain).replace(/\/$/, '')}/api/mcp`;
 }
 
-function normalizeCartArgs(raw: any, sessionCartKey?: string): any {
-  const args = { ...raw };
-  
-  // Remove cart_id if it's null (Shopify MCP doesn't accept null, only undefined or valid string)
-  if (args.cart_id === null) {
-    delete args.cart_id;
-    console.log('[normalizeCartArgs] Removed null cart_id (will create new cart)');
-    return args;
-  }
-  
-  // Normalize cart_id if present
-  if (args.cart_id) {
-    const normalized = normalizeCartId(args.cart_id, sessionCartKey);
-    
-    if (!normalized) {
-      console.warn('[normalizeCartArgs] Invalid cart_id, keeping original:', args.cart_id);
-      return args;
+async function fetchUcpCartLines(
+  env: Env,
+  shopDomain: string,
+  cartId: string,
+): Promise<{ ok: true; lines: ReturnType<typeof lineItemsFromCartPayload> } | { ok: false; error: { code: number; message: string; details?: string } }> {
+  const prepared = prepareUcpCartCall('get_cart', { cart_id: cartId }, env);
+  if (!prepared.ok) return prepared;
+  const endpoint =
+    getUcpCatalogEndpoint(env) || `https://${String(shopDomain).replace(/\/$/, '')}/api/ucp/mcp`;
+  const rpc: JsonRpcRequest = {
+    jsonrpc: '2.0',
+    method: 'tools/call',
+    params: { name: 'get_cart', arguments: prepared.arguments },
+    id: Date.now(),
+  };
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rpc),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      return { ok: false, error: { code: res.status, message: `Shop MCP HTTP ${res.status}`, details: body.slice(0, 500) } };
     }
-    
-    args.cart_id = normalized;
-    console.log('[normalizeCartArgs] Normalized cart_id:', { original: raw.cart_id, normalized });
+    const json = (await res.json().catch(() => null)) as JsonRpcResponse | null;
+    if (!json || (json as { error?: unknown }).error) {
+      return { ok: false, error: { code: -32000, message: 'get_cart failed before cart replace' } };
+    }
+    return { ok: true, lines: lineItemsFromCartPayload((json as { result?: unknown }).result ?? json) };
+  } catch (err) {
+    return { ok: false, error: { code: -32000, message: 'get_cart failed before cart replace', details: String((err as Error)?.message ?? err) } };
   }
-  
-  return args;
 }
 
 export type CallShopMcpOptions = {
@@ -496,11 +398,6 @@ async function callShopMcp(
     return { error: { code: -32602, message: 'SHOP_DOMAIN not configured' } };
   }
 
-  const sessionCartKey =
-    sessionCartId && typeof sessionCartId === 'string'
-      ? (parseCartGid(sessionCartId)?.key ?? undefined)
-      : undefined;
-
   // Normalize arguments based on tool type
   let args: any;
   if (toolName === 'catalog_search') {
@@ -523,20 +420,12 @@ async function callShopMcp(
     );
     source.catalog = catalog;
     args = source;
-  } else if (toolName === 'update_cart') {
-    const withSession = injectSessionCartIdIntoArgs(
-      toolName,
-      rawArgs && typeof rawArgs === 'object' ? { ...rawArgs } : {},
-      sessionCartId,
-    );
-    args = normalizeUpdateCartArgs(withSession, sessionCartKey);
-  } else if (toolName === 'get_cart') {
-    const withSession = injectSessionCartIdIntoArgs(
-      toolName,
-      rawArgs && typeof rawArgs === 'object' ? { ...rawArgs } : {},
-      sessionCartId,
-    );
-    args = normalizeCartArgs(withSession, sessionCartKey);
+  } else if (isUcpCartTool(toolName)) {
+    const base = rawArgs && typeof rawArgs === 'object' ? { ...(rawArgs as Record<string, unknown>) } : {};
+    args =
+      toolName === 'create_cart'
+        ? base
+        : injectSessionCartIdIntoArgs(toolName, base, sessionCartId);
   } else if (toolName === 'search_shop_policies_and_faqs') {
     const source = rawArgs && typeof rawArgs === 'object' ? { ...(rawArgs as Record<string, unknown>) } : {};
     if (!isNonEmptyString(source.locale)) {
@@ -550,19 +439,45 @@ async function callShopMcp(
     args = rawArgs ?? {};
   }
 
-  if ((toolName === 'get_cart' || toolName === 'update_cart') && args?.cart_id) {
-    const cartError = assertCartIdFormat(toolName, args);
-    if (cartError) return { error: cartError };
+  if (isUcpDiscoveryTool(toolName)) {
+    args = ensureUcpAgentMeta(
+      args && typeof args === 'object' ? (args as Record<string, unknown>) : {},
+      env,
+    );
   }
 
-  const validationError = validateNormalizedToolArgs(toolName, args);
-  if (validationError) {
-    return { error: validationError };
+  let cartMcpToolName: string | undefined;
+  if (isUcpCartTool(toolName)) {
+    let prepared = prepareUcpCartCall(toolName, args, env, commerceContext);
+    if (!prepared.ok) return { error: prepared.error };
+    if (prepared.needsExistingLines) {
+      const cartId =
+        typeof (args as Record<string, unknown>)?.cart_id === 'string'
+          ? String((args as Record<string, unknown>).cart_id)
+          : typeof (args as Record<string, unknown>)?.id === 'string'
+            ? String((args as Record<string, unknown>).id)
+            : '';
+      const existing = await fetchUcpCartLines(env, shopDomain, cartId);
+      if (!existing.ok) return { error: existing.error };
+      prepared = prepareUcpCartCall(toolName, args, env, commerceContext, existing.lines);
+      if (!prepared.ok) return { error: prepared.error };
+    }
+    args = prepared.arguments;
+    cartMcpToolName = prepared.mcpToolName;
   }
 
-  const mcpToolName = UCP_CATALOG_TOOL_NAMES.has(toolName)
-    ? mapGemmaToolToUcpMcp(toolName)
-    : toolName;
+  if (!isUcpCartTool(toolName)) {
+    const validationError = validateNormalizedToolArgs(toolName, args);
+    if (validationError) {
+      return { error: validationError };
+    }
+  }
+
+  const mcpToolName = cartMcpToolName
+    ? cartMcpToolName
+    : UCP_CATALOG_TOOL_NAMES.has(toolName)
+      ? mapGemmaToolToUcpMcp(toolName)
+      : toolName;
 
   const rpc: JsonRpcRequest = {
     jsonrpc: '2.0',
@@ -571,7 +486,7 @@ async function callShopMcp(
     id: Date.now()
   };
 
-  const useUcpCatalog = isUcpDiscoveryTool(toolName);
+  const useUcpCatalog = isUcpDiscoveryTool(toolName) || isUcpCartTool(toolName);
   const endpoint = useUcpCatalog
     ? getUcpCatalogEndpoint(env) ||
       `https://${String(shopDomain).replace(/\/$/, '')}/api/ucp/mcp`
@@ -714,6 +629,9 @@ async function callShopMcp(
       return { error: (json as any).error };
     }
     let resultPayload = (json as any).result ?? json;
+    if (isUcpCartTool(toolName)) {
+      resultPayload = presentCartForChat(resultPayload);
+    }
     if (
       toolName === 'search_catalog' ||
       toolName === 'catalog_search' ||
@@ -771,8 +689,10 @@ export async function handleToolsCall(env: any, request: Request): Promise<Respo
       'search_catalog',
       'search_shop_policies_and_faqs',
       'get_size_table',
+      'create_cart',
       'get_cart',
       'update_cart',
+      'cancel_cart',
     ] as const;
     const tools = publicToolNames.map((toolName) => ({
       name: TOOL_SCHEMAS[toolName].name,

@@ -28,8 +28,10 @@ export const OPERATOR_READONLY_COMMERCE_TOOL_NAMES = new Set([
 
 /** Wykluczone z operatora (buyer-facing Gemma). */
 export const OPERATOR_EXCLUDED_TOOL_NAMES = new Set([
+  'create_cart',
   'get_cart',
   'update_cart',
+  'cancel_cart',
   'get_size_table',
 ]);
 
