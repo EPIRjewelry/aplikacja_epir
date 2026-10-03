@@ -92,11 +92,17 @@ export type MarketingPreviewBody = {
   date: string;
   google_ads: { rowCount: number; topCampaigns: unknown[] };
   google_analytics: { rowCount: number; topRows: unknown[] };
+  google_merchant?: unknown;
 };
 
-/** Stub `MarketingIngestS2SRpc` (`workers/marketing-ingest`). */
+/**
+ * Stub `MarketingIngestS2SRpc` (`workers/marketing-ingest`).
+ * Tylko odczyt agregatów — mutacje Ads nie są wołane z Operator Studio.
+ */
 export type MarketingIngestRpcStub = {
   getMarketingPreview(args?: { date?: string }): Promise<MarketingPreviewBody>;
+  getGmcDiagnostics?(): Promise<Record<string, unknown>>;
+  getAdsAccountChangeAudit?(): Promise<Record<string, unknown>>;
 };
 
 export interface Env {
@@ -211,8 +217,9 @@ export interface Env {
    */
   EPIR_OPERATOR_PANEL_SECRET?: string;
   /**
-   * Klucz tylko do odczytu (agenci / MCP): flow-health, raporty, `api/analytics/query` (Q1–Q10).
-   * Bez mutacji Studio (czat, steward aggregate, warehouse export trigger).
+   * Klucz tylko do odczytu (agenci / MCP): flow-health, raporty, `api/analytics/query`
+   * (Q1–Q10 bez Q3), marketing-preview / gmc-diagnostics / ads-account-change-audit.
+   * Bez mutacji Studio (czat, steward aggregate, warehouse export trigger, Ads).
    */
   EPIR_READONLY_ANALYTICS_KEY?: string;
   /** OpenRouter API key – wymagany dla wariantów modelu `openrouter/*`. */
