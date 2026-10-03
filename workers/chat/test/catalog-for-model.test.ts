@@ -126,6 +126,42 @@ describe('presentCatalogForModel', () => {
     expect(product?.variant_id).toBe(GALAZKI_VARIANT);
   });
 
+  it('puts Soliter on the Kazka host and keeps the EPIR card on the apex', () => {
+    const soliter = (url: unknown) =>
+      ucpResult([
+        {
+          ...fatProduct({
+            id: 'gid://shopify/Product/2',
+            title: 'Pierścionek Soliter',
+            handle: 'soliter',
+            variantId: SOLITER_VARIANT,
+            amount: 640800,
+            vendor: 'Kazka',
+            tags: ['kazka'],
+          }),
+          url,
+        },
+      ]);
+
+    const absolute = /^https:\/\/[^/?#]+\/products\/soliter$/;
+    const kazkaFromApex = productsOf(
+      presentCatalogForModel(soliter('https://epirbizuteria.pl/products/soliter'), {brand: 'kazka'}),
+    )[0];
+    const kazkaFromBare = productsOf(presentCatalogForModel(soliter('https://'), {brand: 'kazka'}))[0];
+    const epir = productsOf(
+      presentCatalogForModel(soliter('https://epirbizuteria.pl/products/soliter?variant=1'), {brand: 'epir'}),
+    )[0];
+
+    expect(kazkaFromApex?.url).toBe('https://kazka.epirbizuteria.pl/products/soliter');
+    expect(kazkaFromApex?.url).toMatch(absolute);
+    expect(kazkaFromApex?.price_display_pl).toBe(formatPlnMajorForDisplay(6408));
+    expect(kazkaFromBare?.url).toBe('https://kazka.epirbizuteria.pl/products/soliter');
+    expect(kazkaFromBare?.url).not.toBe('https://');
+    expect(epir?.url).toBe('https://epirbizuteria.pl/products/soliter');
+    expect(epir?.url).toMatch(absolute);
+    expect(epir?.price_display_pl).toBe(formatPlnMajorForDisplay(6408));
+  });
+
   it('keeps every product price inside the 3000-character tool window', () => {
     const products = [312000, 450000, 189900].map((amount, index) =>
       fatProduct({
@@ -184,6 +220,43 @@ describe('buyer catalog and cart transcript', () => {
     expect(visible).toContain(GALAZKI_VARIANT);
     expect(visible).not.toContain('opis opis');
     expect((out as {error?: unknown}).error).toBeUndefined();
+  });
+
+  it('transcript: KAZKA Soliter card is an absolute Kazka URL and the EPIR card stays on the apex', async () => {
+    const soliter = fatProduct({
+      id: 'gid://shopify/Product/2',
+      title: 'Pierścionek Soliter',
+      handle: 'soliter',
+      variantId: SOLITER_VARIANT,
+      amount: 640800,
+      vendor: 'Kazka',
+      tags: ['kazka'],
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => mcpResponse(ucpResult([soliter]))));
+
+    const kazka = await callMcpToolDirect(
+      env(),
+      'search_catalog',
+      {catalog: {query: 'Pokaż pierścionek Soliter i podaj cenę.'}},
+      {brand: 'kazka'},
+    );
+    const epir = await callMcpToolDirect(
+      env(),
+      'search_catalog',
+      {catalog: {query: 'Pokaż pierścionek Soliter i podaj cenę.'}},
+      {brand: 'epir'},
+    );
+    const kazkaCard = productsOf((kazka as {result: unknown}).result)[0];
+    const epirCard = productsOf((epir as {result: unknown}).result)[0];
+    const absolute = /^https:\/\/[^/?#]+\/products\/soliter$/;
+
+    expect(kazkaCard?.title).toBe('Pierścionek Soliter');
+    expect(kazkaCard?.price_display_pl).toBe(formatPlnMajorForDisplay(6408));
+    expect(kazkaCard?.url).toBe('https://kazka.epirbizuteria.pl/products/soliter');
+    expect(kazkaCard?.url).toMatch(absolute);
+    expect(epirCard?.url).toBe('https://epirbizuteria.pl/products/soliter');
+    expect(epirCard?.url).toMatch(absolute);
+    expect(epirCard?.price_display_pl).toBe(formatPlnMajorForDisplay(6408));
   });
 
   it('KAZKA Soliter at 4500 PLN stays, EPIR Gałązki does not, and the price is quoted', async () => {
