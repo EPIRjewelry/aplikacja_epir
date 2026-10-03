@@ -8,6 +8,7 @@
  * więc bez tego pola odsyła na kartę produktu albo kręci kolejne lookupy.
  */
 
+import { isKazkaCatalogBrand } from '../catalog/kazka-assortment';
 import { plnDisplayFromUcpMoney } from './catalog-price-enrich';
 
 const MAX_VARIANTS = 6;
@@ -16,6 +17,10 @@ const MAX_OPTION_LABELS = 12;
 const MODEL_WIRE_BUDGET = 2700;
 const PRICE_NOTE =
   'Cytuj wyłącznie price_display_pl. Do koszyka użyj variant_id (gid://shopify/ProductVariant/…).';
+const URL_NOTE = 'Link do produktu bierz wyłącznie z pola url.';
+/** Publiczne PDP. Apex to Online Store; Kazka jest na subdomenie Hydrogen, nie na apex. */
+const EPIR_PRODUCT_ORIGIN = 'https://epirbizuteria.pl';
+const KAZKA_PRODUCT_ORIGIN = 'https://kazka.epirbizuteria.pl';
 
 type PlnPrice = {
   currency: 'PLN';
@@ -100,10 +105,86 @@ function slimVariant(variant: Record<string, unknown>, compact: boolean): Record
   return out;
 }
 
+function readUrlString(value: unknown): string | undefined {
+  const direct = asString(value);
+  if (direct) return direct;
+  if (!isRecord(value)) return undefined;
+  return asString(value.href) ?? asString(value.url) ?? asString(value.onlineStoreUrl);
+}
+
+function isEpirCatalogBrand(brand?: string): boolean {
+  if (!brand) return false;
+  const normalized = brand.trim().toLowerCase();
+  return (
+    normalized === 'epir' ||
+    normalized === 'online-store' ||
+    normalized === 'epir-liquid' ||
+    normalized === 'epirbizuteria.pl'
+  );
+}
+
+function productOrigin(brand?: string): string | null {
+  if (isKazkaCatalogBrand(brand)) return KAZKA_PRODUCT_ORIGIN;
+  if (!brand || isEpirCatalogBrand(brand)) return EPIR_PRODUCT_ORIGIN;
+  return null;
+}
+
+function productPath(raw: string | undefined, handle: string | undefined): string | undefined {
+  if (raw) {
+    try {
+      const parsed = new URL(raw);
+      const path = parsed.pathname.replace(/\/+$/, '');
+      if (
+        (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
+        parsed.hostname &&
+        path.startsWith('/products/') &&
+        path.length > '/products/'.length
+      ) {
+        return path;
+      }
+    } catch {
+      /* sam schemat, np. "https://", nie ma hosta ani ścieżki */
+    }
+    const relative = raw.split(/[?#]/)[0] ?? '';
+    if (relative.startsWith('/products/') && relative.length > '/products/'.length) {
+      return relative.replace(/\/+$/, '');
+    }
+  }
+  const slug = handle?.trim();
+  if (!slug || slug.includes('/') || /\s/.test(slug)) return undefined;
+  return `/products/${slug}`;
+}
+
+/**
+ * Shop MCP zwraca URL Online Store (apex) dla obu kanałów.
+ * Karta Kazki dostaje ten sam path na hoście kazka.epirbizuteria.pl.
+ * EPIR zostaje na apex. Sam schemat bez hosta nie przechodzi.
+ */
+function absoluteProductUrl(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = new URL(raw);
+    const path = parsed.pathname.replace(/\/+$/, '');
+    if (!parsed.hostname || !path.startsWith('/products/') || path.length <= '/products/'.length) return undefined;
+    return `${parsed.protocol}//${parsed.host}${path}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function catalogProductUrl(product: Record<string, unknown>, brand?: string): string | undefined {
+  const raw = readUrlString(product.url) ?? readUrlString(product.onlineStoreUrl);
+  const path = productPath(raw, asString(product.handle));
+  const origin = productOrigin(brand);
+  if (origin && path) return `${origin}${path}`;
+  return absoluteProductUrl(raw);
+}
+
 function slimProduct(
   product: Record<string, unknown>,
   maxVariants: number,
   compact: boolean,
+  brand?: string,
 ): Record<string, unknown> {
   const price = productPrice(product);
   const variantsAll = variantList(product);
@@ -115,7 +196,7 @@ function slimProduct(
   const id = asString(product.id);
   const title = asString(product.title) ?? asString(product.name);
   const handle = asString(product.handle);
-  const url = asString(product.url) ?? asString(product.onlineStoreUrl);
+  const url = catalogProductUrl(product, brand);
   if (id) out.id = id;
   if (title) out.title = title;
   if (price) {
@@ -210,12 +291,17 @@ function dedupeProducts(products: Record<string, unknown>[]): Record<string, unk
   return out;
 }
 
-function systemNote(bodies: Record<string, unknown>[], hasProducts: boolean): string | undefined {
+function systemNote(
+  bodies: Record<string, unknown>[],
+  hasProducts: boolean,
+  hasUrl: boolean,
+): string | undefined {
   const notes = bodies
     .map((body) => asString(body.system_note))
     .filter((note): note is string => Boolean(note));
   const unique = [...new Set(notes)];
   if (hasProducts) unique.push(PRICE_NOTE);
+  if (hasUrl) unique.push(URL_NOTE);
   if (!unique.length) return undefined;
   return unique.join(' ');
 }
@@ -243,17 +329,22 @@ function packWithinBudget(payloadFor: (maxVariants: number, compact: boolean) =>
  * Zwraca krótki JSON w `content[0].text`: tytuł, price_display_pl, variant_id.
  * Surowy `amount` (jednostki minor) nie trafia do modelu.
  */
-export function presentCatalogForModel(result: unknown): unknown {
+export function presentCatalogForModel(result: unknown, options?: { brand?: string }): unknown {
   if (!isRecord(result) || result.isError === true) return result;
   const bodies = catalogBodies(result).filter(isRecord);
   if (!bodies.length) return result;
+  const brand = options?.brand;
 
   if (bodies.length === 1 && isSingleProductBody(bodies[0])) {
     const body = bodies[0];
     return packWithinBudget((maxVariants, compact) => {
-      const product = isRecord(body.product) ? slimProduct(body.product, maxVariants, compact) : null;
+      const product = isRecord(body.product) ? slimProduct(body.product, maxVariants, compact, brand) : null;
       const payload: Record<string, unknown> = { product };
-      const note = systemNote([body], Boolean(product && product.price_display_pl));
+      const note = systemNote(
+        [body],
+        Boolean(product && product.price_display_pl),
+        Boolean(product && product.url),
+      );
       if (note) payload.system_note = note;
       return payload;
     });
@@ -263,11 +354,12 @@ export function presentCatalogForModel(result: unknown): unknown {
   for (const body of bodies) pushProducts(body, collected);
   const rawProducts = dedupeProducts(collected);
   return packWithinBudget((maxVariants, compact) => {
-    const products = rawProducts.map((product) => slimProduct(product, maxVariants, compact));
+    const products = rawProducts.map((product) => slimProduct(product, maxVariants, compact, brand));
     const payload: Record<string, unknown> = { products };
     const note = systemNote(
       bodies,
       products.some((product) => typeof product.price_display_pl === 'string'),
+      products.some((product) => typeof product.url === 'string'),
     );
     if (note) payload.system_note = note;
     return payload;

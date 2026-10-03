@@ -660,7 +660,7 @@ async function callShopMcp(
       });
     }
     if (presentCatalog) {
-      resultPayload = presentCatalogForModel(resultPayload);
+      resultPayload = presentCatalogForModel(resultPayload, { brand });
       if (
         toolName === 'search_catalog' ||
         toolName === 'catalog_search' ||
