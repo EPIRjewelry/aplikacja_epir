@@ -5,6 +5,7 @@
  * produkt jest Kazka, gdy tag == `kazka` LUB vendor == `Kazka`.
  * Reszta (w tym sam tag `kazka-pierscionek` bez `kazka` i bez vendor Kazka) jest EPIR-only
  * i nie może wrócić do Gemmy na kanale Kazka.
+ * Odwrotnie: ten sam dowód (tag `kazka` lub vendor `Kazka`) wyklucza produkt z karty EPIR.
  *
  * Shopify Catalog MCP nie filtruje vendora. Dlatego:
  * 1) zapytanie search dostaje klauzulę `tag:kazka OR vendor:Kazka` (parser sklepu),
@@ -57,6 +58,17 @@ export function isKazkaCatalogBrand(brand?: string): boolean {
   const normalized = brand.trim().toLowerCase();
   if (!normalized) return false;
   return normalized === 'kazka' || isKazkaHeadlessChannel(normalized, normalized);
+}
+
+export function isEpirCatalogBrand(brand?: string): boolean {
+  if (!brand) return false;
+  const normalized = brand.trim().toLowerCase();
+  return (
+    normalized === 'epir' ||
+    normalized === 'online-store' ||
+    normalized === 'epir-liquid' ||
+    normalized === 'epirbizuteria.pl'
+  );
 }
 
 /**
@@ -115,6 +127,24 @@ export async function enforceKazkaAssortmentOnCatalogResult(
   env: KazkaAssortmentEnv,
   options?: {maxProducts?: number},
 ): Promise<unknown> {
+  return enforceAssortment(result, env, options, 'kazka');
+}
+
+/** EPIR nie dostaje produktu Kazka. Brak dowodu (vendor i tagi puste) zostawia produkt. */
+export async function enforceEpirAssortmentOnCatalogResult(
+  result: unknown,
+  env: KazkaAssortmentEnv,
+  options?: {maxProducts?: number},
+): Promise<unknown> {
+  return enforceAssortment(result, env, options, 'epir');
+}
+
+async function enforceAssortment(
+  result: unknown,
+  env: KazkaAssortmentEnv,
+  options: {maxProducts?: number} | undefined,
+  channel: 'kazka' | 'epir',
+): Promise<unknown> {
   const bodies = collectCatalogBodies(result);
   const bag = emptyBag();
   for (const body of bodies) {
@@ -126,13 +156,13 @@ export async function enforceKazkaAssortmentOnCatalogResult(
   const totals: FilterStats = {kept: 0, dropped: 0};
   const rewritten = rewriteCatalogBodies(result, (body) => {
     const stats: FilterStats = {kept: 0, dropped: 0};
-    const filtered = filterBody(body, membership, options?.maxProducts, stats);
+    const filtered = filterBody(body, membership, options?.maxProducts, stats, channel);
     totals.kept += stats.kept;
     totals.dropped += stats.dropped;
-    return attachAssortmentNote(filtered, stats);
+    return attachAssortmentNote(filtered, stats, channel);
   });
   if (totals.dropped > 0 || totals.kept > 0) {
-    console.log('[kazka-assortment] filtered catalog result', totals);
+    console.log(`[${channel}-assortment] filtered catalog result`, totals);
   }
   return rewritten;
 }
@@ -279,6 +309,23 @@ function keepProduct(product: Record<string, unknown>, membership: MembershipInd
   return keys.some((key) => membership.get(key) === true);
 }
 
+function keepEpirProduct(product: Record<string, unknown>, membership: MembershipIndex): boolean {
+  const decision = localDecision(product);
+  if (decision === 'keep') return false;
+  if (decision === 'drop') return true;
+  const keys = refKeys(product);
+  if (keys.some((key) => membership.get(key) === true)) return false;
+  return true;
+}
+
+function keepForChannel(
+  channel: 'kazka' | 'epir',
+  product: Record<string, unknown>,
+  membership: MembershipIndex,
+): boolean {
+  return channel === 'kazka' ? keepProduct(product, membership) : keepEpirProduct(product, membership);
+}
+
 function visitProducts(
   value: unknown,
   visitor: (product: Record<string, unknown>) => void,
@@ -314,16 +361,17 @@ function filterBody(
   membership: MembershipIndex,
   maxProducts: number | undefined,
   stats: FilterStats,
+  channel: 'kazka' | 'epir',
 ): unknown {
   if (isRecord(body) && isCatalogProduct(body) && !hasProductContainer(body)) {
-    if (keepProduct(body, membership)) {
+    if (keepForChannel(channel, body, membership)) {
       stats.kept += 1;
       return body;
     }
     stats.dropped += 1;
     return {product: null};
   }
-  return filterValue(body, membership, maxProducts, stats, 0);
+  return filterValue(body, membership, maxProducts, stats, channel, 0);
 }
 
 function filterValue(
@@ -331,11 +379,12 @@ function filterValue(
   membership: MembershipIndex,
   maxProducts: number | undefined,
   stats: FilterStats,
+  channel: 'kazka' | 'epir',
   depth: number,
 ): unknown {
   if (depth > 8 || value === null || typeof value !== 'object') return value;
   if (Array.isArray(value)) {
-    return value.map((item) => filterValue(item, membership, maxProducts, stats, depth + 1));
+    return value.map((item) => filterValue(item, membership, maxProducts, stats, channel, depth + 1));
   }
   if (!isRecord(value)) return value;
   const output: Record<string, unknown> = {};
@@ -347,7 +396,7 @@ function filterValue(
           kept.push(item);
           continue;
         }
-        if (keepProduct(item, membership)) {
+        if (keepForChannel(channel, item, membership)) {
           kept.push(item);
           stats.kept += 1;
         } else {
@@ -358,7 +407,7 @@ function filterValue(
       continue;
     }
     if (SINGLE_PRODUCT_KEYS.has(key) && isRecord(child) && isCatalogProduct(child)) {
-      if (keepProduct(child, membership)) {
+      if (keepForChannel(channel, child, membership)) {
         output[key] = child;
         stats.kept += 1;
       } else {
@@ -367,17 +416,21 @@ function filterValue(
       }
       continue;
     }
-    output[key] = filterValue(child, membership, maxProducts, stats, depth + 1);
+    output[key] = filterValue(child, membership, maxProducts, stats, channel, depth + 1);
   }
   return output;
 }
 
-function attachAssortmentNote(body: unknown, stats: FilterStats): unknown {
+function attachAssortmentNote(body: unknown, stats: FilterStats, channel: 'kazka' | 'epir'): unknown {
   if (stats.dropped <= 0 || !isRecord(body)) return body;
   const note =
-    stats.kept > 0
-      ? 'Katalog Kazka: w wyniku zostały tylko produkty z tagiem kazka lub vendor Kazka. Nie proponuj biżuterii spoza tego zbioru.'
-      : 'Brak produktów w katalogu Kazka dla tego zapytania. Nie proponuj biżuterii spoza asortymentu Kazka (tag kazka lub vendor Kazka).';
+    channel === 'epir'
+      ? stats.kept > 0
+        ? 'Katalog EPIR: pominięto biżuterię z tagiem kazka lub vendor Kazka. Nie proponuj tych produktów.'
+        : 'Brak produktów w katalogu EPIR dla tego zapytania. Nie proponuj biżuterii Kazka (tag kazka lub vendor Kazka).'
+      : stats.kept > 0
+        ? 'Katalog Kazka: w wyniku zostały tylko produkty z tagiem kazka lub vendor Kazka. Nie proponuj biżuterii spoza tego zbioru.'
+        : 'Brak produktów w katalogu Kazka dla tego zapytania. Nie proponuj biżuterii spoza asortymentu Kazka (tag kazka lub vendor Kazka).';
   const previous = typeof body.system_note === 'string' ? body.system_note.trim() : '';
   return {
     ...body,

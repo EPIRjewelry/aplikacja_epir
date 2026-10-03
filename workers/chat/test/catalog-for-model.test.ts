@@ -222,7 +222,7 @@ describe('buyer catalog and cart transcript', () => {
     expect((out as {error?: unknown}).error).toBeUndefined();
   });
 
-  it('transcript: KAZKA Soliter card is an absolute Kazka URL and the EPIR card stays on the apex', async () => {
+  it('transcript: KAZKA Soliter card keeps the Kazka URL and EPIR omits that product', async () => {
     const soliter = fatProduct({
       id: 'gid://shopify/Product/2',
       title: 'Pierścionek Soliter',
@@ -247,16 +247,69 @@ describe('buyer catalog and cart transcript', () => {
       {brand: 'epir'},
     );
     const kazkaCard = productsOf((kazka as {result: unknown}).result)[0];
-    const epirCard = productsOf((epir as {result: unknown}).result)[0];
+    const epirWire = modelWire((epir as {result: unknown}).result);
     const absolute = /^https:\/\/[^/?#]+\/products\/soliter$/;
 
     expect(kazkaCard?.title).toBe('Pierścionek Soliter');
     expect(kazkaCard?.price_display_pl).toBe(formatPlnMajorForDisplay(6408));
     expect(kazkaCard?.url).toBe('https://kazka.epirbizuteria.pl/products/soliter');
     expect(kazkaCard?.url).toMatch(absolute);
-    expect(epirCard?.url).toBe('https://epirbizuteria.pl/products/soliter');
-    expect(epirCard?.url).toMatch(absolute);
-    expect(epirCard?.price_display_pl).toBe(formatPlnMajorForDisplay(6408));
+    expect(epirWire).not.toContain('Pierścionek Soliter');
+    expect(epirWire).not.toContain('/products/soliter');
+  });
+
+  it('EPIR card drops Kazka Soliter; Kazka card keeps the Kazka URL and 6408 zł', async () => {
+    const handle = '101-10500-2-0-em';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        mcpResponse(
+          ucpResult([
+            fatProduct({
+              id: 'gid://shopify/Product/1',
+              title: 'Pierścionek z czarnym turmalinem z kolekcji Gałązki',
+              handle: 'galazki-turmalin',
+              variantId: GALAZKI_VARIANT,
+              amount: 312000,
+              vendor: 'EPIR',
+              tags: ['srebro'],
+            }),
+            fatProduct({
+              id: 'gid://shopify/Product/2',
+              title: 'Pierścionek Soliter',
+              handle,
+              variantId: SOLITER_VARIANT,
+              amount: 640800,
+              vendor: 'Kazka',
+              tags: ['kazka'],
+            }),
+          ]),
+        ),
+      ),
+    );
+
+    const epir = await callMcpToolDirect(
+      env(),
+      'search_catalog',
+      {catalog: {query: 'Pokaż pierścionek Soliter i podaj cenę.'}},
+      {brand: 'epir'},
+    );
+    const kazka = await callMcpToolDirect(
+      env(),
+      'search_catalog',
+      {catalog: {query: 'Pokaż pierścionek Soliter i podaj cenę.'}},
+      {brand: 'kazka'},
+    );
+    const epirWire = modelWire((epir as {result: unknown}).result);
+    const kazkaProducts = productsOf((kazka as {result: unknown}).result);
+    const kazkaCard = kazkaProducts[0];
+
+    expect(epirWire).not.toContain('Pierścionek Soliter');
+    expect(epirWire).not.toContain(handle);
+    expect(epirWire).toContain('Gałązki');
+    expect(kazkaProducts.map((product) => product.title)).toEqual(['Pierścionek Soliter']);
+    expect(kazkaCard?.url).toBe(`https://kazka.epirbizuteria.pl/products/${handle}`);
+    expect(kazkaCard?.price_display_pl).toBe(formatPlnMajorForDisplay(6408));
   });
 
   it('KAZKA Soliter at 4500 PLN stays, EPIR Gałązki does not, and the price is quoted', async () => {
