@@ -49,4 +49,36 @@ describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('000 000 000');
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('nie podawaj zmyślonych danych kontaktowych');
   });
+
+  it('sends an EPIR custom design to the cocreate page, not the Kazka block', () => {
+    expect(LUXURY_SYSTEM_PROMPT).toContain(
+      'Gdy klient chce biżuterię wykonaną na własny projekt, skieruj na brief [Zaprojektuj swój model](https://epirbizuteria.pl/pages/zaprojektuj-swoj-model).',
+    );
+    expect(LUXURY_SYSTEM_PROMPT).toContain('Ten sam adres jest banerem na kolekcji złota.');
+    expect(LUXURY_SYSTEM_PROMPT).toContain(
+      'Nie mów, że sklep nie ma formularza ani konfiguratora online. Nie odsyłaj do e-maila ani telefonu jako drogi złożenia projektu. Nie podawaj ceny projektu — cenę ustala pracownia.',
+    );
+    expect(LUXURY_SYSTEM_PROMPT).toContain(
+      'Nie odsyłaj klienta EPIR do bloku Kazka „Wspólnie zrealizujmy Twój pomysł” i nie mieszaj katalogu ani głosu Kazka z tą rozmową.',
+    );
+    expect(LUXURY_SYSTEM_PROMPT).not.toContain('zaproponuj kontakt lub konkretny produkt z katalogu');
+  });
+
+  it('tells Kazka Gemma to fill the existing custom brief instead of sending email', () => {
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('Wspólnie zrealizujmy Twój pomysł');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('#kazka-custom-order');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain(
+      'Uzupełniasz wyłącznie pola, które klient już powiedział.',
+    );
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain(
+      'Nie podawaj ceny projektu na zamówienie — cenę ustala pracownia.',
+    );
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain(
+      'Nie odsyłaj do e-maila ani telefonu jako drogi złożenia projektu.',
+    );
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain(
+      'Nie odsyłaj klienta Kazka na https://epirbizuteria.pl/pages/zaprojektuj-swoj-model',
+    );
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('Przycisk „Otwórz czat” tylko otwiera tę rozmowę');
+  });
 });
