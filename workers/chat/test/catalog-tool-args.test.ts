@@ -3,6 +3,7 @@ import {
   normalizeCatalogImageSearchArgs,
   normalizeCatalogLookupArgs,
   normalizeCatalogSearchArgs,
+  normalizeUcpLookupArgs,
 } from '../src/catalog/catalog-tool-args';
 
 const env = {WORKER_ORIGIN: 'https://asystent.epirbizuteria.pl'};
@@ -65,6 +66,27 @@ describe('normalizeCatalogLookupArgs', () => {
     expect((out.catalog as Record<string, unknown>).ids).toEqual([
       'gid://shopify/ProductVariant/1',
     ]);
+  });
+});
+
+describe('normalizeUcpLookupArgs', () => {
+  it('folds handle and product id into catalog.ids for UCP lookup_catalog', () => {
+    const out = normalizeUcpLookupArgs(
+      {
+        catalog: {
+          handle: 'pierscionek-galazki',
+          product_id: 'gid://shopify/Product/1001',
+        },
+      },
+      env,
+    );
+    expect((out.catalog as Record<string, unknown>).ids).toEqual([
+      'gid://shopify/Product/1001',
+      'pierscionek-galazki',
+    ]);
+    expect(out.meta).toEqual({
+      'ucp-agent': {profile: 'https://asystent.epirbizuteria.pl/.well-known/ucp-agent-profile.json'},
+    });
   });
 });
 

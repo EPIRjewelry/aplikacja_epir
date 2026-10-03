@@ -30,6 +30,7 @@ import {
   normalizeCatalogImageSearchArgs,
   normalizeCatalogLookupArgs,
   normalizeCatalogSearchArgs,
+  normalizeUcpLookupArgs,
 } from './catalog/catalog-tool-args';
 import {
   getUcpCatalogEndpoint,
@@ -49,7 +50,7 @@ import {
   type CommerceContext,
 } from './config/commerce-context';
 import { getSizeTable } from './size-table';
-import { compactCatalogResult } from './mcp/catalog-result-compact';
+import { presentCatalogForModel } from './mcp/catalog-for-model';
 import {
   appendKazkaAssortmentClause,
   enforceKazkaAssortmentOnCatalogResult,
@@ -408,7 +409,9 @@ async function callShopMcp(
     args = normalizeCatalogImageSearchArgs(rawArgs, env, commerceContext, brand);
   } else if (toolName === 'search_catalog') {
     args = normalizeSearchCatalogArgs(rawArgs, brand, commerceContext);
-  } else if (toolName === 'lookup_catalog' || toolName === 'get_product') {
+  } else if (toolName === 'lookup_catalog') {
+    args = normalizeUcpLookupArgs(rawArgs, env, commerceContext);
+  } else if (toolName === 'get_product') {
     const source = rawArgs && typeof rawArgs === 'object' ? { ...(rawArgs as Record<string, unknown>) } : {};
     const catalog =
       source.catalog && typeof source.catalog === 'object'
@@ -464,6 +467,18 @@ async function callShopMcp(
     }
     args = prepared.arguments;
     cartMcpToolName = prepared.mcpToolName;
+  }
+
+  if (toolName === 'lookup_catalog') {
+    const ids = args?.catalog?.ids;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return {
+        error: {
+          code: -32602,
+          message: 'Invalid params: catalog.ids, product id, variant id, or handle required for lookup_catalog',
+        },
+      };
+    }
   }
 
   if (!isUcpCartTool(toolName)) {
@@ -632,23 +647,32 @@ async function callShopMcp(
     if (isUcpCartTool(toolName)) {
       resultPayload = presentCartForChat(resultPayload);
     }
-    if (
+    const presentCatalog =
       toolName === 'search_catalog' ||
       toolName === 'catalog_search' ||
-      toolName === 'catalog_image_search'
-    ) {
-      resultPayload = compactCatalogResult(resultPayload);
-      const { productCount, parseError } = summarizeSearchCatalogResult(resultPayload);
-      console.log('[mcp] catalog search outcome', {
-        tool: toolName,
-        productCount,
-        parseError: parseError ?? false,
-      });
-    }
+      toolName === 'catalog_image_search' ||
+      toolName === 'lookup_catalog' ||
+      toolName === 'catalog_lookup' ||
+      toolName === 'get_product';
     if (isKazkaCatalogBrand(brand) && isKazkaFilteredCatalogTool(toolName)) {
       resultPayload = await enforceKazkaAssortmentOnCatalogResult(resultPayload, env, {
         maxProducts: isKazkaCatalogSearchTool(toolName) ? KAZKA_CATALOG_SEARCH_LIMIT : undefined,
       });
+    }
+    if (presentCatalog) {
+      resultPayload = presentCatalogForModel(resultPayload);
+      if (
+        toolName === 'search_catalog' ||
+        toolName === 'catalog_search' ||
+        toolName === 'catalog_image_search'
+      ) {
+        const { productCount, parseError } = summarizeSearchCatalogResult(resultPayload);
+        console.log('[mcp] catalog search outcome', {
+          tool: toolName,
+          productCount,
+          parseError: parseError ?? false,
+        });
+      }
     }
     return { result: resultPayload };
   } catch (err: any) {
