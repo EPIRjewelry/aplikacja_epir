@@ -226,6 +226,73 @@ describe('Analytics Worker - /pixel endpoint', () => {
         expect(event?.session_id).toBe('shopify-client-from-body');
     });
 
+    it('stores non-NULL session_id from clientId when the request has no cookie (§A.2)', async () => {
+        const response = await SELF.fetch('https://example.com/pixel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'page_viewed',
+                data: {
+                    clientId: 'init-shopify-client-abc',
+                    sessionId: 'init-shopify-client-abc',
+                    session_id: 'init-shopify-client-abc',
+                },
+            }),
+        });
+
+        expect(response.status).toBe(200);
+        const event = await env.DB.prepare(
+            'SELECT session_id FROM pixel_events ORDER BY id DESC LIMIT 1',
+        ).first<{ session_id: string | null }>();
+        expect(event?.session_id).not.toBeNull();
+        expect(event?.session_id).toBe('init-shopify-client-abc');
+    });
+
+    it('stores NULL session_id when neither cookie nor clientId is present (§A.2)', async () => {
+        const response = await SELF.fetch('https://example.com/pixel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'page_viewed',
+                data: {
+                    clientId: '',
+                    sessionId: '',
+                    session_id: '',
+                },
+            }),
+        });
+
+        expect(response.status).toBe(200);
+        const event = await env.DB.prepare(
+            'SELECT session_id FROM pixel_events ORDER BY id DESC LIMIT 1',
+        ).first<{ session_id: string | null }>();
+        expect(event?.session_id).toBeNull();
+    });
+
+    it('does not read session_id from the request Cookie header', async () => {
+        const response = await SELF.fetch('https://example.com/pixel', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Cookie: '_epir_session_id=cookie-must-not-win',
+            },
+            body: JSON.stringify({
+                type: 'page_viewed',
+                data: {
+                    clientId: '',
+                    sessionId: '',
+                    session_id: '',
+                },
+            }),
+        });
+
+        expect(response.status).toBe(200);
+        const event = await env.DB.prepare(
+            'SELECT session_id FROM pixel_events ORDER BY id DESC LIMIT 1',
+        ).first<{ session_id: string | null }>();
+        expect(event?.session_id).toBeNull();
+    });
+
     it('should accept valid product_viewed event', async () => {
         const response = await SELF.fetch('https://example.com/pixel', {
             method: 'POST',
