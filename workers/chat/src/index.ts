@@ -22,6 +22,7 @@ export type { Env, RpcSerializedHttpResponse } from './config/bindings';
 // Importy bezpieczeństwa i DO
 import { verifyAppProxyHmac, replayCheck } from './security';
 import { verifyHmac } from './hmac';
+import { handleShopifyAppOAuth } from './shopify-app-oauth';
 import { parseAuthorizationBearer, verifyShopifySessionTokenJwt } from './shopify-session-token';
 import { RateLimiterDO, checkRateLimit } from './rate-limiter';
 import { TokenVaultDO, TokenVault, getTokenVaultStub } from './token-vault';
@@ -4903,6 +4904,10 @@ export default {
     const url = new URL(request.url);
     const pathname = url.pathname;
     const method = request.method.toUpperCase();
+
+    if (pathname === '/api/auth') {
+      return handleShopifyAppOAuth(request, env);
+    }
 
     // 0b. Reverse proxy wykresów (CQRS) — App Proxy / headless; `ANALYTICS_S2S_RPC`; RateLimiterDO (DoW)
     if (isAnalyticsChartsProxyPath(pathname)) {

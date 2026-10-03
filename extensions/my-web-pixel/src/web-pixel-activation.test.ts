@@ -20,12 +20,18 @@ describe('web pixel ships with the app, not a Customer Events paste', () => {
   });
 
   it('activation script creates the web pixel record and does not subscribe like a paste', () => {
-    const script = readFileSync(join(root, 'scripts/shopify/ensure-epir-web-pixel.mjs'), 'utf8');
+    const script = [
+      readFileSync(join(root, 'scripts/shopify/ensure-epir-web-pixel.mjs'), 'utf8'),
+      readFileSync(join(root, 'scripts/shopify/epir-web-pixel-record.mjs'), 'utf8'),
+    ].join('\n');
+    expect(script).toContain('reconcileEpirWebPixel');
     expect(script).toContain('webPixelCreate');
     expect(script).toContain('webPixelUpdate');
     expect(script).toContain('https://asystent.epirbizuteria.pl');
     expect(script).toContain('accountID');
     expect(script).toContain('--dry-run');
+    expect(script).toContain('no web pixel was found');
     expect(script).not.toContain('analytics.subscribe');
+    expect(script).not.toContain('webPixelDelete');
   });
 });
