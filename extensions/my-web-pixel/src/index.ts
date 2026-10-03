@@ -1,10 +1,14 @@
 import {register} from "@shopify/web-pixels-extension";
+import {EPIR_CHAT_SESSION_STORAGE_KEY, pickEpirPixelSessionId} from "./pixel-session-id";
 
 // Zmienić przed deployem – fallback gdy brak ustawienia w extension settings
 const DEFAULT_PIXEL_ENDPOINT = 'https://asystent.epirbizuteria.pl';
 
 type PixelBrowser = {
-  cookie?: {get: (name: string) => Promise<string | null | undefined>};
+  cookie?: {
+    get: (name: string) => Promise<string | null | undefined>;
+    set?: (name: string, value: string) => Promise<unknown>;
+  };
   sessionStorage: {
     getItem: (key: string) => Promise<string | null>;
     setItem: (key: string, value: string) => Promise<void>;
@@ -82,36 +86,77 @@ function extractClientIdFromInit(initApi: unknown): string | null {
   return null;
 }
 
+async function readBrowserCookie(browserApi: PixelBrowser, name: string): Promise<string> {
+  try {
+    const getCookie = browserApi.cookie?.get;
+    if (typeof getCookie !== 'function') return '';
+    const raw = await getCookie(name);
+    return typeof raw === 'string' ? raw.trim() : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+async function readChatSessionStorage(browserApi: PixelBrowser): Promise<string> {
+  try {
+    const raw = await browserApi.sessionStorage.getItem(EPIR_CHAT_SESSION_STORAGE_KEY);
+    return typeof raw === 'string' ? raw.trim() : '';
+  } catch (_) {
+    return '';
+  }
+}
+
 /**
- * Tożsamość analityczna: cookie `_epir_session_id`, inaczej `clientId` z API Shopify
- * (to samo co cookie `_shopify_y` — SSOT w `resolveEpirAnalyticsSessionId` / snippet apex).
- * Bez generowania ID po stronie klienta (Date/Math.random).
+ * Ta sama tożsamość co żywy czat, potem clientId Shopify (zamiennik `_shopify_y`).
+ * Kolejność: `_epir_session_id`, `_shopify_y`, `epir-assistant-session`, clientId, id z wcześniejszego zdarzenia.
+ * Puste źródła → brak POST (nie generujemy drugiego id).
+ * Gdy cookie epir jest puste, zapisujemy wybrane id do `_epir_session_id`, żeby czat je czytał.
  */
 async function resolveEpirSessionId(
   browserApi: PixelBrowser,
   event: unknown,
   initApi: unknown,
+  memory: {id: string},
 ): Promise<string> {
-  try {
-    const getCookie = browserApi.cookie?.get;
-    if (typeof getCookie === 'function') {
-      const raw = await getCookie('_epir_session_id');
-      if (typeof raw === 'string' && raw.trim().length > 0) return raw.trim();
+  const epirSessionId = await readBrowserCookie(browserApi, '_epir_session_id');
+  const shopifyY = epirSessionId ? '' : await readBrowserCookie(browserApi, '_shopify_y');
+  const chatSessionStorage = await readChatSessionStorage(browserApi);
+  const haveStableId = Boolean(epirSessionId || shopifyY || chatSessionStorage);
+  const eventClientId = haveStableId ? '' : extractClientIdFromEvent(event) || '';
+  const initClientId = haveStableId || eventClientId ? '' : extractClientIdFromInit(initApi) || '';
+  const pick = pickEpirPixelSessionId({
+    epirSessionId,
+    shopifyY,
+    chatSessionStorage,
+    eventClientId,
+    initClientId,
+    remembered: memory.id,
+  });
+  if (!pick.sessionId) return '';
+  memory.id = pick.sessionId;
+  if (pick.pinEpirCookie) {
+    try {
+      const setCookie = browserApi.cookie?.set;
+      if (typeof setCookie === 'function') await setCookie('_epir_session_id', pick.sessionId);
+    } catch (_) {
+      /* sandbox może odrzucić zapis cookie */
     }
-  } catch (_) {
-    /* sandbox / brak uprawnień do cookie */
   }
-  const fromEvent = extractClientIdFromEvent(event);
-  if (fromEvent) return fromEvent;
-  const fromInit = extractClientIdFromInit(initApi);
-  if (fromInit) return fromInit;
-  return '';
+  if (pick.pinChatStorage) {
+    try {
+      await browserApi.sessionStorage.setItem(EPIR_CHAT_SESSION_STORAGE_KEY, pick.sessionId);
+    } catch (_) {
+      /* brak sessionStorage */
+    }
+  }
+  return pick.sessionId;
 }
 
 register(async (api) => {
     const { analytics, browser, init, settings } = api;
 
     const browserApi = browser as PixelBrowser;
+    const sessionMemory: {id: string} = {id: ''};
 
     // ============================================================================
     // CUSTOMER & SESSION TRACKING
@@ -394,7 +439,13 @@ register(async (api) => {
         }
 
         const sourceForIdentity = pixelEvent;
-        const resolvedSessionId = await resolveEpirSessionId(browserApi, sourceForIdentity, init);
+        const resolvedSessionId = await resolveEpirSessionId(
+          browserApi,
+          sourceForIdentity,
+          init,
+          sessionMemory,
+        );
+        if (!resolvedSessionId) return;
         const storefront = await getStorefrontForEvent(pixelEvent);
         const attribution = await getAttributionForEvent(pixelEvent);
         // Enrich event data with customer_id, session_id (cookie lub clientId), storefront_id, channel
@@ -404,6 +455,7 @@ register(async (api) => {
           customerId: customerId,
           sessionId: resolvedSessionId,
           session_id: resolvedSessionId,
+          pixel_sender: 'web_pixel_extension',
           storefront_id: storefront.storefront_id,
           channel: storefront.channel,
           ...attribution,

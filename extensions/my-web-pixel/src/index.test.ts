@@ -23,6 +23,7 @@ interface MockWebPixelAPI {
     browser: {
         cookie?: {
             get: ReturnType<typeof vi.fn>;
+            set?: ReturnType<typeof vi.fn>;
         };
         sessionStorage: {
             getItem: ReturnType<typeof vi.fn>;
@@ -90,7 +91,8 @@ async function invokePixelCallback(overrides: Partial<MockWebPixelAPI> = {}): Pr
                 : {pixelEndpoint: 'https://test-pixel.example.com'},
         browser: {
             cookie: {
-                get: vi.fn().mockResolvedValue(null),
+                get: vi.fn().mockResolvedValue('test-session-id'),
+                set: vi.fn().mockResolvedValue(undefined),
             },
             sessionStorage: {
                 getItem: vi.fn().mockResolvedValue(null),
@@ -183,11 +185,16 @@ describe('web-pixel extension – identity resolution (cookie + clientId)', () =
         expect(body.data.session_id).toBe('init-shopify-client-abc');
     });
 
-    it('sends empty session_id when cookie, event clientId, and init clientId are absent (§A.2)', async () => {
+    it('does not POST when cookie, chat storage, clientId, and init clientId are absent', async () => {
         const { subscriptions } = await invokePixelCallback({
             browser: {
                 cookie: {
                     get: vi.fn().mockResolvedValue(null),
+                    set: vi.fn(),
+                },
+                sessionStorage: {
+                    getItem: vi.fn().mockResolvedValue(null),
+                    setItem: vi.fn().mockResolvedValue(undefined),
                 },
             },
         });
@@ -195,10 +202,106 @@ describe('web-pixel extension – identity resolution (cookie + clientId)', () =
         const handler = subscriptions.get('page_viewed');
         await handler!(withAnalyticsConsent({}));
 
-        const fetchCall = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-        const body = JSON.parse(fetchCall[1].body);
-        expect(body.data.sessionId).toBe('');
-        expect(body.data.session_id).toBe('');
+        expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('prefers _shopify_y over chat storage and event.clientId', async () => {
+        const set = vi.fn().mockResolvedValue(undefined);
+        const { subscriptions } = await invokePixelCallback({
+            browser: {
+                cookie: {
+                    get: vi.fn().mockImplementation((name: string) =>
+                        Promise.resolve(name === '_shopify_y' ? 'y-from-cookie' : null),
+                    ),
+                    set,
+                },
+                sessionStorage: {
+                    getItem: vi.fn().mockResolvedValue('chat-storage-other'),
+                    setItem: vi.fn(),
+                },
+            },
+        });
+
+        const handler = subscriptions.get('page_viewed');
+        await handler!(withAnalyticsConsent({ clientId: 'event-client-other' }));
+
+        const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+        expect(body.data.session_id).toBe('y-from-cookie');
+        expect(body.data.sessionId).toBe('y-from-cookie');
+        expect(set).toHaveBeenCalledWith('_epir_session_id', 'y-from-cookie');
+    });
+
+    it('prefers chat sessionStorage over event.clientId', async () => {
+        const set = vi.fn().mockResolvedValue(undefined);
+        const { subscriptions } = await invokePixelCallback({
+            browser: {
+                cookie: {
+                    get: vi.fn().mockResolvedValue(null),
+                    set,
+                },
+                sessionStorage: {
+                    getItem: vi.fn().mockResolvedValue('chat-storage-id'),
+                    setItem: vi.fn(),
+                },
+            },
+        });
+
+        const handler = subscriptions.get('collection_viewed');
+        await handler!(withAnalyticsConsent({ clientId: 'event-client-other' }));
+
+        const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+        expect(body.data.session_id).toBe('chat-storage-id');
+        expect(set).toHaveBeenCalledWith('_epir_session_id', 'chat-storage-id');
+    });
+
+    it('pins event.clientId into _epir_session_id and reuses it when the next event omits clientId', async () => {
+        const set = vi.fn().mockResolvedValue(undefined);
+        const { subscriptions } = await invokePixelCallback({
+            browser: {
+                cookie: {
+                    get: vi.fn().mockResolvedValue(null),
+                    set,
+                },
+                sessionStorage: {
+                    getItem: vi.fn().mockResolvedValue(null),
+                    setItem: vi.fn().mockResolvedValue(undefined),
+                },
+            },
+        });
+
+        const handler = subscriptions.get('page_viewed');
+        await handler!(withAnalyticsConsent({ clientId: 'stable-client' }));
+        await handler!(withAnalyticsConsent({}));
+
+        const bodies = (fetch as ReturnType<typeof vi.fn>).mock.calls.map((call) =>
+            JSON.parse(call[1].body),
+        );
+        expect(bodies).toHaveLength(2);
+        expect(bodies[0].data.session_id).toBe('stable-client');
+        expect(bodies[1].data.session_id).toBe('stable-client');
+        expect(set).toHaveBeenCalledWith('_epir_session_id', 'stable-client');
+    });
+
+    it('reads init.data.clientId when cookies, chat storage, and event.clientId are empty', async () => {
+        const { subscriptions } = await invokePixelCallback({
+            init: { data: { clientId: 'init-data-client', customer: null } },
+            browser: {
+                cookie: {
+                    get: vi.fn().mockResolvedValue(null),
+                    set: vi.fn(),
+                },
+                sessionStorage: {
+                    getItem: vi.fn().mockResolvedValue(null),
+                    setItem: vi.fn(),
+                },
+            },
+        });
+
+        const handler = subscriptions.get('product_viewed');
+        await handler!(withAnalyticsConsent({}));
+
+        const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+        expect(body.data.session_id).toBe('init-data-client');
     });
 });
 
@@ -343,6 +446,7 @@ describe('web-pixel extension – event payload structure', () => {
             customerId: 'cust-123',
             sessionId: 'session-abc',
             session_id: 'session-abc',
+            pixel_sender: 'web_pixel_extension',
             context: expect.objectContaining({
                 document: {url: 'https://shop.example.com/home'},
                 customerPrivacy: {analyticsProcessingAllowed: true},
