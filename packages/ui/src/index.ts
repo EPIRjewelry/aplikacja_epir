@@ -57,7 +57,10 @@ export {
   type CommerceAction,
 } from './ChatWidget';
 export {
+  persistChatSessionIdFromWorker,
+  readBrowserAnalyticsSessionId,
   readEpirSessionIdFromDocumentCookie,
+  readShopifyYFromDocumentCookie,
   resolveEffectiveChatSessionId,
 } from './epir-session-browser';
 export {

@@ -9,33 +9,72 @@ var EPIR_LOGGED_IN_CUSTOMER_PREFLIGHT_ATTEMPTS = 3;
 var EPIR_LOGGED_IN_CUSTOMER_PREFLIGHT_DELAY_MS = 75;
 var EPIR_ASSISTANT_SESSION_KEY = 'epir-assistant-session';
 var EPIR_ANALYTICS_SESSION_COOKIE = '_epir_session_id';
+var EPIR_SHOPIFY_Y_COOKIE = '_shopify_y';
 
-function readEpirAnalyticsSessionCookie() {
+function readNamedDocumentCookie(name) {
   try {
-    var parts = document.cookie.split(';');
+    var parts = String(document.cookie || '').split(';');
     for (var i = 0; i < parts.length; i++) {
-      var seg = parts[i].trim().split('=');
-      if (seg[0] === EPIR_ANALYTICS_SESSION_COOKIE && seg[1]) {
-        try { return decodeURIComponent(seg[1]).trim(); } catch (e) { return String(seg[1]).trim(); }
-      }
+      var t = parts[i].trim();
+      var eq = t.indexOf('=');
+      if (eq === -1) continue;
+      if (t.slice(0, eq).trim() !== name) continue;
+      var raw = t.slice(eq + 1).trim();
+      if (!raw) return '';
+      try { return decodeURIComponent(raw).trim(); } catch (e) { return raw; }
     }
-  } catch (e) {}
+  } catch (e2) {}
   return '';
 }
 
-/** Istniejąca sesja czatu w sessionStorage ma pierwszeństwo; inaczej cookie piksela. */
+function readEpirAnalyticsSessionCookie() {
+  return readNamedDocumentCookie(EPIR_ANALYTICS_SESSION_COOKIE);
+}
+
+/** `_epir_session_id`, inaczej `_shopify_y` (Web Pixel `event.clientId`). Bez UUID. */
+function resolveAnalyticsSessionIdFromCookies() {
+  var epir = readEpirAnalyticsSessionCookie();
+  if (epir) return epir;
+  return readNamedDocumentCookie(EPIR_SHOPIFY_Y_COOKIE);
+}
+
+/**
+ * Join czatu z pikselem: cookie wygrywa z `epir-assistant-session`.
+ * Nowa sesja (pusta sessionStorage) bierze cookie.
+ * Już zapisany, inny identyfikator nie jest nadpisywany.
+ */
 function resolveEffectiveAssistantSessionId(sessionIdKey) {
+  var key = sessionIdKey || EPIR_ASSISTANT_SESSION_KEY;
+  var fromCookie = '';
+  try { fromCookie = resolveAnalyticsSessionIdFromCookies(); } catch (e) {}
+  if (fromCookie) {
+    try {
+      var existing = sessionStorage.getItem(key);
+      if (!existing || !String(existing).trim()) sessionStorage.setItem(key, fromCookie);
+    } catch (e2) {}
+    return fromCookie;
+  }
+  try {
+    var stored = sessionStorage.getItem(key);
+    if (stored && String(stored).trim()) return String(stored).trim();
+  } catch (e3) {}
+  return null;
+}
+
+/** Echo `session_id` z workera nie zastępuje cookie i nie migruje rozjechanej sesji. */
+function persistAssistantSessionIdFromWorker(sessionIdKey, workerSessionId) {
+  var echoed = workerSessionId ? String(workerSessionId).trim() : '';
+  if (!echoed) return;
+  var fromCookie = '';
+  try { fromCookie = resolveAnalyticsSessionIdFromCookies(); } catch (e) {}
+  if (fromCookie) return;
   var key = sessionIdKey || EPIR_ASSISTANT_SESSION_KEY;
   try {
     var existing = sessionStorage.getItem(key);
-    if (existing && String(existing).trim()) return String(existing).trim();
-    var fromCookie = readEpirAnalyticsSessionCookie();
-    if (fromCookie) {
-      sessionStorage.setItem(key, fromCookie);
-      return fromCookie;
-    }
-  } catch (e) {}
-  return null;
+    var stored = existing ? String(existing).trim() : '';
+    if (stored && stored !== echoed) return;
+    if (!stored) sessionStorage.setItem(key, echoed);
+  } catch (e2) {}
 }
 var EPIR_ASSISTANT_TRANSCRIPT_STORAGE_PREFIX = 'epir-assistant-transcript';
 var EPIR_ASSISTANT_HISTORY_ENDPOINT = '/apps/assistant/history';
@@ -311,11 +350,7 @@ function getConsentStorageKeyForSection(section) {
  */
 function buildConsentEvent(section) {
   var consentId = (section.dataset && section.dataset.consentId) || 'epir-theme-liquid-chat-v1';
-  var sessionKey = 'epir-assistant-session';
-  var sessionId = '';
-  try {
-    sessionId = sessionStorage.getItem(sessionKey) || '';
-  } catch (e) {}
+  var sessionId = resolveEffectiveAssistantSessionId(EPIR_ASSISTANT_SESSION_KEY) || '';
   if (!sessionId) sessionId = getEpirAnonymousIdForConsent();
   var shopDomain = '';
   try {
@@ -1087,10 +1122,7 @@ function buildAssistantHistoryFetchUrl(section) {
 }
 
 async function fetchAssistantTranscriptFromBackend(section, sessionIdKey) {
-  var sessionId = '';
-  try {
-    sessionId = sessionStorage.getItem(sessionIdKey || EPIR_ASSISTANT_SESSION_KEY) || '';
-  } catch (e) {}
+  var sessionId = resolveEffectiveAssistantSessionId(sessionIdKey) || '';
   if (!sessionId) return [];
 
   var response = await fetch(await buildAssistantHistoryFetchUrl(section), {
@@ -1542,9 +1574,7 @@ async function processSSEStream(
 
         if (parsed.error) throw new Error(parsed.error);
 
-        if (parsed.session_id) {
-          try { sessionStorage.setItem(sessionIdKey, parsed.session_id); } catch (e) { /* silent */ }
-        }
+        if (parsed.session_id) persistAssistantSessionIdFromWorker(sessionIdKey, parsed.session_id);
 
         // Obsługa natywnych tool_calls (status)
         if (parsed.tool_call) {
@@ -1581,7 +1611,7 @@ async function processSSEStream(
       if (dataStr && dataStr !== '[DONE]') {
         try {
           const parsed = JSON.parse(dataStr);
-          if (parsed.session_id) try { sessionStorage.setItem(sessionIdKey, parsed.session_id); } catch {}
+          if (parsed.session_id) persistAssistantSessionIdFromWorker(sessionIdKey, parsed.session_id);
           if (parsed.tool_call) {
             const calls = Array.isArray(parsed.tool_call) ? parsed.tool_call : [parsed.tool_call];
             const names = calls.map((c) => c.name || c.id || 'narzędzie').join(', ');
@@ -1798,9 +1828,7 @@ async function sendMessageToWorker(
           : actions;
       }
       
-      if (data.session_id) {
-        try { sessionStorage.setItem(sessionIdKey, data.session_id); } catch {}
-      }
+      if (data.session_id) persistAssistantSessionIdFromWorker(sessionIdKey, data.session_id);
     }
     
     // Po zakończeniu streamu: uzupełnij treść w trybie 'dots', renderuj akcje (checkout button, cart status)
