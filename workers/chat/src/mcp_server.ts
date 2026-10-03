@@ -52,7 +52,6 @@ import {
 import { getSizeTable } from './size-table';
 import { presentCatalogForModel } from './mcp/catalog-for-model';
 import {
-  appendKazkaAssortmentClause,
   enforceEpirAssortmentOnCatalogResult,
   enforceKazkaAssortmentOnCatalogResult,
   isEpirCatalogBrand,
@@ -225,10 +224,6 @@ function normalizeSearchCatalogArgs(
     : context;
   catalog.context = mergedContext;
 
-  if (isKazkaCatalogBrand(brand)) {
-    catalog.query = appendKazkaAssortmentClause(isNonEmptyString(catalog.query) ? String(catalog.query) : '');
-  }
-
   const pagination = catalog.pagination && typeof catalog.pagination === 'object'
     ? { ...(catalog.pagination as Record<string, unknown>) }
     : {};
@@ -245,7 +240,8 @@ function normalizeSearchCatalogArgs(
   }
   /**
    * EPIR: max 3 wyniki katalogu (prompt + MCP).
-   * Kazka: szersza próbka, potem twardy filtr asortymentu ucina do 3.
+   * Kazka: szersza próbka sklepu, potem twardy filtr asortymentu ucina do 3.
+   * UCP nie przyjmuje filtra vendor/tag/kolekcja — klauzuli nie dopisujemy do query.
    */
   pagination.limit = isKazkaCatalogBrand(brand)
     ? KAZKA_CATALOG_SEARCH_CANDIDATES

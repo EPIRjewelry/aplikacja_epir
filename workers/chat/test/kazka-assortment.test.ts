@@ -1,7 +1,7 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {callMcpToolDirect} from '../src/mcp_server';
 import {
-  appendKazkaAssortmentClause,
+  enforceEpirAssortmentOnCatalogResult,
   enforceKazkaAssortmentOnCatalogResult,
   isKazkaAssortment,
   resolveCatalogToolBrand,
@@ -101,15 +101,6 @@ describe('Kazka assortment rule', () => {
     expect(isKazkaAssortment({vendor: 'Kazka Jewelry', tags: []})).toBe(false);
   });
 
-  it('does not treat a kazka-* tag as the assortment clause', () => {
-    expect(appendKazkaAssortmentClause('tag:kazka-pierscionek')).toBe(
-      'tag:kazka-pierscionek AND (tag:kazka OR vendor:Kazka)',
-    );
-    expect(appendKazkaAssortmentClause('pierścionek AND (tag:kazka OR vendor:Kazka)')).toBe(
-      'pierścionek AND (tag:kazka OR vendor:Kazka)',
-    );
-  });
-
   it('routes hydrogen-kazka and kazka_headless onto the Kazka catalog brand', () => {
     expect(resolveCatalogToolBrand({channel: 'hydrogen-kazka', brand: 'epir'})).toBe('kazka');
     expect(resolveCatalogToolBrand({channel: 'kazka_headless'})).toBe('kazka');
@@ -177,6 +168,15 @@ describe('enforceKazkaAssortmentOnCatalogResult', () => {
     expect(skus).not.toContain(EPIR_ONLY_SKU);
   });
 
+  it('drops a title-only EPIR card that omits vendor and tags', async () => {
+    const filtered = await enforceKazkaAssortmentOnCatalogResult(
+      {products: [{title: 'Pierścionek z kolekcji Gałązki'}]},
+      {SHOP_DOMAIN: SHOP},
+    );
+    expect((filtered as {products: unknown[]}).products).toEqual([]);
+    expect(JSON.stringify(filtered)).not.toContain('Gałązki');
+  });
+
   it('drops unverified products when membership cannot be checked', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -230,13 +230,106 @@ describe('enforceKazkaAssortmentOnCatalogResult', () => {
   });
 });
 
+function thinUcpProduct(title: string, handle: string, productId: string, variantId: string, sku: string) {
+  return {
+    id: productId,
+    title,
+    handle,
+    url: `https://epirbizuteria.pl/products/${handle}`,
+    price_range: {
+      min: {amount: 312000, currency: 'PLN'},
+      max: {amount: 312000, currency: 'PLN'},
+    },
+    variants: [
+      {
+        id: variantId,
+        sku,
+        title: 'Default',
+        price: {amount: 312000, currency: 'PLN'},
+      },
+    ],
+  };
+}
+
+function titlesOf(products: Array<Record<string, unknown>>): string[] {
+  return products.map((product) => String(product.title));
+}
+
+describe('thin UCP catalog payload omits vendor and tags', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  const thinPage = () => [
+    thinUcpProduct('Pierścionek z kolekcji Gałązki', 'galazki', 'gid://shopify/Product/1', EPIR_VARIANT_ID, EPIR_ONLY_SKU),
+    thinUcpProduct('Pierścionek Soliter', 'soliter', 'gid://shopify/Product/2', KAZKA_VARIANT_ID, KAZKA_SKU),
+  ];
+
+  it('keeps Soliter on KAZKA and drops Gałązki', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('/admin/api/')) return adminMembershipResponse();
+        return mcpCatalogResponse(thinPage());
+      }),
+    );
+
+    const out = await callMcpToolDirect(
+      {SHOP_DOMAIN: SHOP, SHOPIFY_ADMIN_TOKEN: 'admin-token'} as any,
+      'search_catalog',
+      {catalog: {query: 'pierścionek ametyst Gałązki'}},
+      {brand: 'kazka'},
+    );
+    const products = productsFromTool((out as {result: unknown}).result);
+    const wire = JSON.stringify((out as {result: unknown}).result);
+    expect(titlesOf(products)).toEqual(['Pierścionek Soliter']);
+    expect(wire).not.toContain('Gałązki');
+    expect(wire).not.toContain(EPIR_ONLY_SKU);
+    expect(products[0]?.vendor).toBeUndefined();
+    expect(products[0]?.tags).toBeUndefined();
+  });
+
+  it('keeps Gałązki on EPIR and drops Soliter', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (String(url).includes('/admin/api/')) return adminMembershipResponse();
+        return mcpCatalogResponse(thinPage());
+      }),
+    );
+
+    const out = await callMcpToolDirect(
+      {SHOP_DOMAIN: SHOP, SHOPIFY_ADMIN_TOKEN: 'admin-token'} as any,
+      'search_catalog',
+      {catalog: {query: 'Soliter do 5000 zł'}},
+      {brand: 'epir'},
+    );
+    const products = productsFromTool((out as {result: unknown}).result);
+    const wire = JSON.stringify((out as {result: unknown}).result);
+    expect(titlesOf(products)).toEqual(['Pierścionek z kolekcji Gałązki']);
+    expect(wire).not.toContain('Soliter');
+    expect(wire).not.toContain(KAZKA_SKU);
+  });
+
+  it('drops Soliter on EPIR when the thin card cannot be checked', async () => {
+    const filtered = await enforceEpirAssortmentOnCatalogResult(
+      {products: thinPage()},
+      {SHOP_DOMAIN: SHOP},
+    );
+    const products = (filtered as {products: Array<Record<string, unknown>>}).products;
+    expect(titlesOf(products)).toEqual([]);
+    expect(JSON.stringify(filtered)).not.toContain('Soliter');
+  });
+});
+
 describe('callMcpToolDirect Kazka catalog filter', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
-  it('leaves the EPIR search_catalog path unfiltered', async () => {
+  it('drops a thin EPIR card that omits vendor and tags when the shop cannot prove it', async () => {
     const fetchMock = vi.fn(async () =>
       mcpCatalogResponse([
         catalogProduct('Gałązki', EPIR_VARIANT_ID, EPIR_ONLY_SKU),
@@ -256,10 +349,10 @@ describe('callMcpToolDirect Kazka catalog filter', () => {
     const request = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
     expect(request.params.arguments.catalog.query).toBe('pierścionek');
     expect(request.params.arguments.catalog.pagination.limit).toBe(3);
-    expect(skusOf(productsFromTool((out as {result: unknown}).result))).toEqual([
-      EPIR_ONLY_SKU,
-      KAZKA_SKU,
-    ]);
+    const skus = skusOf(productsFromTool((out as {result: unknown}).result));
+    expect(skus).not.toContain(KAZKA_SKU);
+    expect(skus).not.toContain(EPIR_ONLY_SKU);
+    expect(skus).toEqual([]);
   });
 
   it('never returns the EPIR-only SKU on brand=kazka and still returns the Kazka SKU', async () => {
@@ -285,7 +378,8 @@ describe('callMcpToolDirect Kazka catalog filter', () => {
 
     const mcpCall = fetchMock.mock.calls.find((call) => !String(call[0]).includes('/admin/api/'));
     const mcpBody = JSON.parse(String(mcpCall?.[1]?.body));
-    expect(mcpBody.params.arguments.catalog.query).toBe('pierścionek AND (tag:kazka OR vendor:Kazka)');
+    expect(mcpBody.params.arguments.catalog.query).toBe('pierścionek');
+    expect(mcpBody.params.arguments.catalog.query).not.toMatch(/tag:|vendor:/);
     expect(mcpBody.params.arguments.catalog.pagination.limit).toBe(10);
     expect(mcpBody.params.arguments.catalog.context.intent).toContain('Kazka Jewelry');
 

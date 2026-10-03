@@ -7,10 +7,13 @@
  * i nie może wrócić do Gemmy na kanale Kazka.
  * Odwrotnie: ten sam dowód (tag `kazka` lub vendor `Kazka`) wyklucza produkt z karty EPIR.
  *
- * Shopify Catalog MCP nie filtruje vendora. Dlatego:
- * 1) zapytanie search dostaje klauzulę `tag:kazka OR vendor:Kazka` (parser sklepu),
- * 2) wynik jest docinany po vendor/tagach z payloadu albo po odczycie Admin/Storefront.
- * Brak dowodu = produkt odpada (fail closed).
+ * Sklepowy UCP (`search_catalog` na /api/ucp/mcp) nie filtruje zapytania po vendorze,
+ * tagu ani kolekcji. `catalog.query` to tekst swobodny; `catalog.filters` przyjmuje
+ * m.in. cenę, kategorie i dostępność, nie asortyment marki.
+ * Dlatego podział robi wyłącznie ten moduł, po odpowiedzi:
+ * 1) vendor i tagi z karty, jeśli UCP je przysłał,
+ * 2) inaczej odczyt Admin/Storefront po id, handle albo SKU.
+ * Brak dowodu = produkt odpada na obu głosach (fail closed).
  */
 
 import {
@@ -21,7 +24,6 @@ import {isKazkaHeadlessChannel} from '../storefront/kazka-hydrate';
 
 export const KAZKA_ASSORTMENT_TAG = 'kazka';
 export const KAZKA_ASSORTMENT_VENDOR = 'kazka';
-export const KAZKA_ASSORTMENT_CLAUSE = '(tag:kazka OR vendor:Kazka)';
 /** Ile kandydatów prosimy u MCP, zanim wytniemy nie-Kazka i zostawimy stronę czatu. */
 export const KAZKA_CATALOG_SEARCH_CANDIDATES = 10;
 /** Tyle produktów katalogu widzi model po filtrze (zgodnie z limitem czatu). */
@@ -30,8 +32,6 @@ export const KAZKA_CATALOG_SEARCH_LIMIT = 3;
 const PRODUCT_ARRAY_KEYS = new Set(['products', 'items', 'results']);
 const SINGLE_PRODUCT_KEYS = new Set(['product', 'selected_product']);
 const GID_RE = /^gid:\/\/shopify\/Product(?:Variant)?\/\d+$/;
-const TAG_CLAUSE_RE = /(?:^|[\s(])tag:kazka(?:$|[\s)])/i;
-const VENDOR_CLAUSE_RE = /(?:^|[\s(])vendor:kazka(?:$|[\s)])/i;
 
 export type KazkaAssortmentEnv = {
   SHOP_DOMAIN?: string;
@@ -96,13 +96,6 @@ export function isKazkaAssortment(input: {
   return (input.tags ?? []).some((tag) => normalizeToken(tag) === KAZKA_ASSORTMENT_TAG);
 }
 
-export function appendKazkaAssortmentClause(query: string): string {
-  const trimmed = query.trim();
-  if (TAG_CLAUSE_RE.test(trimmed) || VENDOR_CLAUSE_RE.test(trimmed)) return trimmed;
-  if (!trimmed) return KAZKA_ASSORTMENT_CLAUSE;
-  return `${trimmed} AND ${KAZKA_ASSORTMENT_CLAUSE}`;
-}
-
 export function isKazkaFilteredCatalogTool(toolName: string): boolean {
   return (
     toolName === 'search_catalog' ||
@@ -130,7 +123,7 @@ export async function enforceKazkaAssortmentOnCatalogResult(
   return enforceAssortment(result, env, options, 'kazka');
 }
 
-/** EPIR nie dostaje produktu Kazka. Brak dowodu (vendor i tagi puste) zostawia produkt. */
+/** EPIR nie dostaje produktu Kazka. Brak dowodu (karta i odczyt sklepu) też usuwa produkt. */
 export async function enforceEpirAssortmentOnCatalogResult(
   result: unknown,
   env: KazkaAssortmentEnv,
@@ -214,6 +207,12 @@ function localDecision(product: Record<string, unknown>): 'keep' | 'drop' | 'unk
   }
   if (vendor !== undefined && tags !== undefined) return 'drop';
   return 'unknown';
+}
+
+/** Karta, którą model może zacytować. Sam tytuł też — UCP potrafi pominąć vendor, tagi i GID. */
+function isAssortmentSubject(value: Record<string, unknown>): boolean {
+  if (isCatalogProduct(value)) return true;
+  return typeof value.title === 'string' || typeof value.name === 'string';
 }
 
 function isCatalogProduct(value: Record<string, unknown>): boolean {
@@ -314,8 +313,14 @@ function keepEpirProduct(product: Record<string, unknown>, membership: Membershi
   if (decision === 'keep') return false;
   if (decision === 'drop') return true;
   const keys = refKeys(product);
-  if (keys.some((key) => membership.get(key) === true)) return false;
-  return true;
+  if (keys.length === 0) return false;
+  let provenNotKazka = false;
+  for (const key of keys) {
+    const membershipValue = membership.get(key);
+    if (membershipValue === true) return false;
+    if (membershipValue === false) provenNotKazka = true;
+  }
+  return provenNotKazka;
 }
 
 function keepForChannel(
@@ -363,7 +368,7 @@ function filterBody(
   stats: FilterStats,
   channel: 'kazka' | 'epir',
 ): unknown {
-  if (isRecord(body) && isCatalogProduct(body) && !hasProductContainer(body)) {
+  if (isRecord(body) && isAssortmentSubject(body) && !hasProductContainer(body)) {
     if (keepForChannel(channel, body, membership)) {
       stats.kept += 1;
       return body;
@@ -392,7 +397,7 @@ function filterValue(
     if (PRODUCT_ARRAY_KEYS.has(key) && Array.isArray(child)) {
       const kept: unknown[] = [];
       for (const item of child) {
-        if (!isRecord(item) || !isCatalogProduct(item)) {
+        if (!isRecord(item) || !isAssortmentSubject(item)) {
           kept.push(item);
           continue;
         }
@@ -406,7 +411,7 @@ function filterValue(
       output[key] = typeof maxProducts === 'number' ? kept.slice(0, maxProducts) : kept;
       continue;
     }
-    if (SINGLE_PRODUCT_KEYS.has(key) && isRecord(child) && isCatalogProduct(child)) {
+    if (SINGLE_PRODUCT_KEYS.has(key) && isRecord(child) && isAssortmentSubject(child)) {
       if (keepForChannel(channel, child, membership)) {
         output[key] = child;
         stats.kept += 1;

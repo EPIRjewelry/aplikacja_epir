@@ -21,7 +21,7 @@ export const TOOL_SCHEMAS = {
   search_catalog: {
     name: 'search_catalog',
     description:
-      'Search products (UCP). Use when the buyer names a product/collection (e.g. Gałązki) before update_cart. Responses include price_minor, currency, and for PLN price_display_pl — quote only price_display_pl; never invent or rescale PLN amounts.',
+      'Search products (UCP). Use when the buyer names a product or collection before update_cart. Responses include price_minor, currency, and for PLN price_display_pl — quote only price_display_pl; never invent or rescale PLN amounts.',
     parameters: {
       type: 'object',
       properties: {
@@ -483,7 +483,7 @@ export const TOOL_SCHEMAS_SLIM = {
   search_catalog: {
     name: 'search_catalog',
     description:
-      'Szuka produktów. Przy nazwie produktu/kolekcji (np. Gałązki) wywołaj przed update_cart. Wynik: price_display_pl dla PLN — cytuj tylko to pole.',
+      'Szuka produktów. Przy nazwie produktu lub kolekcji wywołaj przed update_cart. Wynik: price_display_pl dla PLN — cytuj tylko to pole.',
     parameters: {
       type: 'object',
       properties: {
