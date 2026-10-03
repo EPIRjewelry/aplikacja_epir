@@ -7,6 +7,7 @@
 
 import { ensureUcpAgentMeta } from '../catalog/ucp-agent-meta';
 import type { CommerceContext } from '../config/commerce-context';
+import { plnDisplayFromUcpMoney } from '../mcp/catalog-price-enrich';
 
 export const UCP_CART_TOOL_NAMES = new Set([
   'create_cart',
@@ -317,18 +318,41 @@ export function extractCartObject(payload: unknown): Record<string, unknown> | n
   return null;
 }
 
-/** Skrót dla modelu: continue_url / URL kasy na początku wyniku, zanim obetnie się JSON. */
+function annotateUcpMoney(value: unknown, depth: number): unknown {
+  if (depth <= 0 || value == null) return value;
+  if (Array.isArray(value)) return value.map((item) => annotateUcpMoney(item, depth - 1));
+  if (!isRecord(value)) return value;
+  const display = plnDisplayFromUcpMoney(value);
+  if (display && (value.amount !== undefined || value.price_minor !== undefined)) {
+    return {
+      ...value,
+      currency: display.currency,
+      price_minor: display.price_minor,
+      price_display_pl: display.price_display_pl,
+    };
+  }
+  const output: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    output[key] = annotateUcpMoney(child, depth - 1);
+  }
+  return output;
+}
+
+/** Skrót dla modelu: continue_url i price_display_pl, zanim obetnie się JSON. */
 export function presentCartForChat(payload: unknown): Record<string, unknown> {
   const cart = extractCartObject(payload);
-  if (!cart) return isRecord(payload) ? payload : { raw: payload };
+  if (!cart) return (isRecord(payload) ? annotateUcpMoney(payload, 8) : { raw: payload }) as Record<string, unknown>;
   const continueUrl = nonEmpty(cart.continue_url) ? cart.continue_url.trim() : null;
-  return {
-    continue_url: continueUrl,
-    checkout_url: continueUrl,
-    cart_id: nonEmpty(cart.id) ? cart.id.trim() : null,
-    currency: nonEmpty(cart.currency) ? cart.currency.trim() : null,
-    line_items: Array.isArray(cart.line_items) ? cart.line_items : [],
-    totals: Array.isArray(cart.totals) ? cart.totals : [],
-    messages: Array.isArray(cart.messages) ? cart.messages : [],
-  };
+  return annotateUcpMoney(
+    {
+      continue_url: continueUrl,
+      checkout_url: continueUrl,
+      cart_id: nonEmpty(cart.id) ? cart.id.trim() : null,
+      currency: nonEmpty(cart.currency) ? cart.currency.trim() : null,
+      line_items: Array.isArray(cart.line_items) ? cart.line_items : [],
+      totals: Array.isArray(cart.totals) ? cart.totals : [],
+      messages: Array.isArray(cart.messages) ? cart.messages : [],
+    },
+    8,
+  ) as Record<string, unknown>;
 }

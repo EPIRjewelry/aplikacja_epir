@@ -387,23 +387,26 @@ function attachAssortmentNote(body: unknown, stats: FilterStats): unknown {
 
 function collectCatalogBodies(result: unknown): unknown[] {
   const bodies: unknown[] = [];
-  if (!isRecord(result) || !Array.isArray(result.content)) {
-    bodies.push(result);
-    return bodies;
+  if (isRecord(result) && isRecord(result.structuredContent)) {
+    bodies.push(result.structuredContent);
   }
-  let parsed = false;
-  for (const entry of result.content) {
-    if (!isRecord(entry) || typeof entry.text !== 'string') continue;
-    const text = entry.text.trim();
-    if (!text.startsWith('{') && !text.startsWith('[')) continue;
-    try {
-      bodies.push(JSON.parse(text));
-      parsed = true;
-    } catch {
-      /* nie-JSON zostaje bez filtra strukturalnego */
+  if (isRecord(result) && Array.isArray(result.content)) {
+    let parsed = false;
+    for (const entry of result.content) {
+      if (!isRecord(entry) || typeof entry.text !== 'string') continue;
+      const text = entry.text.trim();
+      if (!text.startsWith('{') && !text.startsWith('[')) continue;
+      try {
+        bodies.push(JSON.parse(text));
+        parsed = true;
+      } catch {
+        /* nie-JSON zostaje bez filtra strukturalnego */
+      }
     }
+    if (parsed || bodies.length > 0) return bodies;
   }
-  if (!parsed) bodies.push(result);
+  if (bodies.length > 0) return bodies;
+  bodies.push(result);
   return bodies;
 }
 
@@ -423,7 +426,11 @@ function rewriteCatalogBodies(result: unknown, mapper: (body: unknown) => unknow
     }
   });
   if (!parsed) return mapper(result);
-  return {...result, content};
+  const next: Record<string, unknown> = {...result, content};
+  if (isRecord(result.structuredContent)) {
+    next.structuredContent = mapper(result.structuredContent);
+  }
+  return next;
 }
 
 const MEMBERSHIP_NODES_QUERY = `

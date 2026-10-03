@@ -49,6 +49,30 @@ export function normalizeShopifyAmountToMajorUnits(raw: unknown, currencyCode: s
   return null;
 }
 
+/**
+ * UCP catalog/cart `amount` is minor units (grosze, cents).
+ * A decimal string is already major ("280.00" → 280).
+ * This is separate from {@link normalizeShopifyAmountToMajorUnits}, which keeps small integers as major PLN.
+ */
+export function ucpMoneyToMajor(amount: unknown): number | null {
+  if (typeof amount === 'number' && Number.isFinite(amount) && amount > 0) {
+    return Number.isInteger(amount) ? amount / 100 : amount;
+  }
+  if (typeof amount === 'string') {
+    const t = amount.trim().replace(/\s/g, '');
+    if (!t) return null;
+    if (/[.,]\d/.test(t)) {
+      const n = parseFloat(t.replace(',', '.'));
+      return Number.isFinite(n) && n > 0 ? n : null;
+    }
+    if (/^\d+$/.test(t)) {
+      const n = parseInt(t, 10);
+      return Number.isFinite(n) && n > 0 ? n / 100 : null;
+    }
+  }
+  return null;
+}
+
 /** Odczyt kwoty z węzła Money po enrich (price_minor) lub surowego Money (amount). */
 export function majorUnitsFromMoneyLike(
   node: Record<string, unknown> | null,

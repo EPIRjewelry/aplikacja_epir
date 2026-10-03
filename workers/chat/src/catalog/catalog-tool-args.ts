@@ -77,6 +77,57 @@ export function normalizeCatalogSearchArgs(
   };
 }
 
+function pushId(target: string[], value: unknown): void {
+  if (isNonEmptyString(value)) target.push(value.trim());
+}
+
+/**
+ * lookup_catalog na UCP wymaga `catalog.ids`.
+ * Schemat narzędzia przyjmuje też handle / product_id / variant_id — składamy je w ids.
+ */
+export function normalizeUcpLookupArgs(
+  raw: unknown,
+  env: {UCP_AGENT_PROFILE_URL?: string; WORKER_ORIGIN?: string},
+  commerce?: CommerceContext,
+): Record<string, unknown> {
+  const source = raw && typeof raw === 'object' ? {...(raw as Record<string, unknown>)} : {};
+  const catalog =
+    source.catalog && typeof source.catalog === 'object'
+      ? {...(source.catalog as Record<string, unknown>)}
+      : {};
+
+  const ids: string[] = [];
+  if (Array.isArray(catalog.ids)) {
+    for (const id of catalog.ids) pushId(ids, id);
+  } else if (Array.isArray(source.ids)) {
+    for (const id of source.ids) pushId(ids, id);
+  }
+  pushId(ids, catalog.id);
+  pushId(ids, catalog.product_id);
+  pushId(ids, catalog.variant_id);
+  pushId(ids, catalog.handle);
+  pushId(ids, source.id);
+  pushId(ids, source.product_id);
+  pushId(ids, source.variant_id);
+  pushId(ids, source.handle);
+
+  const context =
+    catalog.context && typeof catalog.context === 'object'
+      ? {...(catalog.context as Record<string, unknown>)}
+      : {};
+  const merged = commerce ? mergeCatalogCommerceContext(context, commerce) : context;
+  const nextCatalog: Record<string, unknown> = {
+    ids: [...new Set(ids)].slice(0, 10),
+  };
+  if (Object.keys(merged).length > 0) nextCatalog.context = merged;
+  if (catalog.filters && typeof catalog.filters === 'object') nextCatalog.filters = catalog.filters;
+
+  return {
+    ...buildUcpAgentMeta(env),
+    catalog: nextCatalog,
+  };
+}
+
 /**
  * Batch lookup — do 10 identyfikatorów (Storefront Catalog MCP).
  */
