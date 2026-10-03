@@ -5,6 +5,8 @@
  * `consentId` i `source` definiuje warstwa aplikacji (np. Kazka / zaręczyny), nie ten pakiet.
  */
 
+import {resolveEffectiveChatSessionId} from './epir-session-browser';
+
 export type ConsentPayload = {
   consentId: string;
   granted: boolean;
@@ -20,9 +22,6 @@ export type ConsentPayload = {
 };
 
 const DEFAULT_STORAGE_PREFIX = 'epir-consent';
-
-/** Ten sam klucz co sesja czatu w ChatWidget (`epir-assistant-session`). */
-const CHAT_SESSION_STORAGE_KEY = 'epir-assistant-session';
 
 export function getConsentStorageKey(consentId: string): string {
   return `${DEFAULT_STORAGE_PREFIX}:${consentId}`;
@@ -76,8 +75,11 @@ export function storeConsent(granted: boolean, storageKey: string): void {
   localStorage.setItem(key, granted ? 'true' : 'false');
 }
 
-/** Id sesji asystenta (sessionStorage) — spójne z ChatWidget. */
+/**
+ * Id sesji zgody = ten sam klucz joina co czat (`_shopify_y` / `_epir_session_id`).
+ * `anonymousId` zostaje osobno i nie zastępuje tego id, gdy cookie istnieje.
+ */
 export function getConsentSessionId(): string {
   if (typeof window === 'undefined') return '';
-  return sessionStorage.getItem(CHAT_SESSION_STORAGE_KEY) ?? '';
+  return resolveEffectiveChatSessionId() ?? '';
 }

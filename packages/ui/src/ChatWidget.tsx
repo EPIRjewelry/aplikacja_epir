@@ -10,7 +10,10 @@ import remarkGfm from 'remark-gfm';
 import {DEFAULT_PERSONA_UI, type PersonaUi} from './persona-ui';
 import {parseChatPathContext} from './chat-path-context';
 import {resolveShopAuthTokenForChat} from './commerce/shop-sign-in';
-import {resolveEffectiveChatSessionId} from './epir-session-browser';
+import {
+  persistChatSessionIdFromWorker,
+  resolveEffectiveChatSessionId,
+} from './epir-session-browser';
 
 /** Global Shopify (Customer Account UI extensions / App Bridge) — opcjonalnie. */
 type ShopifyWindowGlobal = {
@@ -148,7 +151,7 @@ function getChatTranscriptStorageKeys(
     }
   };
 
-  const sessionId = sessionStorage.getItem(SESSION_ID_KEY);
+  const sessionId = resolveEffectiveChatSessionId(SESSION_ID_KEY);
   if (sessionId) addKey(sessionId);
 
   const anonymousId = sessionStorage.getItem(ANONYMOUS_ID_KEY) ?? getOrCreateAnonymousId();
@@ -448,7 +451,7 @@ function ChatWidgetFallback({
     }
     hydrationCompleteRef.current = true;
 
-    const sessionId = sessionStorage.getItem(SESSION_ID_KEY);
+    const sessionId = resolveEffectiveChatSessionId(SESSION_ID_KEY);
     const historyApiUrl = resolveChatHistoryApiUrl(chatApiUrl);
     if (!historyApiUrl || !sessionId) return;
 
@@ -606,7 +609,7 @@ function ChatWidgetFallback({
                     commerce_action?: CommerceAction;
                   };
                   if (parsed.session_id) {
-                    sessionStorage.setItem(SESSION_ID_KEY, parsed.session_id);
+                    persistChatSessionIdFromWorker(parsed.session_id, SESSION_ID_KEY);
                   }
                   if (parsed.commerce_action && onCommerceAction) {
                     onCommerceAction(parsed.commerce_action);
@@ -665,7 +668,7 @@ function ChatWidgetFallback({
           ];
           commitMessages(nextMessagesAfterAssistant);
           if (data.session_id) {
-            sessionStorage.setItem(SESSION_ID_KEY, data.session_id);
+            persistChatSessionIdFromWorker(data.session_id, SESSION_ID_KEY);
           }
           syncPersistedChatMessages(
             storefrontId,
