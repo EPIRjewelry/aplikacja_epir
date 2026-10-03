@@ -1,10 +1,6 @@
 import type {CommerceContext} from '../config/commerce-context';
 import {mergeCatalogCommerceContext} from '../config/commerce-context';
-import {
-  appendKazkaAssortmentClause,
-  isKazkaCatalogBrand,
-  KAZKA_CATALOG_SEARCH_CANDIDATES,
-} from './kazka-assortment';
+import {isKazkaCatalogBrand, KAZKA_CATALOG_SEARCH_CANDIDATES} from './kazka-assortment';
 import {buildUcpAgentMeta} from './ucp-agent-meta';
 
 function isNonEmptyString(value: unknown): value is string {
@@ -39,9 +35,6 @@ export function normalizeCatalogSearchArgs(
   }
   if (isNonEmptyString(catalog.query)) {
     catalog.query = catalog.query.trim();
-  }
-  if (isKazkaCatalogBrand(brand)) {
-    catalog.query = appendKazkaAssortmentClause(isNonEmptyString(catalog.query) ? catalog.query : '');
   }
 
   const context =

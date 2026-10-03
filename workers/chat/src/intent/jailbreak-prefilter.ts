@@ -29,4 +29,4 @@ export function detectJailbreakOrHarmIntent(userMessage: string): { match: boole
 }
 
 export const JAILBREAK_REDIRECT_REPLY =
-  'Nie mogę pomóc w tej prośbie. Chętnie doradzę przy wyborze biżuterii EPIR — napisz np. nazwę produktu albo „dodaj do koszyka pierścionek Gałązki”.';
+  'Nie mogę pomóc w tej prośbie. Chętnie doradzę przy wyborze biżuterii — napisz nazwę produktu albo co dodać do koszyka.';

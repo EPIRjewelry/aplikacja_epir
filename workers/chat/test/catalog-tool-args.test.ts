@@ -25,10 +25,11 @@ describe('normalizeCatalogSearchArgs', () => {
     expect((out.catalog as Record<string, unknown>).pagination).toEqual({limit: 10});
   });
 
-  it('constrains Kazka catalog_search to the Kazka assortment clause and a wider candidate page', () => {
+  it('keeps the buyer query unchanged for Kazka and asks for a wider candidate page', () => {
     const out = normalizeCatalogSearchArgs({query: 'pierścionek'}, env, undefined, 'kazka');
     const catalog = out.catalog as Record<string, unknown>;
-    expect(catalog.query).toBe('pierścionek AND (tag:kazka OR vendor:Kazka)');
+    expect(catalog.query).toBe('pierścionek');
+    expect(catalog.query).not.toMatch(/tag:|vendor:/);
     expect(catalog.pagination).toEqual({limit: 10});
   });
 
