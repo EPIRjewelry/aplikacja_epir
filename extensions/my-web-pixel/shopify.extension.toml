@@ -1,13 +1,18 @@
 type = "web_pixel_extension"
 name = "my-web-pixel"
 uid = "5dd0f111-62d8-91e2-8f50-8436afb95d0bfe12168a"
+# App pixels must stay "strict". Shopify loads custom pixels in the lax sandbox;
+# this extension cannot switch to lax. Eligibility comes from privacy purposes.
+# analytics = true became privacyPurposes ["ANALYTICS"] on the live store, so
+# Shopify did not start the sandbox until Customer Privacy analytics consent.
+# The apex "Zaakceptuj" banner does not call customerPrivacy.setTrackingConsent,
+# and the working Customer Events paste has an empty purpose list. All purposes
+# false means strictly necessary: the pixel loads on those same visits.
+# clientId is on the event once the sandbox runs; it does not require this flag.
 runtime_context = "strict"
 
-# Analytics consent is required: that is when Shopify exposes clientId
-# (the replacement for _shopify_y). Marketing and sale-of-data are not required,
-# so the pixel still runs for visitors who allow analytics only.
 [customer_privacy]
-analytics = true
+analytics = false
 marketing = false
 preferences = false
 sale_of_data = "disabled"

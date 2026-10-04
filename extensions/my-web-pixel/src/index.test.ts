@@ -802,7 +802,7 @@ describe('web-pixel extension – custom event data extraction', () => {
     });
 });
 
-describe('web-pixel extension – customer privacy gate', () => {
+describe('web-pixel extension – posts on visits without Shopify analytics consent', () => {
     beforeEach(() => {
         vi.stubGlobal(
             'fetch',
@@ -817,21 +817,29 @@ describe('web-pixel extension – customer privacy gate', () => {
         vi.unstubAllGlobals();
     });
 
-    it('does not fetch when pixel event omits customerPrivacy fields', async () => {
+    it('POSTs when the event omits customerPrivacy, with pixel_sender and session id', async () => {
         const {subscriptions} = await invokePixelCallback({});
         const handler = subscriptions.get('page_viewed');
         await handler!({});
-        expect(fetch).not.toHaveBeenCalled();
+        expect(fetch).toHaveBeenCalledOnce();
+        const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+        expect(body.type).toBe('page_viewed');
+        expect(body.data.pixel_sender).toBe('web_pixel_extension');
+        expect(body.data.session_id).toBe('test-session-id');
+        expect(body.data.sessionId).toBe('test-session-id');
     });
 
-    it('does not fetch when event omits privacy fields (standard event payload only)', async () => {
+    it('POSTs a product view that has no privacy fields', async () => {
         const {subscriptions} = await invokePixelCallback({});
         const handler = subscriptions.get('product_viewed');
         await handler!({productVariant: {id: 'v1'}});
-        expect(fetch).not.toHaveBeenCalled();
+        expect(fetch).toHaveBeenCalledOnce();
+        const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+        expect(body.data.pixel_sender).toBe('web_pixel_extension');
+        expect(body.data.session_id).toBe('test-session-id');
     });
 
-    it('fetches when event.context.customerPrivacy allows analytics', async () => {
+    it('still POSTs when event.context.customerPrivacy allows analytics', async () => {
         const {subscriptions} = await invokePixelCallback({});
         const handler = subscriptions.get('page_viewed');
         await handler!({
@@ -840,9 +848,11 @@ describe('web-pixel extension – customer privacy gate', () => {
             },
         });
         expect(fetch).toHaveBeenCalledOnce();
+        const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+        expect(body.data.pixel_sender).toBe('web_pixel_extension');
     });
 
-    it('does not fetch when event.context.customerPrivacy explicitly disallows', async () => {
+    it('POSTs when analyticsProcessingAllowed is false (theme accept is not this flag)', async () => {
         const {subscriptions} = await invokePixelCallback({});
         const handler = subscriptions.get('page_viewed');
         await handler!({
@@ -850,16 +860,24 @@ describe('web-pixel extension – customer privacy gate', () => {
                 customerPrivacy: {analyticsProcessingAllowed: false},
             },
         });
-        expect(fetch).not.toHaveBeenCalled();
+        expect(fetch).toHaveBeenCalledOnce();
+        const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+        expect(body.data.pixel_sender).toBe('web_pixel_extension');
+        expect(body.data.session_id).toBe('test-session-id');
+        expect(body.data.sessionId).toBe('test-session-id');
     });
 
-    it('does not infer consent from prior sends — bare event still drops silently', async () => {
+    it('still POSTs a later event that omits customerPrivacy', async () => {
         const {subscriptions} = await invokePixelCallback({});
         const handler = subscriptions.get('page_viewed');
         await handler!(withAnalyticsConsent({}));
-        expect(fetch).toHaveBeenCalledOnce();
-        vi.mocked(fetch).mockClear();
         await handler!({});
-        expect(fetch).not.toHaveBeenCalled();
+        expect(fetch).toHaveBeenCalledTimes(2);
+        const bodies = (fetch as ReturnType<typeof vi.fn>).mock.calls.map((call) =>
+            JSON.parse(call[1].body),
+        );
+        expect(bodies[0].data.pixel_sender).toBe('web_pixel_extension');
+        expect(bodies[1].data.pixel_sender).toBe('web_pixel_extension');
+        expect(bodies[1].data.session_id).toBe('test-session-id');
     });
 });

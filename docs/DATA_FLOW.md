@@ -1,6 +1,6 @@
 # Przepływ danych: piksel → raport operatora
 
-**Status:** zsynchronizowane z kodem w repo (2026-09-29). To nie jest drugi kanon. Wiążący kontrakt: [`EPIR_ANALYTICS_DATA_CONTRACT.md`](EPIR_ANALYTICS_DATA_CONTRACT.md); mapa EDOG: [`EPIR_DATA_FLOW_MAP.md`](EPIR_DATA_FLOW_MAP.md).
+**Status:** zsynchronizowane z kodem w repo (2026-10-04). To nie jest drugi kanon. Wiążący kontrakt: [`EPIR_ANALYTICS_DATA_CONTRACT.md`](EPIR_ANALYTICS_DATA_CONTRACT.md); mapa EDOG: [`EPIR_DATA_FLOW_MAP.md`](EPIR_DATA_FLOW_MAP.md).
 
 Bazy:
 
@@ -15,7 +15,7 @@ Bazy:
 
 ### A. Capture piksela
 
-1. **Skąd:** Web Pixel `extensions/my-web-pixel`. Zdarzenie Shopify wychodzi tylko gdy `event.context.customerPrivacy.analyticsProcessingAllowed === true`. Brak zgody = cichy `return` (bez fetch).
+1. **Skąd:** Web Pixel `extensions/my-web-pixel`. Piksel aplikacji jest strictly necessary (`customer_privacy`: analytics/marketing/preferences `false`, `sale_of_data` `disabled`) i zostaje w sandboxie `strict`. Shopify uruchamia go na wizycie bez zgody Customer Privacy — tak jak wklejkę z pustym `privacyPurposes`. Kod nie odrzuca zdarzenia, gdy `analyticsProcessingAllowed` jest `false` albo brakuje. Przycisk motywu „Zaakceptuj” nie woła `customerPrivacy.setTrackingConsent`.
 2. **Tożsamość:** cookie `_epir_session_id`, a gdy puste — `clientId` z eventu. Puste oba → `session_id: ""` w body; worker zapisuje **`NULL`** w D1 (bez losowego `session_*`), log `console.error`.
 3. **HTTP:** `POST {pixelEndpoint}/pixel` z body `{ type, data }` (`session_id`, `customerId`, `storefront_id`, `channel`, atrybucja).
 4. **Przyjmuje:** `epir-art-jewellery-worker` (`workers/chat`). Każdy `/pixel*` idzie service bindingiem `ANALYTICS_WORKER` na `https://analytics.internal/pixel…`. Brak bindingu → HTTP 503 `pixel_proxy_not_configured`.
