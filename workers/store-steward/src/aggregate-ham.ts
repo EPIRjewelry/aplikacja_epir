@@ -37,6 +37,17 @@ async function fetchMarketingPreview(
   }
 }
 
+/**
+ * Identity of one GROUP BY (resolved_source, resolved_medium, resolved_campaign) row.
+ * `uniq_store_signals_slice` is unique on signal_key for a period and metric, so the
+ * campaign has to be in the key — two campaigns often share source and medium.
+ * Each segment is encoded so a `_` or `|` inside one value cannot collide with another tuple.
+ */
+export function resolvedSignalKey(source: string, medium: string, campaign: string | null): string {
+  const part = (value: string | null) => encodeURIComponent(value ?? '');
+  return `resolved_${part(source)}|${part(medium)}|${part(campaign)}`;
+}
+
 async function insertHamSignal(
   db: D1Database,
   period: AnalysisPeriod,
@@ -50,13 +61,29 @@ async function insertHamSignal(
 ): Promise<StoreSignal> {
   const id = newId('ham');
   const evidence_json = JSON.stringify(row.evidence_json);
-  await db
+  // Conflict target matches uniq_store_signals_slice (expression index). ON CONFLICT(id)
+  // never fires: each attempt uses a new id, so a repeated period used to throw.
+  const persisted = await db
     .prepare(
       `INSERT INTO store_signals (
         id, period_start, period_end, signal_key, storefront_id, channel,
         product_handle, product_id, metric_name, metric_value, metric_unit, evidence_json, source
       ) VALUES (?1, ?2, ?3, ?4, NULL, NULL, NULL, NULL, ?5, ?6, ?7, ?8, 'd1_pixel')
-      ON CONFLICT(id) DO NOTHING`,
+      ON CONFLICT(
+        period_start,
+        period_end,
+        signal_key,
+        metric_name,
+        COALESCE(storefront_id, ''),
+        COALESCE(channel, ''),
+        COALESCE(product_handle, ''),
+        COALESCE(product_id, '')
+      ) DO UPDATE SET
+        metric_value = excluded.metric_value,
+        metric_unit = excluded.metric_unit,
+        evidence_json = excluded.evidence_json,
+        source = excluded.source
+      RETURNING id`,
     )
     .bind(
       id,
@@ -68,9 +95,9 @@ async function insertHamSignal(
       row.metric_unit,
       evidence_json,
     )
-    .run();
+    .first<{ id: string }>();
   return {
-    id,
+    id: persisted?.id ?? id,
     period_start: period.period_start,
     period_end: period.period_end,
     signal_key: row.signal_key,
@@ -121,7 +148,7 @@ export async function aggregateHamSignals(
     }>();
 
   for (const row of byResolved.results ?? []) {
-    const key = `resolved_${row.resolved_source}_${row.resolved_medium}`;
+    const key = resolvedSignalKey(row.resolved_source, row.resolved_medium, row.resolved_campaign);
     out.push(
       await insertHamSignal(db, period, {
         signal_key: key,
