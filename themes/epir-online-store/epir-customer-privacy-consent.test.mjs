@@ -31,9 +31,39 @@ function control(value) {
   };
 }
 
+function purposeInput(purpose, checked) {
+  return {
+    checked: checked === true,
+    getAttribute(name) {
+      return name === 'data-epir-purpose' ? purpose : null;
+    },
+  };
+}
+
 function bannerDoc() {
-  const accept = control('accept');
-  const reject = control('reject');
+  const acceptAll = control('accept-all');
+  const necessary = control('necessary');
+  const customize = control('customize');
+  const save = control('save');
+  const analytics = purposeInput('analytics', true);
+  const marketing = purposeInput('marketing', false);
+  const preferences = purposeInput('preferences', true);
+  const chat = purposeInput('chat', true);
+  const purposes = { analytics, marketing, preferences, chat };
+  const customizePanel = {
+    hidden: true,
+    querySelector(sel) {
+      const match = /^\[data-epir-purpose="([^"]+)"\]$/.exec(sel);
+      if (match) return purposes[match[1]] || null;
+      return null;
+    },
+    setAttribute(name) {
+      if (name === 'hidden') this.hidden = true;
+    },
+    removeAttribute(name) {
+      if (name === 'hidden') this.hidden = false;
+    },
+  };
   const banner = {
     id: api.BANNER_ID,
     hidden: false,
@@ -46,14 +76,23 @@ function bannerDoc() {
     removeAttribute(name) {
       if (name === 'hidden') this.hidden = false;
     },
+    querySelector(sel) {
+      if (sel === '[data-epir-privacy-customize]') return customizePanel;
+      return null;
+    },
   };
-  accept.parentElement = banner;
-  reject.parentElement = banner;
+  acceptAll.parentElement = banner;
+  necessary.parentElement = banner;
+  customize.parentElement = banner;
+  save.parentElement = banner;
   const listeners = [];
   return {
     banner,
-    accept,
-    reject,
+    acceptAll,
+    necessary,
+    customize,
+    save,
+    customizePanel,
     getElementById(id) {
       return id === banner.id ? banner : null;
     },
@@ -78,8 +117,8 @@ function shopifyRecorder(calls) {
   };
 }
 
-test('Zaakceptuj sets analytics, marketing, and preferences true and sale_of_data false', () => {
-  assert.deepEqual(api.trackingConsentPayload(true), {
+test('Zaakceptuj wszystkie sets analytics, marketing, and preferences true and sale_of_data false', () => {
+  assert.deepEqual(api.trackingConsentPayload(api.acceptAllDecision()), {
     analytics: true,
     marketing: true,
     preferences: true,
@@ -87,8 +126,8 @@ test('Zaakceptuj sets analytics, marketing, and preferences true and sale_of_dat
   });
 });
 
-test('Odrzuć sets analytics, marketing, and preferences false and sale_of_data false', () => {
-  assert.deepEqual(api.trackingConsentPayload(false), {
+test('Zaakceptuj tylko niezbędne sets analytics, marketing, and preferences false and sale_of_data false', () => {
+  assert.deepEqual(api.trackingConsentPayload(api.necessaryDecision()), {
     analytics: false,
     marketing: false,
     preferences: false,
@@ -96,7 +135,6 @@ test('Odrzuć sets analytics, marketing, and preferences false and sale_of_data 
   });
   assert.equal(api.trackingConsentPayload(undefined), null);
   assert.equal(api.trackingConsentPayload(null), null);
-  assert.equal(api.trackingConsentPayload('true'), null);
 });
 
 test('install does not call setTrackingConsent and leaves the banner visible', () => {
@@ -113,40 +151,84 @@ test('install does not call setTrackingConsent and leaves the banner visible', (
 test('a stored choice hides the banner and still does not write consent on load', () => {
   const calls = [];
   const doc = bannerDoc();
-  const storage = memoryStorage({ [api.STORAGE_KEY]: 'accept' });
+  const storage = memoryStorage({ [api.STORAGE_KEY]: 'accept-all' });
   api.install({ Shopify: shopifyRecorder(calls), localStorage: storage }, doc);
-  doc.dispatch(doc.accept);
+  doc.dispatch(doc.acceptAll);
   assert.deepEqual(calls, []);
   assert.equal(doc.banner.hidden, true);
 });
 
-test('Zaakceptuj click writes the three purposes and hides the banner', () => {
+test('Zaakceptuj wszystkie click writes the three purposes, chat flag, and hides the banner', () => {
+  const calls = [];
+  const events = [];
+  const doc = bannerDoc();
+  const storage = memoryStorage();
+  api.install(
+    {
+      Shopify: shopifyRecorder(calls),
+      CustomEvent: function CustomEvent(name, init) {
+        this.type = name;
+        this.detail = init && init.detail;
+      },
+      dispatchEvent(ev) {
+        events.push(ev);
+        return true;
+      },
+    },
+    doc,
+    storage,
+  );
+  doc.dispatch(doc.acceptAll);
+  assert.deepEqual(calls, [api.trackingConsentPayload(api.acceptAllDecision())]);
+  assert.equal(storage.getItem(api.STORAGE_KEY), 'accept-all');
+  assert.equal(storage.getItem(api.CHAT_STORAGE_KEY), 'true');
+  assert.equal(doc.banner.hidden, true);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, api.EVENT_NAME);
+  assert.equal(events[0].detail.chat, true);
+});
+
+test('Zaakceptuj tylko niezbędne click writes all three purposes false and blocks chat', () => {
   const calls = [];
   const doc = bannerDoc();
   const storage = memoryStorage();
   api.install({ Shopify: shopifyRecorder(calls) }, doc, storage);
-  doc.dispatch(doc.accept);
-  assert.deepEqual(calls, [api.trackingConsentPayload(true)]);
-  assert.equal(storage.getItem(api.STORAGE_KEY), 'accept');
+  doc.dispatch(doc.necessary);
+  assert.deepEqual(calls, [api.trackingConsentPayload(api.necessaryDecision())]);
+  assert.equal(storage.getItem(api.STORAGE_KEY), 'necessary');
+  assert.equal(storage.getItem(api.CHAT_STORAGE_KEY), 'false');
   assert.equal(doc.banner.hidden, true);
 });
 
-test('Odrzuć click writes all three purposes false and sale_of_data false', () => {
+test('Dostosuj zgody toggles the customize panel without writing consent', () => {
+  const calls = [];
+  const doc = bannerDoc();
+  api.install({ Shopify: shopifyRecorder(calls) }, doc, memoryStorage());
+  doc.dispatch(doc.customize);
+  assert.equal(doc.customizePanel.hidden, false);
+  assert.deepEqual(calls, []);
+  assert.equal(doc.banner.hidden, false);
+});
+
+test('Zapisz wybór writes selected purposes from the customize panel', () => {
   const calls = [];
   const doc = bannerDoc();
   const storage = memoryStorage();
   api.install({ Shopify: shopifyRecorder(calls) }, doc, storage);
-  doc.dispatch(doc.reject);
-  assert.deepEqual(calls, [api.trackingConsentPayload(false)]);
-  assert.equal(calls[0].analytics, false);
-  assert.equal(calls[0].marketing, false);
-  assert.equal(calls[0].preferences, false);
-  assert.equal(calls[0].sale_of_data, false);
-  assert.equal(storage.getItem(api.STORAGE_KEY), 'reject');
-  assert.equal(doc.banner.hidden, true);
+  doc.dispatch(doc.save);
+  assert.deepEqual(calls, [
+    {
+      analytics: true,
+      marketing: false,
+      preferences: true,
+      sale_of_data: false,
+    },
+  ]);
+  assert.equal(storage.getItem(api.STORAGE_KEY), 'custom');
+  assert.equal(storage.getItem(api.CHAT_STORAGE_KEY), 'true');
 });
 
-test('a Zaakceptuj button outside this banner does not grant consent', () => {
+test('a Zaakceptuj wszystkie button outside this banner does not grant consent', () => {
   const calls = [];
   const doc = bannerDoc();
   api.install({ Shopify: shopifyRecorder(calls) }, doc, memoryStorage());
@@ -155,7 +237,7 @@ test('a Zaakceptuj button outside this banner does not grant consent', () => {
     getAttribute() {
       return null;
     },
-    textContent: 'Zaakceptuj',
+    textContent: 'Zaakceptuj wszystkie',
   });
   assert.deepEqual(calls, []);
   assert.equal(doc.banner.hidden, false);
@@ -176,9 +258,9 @@ test('loads consent-tracking-api 0.1 before setTrackingConsent when the API is a
       cb();
     },
   };
-  api.commitTrackingConsent(shopify, true);
+  api.commitTrackingConsent(shopify, api.acceptAllDecision());
   assert.deepEqual(features, [[{ name: 'consent-tracking-api', version: '0.1' }]]);
-  assert.deepEqual(calls, [api.trackingConsentPayload(true)]);
+  assert.deepEqual(calls, [api.trackingConsentPayload(api.acceptAllDecision())]);
 });
 
 test('a failed consent-tracking-api load does not grant consent', () => {
@@ -193,11 +275,11 @@ test('a failed consent-tracking-api load does not grant consent', () => {
       cb(new Error('unavailable'));
     },
   };
-  api.commitTrackingConsent(shopify, true);
+  api.commitTrackingConsent(shopify, api.acceptAllDecision());
   assert.deepEqual(calls, []);
 });
 
-test('a late accept callback does not overwrite a newer reject', () => {
+test('a late accept-all callback does not overwrite a newer necessary choice', () => {
   const calls = [];
   let pending = null;
   const shopify = {
@@ -208,17 +290,18 @@ test('a late accept callback does not overwrite a newer reject', () => {
   const doc = bannerDoc();
   const storage = memoryStorage();
   api.install({ Shopify: shopify, setTimeout() {} }, doc, storage);
-  doc.dispatch(doc.accept);
+  doc.dispatch(doc.acceptAll);
   shopify.customerPrivacy = {
     setTrackingConsent(payload, cb) {
       calls.push(payload);
       cb({});
     },
   };
-  doc.dispatch(doc.reject);
+  doc.dispatch(doc.necessary);
   pending();
-  assert.deepEqual(calls, [api.trackingConsentPayload(false)]);
-  assert.equal(storage.getItem(api.STORAGE_KEY), 'reject');
+  assert.deepEqual(calls, [api.trackingConsentPayload(api.necessaryDecision())]);
+  assert.equal(storage.getItem(api.STORAGE_KEY), 'necessary');
+  assert.equal(storage.getItem(api.CHAT_STORAGE_KEY), 'false');
 });
 
 test('the theme renders this Polish banner and does not render the Minimog cookie bar', () => {
@@ -229,13 +312,19 @@ test('the theme renders this Polish banner and does not render the Minimog cooki
 
   assert.match(layout, /render 'epir-customer-privacy-consent'/);
   assert.doesNotMatch(layout, /\{%\s*render\s+'cookie-banner'\s*%\}/);
-  assert.match(banner, /analityka \(wizyty\)/);
-  assert.match(banner, /marketing \(reklamy i remarketing\)/);
-  assert.match(banner, /preferencje/);
-  assert.match(banner, /data-epir-consent="accept"/);
-  assert.match(banner, /data-epir-consent="reject"/);
-  assert.match(banner, />Zaakceptuj</);
-  assert.match(banner, />Odrzuć</);
+  assert.match(banner, /Dbamy o Twoją prywatność/);
+  assert.match(banner, /rozmowy z doradcą w czacie/);
+  assert.match(banner, /\/pages\/polityka-cookies/);
+  assert.match(banner, /Analityczne \(wizyty\)/);
+  assert.match(banner, /Marketingowe \(reklamy\)/);
+  assert.match(banner, /Preferencje/);
+  assert.match(banner, /Rozmowa z doradcą w czacie/);
+  assert.match(banner, /data-epir-consent="accept-all"/);
+  assert.match(banner, /data-epir-consent="necessary"/);
+  assert.match(banner, /data-epir-consent="customize"/);
+  assert.match(banner, />Zaakceptuj wszystkie</);
+  assert.match(banner, />Zaakceptuj tylko niezbędne</);
+  assert.match(banner, />Dostosuj zgody</);
   assert.doesNotMatch(banner, /sale of data|sale_of_data|sprzedaż danych|sprzedaz danych/i);
   assert.match(source, /setTrackingConsent/);
   assert.match(source, /consent-tracking-api/);

@@ -344,6 +344,18 @@ function getConsentStorageKeyForSection(section) {
   return 'epir-consent:' + id;
 }
 
+/** Banner chat signal from themes/.../epir-customer-privacy-consent.js */
+var EPIR_BANNER_CHAT_STORAGE_KEY = 'epir-customer-privacy-chat';
+var EPIR_BANNER_CONSENT_EVENT = 'epir-customer-privacy-consent';
+
+function readBannerChatGranted() {
+  try {
+    return localStorage.getItem(EPIR_BANNER_CHAT_STORAGE_KEY) === 'true';
+  } catch (e) {
+    return false;
+  }
+}
+
 /**
  * Payload zgodny z workers/chat `parseConsentJsonBody` (tryb App Proxy nadpisuje storefront/channel po stronie serwera).
  * Eksponowane do ewentualnych testów integracyjnych.
@@ -418,14 +430,17 @@ function setConsentBarSaving(section, saving) {
 }
 
 function setConsentGateError(section, message) {
+  var bar = section.querySelector('[data-epir-consent-bar]');
   var el = section.querySelector('[data-epir-consent-error]');
   if (!el) return;
   if (message) {
     el.textContent = message;
     el.removeAttribute('hidden');
+    if (bar) bar.removeAttribute('hidden');
   } else {
     el.textContent = '';
     el.setAttribute('hidden', '');
+    if (bar) bar.setAttribute('hidden', '');
   }
 }
 
@@ -469,66 +484,77 @@ function unlockChatUi(section) {
   if (fi) fi.removeAttribute('disabled');
 }
 
+function requestChatUnlockFromBanner(section) {
+  var storageKey = getConsentStorageKeyForSection(section);
+  var already = false;
+  try {
+    already = localStorage.getItem(storageKey) === 'true';
+  } catch (e) {}
+  if (already) {
+    setConsentGateError(section, '');
+    unlockChatUi(section);
+    return;
+  }
+  if (section.dataset.epirConsentPosting === '1') return;
+  section.dataset.epirConsentPosting = '1';
+  setConsentBarSaving(section, true);
+  setConsentGateError(section, '');
+  submitConsentEvent(buildConsentEvent(section), section)
+    .then(function (res) {
+      setConsentBarSaving(section, false);
+      section.dataset.epirConsentPosting = '0';
+      if (res.ok && res.status >= 200 && res.status < 300) {
+        try {
+          localStorage.setItem(storageKey, 'true');
+        } catch (e3) {}
+        unlockChatUi(section);
+      } else {
+        lockChatUi(section);
+        setConsentGateError(
+          section,
+          'Nie udało się zapisać zgody (' + res.status + '). Spróbuj ponownie.'
+        );
+      }
+    })
+    .catch(function (err) {
+      setConsentBarSaving(section, false);
+      section.dataset.epirConsentPosting = '0';
+      lockChatUi(section);
+      setConsentGateError(
+        section,
+        err && err.message ? err.message : 'Błąd sieci. Spróbuj ponownie.'
+      );
+    });
+}
+
+function applyBannerChatDecision(section, chatGranted) {
+  var storageKey = getConsentStorageKeyForSection(section);
+  if (chatGranted === true) {
+    requestChatUnlockFromBanner(section);
+    return;
+  }
+  try {
+    localStorage.setItem(storageKey, 'false');
+  } catch (e) {}
+  setConsentGateError(section, '');
+  lockChatUi(section);
+}
+
 function initConsentGateForSection(section) {
   if (!section || section.dataset.epirConsentInit === '1') return;
   section.dataset.epirConsentInit = '1';
-  var cb = section.querySelector('.epir-assistant-consent-checkbox');
-  var storageKey = getConsentStorageKeyForSection(section);
-  var granted = false;
-  try {
-    granted = localStorage.getItem(storageKey) === 'true';
-  } catch (e) {}
 
-  if (granted) {
-    try {
-      if (cb) cb.checked = true;
-    } catch (e2) {}
-    unlockChatUi(section);
+  // No visible checkbox — gate follows the storefront privacy banner.
+  if (readBannerChatGranted()) {
+    requestChatUnlockFromBanner(section);
   } else {
     lockChatUi(section);
   }
 
-  if (cb) {
-    cb.addEventListener('change', function () {
-      if (!cb.checked) {
-        try {
-          localStorage.setItem(storageKey, 'false');
-        } catch (e) {}
-        setConsentGateError(section, '');
-        lockChatUi(section);
-        return;
-      }
-      setConsentBarSaving(section, true);
-      setConsentGateError(section, '');
-      cb.setAttribute('disabled', 'disabled');
-      submitConsentEvent(buildConsentEvent(section), section)
-        .then(function (res) {
-          setConsentBarSaving(section, false);
-          cb.removeAttribute('disabled');
-          if (res.ok && res.status >= 200 && res.status < 300) {
-            try {
-              localStorage.setItem(storageKey, 'true');
-            } catch (e3) {}
-            unlockChatUi(section);
-          } else {
-            cb.checked = false;
-            lockChatUi(section);
-            setConsentGateError(
-              section,
-              'Nie udało się zapisać zgody (' + res.status + '). Spróbuj ponownie.'
-            );
-          }
-        })
-        .catch(function (err) {
-          setConsentBarSaving(section, false);
-          cb.removeAttribute('disabled');
-          cb.checked = false;
-          lockChatUi(section);
-          setConsentGateError(
-            section,
-            err && err.message ? err.message : 'Błąd sieci. Spróbuj ponownie.'
-          );
-        });
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener(EPIR_BANNER_CONSENT_EVENT, function (ev) {
+      var chatGranted = !!(ev && ev.detail && ev.detail.chat === true);
+      applyBannerChatDecision(section, chatGranted);
     });
   }
 

@@ -2,9 +2,10 @@
   EPIR storefront consent banner. This is the banner the theme renders.
   Minimog cookie-banner is not rendered from layout/theme.liquid.
 
-  Visible copy names three purposes: analityka (wizyty), marketing (reklamy i remarketing), preferencje.
-  Zaakceptuj / Odrzuć call customerPrivacy.setTrackingConsent from the asset.
-  No call on load. Does not send pixel events.
+  One bottom bar. Nothing is written on load. Does not send pixel events.
+  Zaakceptuj wszystkie / Zaakceptuj tylko niezbędne / Dostosuj zgody
+  call customerPrivacy.setTrackingConsent from the asset.
+  Chat unlock signal is separate from pixel traffic.
 
   Theme push after operator approval, these files only:
     layout/theme.liquid
@@ -16,15 +17,42 @@
   id="epir-customer-privacy-banner"
   class="epir-customer-privacy-banner"
   role="region"
-  aria-label="Zgoda przed śledzeniem"
+  aria-label="Zgoda na pliki cookies"
   data-epir-privacy-banner
 >
-  <p>
-    Zanim sklep zacznie mierzyć ruch, wybierz zgodę. Zaakceptuj obejmuje trzy cele: analityka (wizyty), marketing (reklamy i remarketing) i preferencje.
-  </p>
+  <div class="epir-customer-privacy-banner__copy">
+    <p>
+      Dbamy o Twoją prywatność. Pliki cookies i pokrewne im technologie umożliwiają poprawne działanie strony i pomagają nam dostosować ofertę do Twoich potrzeb. Możesz zaakceptować wykorzystanie przez nas wszystkich tych plików i przejść do sklepu lub dostosować użycie plików do swoich preferencji, wybierając opcję „Dostosuj zgody”. Dotyczy to też rozmowy z doradcą w czacie.
+    </p>
+    <p class="epir-customer-privacy-banner__link">
+      <a href="/pages/polityka-cookies">Polityka cookies</a>
+    </p>
+  </div>
+
   <div class="epir-customer-privacy-banner__actions">
-    <button type="button" data-epir-consent="accept">Zaakceptuj</button>
-    <button type="button" data-epir-consent="reject">Odrzuć</button>
+    <button type="button" data-epir-consent="necessary">Zaakceptuj tylko niezbędne</button>
+    <button type="button" data-epir-consent="customize">Dostosuj zgody</button>
+    <button type="button" data-epir-consent="accept-all">Zaakceptuj wszystkie</button>
+  </div>
+
+  <div class="epir-customer-privacy-banner__customize" data-epir-privacy-customize hidden>
+    <label>
+      <input type="checkbox" data-epir-purpose="analytics" checked>
+      Analityczne (wizyty)
+    </label>
+    <label>
+      <input type="checkbox" data-epir-purpose="marketing" checked>
+      Marketingowe (reklamy)
+    </label>
+    <label>
+      <input type="checkbox" data-epir-purpose="preferences" checked>
+      Preferencje
+    </label>
+    <label>
+      <input type="checkbox" data-epir-purpose="chat" checked>
+      Rozmowa z doradcą w czacie
+    </label>
+    <button type="button" data-epir-consent="save">Zapisz wybór</button>
   </div>
 </div>
 
@@ -38,7 +66,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.75rem 1rem;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     margin: 0;
     padding: 1rem 1.25rem calc(1rem + env(safe-area-inset-bottom, 0px));
@@ -51,10 +79,20 @@
   .epir-customer-privacy-banner[hidden] {
     display: none !important;
   }
-  .epir-customer-privacy-banner p {
+  .epir-customer-privacy-banner__copy {
     margin: 0;
     max-width: 46rem;
     flex: 1 1 16rem;
+  }
+  .epir-customer-privacy-banner__copy p {
+    margin: 0;
+  }
+  .epir-customer-privacy-banner__link {
+    margin-top: 0.5rem !important;
+  }
+  .epir-customer-privacy-banner__link a {
+    color: inherit;
+    text-decoration: underline;
   }
   .epir-customer-privacy-banner__actions {
     display: flex;
@@ -70,9 +108,26 @@
     cursor: pointer;
     font: inherit;
   }
-  .epir-customer-privacy-banner button[data-epir-consent="accept"] {
+  .epir-customer-privacy-banner button[data-epir-consent="accept-all"] {
     background: #2c2825;
     color: #f3eee6;
+  }
+  .epir-customer-privacy-banner__customize {
+    flex: 1 1 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    align-items: center;
+    padding-top: 0.25rem;
+  }
+  .epir-customer-privacy-banner__customize[hidden] {
+    display: none !important;
+  }
+  .epir-customer-privacy-banner__customize label {
+    display: inline-flex;
+    gap: 0.4rem;
+    align-items: center;
+    cursor: pointer;
   }
 </style>
 
