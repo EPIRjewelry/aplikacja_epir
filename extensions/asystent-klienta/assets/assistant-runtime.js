@@ -346,14 +346,27 @@ function getConsentStorageKeyForSection(section) {
 
 /** Banner chat signal from themes/.../epir-customer-privacy-consent.js */
 var EPIR_BANNER_CHAT_STORAGE_KEY = 'epir-customer-privacy-chat';
+var EPIR_BANNER_CHOICE_KEY = 'epir-customer-privacy-choice';
 var EPIR_BANNER_CONSENT_EVENT = 'epir-customer-privacy-consent';
 
 function readBannerChatGranted() {
   try {
-    return localStorage.getItem(EPIR_BANNER_CHAT_STORAGE_KEY) === 'true';
-  } catch (e) {
-    return false;
-  }
+    var chatFlag = localStorage.getItem(EPIR_BANNER_CHAT_STORAGE_KEY);
+    if (chatFlag === 'true') return true;
+    if (chatFlag === 'false') return false;
+    var choice = localStorage.getItem(EPIR_BANNER_CHOICE_KEY);
+    if (choice === 'accept-all' || choice === 'accept') return true;
+    if (choice === 'necessary' || choice === 'reject') return false;
+  } catch (e) {}
+  return false;
+}
+
+function showConsentLockHint(section) {
+  var statusEl =
+    section.querySelector('#assistant-status') || section.querySelector('#assistant-status-embed');
+  if (!statusEl) return;
+  statusEl.textContent =
+    'Aby otworzyć czat, zaakceptuj wszystkie pliki cookies w banerze u dołu strony (w tym rozmowę z doradcą).';
 }
 
 /**
@@ -468,6 +481,9 @@ function unlockChatUi(section) {
   section.classList.remove('epir-assistant--consent-locked');
   var bar = section.querySelector('[data-epir-consent-bar]');
   if (bar) bar.classList.remove('epir-assistant-consent-bar--locked');
+  var statusEl =
+    section.querySelector('#assistant-status') || section.querySelector('#assistant-status-embed');
+  if (statusEl) statusEl.textContent = '';
   var launcher = section.querySelector('#assistant-launcher') || section.querySelector('#assistant-launcher-embed');
   if (launcher) {
     launcher.removeAttribute('disabled');
@@ -540,22 +556,45 @@ function applyBannerChatDecision(section, chatGranted) {
   lockChatUi(section);
 }
 
-function initConsentGateForSection(section) {
-  if (!section || section.dataset.epirConsentInit === '1') return;
-  section.dataset.epirConsentInit = '1';
-
-  // No visible checkbox — gate follows the storefront privacy banner.
+function syncConsentGateFromBanner(section) {
+  if (!section) return;
   if (readBannerChatGranted()) {
     requestChatUnlockFromBanner(section);
   } else {
     lockChatUi(section);
+    showConsentLockHint(section);
   }
+}
+
+function initConsentGateForSection(section) {
+  if (!section || section.dataset.epirConsentInit === '1') return;
+  section.dataset.epirConsentInit = '1';
+
+  syncConsentGateFromBanner(section);
 
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener(EPIR_BANNER_CONSENT_EVENT, function (ev) {
       var chatGranted = !!(ev && ev.detail && ev.detail.chat === true);
       applyBannerChatDecision(section, chatGranted);
     });
+    window.addEventListener('storage', function (ev) {
+      if (
+        !ev ||
+        (ev.key !== EPIR_BANNER_CHAT_STORAGE_KEY && ev.key !== EPIR_BANNER_CHOICE_KEY)
+      ) {
+        return;
+      }
+      syncConsentGateFromBanner(section);
+    });
+  }
+
+  var resyncDelays = [0, 400, 1200];
+  for (var i = 0; i < resyncDelays.length; i++) {
+    (function (delayMs) {
+      setTimeout(function () {
+        syncConsentGateFromBanner(section);
+      }, delayMs);
+    })(resyncDelays[i]);
   }
 
   var launcher = section.querySelector('#assistant-launcher') || section.querySelector('#assistant-launcher-embed');
@@ -566,6 +605,7 @@ function initConsentGateForSection(section) {
         if (section.classList.contains('epir-assistant--consent-locked')) {
           ev.preventDefault();
           ev.stopPropagation();
+          showConsentLockHint(section);
         }
       },
       true
@@ -1354,12 +1394,19 @@ function initAllAssistantSections() {
   const sectionEmbed = document.getElementById('epir-assistant-embed');
 
   if (sectionBlock && sectionEmbed) {
-    sectionBlock.style.display = 'none';
-    sectionBlock.setAttribute('data-assistant-disabled-duplicate', 'true');
+    // Page template section (e.g. zaprojektuj) wins over global app embed.
+    sectionEmbed.style.display = 'none';
+    sectionEmbed.setAttribute('data-assistant-disabled-duplicate', 'true');
   }
 
-  const sections = [sectionEmbed || sectionBlock].filter(Boolean);
-  sections.forEach(function(section) {
+  const sections = [];
+  if (sectionBlock && sectionBlock.getAttribute('data-assistant-disabled-duplicate') !== 'true') {
+    sections.push(sectionBlock);
+  }
+  if (sectionEmbed && sectionEmbed.getAttribute('data-assistant-disabled-duplicate') !== 'true') {
+    sections.push(sectionEmbed);
+  }
+  sections.forEach(function (section) {
     initAssistantUIForSection(section);
   });
 }
