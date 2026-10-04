@@ -1,0 +1,25 @@
+{% comment %}
+  Host for Theme App Extension blocks (Gemma / asystent-klienta).
+  No visible markup — only renders app blocks added in the template JSON.
+{% endcomment %}
+{% for block in section.blocks %}
+  {% render block %}
+{% endfor %}
+
+{% schema %}
+{
+  "name": "Gemma EPIR (app)",
+  "class": "epir-gemma-assistant-host",
+  "blocks": [
+    {
+      "type": "@app"
+    }
+  ],
+  "settings": [],
+  "presets": [
+    {
+      "name": "Gemma EPIR (app)"
+    }
+  ]
+}
+{% endschema %}
