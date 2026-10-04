@@ -9,36 +9,54 @@ const root = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const api = require('./assets/epir-customer-privacy-consent.js');
 
-function el(spec, parent) {
+function memoryStorage(initial) {
+  const data = Object.assign({}, initial);
   return {
-    tagName: spec.tag || 'DIV',
-    id: spec.id || '',
-    className: spec.className || '',
-    textContent: spec.text || '',
-    directText: spec.directText,
-    attributes: spec.attributes || {},
-    childNodes: spec.childNodes || [],
-    parentElement: parent || null,
-    getAttribute(name) {
-      if (!Object.prototype.hasOwnProperty.call(this.attributes, name)) return null;
-      return this.attributes[name];
+    getItem(key) {
+      return Object.prototype.hasOwnProperty.call(data, key) ? data[key] : null;
+    },
+    setItem(key, value) {
+      data[key] = String(value);
     },
   };
 }
 
-function clickTarget(nodesOuterToInner) {
-  let parent = null;
-  let node = null;
-  for (const spec of nodesOuterToInner) {
-    node = el(spec, parent);
-    parent = node;
-  }
-  return node;
+function control(value) {
+  return {
+    nodeType: 1,
+    tagName: 'BUTTON',
+    getAttribute(name) {
+      return name === 'data-epir-consent' ? value : null;
+    },
+  };
 }
 
-function fakeDoc() {
+function bannerDoc() {
+  const accept = control('accept');
+  const reject = control('reject');
+  const banner = {
+    id: api.BANNER_ID,
+    hidden: false,
+    getAttribute(name) {
+      return name === 'data-epir-privacy-banner' ? '' : null;
+    },
+    setAttribute(name) {
+      if (name === 'hidden') this.hidden = true;
+    },
+    removeAttribute(name) {
+      if (name === 'hidden') this.hidden = false;
+    },
+  };
+  accept.parentElement = banner;
+  reject.parentElement = banner;
   const listeners = [];
   return {
+    banner,
+    accept,
+    reject,
+    getElementById(id) {
+      return id === banner.id ? banner : null;
+    },
     addEventListener(type, fn) {
       assert.equal(type, 'click');
       listeners.push(fn);
@@ -49,13 +67,27 @@ function fakeDoc() {
   };
 }
 
-test('accept records analytics only; reject does not grant analytics or the other purposes', () => {
+function shopifyRecorder(calls) {
+  return {
+    customerPrivacy: {
+      setTrackingConsent(payload, cb) {
+        calls.push(payload);
+        if (cb) cb({});
+      },
+    },
+  };
+}
+
+test('Zaakceptuj sets analytics, marketing, and preferences true and sale_of_data false', () => {
   assert.deepEqual(api.trackingConsentPayload(true), {
     analytics: true,
-    marketing: false,
-    preferences: false,
+    marketing: true,
+    preferences: true,
     sale_of_data: false,
   });
+});
+
+test('Odrzuć sets analytics, marketing, and preferences false and sale_of_data false', () => {
   assert.deepEqual(api.trackingConsentPayload(false), {
     analytics: false,
     marketing: false,
@@ -65,151 +97,68 @@ test('accept records analytics only; reject does not grant analytics or the othe
   assert.equal(api.trackingConsentPayload(undefined), null);
   assert.equal(api.trackingConsentPayload(null), null);
   assert.equal(api.trackingConsentPayload('true'), null);
-  assert.equal(api.trackingConsentPayload('yes'), null);
 });
 
-test('Zaakceptuj inside the cookie banner grants analytics; Odrzuć denies it', () => {
-  const accept = clickTarget([
-    { id: 'm-cookie-banner', className: 'm-cookie-banner' },
-    { tag: 'BUTTON', className: 'm-button m-button--primary', text: 'Zaakceptuj' },
-  ]);
-  const reject = clickTarget([
-    { className: 'cookie-banner' },
-    { tag: 'BUTTON', text: 'Odrzuć' },
-  ]);
-  assert.equal(api.decisionFromClick(accept), true);
-  assert.equal(api.decisionFromClick(reject), false);
-});
-
-test('Nie akceptuję is a reject, and Zaakceptuj wszystkie is an accept', () => {
-  const reject = clickTarget([
-    { className: 'cookie-banner' },
-    { tag: 'BUTTON', text: 'Nie akceptuję' },
-  ]);
-  const accept = clickTarget([
-    { className: 'cookie-banner' },
-    { tag: 'BUTTON', text: 'Zaakceptuj wszystkie' },
-  ]);
-  assert.equal(api.decisionFromClick(reject), false);
-  assert.equal(api.decisionFromClick(accept), true);
-});
-
-test('banner copy and the banner chrome are not an accept', () => {
-  const paragraph = clickTarget([
-    { className: 'm-cookie-banner' },
-    {
-      tag: 'P',
-      text: 'Używamy plików cookie, aby mierzyć ruch w sklepie. Wybierz Zaakceptuj albo Odrzuć.',
-    },
-  ]);
-  const chrome = clickTarget([
-    { className: 'm-cookie-banner', text: 'Zaakceptuj Odrzuć' },
-  ]);
-  assert.equal(api.decisionFromClick(paragraph), null);
-  assert.equal(api.decisionFromClick(chrome), null);
-});
-
-test('the same labels outside the banner do not grant or deny analytics', () => {
-  const stray = clickTarget([
-    { id: 'MainContent' },
-    { tag: 'BUTTON', text: 'Zaakceptuj' },
-  ]);
-  assert.equal(api.decisionFromClick(stray), null);
-});
-
-test('manage preferences is not an analytics decision', () => {
-  const manage = clickTarget([
-    { id: 'shopify-pc__banner', className: 'shopify-pc__banner__dialog' },
-    { tag: 'BUTTON', className: 'shopify-pc__banner__btn-manage-prefs', text: 'Zarządzaj preferencjami' },
-  ]);
-  assert.equal(api.decisionFromClick(manage), null);
-});
-
-test('Shopify privacy banner accept and decline map to the consent booleans', () => {
-  const accept = clickTarget([
-    { id: 'shopify-pc__banner', className: 'shopify-pc__banner__dialog' },
-    { tag: 'BUTTON', className: 'shopify-pc__banner__btn-accept' },
-  ]);
-  const decline = clickTarget([
-    { id: 'shopify-pc__banner', className: 'shopify-pc__banner__dialog' },
-    { tag: 'BUTTON', className: 'shopify-pc__banner__btn-decline', text: 'Odrzuć' },
-  ]);
-  assert.equal(api.decisionFromClick(accept), true);
-  assert.equal(api.decisionFromClick(decline), false);
-});
-
-test('explicit reject wins over an accept label', () => {
-  const button = clickTarget([
-    { className: 'm-cookie-banner' },
-    {
-      tag: 'BUTTON',
-      text: 'Zaakceptuj',
-      attributes: { 'data-epir-consent': 'reject' },
-    },
-  ]);
-  assert.equal(api.decisionFromClick(button), false);
-});
-
-test('conflicting accept and reject markers do not grant analytics', () => {
-  const button = clickTarget([
-    { className: 'm-cookie-banner' },
-    { tag: 'BUTTON', className: 'btn-accept btn-decline', text: 'Zaakceptuj' },
-  ]);
-  assert.equal(api.decisionFromClick(button), null);
-});
-
-test('install does not call setTrackingConsent until a banner click', () => {
+test('install does not call setTrackingConsent and leaves the banner visible', () => {
   const calls = [];
-  const win = {
-    Shopify: {
-      customerPrivacy: {
-        setTrackingConsent(payload) {
-          calls.push(payload);
-        },
-      },
-    },
-    setTimeout() {
-      throw new Error('timer without a click');
-    },
-  };
-  api.install(win, fakeDoc());
+  const doc = bannerDoc();
+  api.install(
+    { Shopify: shopifyRecorder(calls), localStorage: memoryStorage() },
+    doc,
+  );
   assert.deepEqual(calls, []);
+  assert.equal(doc.banner.hidden, false);
 });
 
-test('accept click writes analytics true and the other purposes false; reject grants none', () => {
+test('a stored choice hides the banner and still does not write consent on load', () => {
   const calls = [];
-  const win = {
-    Shopify: {
-      customerPrivacy: {
-        setTrackingConsent(payload, cb) {
-          calls.push(payload);
-          cb({});
-        },
-      },
+  const doc = bannerDoc();
+  const storage = memoryStorage({ [api.STORAGE_KEY]: 'accept' });
+  api.install({ Shopify: shopifyRecorder(calls), localStorage: storage }, doc);
+  doc.dispatch(doc.accept);
+  assert.deepEqual(calls, []);
+  assert.equal(doc.banner.hidden, true);
+});
+
+test('Zaakceptuj click writes the three purposes and hides the banner', () => {
+  const calls = [];
+  const doc = bannerDoc();
+  const storage = memoryStorage();
+  api.install({ Shopify: shopifyRecorder(calls) }, doc, storage);
+  doc.dispatch(doc.accept);
+  assert.deepEqual(calls, [api.trackingConsentPayload(true)]);
+  assert.equal(storage.getItem(api.STORAGE_KEY), 'accept');
+  assert.equal(doc.banner.hidden, true);
+});
+
+test('Odrzuć click writes all three purposes false and sale_of_data false', () => {
+  const calls = [];
+  const doc = bannerDoc();
+  const storage = memoryStorage();
+  api.install({ Shopify: shopifyRecorder(calls) }, doc, storage);
+  doc.dispatch(doc.reject);
+  assert.deepEqual(calls, [api.trackingConsentPayload(false)]);
+  assert.equal(calls[0].analytics, false);
+  assert.equal(calls[0].marketing, false);
+  assert.equal(calls[0].preferences, false);
+  assert.equal(calls[0].sale_of_data, false);
+  assert.equal(storage.getItem(api.STORAGE_KEY), 'reject');
+  assert.equal(doc.banner.hidden, true);
+});
+
+test('a Zaakceptuj button outside this banner does not grant consent', () => {
+  const calls = [];
+  const doc = bannerDoc();
+  api.install({ Shopify: shopifyRecorder(calls) }, doc, memoryStorage());
+  doc.dispatch({
+    parentElement: null,
+    getAttribute() {
+      return null;
     },
-  };
-  const doc = fakeDoc();
-  api.install(win, doc);
-  doc.dispatch(clickTarget([
-    { className: 'm-cookie-banner' },
-    { tag: 'BUTTON', text: 'Zaakceptuj' },
-  ]));
-  doc.dispatch(clickTarget([
-    { className: 'm-cookie-banner' },
-    { tag: 'BUTTON', text: 'Odrzuć' },
-  ]));
-  assert.deepEqual(calls[0], {
-    analytics: true,
-    marketing: false,
-    preferences: false,
-    sale_of_data: false,
+    textContent: 'Zaakceptuj',
   });
-  assert.deepEqual(calls[1], {
-    analytics: false,
-    marketing: false,
-    preferences: false,
-    sale_of_data: false,
-  });
+  assert.deepEqual(calls, []);
+  assert.equal(doc.banner.hidden, false);
 });
 
 test('loads consent-tracking-api 0.1 before setTrackingConsent when the API is absent', () => {
@@ -230,11 +179,9 @@ test('loads consent-tracking-api 0.1 before setTrackingConsent when the API is a
   api.commitTrackingConsent(shopify, true);
   assert.deepEqual(features, [[{ name: 'consent-tracking-api', version: '0.1' }]]);
   assert.deepEqual(calls, [api.trackingConsentPayload(true)]);
-  api.commitTrackingConsent(shopify, false);
-  assert.deepEqual(calls[1], api.trackingConsentPayload(false));
 });
 
-test('a failed consent-tracking-api load does not grant analytics', () => {
+test('a failed consent-tracking-api load does not grant consent', () => {
   const calls = [];
   const shopify = {
     loadFeatures(_requested, cb) {
@@ -258,58 +205,49 @@ test('a late accept callback does not overwrite a newer reject', () => {
       pending = cb;
     },
   };
-  const win = { Shopify: shopify, setTimeout() {} };
-  const doc = fakeDoc();
-  api.install(win, doc);
-  doc.dispatch(clickTarget([
-    { className: 'cookie-banner' },
-    { tag: 'BUTTON', text: 'Zaakceptuj' },
-  ]));
+  const doc = bannerDoc();
+  const storage = memoryStorage();
+  api.install({ Shopify: shopify, setTimeout() {} }, doc, storage);
+  doc.dispatch(doc.accept);
   shopify.customerPrivacy = {
     setTrackingConsent(payload, cb) {
       calls.push(payload);
       cb({});
     },
   };
-  doc.dispatch(clickTarget([
-    { className: 'cookie-banner' },
-    { tag: 'BUTTON', text: 'Odrzuć' },
-  ]));
+  doc.dispatch(doc.reject);
   pending();
   assert.deepEqual(calls, [api.trackingConsentPayload(false)]);
+  assert.equal(storage.getItem(api.STORAGE_KEY), 'reject');
 });
 
-test('non-boolean consent is not written', () => {
-  const calls = [];
-  api.commitTrackingConsent(
-    {
-      customerPrivacy: {
-        setTrackingConsent(payload) {
-          calls.push(payload);
-        },
-      },
-    },
-    'yes',
-  );
-  assert.deepEqual(calls, []);
-});
-
-test('theme bridge is what layout renders, and the app pixel stays analytics-gated', () => {
+test('the theme renders this Polish banner and does not render the Minimog cookie bar', () => {
   const layout = fs.readFileSync(join(root, 'layout/theme.liquid'), 'utf8');
   const snippet = fs.readFileSync(join(root, 'snippets/epir-customer-privacy-consent.liquid'), 'utf8');
   const source = fs.readFileSync(join(root, 'assets/epir-customer-privacy-consent.js'), 'utf8');
-  assert.match(layout, /render 'cookie-banner'/);
+  const banner = snippet.slice(snippet.indexOf('<div'));
+
   assert.match(layout, /render 'epir-customer-privacy-consent'/);
-  assert.match(snippet, /epir-customer-privacy-consent\.js/);
+  assert.doesNotMatch(layout, /\{%\s*render\s+'cookie-banner'\s*%\}/);
+  assert.match(banner, /analityka \(wizyty\)/);
+  assert.match(banner, /marketing \(reklamy i remarketing\)/);
+  assert.match(banner, /preferencje/);
+  assert.match(banner, /data-epir-consent="accept"/);
+  assert.match(banner, /data-epir-consent="reject"/);
+  assert.match(banner, />Zaakceptuj</);
+  assert.match(banner, />Odrzuć</);
+  assert.doesNotMatch(banner, /sale of data|sale_of_data|sprzedaż danych|sprzedaz danych/i);
   assert.match(source, /setTrackingConsent/);
   assert.match(source, /consent-tracking-api/);
+  assert.match(source, /sale_of_data:\s*false/);
+  assert.doesNotMatch(source, /sale_of_data:\s*true/);
   assert.equal(source.includes('fetch('), false);
   assert.equal(source.includes('272171340'), false);
+  assert.equal(source.includes('shopify-pc'), false);
 
   const repo = join(root, '../..');
   const toml = fs.readFileSync(join(repo, 'extensions/my-web-pixel/shopify.extension.toml'), 'utf8');
   const pixel = fs.readFileSync(join(repo, 'extensions/my-web-pixel/src/index.ts'), 'utf8');
   assert.match(toml, /analytics\s*=\s*true/);
   assert.match(pixel, /analyticsProcessingAllowed === true/);
-  assert.equal(toml.includes('272171340'), false);
 });

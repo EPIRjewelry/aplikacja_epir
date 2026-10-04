@@ -109,11 +109,9 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     {%- sections 'footer-group' -%}
 
     {% render 'script-tags' %}
-    {% render 'cookie-banner' %}
     {% comment %}
-      EPIR: vendor cookie-banner does not call customerPrivacy.setTrackingConsent.
-      Accept sets analytics true only. Marketing, preferences, and sale_of_data stay false.
-      Reject sets analytics false and does not grant the other three.
+      Minimog cookie-banner is not rendered. Its setting is off and its text does not name purposes.
+      epir-customer-privacy-consent is the storefront banner.
     {% endcomment %}
     {% render 'epir-customer-privacy-consent' %}
     {% render 'custom-code-body' %}

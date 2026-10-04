@@ -1,24 +1,17 @@
 /**
- * EPIR Online Store — Customer Privacy consent bridge.
+ * EPIR Online Store consent banner.
  *
- * The live theme renders {% render 'cookie-banner' %} (vendor snippet, not in
- * this repo). That banner does not call Shopify's Customer Privacy API, so
- * analyticsProcessingAllowed stays false and the app web pixel (analytics = true)
- * never loads.
+ * The theme renders snippets/epir-customer-privacy-consent.liquid.
+ * Buttons carry data-epir-consent="accept|reject". This file does not sniff
+ * the Minimog cookie bar.
  *
- * One click records analytics only. The app pixel needs analytics = true.
- * Marketing, preferences, and sale_of_data stay false on both accept and reject.
- *   customerPrivacy.setTrackingConsent({
- *     analytics: granted,
- *     marketing: false,
- *     preferences: false,
- *     sale_of_data: false,
- *   }, cb)
- * after Shopify.loadFeatures([{ name: 'consent-tracking-api', version: '0.1' }])
- * when the API is not on the page yet.
+ * Shopify Customer Privacy API (same method as CustomerPrivacyConsentBridge):
+ *   Shopify.loadFeatures([{ name: 'consent-tracking-api', version: '0.1' }], cb)
+ *   customerPrivacy.setTrackingConsent(payload, cb)
  *
- * Accept sets analytics true. Reject sets analytics false and does not grant the other three.
- * No call is made on load, and this file does not send pixel events.
+ * Zaakceptuj: analytics, marketing, and preferences true; sale_of_data false.
+ * Odrzuć: analytics, marketing, and preferences false; sale_of_data false.
+ * Nothing is written on load. This file does not send pixel events.
  *
  * https://shopify.dev/docs/api/customer-privacy
  */
@@ -33,126 +26,22 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var ACCEPT_ATTRS = [
-    'data-cookie-accept',
-    'data-accept-cookie',
-    'data-consent-accept',
-    'data-accept-button',
-    'data-cookie-consent-accept',
-  ];
-  var REJECT_ATTRS = [
-    'data-cookie-decline',
-    'data-decline-cookie',
-    'data-consent-decline',
-    'data-decline-button',
-    'data-cookie-reject',
-    'data-reject-cookie',
-    'data-reject-button',
-  ];
-  var ACCEPT_MARKERS = [
-    'btn-accept',
-    'accept-all',
-    'cookie-accept',
-    'consent-accept',
-    'banner__accept',
-    'accept-button',
-  ];
-  var REJECT_MARKERS = [
-    'btn-decline',
-    'btn-reject',
-    'decline-all',
-    'reject-all',
-    'cookie-decline',
-    'cookie-reject',
-    'consent-decline',
-    'consent-reject',
-    'banner__decline',
-    'banner__reject',
-    'decline-button',
-    'reject-button',
-  ];
-  var ACCEPT_EXACT = [
-    'zaakceptuj',
-    'akceptuje',
-    'zgadzam sie',
-    'zezwol',
-    'accept',
-    'allow',
-    'i agree',
-    'accept all',
-    'allow all',
-  ];
-  var ACCEPT_PREFIX = ['zaakceptuj ', 'akceptuje ', 'accept all', 'allow all', 'accept '];
-  var REJECT_EXACT = [
-    'odrzuc',
-    'odmow',
-    'nie zgadzam sie',
-    'nie akceptuje',
-    'decline',
-    'reject',
-    'deny',
-    'decline all',
-    'reject all',
-  ];
-  var BANNER_RE = /cookie|consent|ciastecz|gdpr|shopify-pc|privacy-banner|privacy_banner/;
+  var BANNER_ID = 'epir-customer-privacy-banner';
+  var STORAGE_KEY = 'epir-customer-privacy-choice';
 
   function trackingConsentPayload(granted) {
     if (granted !== true && granted !== false) return null;
     return {
       analytics: granted,
-      marketing: false,
-      preferences: false,
+      marketing: granted,
+      preferences: granted,
       sale_of_data: false,
     };
   }
 
-  function fold(value) {
-    return String(value || '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '');
-  }
-
   function attr(el, name) {
-    if (!el) return null;
-    if (typeof el.getAttribute === 'function') return el.getAttribute(name);
-    if (el.attributes && Object.prototype.hasOwnProperty.call(el.attributes, name)) {
-      return el.attributes[name];
-    }
-    return null;
-  }
-
-  function hasAnyAttr(el, names) {
-    for (var i = 0; i < names.length; i++) {
-      if (attr(el, names[i]) !== null) return true;
-    }
-    return false;
-  }
-
-  function classNameOf(el) {
-    if (!el || el.className == null) return '';
-    if (typeof el.className === 'string') return el.className;
-    if (typeof el.className.baseVal === 'string') return el.className.baseVal;
-    return '';
-  }
-
-  function hasMarker(blob, marker) {
-    return new RegExp('(?:^|[^a-z0-9])' + marker + '(?:$|[^a-z0-9])').test(blob);
-  }
-
-  function markerDecision(blob) {
-    var accept = false;
-    var reject = false;
-    var i;
-    for (i = 0; i < ACCEPT_MARKERS.length; i++) {
-      if (hasMarker(blob, ACCEPT_MARKERS[i])) accept = true;
-    }
-    for (i = 0; i < REJECT_MARKERS.length; i++) {
-      if (hasMarker(blob, REJECT_MARKERS[i])) reject = true;
-    }
-    return { accept: accept, reject: reject };
+    if (!el || typeof el.getAttribute !== 'function') return null;
+    return el.getAttribute(name);
   }
 
   function parentOf(el) {
@@ -162,135 +51,42 @@
     return null;
   }
 
-  function isBannerEl(el) {
-    if (!el) return false;
-    var tag = String(el.tagName || '').toLowerCase();
-    if (tag === 'body' || tag === 'html') return false;
-    if (tag === 'cookie-banner' || tag === 'm-cookie-banner') return true;
-    if (attr(el, 'data-cookie-banner') !== null || attr(el, 'data-consent-banner') !== null) return true;
-    var blob = tag + ' ' + String(el.id || '').toLowerCase() + ' ' + classNameOf(el).toLowerCase();
-    return BANNER_RE.test(blob);
-  }
-
-  function directText(el) {
-    if (typeof el.directText === 'string') return el.directText;
-    var nodes = el.childNodes || [];
-    if (!nodes.length) return el.textContent || el.innerText || '';
-    var parts = [];
-    for (var i = 0; i < nodes.length; i++) {
-      if (nodes[i] && nodes[i].nodeType === 3) parts.push(nodes[i].textContent || '');
-    }
-    return parts.join(' ');
-  }
-
-  function isLeafControl(el) {
-    var tag = String(el.tagName || '').toLowerCase();
-    if (tag === 'button' || tag === 'a' || tag === 'input') return true;
-    if (attr(el, 'role') === 'button') return true;
-    if (classNameOf(el).toLowerCase().indexOf('m-button') !== -1) return true;
-    return false;
-  }
-
-  function labelOf(el) {
-    var direct = fold(directText(el));
-    if (direct) return direct;
-    var aria = fold(attr(el, 'aria-label'));
-    if (aria) return aria;
-    var value = fold(attr(el, 'value'));
-    if (value) return value;
-    var title = fold(attr(el, 'title'));
-    if (title) return title;
-    if (isLeafControl(el)) return fold(el.textContent || el.innerText || '');
-    return '';
-  }
-
-  function matchesLabel(folded, exact, prefixes) {
-    if (!folded || folded.length > 64) return false;
-    var i;
-    for (i = 0; i < exact.length; i++) {
-      if (folded === exact[i]) return true;
-    }
-    for (i = 0; i < prefixes.length; i++) {
-      if (folded.indexOf(prefixes[i]) === 0) return true;
-    }
-    return false;
-  }
-
-  function containsPhrase(folded, phrase) {
-    var from = 0;
-    while (from < folded.length) {
-      var at = folded.indexOf(phrase, from);
-      if (at < 0) return false;
-      var beforeOk = at === 0 || folded.charAt(at - 1) === ' ';
-      var after = at + phrase.length;
-      var afterOk = after === folded.length || folded.charAt(after) === ' ';
-      if (beforeOk && afterOk) return true;
-      from = at + 1;
-    }
-    return false;
-  }
-
-  /**
-   * A control that names both choices ("Zaakceptuj Odrzuć") is not a decision.
-   * Reject phrases are removed first so "nie akceptuję" stays a reject.
-   */
-  function labelSignals(label) {
-    if (!label || label.length > 64) return { accept: false, reject: false };
-    var reject = false;
-    var remainder = label;
-    var i;
-    for (i = 0; i < REJECT_EXACT.length; i++) {
-      if (containsPhrase(label, REJECT_EXACT[i])) reject = true;
-      remainder = remainder.split(REJECT_EXACT[i]).join(' ');
-    }
-    remainder = remainder.replace(/\s+/g, ' ').trim();
-    var accept = matchesLabel(remainder, ACCEPT_EXACT, ACCEPT_PREFIX);
-    return { accept: accept, reject: reject };
-  }
-
-  function decisionFromControl(el) {
-    if (!el) return null;
-    var explicit = attr(el, 'data-epir-consent');
-    if (explicit === 'accept') return true;
-    if (explicit === 'reject') return false;
-
-    var accept = hasAnyAttr(el, ACCEPT_ATTRS);
-    var reject = hasAnyAttr(el, REJECT_ATTRS);
-    var blob = (String(el.id || '') + ' ' + classNameOf(el)).toLowerCase();
-    var markers = markerDecision(blob);
-    if (markers.accept) accept = true;
-    if (markers.reject) reject = true;
-    var signals = labelSignals(labelOf(el));
-    if (signals.accept) accept = true;
-    if (signals.reject) reject = true;
-    if (accept === reject) return null;
-    return accept;
-  }
-
-  function asElement(node) {
-    if (!node) return null;
-    if (node.nodeType === 3) return node.parentElement || node.parentNode || null;
-    return node;
-  }
-
-  /** @returns {boolean|null} true accept, false reject, null not a banner decision */
-  function decisionFromClick(target) {
-    var start = asElement(target);
-    var chain = [];
-    var banner = null;
-    for (var el = start; el; el = parentOf(el)) {
-      chain.push(el);
-      if (isBannerEl(el)) {
-        banner = el;
-        break;
-      }
-    }
-    if (!banner) return null;
-    for (var i = 0; i < chain.length; i++) {
-      var decision = decisionFromControl(chain[i]);
-      if (decision === true || decision === false) return decision;
+  function choiceFromTarget(banner, target) {
+    var el = target;
+    if (el && el.nodeType === 3) el = parentOf(el);
+    while (el) {
+      var value = attr(el, 'data-epir-consent');
+      if (value === 'accept') return true;
+      if (value === 'reject') return false;
+      if (el === banner) return null;
+      el = parentOf(el);
     }
     return null;
+  }
+
+  function storedChoice(storage) {
+    if (!storage || typeof storage.getItem !== 'function') return null;
+    var value = storage.getItem(STORAGE_KEY);
+    if (value === 'accept') return true;
+    if (value === 'reject') return false;
+    return null;
+  }
+
+  function rememberChoice(storage, granted) {
+    if (!storage || typeof storage.setItem !== 'function') return;
+    storage.setItem(STORAGE_KEY, granted ? 'accept' : 'reject');
+  }
+
+  function hideBanner(banner) {
+    if (!banner) return;
+    banner.hidden = true;
+    if (typeof banner.setAttribute === 'function') banner.setAttribute('hidden', '');
+  }
+
+  function showBanner(banner) {
+    if (!banner) return;
+    banner.hidden = false;
+    if (typeof banner.removeAttribute === 'function') banner.removeAttribute('hidden');
   }
 
   function commitTrackingConsent(shopify, granted, options) {
@@ -322,17 +118,28 @@
     });
   }
 
-  function install(win, doc) {
-    if (!win || !doc || typeof doc.addEventListener !== 'function') return;
+  function install(win, doc, storage) {
+    if (!win || !doc || typeof doc.getElementById !== 'function') return;
+    if (typeof doc.addEventListener !== 'function') return;
     if (win.__epirCustomerPrivacyConsentInstalled) return;
+    var banner = doc.getElementById(BANNER_ID);
+    if (!banner) return;
     win.__epirCustomerPrivacyConsentInstalled = true;
+
+    var store = storage || win.localStorage || null;
+    if (storedChoice(store) === true || storedChoice(store) === false) {
+      hideBanner(banner);
+      return;
+    }
+    showBanner(banner);
+
     var generation = 0;
     var schedule = typeof win.setTimeout === 'function' ? win.setTimeout.bind(win) : function () {};
 
     doc.addEventListener(
       'click',
       function (event) {
-        var granted = decisionFromClick(event && event.target);
+        var granted = choiceFromTarget(banner, event && event.target);
         if (granted !== true && granted !== false) return;
         var token = ++generation;
         function isStale() {
@@ -345,7 +152,14 @@
             if (n < 20) schedule(function () { attempt(n + 1); }, 150);
             return;
           }
-          commitTrackingConsent(shopify, granted, { isStale: isStale });
+          commitTrackingConsent(shopify, granted, {
+            isStale: isStale,
+            onResult: function () {
+              if (isStale()) return;
+              rememberChoice(store, granted);
+              hideBanner(banner);
+            },
+          });
         }
         attempt(0);
       },
@@ -354,8 +168,9 @@
   }
 
   return {
+    BANNER_ID: BANNER_ID,
+    STORAGE_KEY: STORAGE_KEY,
     trackingConsentPayload: trackingConsentPayload,
-    decisionFromClick: decisionFromClick,
     commitTrackingConsent: commitTrackingConsent,
     install: install,
   };
