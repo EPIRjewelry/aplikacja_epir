@@ -17,7 +17,20 @@
         "step2_text": "Tłumaczymy wizję na cyfrowy model 3D lub rzeźbę w wosku — idealne dla biżuterii organicznej, asymetrycznej. Przeglądasz i korygujesz go razem z nami, zanim ruszy metal.",
         "submit_label": "Wyślij zapytanie"
       }
+    },
+    "epir_assistant_zaprojektuj": {
+      "type": "shopify://apps/epir_ai/blocks/assistant-section/019ca105-383c-7881-a0ce-813c2c58586f",
+      "settings": {
+        "title": "Czat z Gemmą",
+        "greeting_message": "Witaj! Jestem Gemmą, doradczynią EPIR Art Jewellery. Jak mogę pomóc w wyborze biżuterii?",
+        "input_placeholder": "Napisz wiadomość, np. „Pokaż pierścionki zaręczynowe z szafirem”",
+        "start_closed": true,
+        "accent_color": "#8b7d6a",
+        "worker_endpoint": "/apps/assistant/chat",
+        "storefront_id": "epir-liquid",
+        "channel": "online-store"
+      }
     }
   },
-  "order": ["main"]
+  "order": ["main", "epir_assistant_zaprojektuj"]
 }
