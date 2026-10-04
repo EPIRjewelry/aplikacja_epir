@@ -1,7 +1,9 @@
 name: Deploy (Cloudflare)
 
-# Push na main → deploy workerów (workers/**) i storefrontów (apps/kazka, apps/zareczyny, apps/inspiracje).
-# Pełny deploy ze smoke: workflow_dispatch.
+# Push na main → ten plik. Diff pusha (before…sha) decyduje, co naprawdę leci na Cloudflare.
+# Sama zmiana tego workflow nie włącza cudzych workerów ani Pages: krok deployu
+# wykonuje się tylko wtedy, gdy push ruszył dany katalog (albo package-lock.json).
+# workflow_dispatch: przełączniki deploy_workers / deploy_pages, jak dotychczas.
 # Archiwum z pełnym eksportem Admin API: deploy-inspiracje-archive.yml (cron / dispatch).
 on:
   push:
@@ -13,6 +15,7 @@ on:
       - 'apps/inspiracje/**'
       - 'packages/ui/**'
       - 'packages/utils/**'
+      - 'packages/config/**'
       - 'apps/operator-studio/**'
       - '.github/workflows/deploy.yml'
       - 'package-lock.json'
@@ -34,10 +37,130 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  path-filter:
+    name: path-filter
+    runs-on: ubuntu-latest
+    outputs:
+      chat: ${{ steps.set.outputs.chat }}
+      chat_migrations: ${{ steps.set.outputs.chat_migrations }}
+      analytics: ${{ steps.set.outputs.analytics }}
+      bigquery_batch: ${{ steps.set.outputs.bigquery_batch }}
+      store_steward: ${{ steps.set.outputs.store_steward }}
+      analyst_worker: ${{ steps.set.outputs.analyst_worker }}
+      marketing_ingest: ${{ steps.set.outputs.marketing_ingest }}
+      dynamic_landing: ${{ steps.set.outputs.dynamic_landing }}
+      rag_worker: ${{ steps.set.outputs.rag_worker }}
+      workers_any: ${{ steps.set.outputs.workers_any }}
+      pages_kazka: ${{ steps.set.outputs.pages_kazka }}
+      pages_zareczyny: ${{ steps.set.outputs.pages_zareczyny }}
+      pages_inspiracje: ${{ steps.set.outputs.pages_inspiracje }}
+      pages_any: ${{ steps.set.outputs.pages_any }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve deploy scope from the push diff
+        id: set
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          DEPLOY_WORKERS: ${{ inputs.deploy_workers }}
+          DEPLOY_PAGES: ${{ inputs.deploy_pages }}
+        run: |
+          set -euo pipefail
+          out() { echo "$1=$2" >> "$GITHUB_OUTPUT"; }
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            workers=false
+            pages=false
+            [ "${DEPLOY_WORKERS:-false}" = "true" ] && workers=true
+            [ "${DEPLOY_PAGES:-false}" = "true" ] && pages=true
+            out chat "$workers"
+            out chat_migrations "$workers"
+            out analytics "$workers"
+            out bigquery_batch "$workers"
+            out store_steward "$workers"
+            out analyst_worker "$workers"
+            out marketing_ingest "$workers"
+            out dynamic_landing "$workers"
+            out rag_worker "$workers"
+            out workers_any "$workers"
+            out pages_kazka "$pages"
+            out pages_zareczyny "$pages"
+            out pages_inspiracje "$pages"
+            out pages_any "$pages"
+            echo "workflow_dispatch workers=$workers pages=$pages"
+            exit 0
+          fi
+
+          if [ -z "${BEFORE_SHA}" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "No previous commit on this branch; deploying every worker and Pages app."
+            git diff --name-only HEAD~1 HEAD > /tmp/changed.txt || true
+            all=true
+          else
+            git fetch --no-tags --depth=1 origin "$BEFORE_SHA"
+            git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA" | tee /tmp/changed.txt
+            all=false
+          fi
+
+          match() { grep -Eq "$1" /tmp/changed.txt; }
+          shared_workers=false
+          shared_pages=false
+          if [ "$all" = true ] || match '^package-lock\.json$'; then
+            shared_workers=true
+            shared_pages=true
+          fi
+          if [ "$all" = true ] || match '^(packages/ui/|packages/utils/|packages/config/)'; then
+            shared_pages=true
+          fi
+
+          pick() {
+            local name="$1"
+            local regex="$2"
+            local shared="$3"
+            if [ "$shared" = true ] || match "$regex"; then
+              out "$name" true
+              echo "$name=true"
+            else
+              out "$name" false
+              echo "$name=false"
+            fi
+          }
+
+          pick chat '^workers/chat/' "$shared_workers"
+          pick chat_migrations '^workers/chat/migrations/' "$shared_workers"
+          pick analytics '^workers/analytics/' "$shared_workers"
+          pick bigquery_batch '^workers/bigquery-batch/' "$shared_workers"
+          pick store_steward '^workers/store-steward/' "$shared_workers"
+          pick analyst_worker '^workers/analyst-worker/' "$shared_workers"
+          pick marketing_ingest '^workers/marketing-ingest/' "$shared_workers"
+          pick dynamic_landing '^workers/dynamic-landing-liquid/' "$shared_workers"
+          pick rag_worker '^workers/rag-worker/' "$shared_workers"
+
+          workers_any=false
+          for name in chat analytics bigquery_batch store_steward analyst_worker marketing_ingest dynamic_landing rag_worker; do
+            if grep -q "^${name}=true$" "$GITHUB_OUTPUT"; then
+              workers_any=true
+            fi
+          done
+          out workers_any "$workers_any"
+
+          pick pages_kazka '^apps/kazka/' "$shared_pages"
+          pick pages_zareczyny '^apps/zareczyny/' "$shared_pages"
+          pick pages_inspiracje '^apps/inspiracje/' "$shared_pages"
+          pages_any=false
+          for name in pages_kazka pages_zareczyny pages_inspiracje; do
+            if grep -q "^${name}=true$" "$GITHUB_OUTPUT"; then
+              pages_any=true
+            fi
+          done
+          out pages_any "$pages_any"
+
   deploy-workers:
     name: deploy-workers
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || inputs.deploy_workers == true
+    needs: path-filter
+    if: needs.path-filter.outputs.workers_any == 'true'
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -72,18 +195,22 @@ jobs:
           fi
 
       - name: Deploy analytics worker
+        if: needs.path-filter.outputs.analytics == 'true'
         working-directory: workers/analytics
         run: npx wrangler deploy --env=""
 
       - name: Deploy bigquery-batch worker
+        if: needs.path-filter.outputs.bigquery_batch == 'true'
         working-directory: workers/bigquery-batch
         run: npx wrangler deploy --env=""
 
       - name: Deploy store-steward worker
+        if: needs.path-filter.outputs.store_steward == 'true'
         working-directory: workers/store-steward
         run: npx wrangler deploy --env=""
 
       - name: Apply store-steward D1 migrations
+        if: needs.path-filter.outputs.store_steward == 'true'
         working-directory: workers/store-steward
         run: |
           npx wrangler d1 execute jewelry-analytics-db --remote --file=./migrations/001_store_signals.sql
@@ -91,31 +218,38 @@ jobs:
           npx wrangler d1 execute jewelry-analytics-db --remote --file=./migrations/003_steward_reports.sql
 
       - name: Deploy analyst-worker worker
+        if: needs.path-filter.outputs.analyst_worker == 'true'
         working-directory: workers/analyst-worker
         run: npx wrangler deploy --env=""
 
       - name: Deploy marketing-ingest worker
+        if: needs.path-filter.outputs.marketing_ingest == 'true'
         working-directory: workers/marketing-ingest
         run: npx wrangler deploy --env=""
 
       - name: Deploy dynamic-landing-liquid worker
+        if: needs.path-filter.outputs.dynamic_landing == 'true'
         working-directory: workers/dynamic-landing-liquid
         run: npx wrangler deploy --env=""
 
       - name: Deploy chat worker
+        if: needs.path-filter.outputs.chat == 'true'
         working-directory: workers/chat
         run: npx wrangler deploy --env=""
 
       - name: Apply chat D1 migration (operator_daily_reports)
+        if: needs.path-filter.outputs.chat_migrations == 'true'
         working-directory: workers/chat
         run: npx wrangler d1 execute ai-assistant-sessions-db --remote --file=./migrations/013_operator_copilot.sql
 
       - name: Ensure RAG Vectorize index exists
+        if: needs.path-filter.outputs.rag_worker == 'true'
         working-directory: workers/rag-worker
         run: |
           npx wrangler vectorize create autorag-epir-chatbot-rag --dimensions=1024 --metric=cosine 2>/dev/null || true
 
       - name: Deploy rag worker
+        if: needs.path-filter.outputs.rag_worker == 'true'
         working-directory: workers/rag-worker
         run: npx wrangler deploy --env=""
 
@@ -146,7 +280,8 @@ jobs:
   deploy-pages:
     name: deploy-pages
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy_pages == true)
+    needs: path-filter
+    if: needs.path-filter.outputs.pages_any == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -161,10 +296,24 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
+      - name: Decide whether this Pages app changed
+        id: app
+        run: |
+          case "${{ matrix.app }}" in
+            kazka) go="${{ needs.path-filter.outputs.pages_kazka }}" ;;
+            zareczyny) go="${{ needs.path-filter.outputs.pages_zareczyny }}" ;;
+            inspiracje) go="${{ needs.path-filter.outputs.pages_inspiracje }}" ;;
+            *) go=false ;;
+          esac
+          echo "go=$go" >> "$GITHUB_OUTPUT"
+          echo "pages ${{ matrix.app }} go=$go"
+
       - name: Checkout
+        if: steps.app.outputs.go == 'true'
         uses: actions/checkout@v4
 
       - name: Validate Cloudflare secrets
+        if: steps.app.outputs.go == 'true'
         run: |
           if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
             echo "Missing CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID."
@@ -172,6 +321,7 @@ jobs:
           fi
 
       - name: Setup Node
+        if: steps.app.outputs.go == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -179,7 +329,9 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install monorepo dependencies
+        if: steps.app.outputs.go == 'true'
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Build and deploy app to Cloudflare Pages
+        if: steps.app.outputs.go == 'true'
         run: npm run deploy -w ${{ matrix.app }}
