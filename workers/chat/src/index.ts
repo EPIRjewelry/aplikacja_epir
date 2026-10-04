@@ -27,6 +27,7 @@ import { parseAuthorizationBearer, verifyShopifySessionTokenJwt } from './shopif
 import { RateLimiterDO, checkRateLimit } from './rate-limiter';
 import { TokenVaultDO, TokenVault, getTokenVaultStub } from './token-vault';
 import { guardAssistantPricingAgainstCatalog } from './pricing-guard';
+import { stripForeignBrandLinks } from './brand-reply-host';
 import { buildCommerceActionPayload, isLikelyAjaxCartFakeGid } from './utils/commerce-result';
 import {
   analyticsReadUnauthorizedResponse,
@@ -58,7 +59,8 @@ import {
 import { LUXURY_SYSTEM_PROMPT, KAZKA_HEADLESS_PERSONA_ADDON } from './prompts/luxury-system-prompt'; // 🟢 Używa nowego promptu v2
 import { parseStorefrontPathContext } from './storefront/path-context';
 import { buildKazkaHeadlessStorefrontContext, isKazkaHeadlessChannel } from './storefront/kazka-hydrate';
-import { resolveCatalogToolBrand } from './catalog/kazka-assortment';
+import { isKazkaFilteredCatalogTool, resolveCatalogToolBrand } from './catalog/kazka-assortment';
+import { CATALOG_MODEL_WIRE_BUDGET } from './mcp/catalog-for-model';
 import { TOOL_SCHEMAS, resolveToolSchemas, shouldUseSlimToolSchemas } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2 (+ slim wariant za flagą)
 import { sanitizeHarmonyHistory } from './utils/sanitizeHarmonyHistory';
 import { detectPolicyInformationIntent } from './intent/policy-information';
@@ -3719,6 +3721,12 @@ async function streamAssistantResponse(
       const MAX_TOOL_CALLS = 5;
       /** Wyniki search_catalog w tej turze — walidacja cen po wygenerowaniu odpowiedzi. */
       const catalogSnapshotsForPricing: unknown[] = [];
+      const replyBrand =
+        resolveCatalogToolBrand({
+          storefrontId: storefrontContext?.storefrontId,
+          channel: storefrontContext?.channel,
+          brand,
+        }) ?? (storefrontContext?.channel === 'online-store' ? 'epir' : undefined);
       const applyPricingSanitizer = (txt: string): string => {
         if (isProjectBChatChannel(storefrontContext?.channel)) return txt;
         const outcome = guardAssistantPricingAgainstCatalog(txt, catalogSnapshotsForPricing, {
@@ -3727,7 +3735,18 @@ async function streamAssistantResponse(
         if (outcome.sanitized && outcome.log) {
           console.log(JSON.stringify(outcome.log));
         }
-        return outcome.text;
+        const locked = stripForeignBrandLinks(outcome.text, replyBrand);
+        if (locked.stripped) {
+          console.log(
+            JSON.stringify({
+              tag: 'chat.brand_host_lock',
+              session_id: sessionId,
+              brand: replyBrand ?? null,
+              removed: locked.removed,
+            }),
+          );
+        }
+        return locked.text;
       };
       // Harmony zużywa część budżetu na kanał `analysis` (reasoning) — bierzemy limity
       // bezpośrednio z `model-params.ts` zamiast trzymać tu lokalne magic numbers,
@@ -4267,9 +4286,10 @@ async function streamAssistantResponse(
                 })
               : JSON.stringify(toolResult.result);
 
-            // ZOPTYMALIZOWANO: Zmniejszono limit outputu z narzędzi z 14000 do 3000 znaków.
-            // Chroni okno kontekstowe (Harmony / GPT-OSS-120B i alternatywne modele Workers AI).
-            const MAX_TOOL_OUTPUT_LENGTH = 3000;
+            // Katalog musi dojść w całości (opis, warianty, rozmiary). Inne narzędzia zostają krótkie.
+            const MAX_TOOL_OUTPUT_LENGTH = isKazkaFilteredCatalogTool(call.name)
+              ? CATALOG_MODEL_WIRE_BUDGET
+              : 3000;
             if (toolResultString.length > MAX_TOOL_OUTPUT_LENGTH) {
               toolResultString =
                 toolResultString.slice(0, MAX_TOOL_OUTPUT_LENGTH) +

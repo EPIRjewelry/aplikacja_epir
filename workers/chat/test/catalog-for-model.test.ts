@@ -1,14 +1,13 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {callMcpToolDirect} from '../src/mcp_server';
 import {formatPlnMajorForDisplay} from '../src/mcp/catalog-price-enrich';
-import {presentCatalogForModel} from '../src/mcp/catalog-for-model';
+import {CATALOG_MODEL_WIRE_BUDGET, presentCatalogForModel} from '../src/mcp/catalog-for-model';
 
 /**
  * Odpowiednik żywego odczytu UCP (structuredContent, amount w groszach).
- * Model dostaje JSON.stringify(result) obcięty do 3000 znaków — karta musi
- * zmieścić tytuł, price_display_pl i variant id w tym oknie.
+ * Model dostaje całą kartę w oknie narzędzia katalogu — opis, rozmiary i każdy wariant.
  */
-const TOOL_OUTPUT_LIMIT = 3000;
+const TOOL_OUTPUT_LIMIT = CATALOG_MODEL_WIRE_BUDGET;
 const SHOP = 'epir-art-silver-jewellery.myshopify.com';
 const PROFILE = 'https://asystent.epirbizuteria.pl/.well-known/ucp-agent-profile.json';
 const GALAZKI_VARIANT = 'gid://shopify/ProductVariant/9001';
@@ -120,10 +119,21 @@ describe('presentCatalogForModel', () => {
       ]),
     );
     const [product] = productsOf(presented);
+    const variants = product?.variants as Array<Record<string, unknown>>;
+    const sizes = product?.sizes as string[];
+    expect(product?.price_is_flat).toBe(true);
     expect(product?.price_display_pl).toBe(formatPlnMajorForDisplay(18.99));
+    expect(product?.page_price_display_pl).toBe(formatPlnMajorForDisplay(18.99));
     expect(product?.price_display_pl).not.toBe(formatPlnMajorForDisplay(1899));
+    expect(product?.price_min_display_pl).toBeUndefined();
     expect(modelWire(presented)).not.toContain('"amount"');
-    expect(product?.variant_id).toBe(GALAZKI_VARIANT);
+    expect(product?.variant_id).toBeUndefined();
+    expect(variants).toHaveLength(16);
+    expect(variants[0]?.id).toBe(GALAZKI_VARIANT);
+    expect(sizes).toHaveLength(16);
+    expect(sizes[0]).toBe('8');
+    expect(sizes[15]).toBe('23');
+    expect(product?.description).toContain('opis');
   });
 
   it('puts Soliter on the Kazka host and keeps the EPIR card on the apex', () => {
@@ -180,6 +190,196 @@ describe('presentCatalogForModel', () => {
     expect(wire.slice(0, TOOL_OUTPUT_LIMIT)).toContain(formatPlnMajorForDisplay(4500));
     expect(wire.slice(0, TOOL_OUTPUT_LIMIT)).toContain(formatPlnMajorForDisplay(1899));
   });
+
+  it('keeps a flat silver ring at one price and the real size list 7–29', () => {
+    const sizes = Array.from({length: 23}, (_, index) => String(7 + index));
+    const presented = presentCatalogForModel(
+      ucpResult([
+        {
+          id: 'gid://shopify/Product/srebro',
+          title: 'Pierścionek srebrny',
+          handle: 'pierscionek-srebrny',
+          description: {html: '<p>Srebro młotkowane. Bez kamienia.</p>'},
+          url: 'https://epirbizuteria.pl/products/pierscionek-srebrny',
+          vendor: 'EPIR',
+          tags: ['srebro', '10-dni'],
+          price_range: {
+            min: {amount: 26000, currency: 'PLN'},
+            max: {amount: 26000, currency: 'PLN'},
+          },
+          options: [{name: 'Rozmiar', values: sizes.map((label) => ({label}))}],
+          metafields: [
+            {namespace: 'custom', key: 'proba', value: '925'},
+            {namespace: 'custom', key: 'czas_dostawy', value: '24h'},
+            {namespace: 'custom', key: 'grawer', value: 'inicjały'},
+            {
+              namespace: 'custom',
+              key: 'glowny_kamien',
+              reference: {fields: [{key: 'name', value: 'kwarc'}]},
+            },
+          ],
+          variants: sizes.map((size, index) => ({
+            id: `gid://shopify/ProductVariant/${7000 + index}`,
+            title: size,
+            sku: `SR-${size}`,
+            price: {amount: 26000, currency: 'PLN'},
+            availability: {available: true},
+            options: [{name: 'Rozmiar', value: size}],
+          })),
+        },
+      ]),
+      {brand: 'epir'},
+    );
+    const [product] = productsOf(presented);
+    const wire = modelWire(presented);
+    const variants = product?.variants as Array<Record<string, unknown>>;
+    expect(product?.price_is_flat).toBe(true);
+    expect(product?.price_display_pl).toBe('260 zł');
+    expect(product?.page_price_display_pl).toBe('260 zł');
+    expect(product?.price_min_display_pl).toBeUndefined();
+    expect(product?.variant_id).toBeUndefined();
+    expect(product?.sizes).toEqual(sizes);
+    expect(variants).toHaveLength(23);
+    expect(variants[0]?.price_display_pl).toBe('260 zł');
+    expect(variants[22]?.title).toBe('29');
+    expect(product?.description).toContain('Srebro młotkowane');
+    expect(wire).not.toContain('925');
+    expect(wire).not.toContain('24h');
+    expect(wire).not.toContain('inicjały');
+    expect(wire).toContain('kwarc');
+    expect(product?.lead_time_display_pl).toBeUndefined();
+    expect(wire).not.toContain('kazka.epirbizuteria.pl');
+  });
+
+  it('keeps strawberry quartz at 280 zł and sizes 9–25, and drops a Kazka host from the description', () => {
+    const sizes = Array.from({length: 17}, (_, index) => String(9 + index));
+    const presented = presentCatalogForModel(
+      ucpResult([
+        {
+          id: 'gid://shopify/Product/kwarc',
+          title: 'Pierścionek z kwarcem truskawkowym',
+          handle: 'kwarc-truskawkowy',
+          description: {
+            plain: 'Kwarc truskawkowy. Zobacz też https://kazka.epirbizuteria.pl/products/soliter',
+          },
+          url: 'https://kazka.epirbizuteria.pl/products/kwarc-truskawkowy',
+          vendor: 'EPIR',
+          tags: ['srebro'],
+          options: [{name: 'Rozmiar', values: sizes}],
+          variants: sizes.map((size, index) => ({
+            id: `gid://shopify/ProductVariant/${8000 + index}`,
+            title: size,
+            price: {amount: 28000, currency: 'PLN'},
+            options: [{name: 'Rozmiar', label: size}],
+          })),
+        },
+      ]),
+      {brand: 'epir'},
+    );
+    const [product] = productsOf(presented);
+    const sizesOut = product?.sizes as string[];
+    expect(product?.price_display_pl).toBe('280 zł');
+    expect(product?.price_is_flat).toBe(true);
+    expect(sizesOut).toHaveLength(17);
+    expect(sizesOut[0]).toBe('9');
+    expect(sizesOut[sizesOut.length - 1]).toBe('25');
+    expect(sizesOut).not.toEqual(sizesOut.slice(0, 12));
+    expect(product?.url).toBe('https://epirbizuteria.pl/products/kwarc-truskawkowy');
+    expect(modelWire(presented)).not.toContain('kazka.epirbizuteria.pl');
+    expect(product?.description).toContain('Kwarc truskawkowy');
+  });
+
+  it('quotes a range only when variant prices differ and keeps each variant price', () => {
+    const presented = presentCatalogForModel(
+      ucpResult([
+        {
+          id: 'gid://shopify/Product/mix',
+          title: 'Pierścionek z dwoma cenami',
+          handle: 'dwa-ceny',
+          url: 'https://epirbizuteria.pl/products/dwa-ceny',
+          options: [{name: 'Rozmiar', values: ['7', '29']}],
+          variants: [
+            {
+              id: 'gid://shopify/ProductVariant/1',
+              title: '7',
+              price: {amount: 26000, currency: 'PLN'},
+              options: [{name: 'Rozmiar', value: '7'}, {name: 'Kamień', value: 'kwarc'}],
+            },
+            {
+              id: 'gid://shopify/ProductVariant/2',
+              title: '29',
+              price: {amount: 48000, currency: 'PLN'},
+              options: [{name: 'Rozmiar', value: '29'}],
+            },
+          ],
+        },
+      ]),
+      {brand: 'epir'},
+    );
+    const [product] = productsOf(presented);
+    const variants = product?.variants as Array<Record<string, unknown>>;
+    expect(product?.price_is_flat).toBe(false);
+    expect(product?.price_display_pl).toBeUndefined();
+    expect(product?.page_price_display_pl).toBe('od 260 zł');
+    expect(product?.price_min_display_pl).toBe('260 zł');
+    expect(product?.price_max_display_pl).toBe('480 zł');
+    expect(product?.variant_id).toBeUndefined();
+    expect(variants[0]?.options).toEqual([
+      {name: 'Rozmiar', value: '7'},
+      {name: 'Kamień', value: 'kwarc'},
+    ]);
+    expect(variants[1]?.options).toEqual([{name: 'Rozmiar', value: '29'}]);
+    expect(variants[1]?.price_display_pl).toBe('480 zł');
+  });
+
+  it('puts Kazka lead time on the card from the metafield or the 10-day tag', () => {
+    const fromMeta = productsOf(
+      presentCatalogForModel(
+        ucpResult([
+          {
+            id: 'gid://shopify/Product/k1',
+            title: 'Soliter',
+            handle: 'soliter',
+            url: 'https://epirbizuteria.pl/products/soliter',
+            vendor: 'Kazka',
+            tags: ['kazka'],
+            metafields: [{namespace: 'custom', key: 'czas_wykonania', value: '3'}],
+            variants: [{id: 'gid://shopify/ProductVariant/1', title: '54', price: {amount: 640800, currency: 'PLN'}}],
+          },
+        ]),
+        {brand: 'kazka'},
+      ),
+    )[0];
+    const fromTag = productsOf(
+      presentCatalogForModel(
+        ucpResult([
+          {
+            id: 'gid://shopify/Product/k2',
+            title: 'Soliter 10',
+            handle: 'soliter-10',
+            url: 'https://epirbizuteria.pl/products/soliter-10',
+            vendor: 'Kazka',
+            tags: ['kazka', '10-dni'],
+            variants: [{id: 'gid://shopify/ProductVariant/2', title: '54', price: {amount: 28000, currency: 'PLN'}}],
+          },
+        ]),
+        {brand: 'kazka'},
+      ),
+    )[0];
+    expect(fromMeta?.lead_time_display_pl).toBe('Wykonanie 3 dni robocze');
+    expect(fromMeta?.url).toBe('https://kazka.epirbizuteria.pl/products/soliter');
+    expect(fromMeta?.variant_id).toBe('gid://shopify/ProductVariant/1');
+    expect(fromTag?.lead_time_display_pl).toBe('Wykonanie 10 dni roboczych');
+    expect(fromTag?.page_price_display_pl).toBe('280 zł');
+    expect(fromTag?.url).toBe('https://kazka.epirbizuteria.pl/products/soliter-10');
+    expect(modelWire(presentCatalogForModel(ucpResult([{
+      id: 'gid://shopify/Product/k2',
+      title: 'Soliter 10',
+      handle: 'soliter-10',
+      tags: ['kazka', '10-dni'],
+      variants: [{id: 'gid://shopify/ProductVariant/2', title: '54', price: {amount: 28000, currency: 'PLN'}}],
+    }]), {brand: 'kazka'}))).not.toMatch(/https:\/\/epirbizuteria\.pl\//);
+  });
 });
 
 describe('buyer catalog and cart transcript', () => {
@@ -218,7 +418,8 @@ describe('buyer catalog and cart transcript', () => {
     expect(visible).toContain('Gałązki');
     expect(visible).toContain(formatPlnMajorForDisplay(3120));
     expect(visible).toContain(GALAZKI_VARIANT);
-    expect(visible).not.toContain('opis opis');
+    expect(visible).toContain('opis');
+    expect(visible).toContain('"price_is_flat":true');
     expect((out as {error?: unknown}).error).toBeUndefined();
   });
 
