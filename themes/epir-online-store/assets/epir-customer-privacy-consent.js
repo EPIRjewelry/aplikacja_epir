@@ -6,13 +6,18 @@
  * analyticsProcessingAllowed stays false and the app web pixel (analytics = true)
  * never loads.
  *
- * This file records the same consent object as
- * packages/ui/src/CustomerPrivacyConsentBridge.tsx:
- *   customerPrivacy.setTrackingConsent({ analytics, marketing, preferences, sale_of_data }, cb)
+ * One click records analytics only. The app pixel needs analytics = true.
+ * Marketing, preferences, and sale_of_data stay false on both accept and reject.
+ *   customerPrivacy.setTrackingConsent({
+ *     analytics: granted,
+ *     marketing: false,
+ *     preferences: false,
+ *     sale_of_data: false,
+ *   }, cb)
  * after Shopify.loadFeatures([{ name: 'consent-tracking-api', version: '0.1' }])
  * when the API is not on the page yet.
  *
- * Accept grants analytics. Reject sets analytics to false.
+ * Accept sets analytics true. Reject sets analytics false and does not grant the other three.
  * No call is made on load, and this file does not send pixel events.
  *
  * https://shopify.dev/docs/api/customer-privacy
@@ -95,9 +100,9 @@
     if (granted !== true && granted !== false) return null;
     return {
       analytics: granted,
-      marketing: granted,
-      preferences: granted,
-      sale_of_data: granted,
+      marketing: false,
+      preferences: false,
+      sale_of_data: false,
     };
   }
 

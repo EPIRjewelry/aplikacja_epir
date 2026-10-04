@@ -5,11 +5,10 @@
   this repo). That banner does not call customerPrivacy.setTrackingConsent, so
   Shopify never sets analyticsProcessingAllowed and the app web pixel stays unloaded.
 
-  This asset listens only inside that banner:
-    Zaakceptuj → setTrackingConsent({ analytics, marketing, preferences, sale_of_data } all true)
-    Odrzuć     → the same object, all false
-  Same object as packages/ui CustomerPrivacyConsentBridge. No call on page load.
-  Does not send pixel events and does not treat the pixel as strictly necessary.
+  This asset listens only inside that banner. One click records analytics only:
+    Zaakceptuj → analytics true; marketing, preferences, and sale_of_data false
+    Odrzuć     → analytics false; the other three stay false
+  No call on page load. Does not send pixel events and does not treat the pixel as strictly necessary.
 
   Theme push (after operator approval), these files only:
     layout/theme.liquid

@@ -49,12 +49,12 @@ function fakeDoc() {
   };
 }
 
-test('payload matches CustomerPrivacyConsentBridge and grants analytics only for true', () => {
+test('accept records analytics only; reject does not grant analytics or the other purposes', () => {
   assert.deepEqual(api.trackingConsentPayload(true), {
     analytics: true,
-    marketing: true,
-    preferences: true,
-    sale_of_data: true,
+    marketing: false,
+    preferences: false,
+    sale_of_data: false,
   });
   assert.deepEqual(api.trackingConsentPayload(false), {
     analytics: false,
@@ -176,7 +176,7 @@ test('install does not call setTrackingConsent until a banner click', () => {
   assert.deepEqual(calls, []);
 });
 
-test('accept click writes the Hydrogen consent object; reject writes analytics false', () => {
+test('accept click writes analytics true and the other purposes false; reject grants none', () => {
   const calls = [];
   const win = {
     Shopify: {
@@ -198,9 +198,18 @@ test('accept click writes the Hydrogen consent object; reject writes analytics f
     { className: 'm-cookie-banner' },
     { tag: 'BUTTON', text: 'Odrzuć' },
   ]));
-  assert.equal(calls[0].analytics, true);
-  assert.equal(calls[1].analytics, false);
-  assert.deepEqual(calls[1], api.trackingConsentPayload(false));
+  assert.deepEqual(calls[0], {
+    analytics: true,
+    marketing: false,
+    preferences: false,
+    sale_of_data: false,
+  });
+  assert.deepEqual(calls[1], {
+    analytics: false,
+    marketing: false,
+    preferences: false,
+    sale_of_data: false,
+  });
 });
 
 test('loads consent-tracking-api 0.1 before setTrackingConsent when the API is absent', () => {

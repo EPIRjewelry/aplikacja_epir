@@ -112,7 +112,8 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     {% render 'cookie-banner' %}
     {% comment %}
       EPIR: vendor cookie-banner does not call customerPrivacy.setTrackingConsent.
-      Accept grants analytics; reject sets it false. See snippets/epir-customer-privacy-consent.liquid.
+      Accept sets analytics true only. Marketing, preferences, and sale_of_data stay false.
+      Reject sets analytics false and does not grant the other three.
     {% endcomment %}
     {% render 'epir-customer-privacy-consent' %}
     {% render 'custom-code-body' %}
