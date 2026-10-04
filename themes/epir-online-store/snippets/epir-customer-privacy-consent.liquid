@@ -1,0 +1,19 @@
+{% comment %}
+  EPIR Customer Privacy bridge for the Online Store cookie banner.
+
+  layout/theme.liquid renders the vendor snippet `cookie-banner` (not stored in
+  this repo). That banner does not call customerPrivacy.setTrackingConsent, so
+  Shopify never sets analyticsProcessingAllowed and the app web pixel stays unloaded.
+
+  This asset listens only inside that banner:
+    Zaakceptuj → setTrackingConsent({ analytics, marketing, preferences, sale_of_data } all true)
+    Odrzuć     → the same object, all false
+  Same object as packages/ui CustomerPrivacyConsentBridge. No call on page load.
+  Does not send pixel events and does not treat the pixel as strictly necessary.
+
+  Theme push (after operator approval), these files only:
+    layout/theme.liquid
+    snippets/epir-customer-privacy-consent.liquid
+    assets/epir-customer-privacy-consent.js
+{% endcomment %}
+<script src="{{ 'epir-customer-privacy-consent.js' | asset_url }}"></script>

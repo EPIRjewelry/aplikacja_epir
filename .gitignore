@@ -131,8 +131,10 @@ scripts/debug/set-inspiracje-*.mjs
 *.aio.min.js
 
 # Vendor theme pull — README + shopify.theme.toml + EPIR Liquid only
-themes/epir-online-store/assets/
+# assets/* (not assets/) so the exceptions below can re-include EPIR files.
+themes/epir-online-store/assets/*
 !themes/epir-online-store/assets/epir-inpost-geowidget-v4.js
+!themes/epir-online-store/assets/epir-customer-privacy-consent.js
 themes/epir-online-store/blocks/
 themes/epir-online-store/config/
 themes/epir-online-store/layout/*
@@ -145,6 +147,7 @@ themes/epir-online-store/snippets/*
 !themes/epir-online-store/snippets/sticky-atc.liquid
 !themes/epir-online-store/snippets/product-card-quick-add-btn.liquid
 !themes/epir-online-store/snippets/epir-session-cart-attr.liquid
+!themes/epir-online-store/snippets/epir-customer-privacy-consent.liquid
 themes/epir-online-store/sections/*
 !themes/epir-online-store/sections/collection-gold-manifesto.liquid
 !themes/epir-online-store/sections/collection-gold-realizations.liquid

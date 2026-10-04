@@ -110,6 +110,11 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
     {% render 'script-tags' %}
     {% render 'cookie-banner' %}
+    {% comment %}
+      EPIR: vendor cookie-banner does not call customerPrivacy.setTrackingConsent.
+      Accept grants analytics; reject sets it false. See snippets/epir-customer-privacy-consent.liquid.
+    {% endcomment %}
+    {% render 'epir-customer-privacy-consent' %}
     {% render 'custom-code-body' %}
 
     <script src="{{ 'product-quick-view.js' | asset_url }}" defer="defer"></script>

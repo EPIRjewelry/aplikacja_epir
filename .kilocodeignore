@@ -163,6 +163,7 @@ apps/*/public/**/*.svg
 # --- Vendor theme pull; wyjątki = EPIR Liquid / JSON w git ---
 themes/epir-online-store/assets/
 !themes/epir-online-store/assets/epir-inpost-geowidget-v4.js
+!themes/epir-online-store/assets/epir-customer-privacy-consent.js
 themes/epir-online-store/blocks/
 themes/epir-online-store/config/
 themes/epir-online-store/layout/
@@ -174,6 +175,7 @@ themes/epir-online-store/snippets/*
 !themes/epir-online-store/snippets/sticky-atc.liquid
 !themes/epir-online-store/snippets/product-card-quick-add-btn.liquid
 !themes/epir-online-store/snippets/cart-drawer.liquid
+!themes/epir-online-store/snippets/epir-customer-privacy-consent.liquid
 themes/epir-online-store/sections/*
 !themes/epir-online-store/sections/collection-gold-manifesto.liquid
 !themes/epir-online-store/sections/collection-gold-realizations.liquid
