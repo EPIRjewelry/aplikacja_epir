@@ -912,7 +912,7 @@
 /* Open / closed states and transitions */
 
 /* ========================================
-   LAUNCHER BUTTON (zawsze widoczny)
+   LAUNCHER BUTTON (ukryty gdy panel otwarty)
 ======================================== */
 .epir-assistant-launcher {
   position: fixed !important;
@@ -931,6 +931,10 @@
   z-index: 99999 !important;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
   transition: all 0.3s ease !important;
+}
+
+.epir-assistant-launcher[aria-expanded="true"] {
+  display: none !important;
 }
 
 .epir-assistant-launcher:hover {
