@@ -912,7 +912,9 @@
 /* Open / closed states and transitions */
 
 /* ========================================
-   LAUNCHER BUTTON (zawsze widoczny)
+   LAUNCHER BUTTON
+   Widoczny tylko gdy panel jest zamknięty. Otwarta rozmowa zostawia jeden panel
+   (zamknięcie krzyżykiem), bez drugiego przycisku Czat na wierzchu.
 ======================================== */
 .epir-assistant-launcher {
   position: fixed !important;
@@ -940,6 +942,11 @@
 
 .epir-assistant-launcher:active {
   transform: scale(0.95) !important;
+}
+
+.assistant-container:has(.assistant-panel:not(.is-closed)) > .epir-assistant-launcher,
+.epir-assistant-launcher[hidden] {
+  display: none !important;
 }
 
 /* ========================================

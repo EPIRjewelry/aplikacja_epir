@@ -1190,6 +1190,22 @@ function syncAssistantTranscriptFromBackend(section, messagesEl, sessionIdKey) {
     });
 }
 
+/** Jeden przycisk Czat: chowa się, gdy panel jest otwarty, i wraca po zamknięciu. */
+function syncCzatLauncherVisibility(section) {
+  if (!section || typeof section.querySelector !== 'function') return;
+  var launcher = section.querySelector('#assistant-launcher') || section.querySelector('#assistant-launcher-embed');
+  var panel = section.querySelector('#assistant-panel') || section.querySelector('#assistant-panel-embed');
+  if (!launcher) return;
+  var open = !!(panel && panel.classList && !panel.classList.contains('is-closed'));
+  if (open) {
+    launcher.setAttribute('hidden', '');
+    launcher.setAttribute('aria-expanded', 'true');
+  } else {
+    launcher.removeAttribute('hidden');
+    launcher.setAttribute('aria-expanded', 'false');
+  }
+}
+
 // Minimal initializer: bind toggle button to open/close the assistant (supports block + embed)
 function initAssistantUIForSection(section) {
   if (!section || section.dataset.assistantUiInit === '1') return;
@@ -1211,6 +1227,7 @@ function initAssistantUIForSection(section) {
     if (inline) {
       toggleTarget.classList.remove('is-closed');
       section.dataset.assistantUiInit = '1';
+      syncCzatLauncherVisibility(section);
     } else {
       if (!launcher) return;
       section.dataset.assistantUiInit = '1';
@@ -1226,8 +1243,8 @@ function initAssistantUIForSection(section) {
         e.preventDefault();
         if (toggleTarget) {
           toggleTarget.classList.remove('is-closed');
-          launcher.setAttribute('aria-expanded', 'true');
           try { sessionStorage.setItem(EPIR_ASSISTANT_UI_OPEN_KEY, '1'); } catch (_e) {}
+          syncCzatLauncherVisibility(section);
         }
       });
 
@@ -1236,8 +1253,8 @@ function initAssistantUIForSection(section) {
           e.preventDefault();
           if (toggleTarget) {
             toggleTarget.classList.add('is-closed');
-            launcher.setAttribute('aria-expanded', 'false');
             try { sessionStorage.removeItem(EPIR_ASSISTANT_UI_OPEN_KEY); } catch (_e) {}
+            syncCzatLauncherVisibility(section);
           }
         });
       }
@@ -1246,13 +1263,10 @@ function initAssistantUIForSection(section) {
       try {
         if (toggleTarget && sessionStorage.getItem(EPIR_ASSISTANT_UI_OPEN_KEY) === '1') {
           toggleTarget.classList.remove('is-closed');
-          launcher.setAttribute('aria-expanded', 'true');
         }
       } catch (_e) {}
 
-      if (toggleTarget && !toggleTarget.classList.contains('is-closed')) {
-        launcher.setAttribute('aria-expanded', 'true');
-      }
+      syncCzatLauncherVisibility(section);
     }
 
     // --- Powitanie klienta imieniem z localStorage/sessionStorage ---
@@ -1323,7 +1337,7 @@ function initAssistantUIForSection(section) {
       const shell = section.querySelector('#assistant-panel') || section.querySelector('#assistant-panel-embed') || content;
       if (shell && shell.classList.contains('is-closed')) {
         shell.classList.remove('is-closed');
-        if (launcher) launcher.setAttribute('aria-expanded', 'true');
+        syncCzatLauncherVisibility(section);
         console.log('[EPIR Assistant] ✅ Chat opened proactively');
       }
       
