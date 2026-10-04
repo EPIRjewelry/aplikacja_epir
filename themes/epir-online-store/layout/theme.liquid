@@ -109,7 +109,11 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     {%- sections 'footer-group' -%}
 
     {% render 'script-tags' %}
-    {% render 'cookie-banner' %}
+    {% comment %}
+      Minimog cookie-banner is not rendered. Its setting is off and its text does not name purposes.
+      epir-customer-privacy-consent is the storefront banner.
+    {% endcomment %}
+    {% render 'epir-customer-privacy-consent' %}
     {% render 'custom-code-body' %}
 
     <script src="{{ 'product-quick-view.js' | asset_url }}" defer="defer"></script>
