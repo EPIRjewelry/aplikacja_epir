@@ -68,5 +68,20 @@ export function stripForeignBrandLinks(
     if (!foreign(trimmed)) return url;
     return suffix;
   });
-  return {text: withoutBare, stripped: removed.length > 0, removed};
+  const withoutHost = stripBareForeignHost(withoutBare, side, removed);
+  return {text: withoutHost, stripped: removed.length > 0, removed};
+}
+
+/** Host wpisany bez schematu. Kazka zostaje na `kazka.epirbizuteria.pl`. */
+function stripBareForeignHost(text: string, side: BrandHostSide, removed: string[]): string {
+  if (side === 'epir') {
+    return text.replace(/(?<![\w./-])kazka\.epirbizuteria\.pl\b[^\s)\]>]*/gi, (host) => {
+      removed.push(host);
+      return '';
+    });
+  }
+  return text.replace(/(?<![\w/-])(?<!kazka\.)(?:www\.)?epirbizuteria\.pl\b[^\s)\]>]*/gi, (host) => {
+    removed.push(host);
+    return '';
+  });
 }

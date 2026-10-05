@@ -22,7 +22,7 @@ const METAFIELD_VALUE_MAX = 240;
 const MAX_METAFIELDS = 8;
 
 const CARD_NOTE =
-  'Karta jest całą ofertą tego SKU. Gdy price_is_flat jest true, cytuj wyłącznie price_display_pl (to samo co page_price_display_pl) i pełną listę sizes — cena nie zależy od rozmiaru. Zakres podawaj tylko gdy price_is_flat jest false: page_price_display_pl oraz price_min_display_pl–price_max_display_pl, a konkretną kwotę bierz z wariantu. Nie traktuj pierwszego wariantu jako całej oferty. Nie dopisuj kamienia, rozmiaru ani cechy spoza tej karty i nie przenoś ich z innego SKU. Wariant chwal tylko za options tego wariantu. Rozmiary podawaj z sizes, bez przeliczenia na inną skalę. Link wyłącznie z pola url. Do koszyka użyj id wariantu, który klient wybrał.';
+  'Karta jest całą ofertą tego SKU. Gdy price_is_flat jest true, cytuj wyłącznie price_display_pl (to samo co page_price_display_pl) i pełną listę sizes albo sizes_label — cena nie zależy od rozmiaru. Zakres podawaj tylko gdy price_is_flat jest false: page_price_display_pl oraz price_min_display_pl–price_max_display_pl, a konkretną kwotę bierz z wariantu. Nie traktuj pierwszego wariantu jako całej oferty. Nie dopisuj kamienia, rozmiaru ani cechy spoza tej karty i nie przenoś ich z innego SKU. Wariant chwal tylko za options tego wariantu. Rozmiary podawaj z sizes_label, gdy jest, inaczej z sizes, bez skracania i bez przeliczenia na inną skalę. Link wyłącznie z pola url. Do koszyka użyj id wariantu, który klient wybrał.';
 
 /** Publiczne PDP. Apex to Online Store; Kazka jest na subdomenie Hydrogen, nie na apex. */
 const EPIR_PRODUCT_ORIGIN = 'https://epirbizuteria.pl';
@@ -233,6 +233,13 @@ function metafieldKey(node: Record<string, unknown>): string | undefined {
   return key;
 }
 
+function metafieldRank(key: string): number {
+  if (/main_stone|gemstone_type|gemstone/i.test(key)) return 0;
+  if (/opis_kamienia|stone_education/i.test(key)) return 1;
+  if (/metal|design_style/i.test(key)) return 2;
+  return 3;
+}
+
 function cardMetafields(product: Record<string, unknown>): Array<{key: string; value: string}> {
   const out: Array<{key: string; value: string}> = [];
   for (const node of metafieldNodes(product)) {
@@ -241,7 +248,35 @@ function cardMetafields(product: Record<string, unknown>): Array<{key: string; v
     const value = expandedMetafieldValue(node);
     if (!value) continue;
     out.push({key, value: clip(value, METAFIELD_VALUE_MAX)});
-    if (out.length >= MAX_METAFIELDS) break;
+  }
+  out.sort((left, right) => metafieldRank(left.key) - metafieldRank(right.key));
+  return out.slice(0, MAX_METAFIELDS);
+}
+
+function sizesLabel(sizes: string[]): string | undefined {
+  if (sizes.length < 2) return sizes[0];
+  const nums = sizes.map((size) => {
+    const parsed = Number(size.replace(',', '.').trim());
+    return Number.isFinite(parsed) ? parsed : Number.NaN;
+  });
+  if (nums.every((value) => Number.isInteger(value))) {
+    const sorted = [...nums].sort((left, right) => left - right);
+    const contiguous = sorted.every((value, index) => index === 0 || value === sorted[index - 1]! + 1);
+    if (contiguous) return `${sorted[0]}–${sorted[sorted.length - 1]}`;
+  }
+  return sizes.join(', ');
+}
+
+function variantGemstoneFields(variant: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const node of metafieldNodes(variant)) {
+    const key = metafieldKey(node);
+    if (!key) continue;
+    const short = key.split('.').pop() ?? key;
+    if (!/^(gemstone_type|gemstone_origin|gemstone_carat_weight|main_stone)$/i.test(short)) continue;
+    const value = expandedMetafieldValue(node);
+    if (!value) continue;
+    out[short] = clip(value, 80);
   }
   return out;
 }
@@ -336,6 +371,7 @@ function slimVariant(variant: Record<string, unknown>, detail: boolean): Record<
   if (available !== undefined) out.available = available;
   if (price) out.price_display_pl = price.price_display_pl;
   if (detail && options.length) out.options = options;
+  if (detail) Object.assign(out, variantGemstoneFields(variant));
   return out;
 }
 
@@ -399,7 +435,13 @@ function slimProduct(
     }
   }
 
-  if (sizes?.length) out.sizes = sizes;
+  if (sizes?.length) {
+    out.sizes = sizes;
+    const label = sizesLabel(sizes);
+    if (label) out.sizes_label = label;
+  }
+  const stoneField = allMetafields.find((field) => /main_stone|gemstone_type/i.test(field.key));
+  if (stoneField) out.main_stone = stoneField.value;
   if (groups.length) out.options = groups;
   if (metafields.length) {
     out.metafields = metafields.map((field) => ({

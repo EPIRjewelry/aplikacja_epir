@@ -69,6 +69,8 @@ import { LUXURY_SYSTEM_PROMPT, KAZKA_HEADLESS_PERSONA_ADDON } from './prompts/lu
 import { parseStorefrontPathContext } from './storefront/path-context';
 import { buildKazkaHeadlessStorefrontContext, isKazkaHeadlessChannel } from './storefront/kazka-hydrate';
 import { isKazkaFilteredCatalogTool, resolveCatalogToolBrand } from './catalog/kazka-assortment';
+import { guardBuyerCatalogReply } from './catalog/buyer-reply-guard';
+import { buyerAllowsStoneSubstitute } from './catalog/stone-intent';
 import { CATALOG_MODEL_WIRE_BUDGET } from './mcp/catalog-for-model';
 import { TOOL_SCHEMAS, resolveToolSchemas, shouldUseSlimToolSchemas } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2 (+ slim wariant za flagą)
 import { sanitizeHarmonyHistory } from './utils/sanitizeHarmonyHistory';
@@ -370,10 +372,41 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
  * Jedna tura Gemmy woła SessionDO wielokrotnie (append, historia, koszyk, persist).
  * Ten sam próg 20/min na `/append` zamykał następną wiadomość kodem 429,
  * a `handleChat` kończył ją jako `session_lifecycle_failed` bez odpowiedzi asystenta.
+ * Widget przy statusie innym niż 200 wyrzuca treść i pokazuje „wystąpił błąd”,
+ * więc jawna odpowiedź lifecycle idzie jako HTTP 200.
  */
 const RATE_LIMIT_MAX_REQUESTS = 20;
 const SESSION_LIFECYCLE_CLIENT_REPLY =
   'Nie udało się zapisać tej wiadomości. Napisz proszę jeszcze raz za chwilę.';
+
+function textContent(content: unknown): string {
+  return typeof content === 'string' ? content.trim() : '';
+}
+
+function recentBuyerTurns(
+  history: ReadonlyArray<{role?: string; content?: unknown}>,
+  current: string,
+): string[] {
+  const lines = history
+    .filter((entry) => entry.role === 'user')
+    .map((entry) => textContent(entry.content))
+    .filter(Boolean);
+  const latest = current.trim();
+  if (latest && lines[lines.length - 1] !== latest) lines.push(latest);
+  return lines.slice(-8);
+}
+
+function lastAssistantText(
+  history: ReadonlyArray<{role?: string; content?: unknown}>,
+): string | undefined {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const entry = history[index];
+    if (entry?.role !== 'assistant') continue;
+    const text = textContent(entry.content);
+    if (text) return text;
+  }
+  return undefined;
+}
 
 function isSessionChatRoute(pathname: string): boolean {
   return (
@@ -3036,14 +3069,19 @@ async function handleChat(
         error: persistReplyError instanceof Error ? persistReplyError.message : String(persistReplyError),
       });
     }
+    console.error(
+      JSON.stringify({
+        tag: 'chat.session_lifecycle_failed',
+        session_id: sessionId,
+      }),
+    );
     return new Response(
       JSON.stringify({
-        error: 'session_lifecycle_failed',
         reply: SESSION_LIFECYCLE_CLIENT_REPLY,
         session_id: sessionId,
       }),
       {
-        status: 502,
+        status: 200,
         headers: { ...cors(env, request), 'Content-Type': 'application/json' },
       },
     );
@@ -3167,7 +3205,9 @@ async function streamAssistantResponse(
         await writer.write(encoder.encode(`event: ${event}\ndata: ${payload}\n\n`));
     }
     // Funkcja pomocnicza do wysyłania fragmentów tekstu
+    let buyerDeltaSent = false;
     async function sendDelta(delta: string) {
+        if (delta.trim()) buyerDeltaSent = true;
         await writer.write(encoder.encode(`data: ${JSON.stringify({ delta })}\n\n`));
     }
     async function sendGeneratedImages(urls: string[]) {
@@ -3857,6 +3897,12 @@ async function streamAssistantResponse(
       const MAX_TOOL_CALLS = 5;
       /** Wyniki search_catalog w tej turze — walidacja cen po wygenerowaniu odpowiedzi. */
       const catalogSnapshotsForPricing: unknown[] = [];
+      const buyerTurns = recentBuyerTurns(aiHistory, userMessage);
+      const previousAssistantText = lastAssistantText(aiHistory);
+      const allowStoneSubstitute = buyerAllowsStoneSubstitute(
+        buyerTurns[buyerTurns.length - 1] ?? userMessage,
+        previousAssistantText,
+      );
       const replyBrand =
         resolveCatalogToolBrand({
           storefrontId: storefrontContext?.storefrontId,
@@ -3871,7 +3917,21 @@ async function streamAssistantResponse(
         if (outcome.sanitized && outcome.log) {
           console.log(JSON.stringify(outcome.log));
         }
-        const locked = stripForeignBrandLinks(outcome.text, replyBrand);
+        const stoneGuarded = guardBuyerCatalogReply(outcome.text, {
+          buyerTurns,
+          previousAssistant: previousAssistantText,
+          catalogSnapshots: catalogSnapshotsForPricing,
+        });
+        if (stoneGuarded.replaced) {
+          console.log(
+            JSON.stringify({
+              tag: 'chat.stone_reply_guard',
+              session_id: sessionId,
+              reason: stoneGuarded.reason ?? null,
+            }),
+          );
+        }
+        const locked = stripForeignBrandLinks(stoneGuarded.text, replyBrand);
         if (locked.stripped) {
           console.log(
             JSON.stringify({
@@ -4288,6 +4348,8 @@ async function streamAssistantResponse(
                   brand: brandForMcp,
                   sessionCartId: cartId ?? null,
                   commerceContext,
+                  buyerTurns,
+                  allowStoneSubstitute,
                 });
               },
             );
@@ -4567,8 +4629,12 @@ async function streamAssistantResponse(
     } catch (err) {
       console.error('Error in streamAssistantResponse:', err);
       try {
-        const errorMsg = `event: error\ndata: ${JSON.stringify({ error: String(err) })}\n\n`;
-        await writer.write(encoder.encode(errorMsg));
+        if (!buyerDeltaSent) {
+          const reply =
+            'Przepraszam, chwilowo nie mogę dokończyć odpowiedzi. Napisz proszę jeszcze raz za moment.';
+          await sendDelta(reply);
+          await writer.write(encoder.encode('data: [DONE]\n\n'));
+        }
       } catch (writeErr) {
         console.error('Failed to write error to stream:', writeErr);
       }
