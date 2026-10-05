@@ -1,8 +1,10 @@
 import {describe, expect, it} from 'vitest';
 import {
   buyerAllowsStoneSubstitute,
+  detectNamedBrowseQuery,
   detectStoneIntent,
   expandCatalogQuery,
+  namedBrowseFromConversation,
   preferJewelryType,
   stoneIntentFromConversation,
 } from '../src/catalog/stone-intent';
@@ -25,6 +27,12 @@ describe('detectStoneIntent', () => {
 
   it('switches the stone when the latest line names a different one', () => {
     expect(stoneIntentFromConversation(['szafir', 'a może turmalin'])?.id).toBe('turmalin');
+  });
+
+  it('keeps soliter browse when the line does not name a stone', () => {
+    expect(detectNamedBrowseQuery('pokaż pierścionek soliter')).toBe('soliter');
+    expect(detectNamedBrowseQuery('cos z szafirem')).toBeNull();
+    expect(namedBrowseFromConversation(['pierścionki zaręczynowe', 'jaka cena'])).toBe('pierścionek zaręczynowy');
   });
 });
 

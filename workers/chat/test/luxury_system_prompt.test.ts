@@ -50,6 +50,18 @@ describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('nie podawaj zmyślonych danych kontaktowych');
   });
 
+  it('locks page-card quotes, first stone hits, and store facts', () => {
+    expect(LUXURY_SYSTEM_PROMPT).toContain('[KARTA PRODUKTU NA TEJ STRONIE]');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('price_min_display_pl');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('[TRAFENIA KAMIENIA]');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('dotyczy wyłącznie srebra');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('mniej podatne na zarysowania');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('Nie wymyślaj srebrnego asortymentu Kazka');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('tylko krótka odmowa');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('nie używaj progu 500 zł');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('nie standardowy zwrot w 14 dni');
+  });
+
   it('sends an EPIR custom design to the cocreate page, not the Kazka block', () => {
     expect(LUXURY_SYSTEM_PROMPT).toContain(
       'Gdy klient chce biżuterię wykonaną na własny projekt, skieruj na brief [Zaprojektuj swój model](https://epirbizuteria.pl/pages/zaprojektuj-swoj-model).',

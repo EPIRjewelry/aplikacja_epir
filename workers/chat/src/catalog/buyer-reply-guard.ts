@@ -13,7 +13,10 @@ import {
 } from './stone-intent';
 
 const FALSE_EMPTY =
-  /nie ma (?:produkt|biżuter|bizuter|pierścion|pierscion|obrącz|obracz|ofert)|w (?:naszej |naszym )?(?:ofercie|katalogu|kolekcji) nie ma|brak (?:produkt|biżuter|bizuter|pierścion|ofert)|nie mamy (?:w ofercie|biżuter|bizuter|produkt|pierścion)|opisanych wyłącznie|nie znalazł[aąe]m/iu;
+  /nie ma (?:produkt|biżuter|bizuter|pierścion|pierscion|obrącz|obracz|ofert)|w (?:naszej |naszym )?(?:ofercie|katalogu|kolekcji) nie ma|brak (?:produkt|biżuter|bizuter|pierścion|ofert)|nie mamy (?:w ofercie|biżuter|bizuter|produkt|pierścion)|opisanych wyłącznie|nie znalazł[aąe]m|nie mam teraz w ofercie/iu;
+
+const MASKED_FAILURE =
+  /Nie udało się ułożyć odpowiedzi|Nie mogę podać pewnej ceny|Jeszcze nie potwierdziłam kart/iu;
 
 const HANDOFF = /^\s*łączę z asystentem\b|^\s*lacze z asystentem\b/iu;
 
@@ -72,22 +75,38 @@ function factFromCard(product: Record<string, unknown>): string | undefined {
   return sentence.length > 90 ? `${sentence.slice(0, 89).trimEnd()}…` : sentence;
 }
 
+function priceLabel(product: Record<string, unknown>): string {
+  if (product.price_is_flat === true && typeof product.price_display_pl === 'string') return product.price_display_pl;
+  if (typeof product.price_min_display_pl === 'string' && typeof product.price_max_display_pl === 'string') {
+    return `od ${product.price_min_display_pl} do ${product.price_max_display_pl}`;
+  }
+  if (typeof product.page_price_display_pl === 'string') return product.page_price_display_pl;
+  if (typeof product.price_display_pl === 'string') return product.price_display_pl;
+  return '';
+}
+
+function lineForProduct(product: Record<string, unknown>): string {
+  const title = typeof product.title === 'string' && product.title.trim() ? product.title.trim() : 'Pozycja z katalogu';
+  const url = typeof product.url === 'string' ? product.url.trim() : '';
+  const sizes = typeof product.sizes_label === 'string' && product.sizes_label.trim() ? `rozmiary ${product.sizes_label.trim()}` : '';
+  const fact = factFromCard(product);
+  const name = url ? `[${title}](${url})` : title;
+  const detail = [priceLabel(product), sizes, fact].filter(Boolean).join(', ');
+  return detail ? `- ${name} — ${detail}.` : `- ${name}.`;
+}
+
+export function formatCatalogBrowseReply(products: readonly Record<string, unknown>[]): string {
+  const lines = products.slice(0, 4).map(lineForProduct);
+  return `Te pozycje są w katalogu:\n${lines.join('\n')}`;
+}
+
 export function formatStoneBrowseReply(products: readonly Record<string, unknown>[], intent: StoneIntent): string {
-  const lines = products.slice(0, 4).map((product) => {
-    const title = typeof product.title === 'string' && product.title.trim() ? product.title.trim() : 'Pozycja z katalogu';
-    const url = typeof product.url === 'string' ? product.url.trim() : '';
-    const price =
-      typeof product.price_display_pl === 'string'
-        ? product.price_display_pl
-        : typeof product.page_price_display_pl === 'string'
-          ? product.page_price_display_pl
-          : '';
-    const fact = factFromCard(product);
-    const name = url ? `[${title}](${url})` : title;
-    const detail = [price, fact].filter(Boolean).join(', ');
-    return detail ? `- ${name} — ${detail}.` : `- ${name}.`;
-  });
+  const lines = products.slice(0, 4).map(lineForProduct);
   return `Te pozycje mają w karcie kamień ${intent.labelPl}:\n${lines.join('\n')}\nMogę zawęzić do pierścionka, obrączki albo innego rodzaju.`;
+}
+
+export function formatStoneUnconfirmedReply(intent: StoneIntent): string {
+  return `Jeszcze nie potwierdziłam kart z kamieniem „${intent.labelPl}”. Napisz proszę jeszcze raz — zostaję przy tym kamieniu.`;
 }
 
 export function formatStoneMissReply(intent: StoneIntent): string {
@@ -101,21 +120,40 @@ function citesProduct(reply: string, products: readonly Record<string, unknown>[
   });
 }
 
+export type StoneLookup = 'none' | 'hit' | 'confirmed_miss' | 'unconfirmed';
+
 export type BuyerReplyContext = {
   buyerTurns: readonly string[];
   previousAssistant?: string;
   catalogSnapshots: readonly unknown[];
+  /** none = retrieval jeszcze nie zaszedł. Pusta lista bez confirmed_miss nie jest brakiem oferty. */
+  stoneLookup?: StoneLookup;
 };
 
 export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext): {text: string; replaced: boolean; reason?: string} {
   const latest = context.buyerTurns[context.buyerTurns.length - 1] ?? '';
   const allowSubstitute = buyerAllowsStoneSubstitute(latest, context.previousAssistant);
   const intent = allowSubstitute ? null : stoneIntentFromConversation(context.buyerTurns);
-  const products = intent
-    ? productsFromCatalogSnapshots(context.catalogSnapshots).filter((product) => productMatchesStone(product, intent))
-    : [];
-  const broken = isGarbledBuyerText(text) || isHandoffShell(text);
+  const catalogProducts = productsFromCatalogSnapshots(context.catalogSnapshots);
+  const products = intent ? catalogProducts.filter((product) => productMatchesStone(product, intent)) : [];
+  const broken = isGarbledBuyerText(text) || isHandoffShell(text) || MASKED_FAILURE.test(text);
+  const unconfirmedNote = context.catalogSnapshots.some((snapshot) =>
+    JSON.stringify(snapshot).includes('Nie udało się potwierdzić'),
+  );
+  const lookup: StoneLookup =
+    context.stoneLookup ?? (unconfirmedNote ? 'unconfirmed' : products.length ? 'hit' : 'none');
   if (!intent) {
+    const falseEmpty = FALSE_EMPTY.test(text) && !citesProduct(text, catalogProducts);
+    if ((falseEmpty || broken) && catalogProducts.length) {
+      return {text: formatCatalogBrowseReply(catalogProducts), replaced: true, reason: falseEmpty ? 'false_empty' : 'garbled'};
+    }
+    if (falseEmpty && lookup === 'unconfirmed') {
+      return {
+        text: 'Jeszcze nie potwierdziłam tej pozycji w katalogu. Napisz proszę jeszcze raz.',
+        replaced: true,
+        reason: 'unconfirmed',
+      };
+    }
     if (!broken) return {text, replaced: false};
     return {text: BUYER_RETRY_REPLY, replaced: true, reason: 'garbled'};
   }
@@ -129,12 +167,11 @@ export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext)
       reason: broken ? 'garbled' : substitutes ? 'substitute' : 'false_empty',
     };
   }
-  if (substitutes || falseEmpty) {
-    const unconfirmed = context.catalogSnapshots.some((snapshot) =>
-      JSON.stringify(snapshot).includes('Nie udało się potwierdzić'),
-    );
-    if (unconfirmed) return {text: BUYER_RETRY_REPLY, replaced: true, reason: 'unconfirmed'};
+  if (lookup === 'confirmed_miss' && (substitutes || falseEmpty || broken)) {
     return {text: formatStoneMissReply(intent), replaced: true, reason: substitutes ? 'substitute' : 'false_empty'};
+  }
+  if (substitutes || falseEmpty || broken || lookup === 'unconfirmed' || lookup === 'none') {
+    return {text: formatStoneUnconfirmedReply(intent), replaced: true, reason: 'unconfirmed'};
   }
   return {text: BUYER_RETRY_REPLY, replaced: true, reason: 'garbled'};
 }

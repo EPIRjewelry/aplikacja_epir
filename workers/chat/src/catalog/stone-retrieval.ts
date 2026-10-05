@@ -162,7 +162,8 @@ function stampBody(body: unknown, products: Record<string, unknown>[], note: str
   if (!stamped) out.products = products;
   const previous = typeof out.system_note === 'string' ? out.system_note.trim() : '';
   const keptPrevious = /chwilowo niedostępny|Connection Timeout/i.test(previous) ? '' : previous;
-  out.system_note = keptPrevious ? `${keptPrevious} ${note}` : note;
+  const trimmedNote = note.trim();
+  out.system_note = keptPrevious && trimmedNote ? `${keptPrevious} ${trimmedNote}` : keptPrevious || trimmedNote;
   return out;
 }
 
@@ -253,6 +254,7 @@ export function mapStoreProduct(node: Record<string, unknown>): Record<string, u
   return {
     id: node.id,
     handle: node.handle,
+    card_source: 'shop',
     title: node.title,
     description: node.description,
     vendor: node.vendor,
@@ -441,6 +443,77 @@ async function hydrateStoneCards(
   const found = await searchShop(env, query);
   if (!found.ok) return [];
   return found.products.filter((product) => productMatchesStone(product, intent));
+}
+
+export async function fetchStoreProductsByQuery(
+  env: StoneCatalogEnv,
+  query: string,
+): Promise<{ok: boolean; products: Record<string, unknown>[]}> {
+  return searchShop(env, query);
+}
+
+function variantRecords(product: Record<string, unknown>): Record<string, unknown>[] {
+  const variants = product.variants;
+  if (Array.isArray(variants)) return variants.filter(isRecord);
+  if (isRecord(variants) && Array.isArray(variants.nodes)) return variants.nodes.filter(isRecord);
+  return [];
+}
+
+function sizeOptionCount(product: Record<string, unknown>): number {
+  if (!Array.isArray(product.options)) return 0;
+  for (const option of product.options) {
+    if (!isRecord(option) || typeof option.name !== 'string') continue;
+    if (!/rozmiar|size|wielko/i.test(option.name)) continue;
+    if (Array.isArray(option.values)) return option.values.length;
+    if (Array.isArray(option.optionValues)) return option.optionValues.length;
+  }
+  return 0;
+}
+
+function variantHasPrice(variant: Record<string, unknown>): boolean {
+  const price = variant.price;
+  if (typeof price === 'string' || typeof price === 'number') return true;
+  if (!isRecord(price)) return typeof variant.price_display_pl === 'string';
+  return price.amount != null || typeof price.price_display_pl === 'string';
+}
+
+/**
+ * Karta ze sklepu ma wszystkie warianty. Karta UCP z osią rozmiaru jest cienka,
+ * dopóki nie dociągniemy jej po handle. Produkt bez rozmiaru zostaje jak przyszedł.
+ */
+export function catalogCardIsComplete(product: Record<string, unknown>): boolean {
+  if (product.card_source === 'shop') return true;
+  const variants = variantRecords(product);
+  if (!variants.length || !variants.every(variantHasPrice)) return false;
+  if (sizeOptionCount(product) > 0) return false;
+  return true;
+}
+
+export async function hydrateThinCatalogCards(result: unknown, env: StoneCatalogEnv): Promise<unknown> {
+  if (!hasShopToken(env)) return result;
+  const current = extractCatalogProducts(result);
+  const thinHandles = current
+    .filter((product) => !catalogCardIsComplete(product))
+    .map((product) => (typeof product.handle === 'string' ? product.handle.trim() : ''))
+    .filter(Boolean)
+    .slice(0, STONE_SEARCH_LIMIT);
+  if (!thinHandles.length) return result;
+  const found = await searchShop(env, thinHandles.map((handle) => `handle:${handle}`).join(' OR '));
+  if (!found.ok || !found.products.length) return result;
+  const byHandle = new Map<string, Record<string, unknown>>();
+  for (const product of found.products) {
+    if (typeof product.handle === 'string' && product.handle) byHandle.set(product.handle, product);
+  }
+  let changed = false;
+  const merged = current.map((product) => {
+    const handle = typeof product.handle === 'string' ? product.handle : '';
+    const full = handle ? byHandle.get(handle) : undefined;
+    if (!full) return product;
+    changed = true;
+    return full;
+  });
+  if (!changed) return result;
+  return replaceCatalogProducts(result, merged, '');
 }
 
 async function searchShop(env: StoneCatalogEnv, query: string): Promise<{ok: boolean; products: Record<string, unknown>[]}> {

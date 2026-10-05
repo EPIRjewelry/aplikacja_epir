@@ -53,6 +53,7 @@ import { getSizeTable } from './size-table';
 import { presentCatalogForModel } from './mcp/catalog-for-model';
 import {
   catalogStoneIntent,
+  hydrateThinCatalogCards,
   rescueStoneCatalog,
   rewriteCatalogQueryForStone,
   STONE_CATALOG_CANDIDATES,
@@ -551,6 +552,10 @@ async function callShopMcp(
     return next;
   }
 
+  async function presentBuyerCatalog(payload: unknown): Promise<unknown> {
+    return presentCatalogForModel(await hydrateThinCatalogCards(payload, env), {brand});
+  }
+
   const mcpToolName = cartMcpToolName
     ? cartMcpToolName
     : UCP_CATALOG_TOOL_NAMES.has(toolName)
@@ -685,7 +690,7 @@ async function callShopMcp(
         (res.status === 522 || res.status === 503 || res.status >= 500)
       ) {
         console.warn(`[mcp] Shop MCP ${res.status} for ${toolName}, returning safe fallback`);
-        return { result: presentCatalogForModel(await catalogAfterStoneRescue(CATALOG_FALLBACK), { brand }) };
+        return { result: await presentBuyerCatalog(await catalogAfterStoneRescue(CATALOG_FALLBACK)) };
       }
       const body = await res.text().catch(() => '');
       return { error: { code: res.status, message: `Shop MCP HTTP ${res.status}`, details: body.slice(0, 500) } };
@@ -699,7 +704,7 @@ async function callShopMcp(
         toolName === 'catalog_image_search'
       ) {
         console.warn('[mcp] Invalid JSON from shop MCP for search_catalog, returning safe fallback');
-        return { result: presentCatalogForModel(await catalogAfterStoneRescue(CATALOG_FALLBACK), { brand }) };
+        return { result: await presentBuyerCatalog(await catalogAfterStoneRescue(CATALOG_FALLBACK)) };
       }
       return { error: { code: -32700, message: 'Invalid JSON response from shop MCP' } };
     }
@@ -726,7 +731,7 @@ async function callShopMcp(
     }
     resultPayload = await catalogAfterStoneRescue(resultPayload);
     if (presentCatalog) {
-      resultPayload = presentCatalogForModel(resultPayload, { brand });
+      resultPayload = await presentBuyerCatalog(resultPayload);
       if (
         toolName === 'search_catalog' ||
         toolName === 'catalog_search' ||
@@ -754,7 +759,7 @@ async function callShopMcp(
       (isAbortError || isNetworkError)
     ) {
       console.warn(`[mcp] Timeout/Network error for ${toolName}, returning safe fallback`, { error: errMsg });
-      return { result: presentCatalogForModel(await catalogAfterStoneRescue(CATALOG_FALLBACK), { brand }) };
+      return { result: await presentBuyerCatalog(await catalogAfterStoneRescue(CATALOG_FALLBACK)) };
     }
     
     console.error('[mcp] Shop MCP call failed', { tool: toolName, error: errMsg });

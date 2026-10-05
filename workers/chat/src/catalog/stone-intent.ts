@@ -143,3 +143,21 @@ export function expandCatalogQuery(current: string, intent: StoneIntent): string
 export function shopifyStoneQuery(intent: StoneIntent): string {
   return intent.lemmas.join(' OR ');
 }
+
+/** Soliter / zaręczyny, gdy w zdaniu nie ma jednego kamienia. Kamień idzie osobną ścieżką. */
+export function detectNamedBrowseQuery(text: string): string | null {
+  if (detectStoneIntent(text)) return null;
+  if (/soliter|solitaire/iu.test(text)) return 'soliter';
+  if (/zar[eę]czyn/iu.test(text)) return 'pierścionek zaręczynowy';
+  return null;
+}
+
+export function namedBrowseFromConversation(turns: readonly string[]): string | null {
+  const lines = turns.map((turn) => turn.trim()).filter(Boolean);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (detectStoneIntent(lines[index] ?? '')) return null;
+    const query = detectNamedBrowseQuery(lines[index] ?? '');
+    if (query) return query;
+  }
+  return null;
+}

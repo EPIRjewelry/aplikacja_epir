@@ -30,3 +30,31 @@ export function detectJailbreakOrHarmIntent(userMessage: string): { match: boole
 
 export const JAILBREAK_REDIRECT_REPLY =
   'Nie mogę pomóc w tej prośbie. Chętnie doradzę przy wyborze biżuterii — napisz nazwę produktu albo co dodać do koszyka.';
+
+const ILLEGAL_OR_HARMFUL: RegExp[] = [
+  /\bheroin\p{L}*\b/iu,
+  /\bkokain\p{L}*\b/iu,
+  /\bnarkotyk\p{L}*\b/iu,
+  /\bfentanyl\p{L}*\b/iu,
+  /\bmetamfetamin\p{L}*\b/iu,
+  /\bamfetamin\p{L}*\b/iu,
+  /\bmdma\b/iu,
+  /\becstasy\b/iu,
+  /\blsd\b/iu,
+  /\bmarihuan\p{L}*\b/iu,
+  /\bkanabinoid\p{L}*\b/iu,
+];
+
+/** Narkotyki i podobna prośba: sama odmowa, bez briefu i bez „Zaprojektuj swój model”. */
+export function detectIllegalOrHarmfulRequest(userMessage: string): boolean {
+  if (typeof userMessage !== 'string') return false;
+  const text = userMessage.trim();
+  if (!text) return false;
+  return ILLEGAL_OR_HARMFUL.some((pattern) => pattern.test(text));
+}
+
+export const HARD_REFUSAL_REPLY = 'Nie mogę pomóc w tej prośbie.';
+
+export function replyPivotsToCreativeBrief(text: string): boolean {
+  return /zaprojektuj swój model|wspólnie zrealizujmy|własny projekt|#kazka-custom-order/iu.test(text);
+}
