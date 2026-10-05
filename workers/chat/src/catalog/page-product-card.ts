@@ -3,6 +3,7 @@
  * Cena, rozmiary i kamień biorą się z tej karty. Inny SKU nie dokleja swojej kwoty.
  */
 
+import {detectSizeTableIntent} from '../intent/size-table';
 import {extractPlnAmountsFromAssistantText, parsePlnAmountToken} from '../pricing-guard';
 import {presentCatalogForModel} from '../mcp/catalog-for-model';
 import {isEpirFamilyCatalogBrand, isKazkaAssortment, isKazkaCatalogBrand} from './kazka-assortment';
@@ -21,6 +22,7 @@ const PRODUCT_DEMONSTRATIVE = /\b(t[aąeę]|ten|tej|tego|tą|to)\b/iu;
 export function buyerAsksAboutPageProduct(message: string): boolean {
   const text = message.trim();
   if (!text) return false;
+  if (detectSizeTableIntent(text).match) return false;
   if (POLICY_QUESTION.test(text) && !PRODUCT_DEMONSTRATIVE.test(text)) return false;
   const browseAway =
     /\b(?:co[sś] z|pokaz|pokaż)\b/iu.test(text) &&
@@ -147,6 +149,35 @@ export function guardPageProductReply(
     return {text: close, replaced: true, reason: 'page_card_facts'};
   }
   return {text, replaced: false};
+}
+
+function cardMinMajor(card: Record<string, unknown>): number | null {
+  if (card.price_is_flat === true) return null;
+  const label = typeof card.price_min_display_pl === 'string' ? card.price_min_display_pl : '';
+  if (!label) return null;
+  return parsePlnAmountToken(label.replace(/[^\d\s,.]/g, ''));
+}
+
+/**
+ * Lista „od X” ma cytować minimum karty, nie droższy pierwszy wariant.
+ */
+export function guardDiscoveryFromPrice(
+  text: string,
+  cards: readonly Record<string, unknown>[],
+): {text: string; replaced: boolean; reason?: string} {
+  const mins = cards
+    .map((card) => cardMinMajor(card))
+    .filter((amount): amount is number => amount !== null);
+  if (!mins.length) return {text, replaced: false};
+  const fromRe = /od\s+(\d{1,3}(?:[ \u00a0]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)/giu;
+  let mismatch = false;
+  for (const match of text.matchAll(fromRe)) {
+    const amount = parsePlnAmountToken(match[1] ?? '');
+    if (amount === null) continue;
+    if (!mins.some((min) => Math.abs(min - amount) < 0.5)) mismatch = true;
+  }
+  if (!mismatch) return {text, replaced: false};
+  return {text: formatCatalogBrowseReply(cards), replaced: true, reason: 'from_price'};
 }
 
 export function guardForeignCatalogPrices(

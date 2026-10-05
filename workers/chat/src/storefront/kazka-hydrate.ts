@@ -7,6 +7,7 @@ import {
   type KazkaHydrateProduct,
 } from '../graphql';
 import {resolveStorefrontConfig} from '../config/storefronts';
+import {formatPlnMajorForDisplay} from '../mcp/catalog-price-enrich';
 
 export const KAZKA_HEADLESS_CHANNELS = new Set(['hydrogen-kazka', 'kazka_headless']);
 
@@ -19,19 +20,64 @@ export function isKazkaHeadlessChannel(channel?: string, storefrontId?: string):
 function formatPrice(amount?: string | null, currencyCode?: string | null): string | null {
   if (!amount) return null;
   const code = currencyCode?.trim() || 'PLN';
-  if (code === 'PLN') return `${amount} zł`;
+  if (code === 'PLN') {
+    const major = Number(amount.replace(/\s/g, '').replace(',', '.'));
+    if (Number.isFinite(major) && major > 0) return formatPlnMajorForDisplay(major) || null;
+  }
   return `${amount} ${code}`;
+}
+
+function plnMajor(amount?: string | null, currencyCode?: string | null): number | null {
+  const code = (currencyCode ?? 'PLN').trim().toUpperCase();
+  if (code !== 'PLN' || !amount) return null;
+  const major = Number(amount.replace(/\s/g, '').replace(',', '.'));
+  if (!Number.isFinite(major) || major <= 0) return null;
+  return major;
+}
+
+function samePriceScale(candidate: number, anchor: number): boolean {
+  if (candidate <= 0 || anchor <= 0) return false;
+  const ratio = candidate / anchor;
+  return ratio >= 0.25 && ratio <= 4;
+}
+
+/**
+ * Cena na liście to minimum karty (priceRange albo najtańszy wariant PLN).
+ * Pierwszy dostępny wariant nie jest ceną „od”.
+ */
+export function kazkaListedPriceLabel(product: KazkaHydrateProduct): string | null {
+  const nodes = product.variants?.nodes ?? [];
+  const available = nodes.filter((variant) => variant.availableForSale !== false);
+  const pool = available.length ? available : nodes;
+  const variantAmounts = pool
+    .map((variant) => plnMajor(variant.price?.amount, variant.price?.currencyCode))
+    .filter((amount): amount is number => amount !== null);
+  const anchor = variantAmounts.length ? Math.min(...variantAmounts) : null;
+  const amounts = [...variantAmounts];
+  const rangeMin = plnMajor(
+    product.priceRange?.minVariantPrice?.amount,
+    product.priceRange?.minVariantPrice?.currencyCode,
+  );
+  const rangeMax = plnMajor(
+    product.priceRange?.maxVariantPrice?.amount,
+    product.priceRange?.maxVariantPrice?.currencyCode,
+  );
+  for (const edge of [rangeMin, rangeMax]) {
+    if (edge === null) continue;
+    if (anchor === null || samePriceScale(edge, anchor)) amounts.push(edge);
+  }
+  if (!amounts.length) return null;
+  const min = Math.min(...amounts);
+  const max = Math.max(...amounts);
+  const label = formatPlnMajorForDisplay(min);
+  if (!label) return null;
+  return max - min > 0.009 ? `od ${label}` : label;
 }
 
 function formatProductLine(product: KazkaHydrateProduct, index?: number): string {
   const prefix = typeof index === 'number' ? `${index + 1}. ` : '- ';
   const variant = product.variants?.nodes?.find((v) => v.availableForSale) ?? product.variants?.nodes?.[0];
-  const price =
-    formatPrice(variant?.price?.amount, variant?.price?.currencyCode) ??
-    formatPrice(
-      product.priceRange?.minVariantPrice?.amount,
-      product.priceRange?.minVariantPrice?.currencyCode,
-    );
+  const price = kazkaListedPriceLabel(product);
   const availability = variant?.availableForSale ?? product.availableForSale;
   const parts = [`${prefix}${product.title} (handle: ${product.handle})`];
   if (price) parts.push(`cena: ${price}`);
@@ -74,6 +120,7 @@ export function formatKazkaCollectionContext(
 ): string {
   const lines: string[] = [
     `Kontekst kolekcji „${collection.title}” (handle: ${collection.handle}) — produkty widoczne na kanale Kazka:`,
+    'Cena przy pozycji to minimum karty. Gdy jest „od”, nie podawaj droższego wariantu jako ceny początkowej.',
   ];
   if (collection.description?.trim()) {
     lines.push(collection.description.trim().slice(0, 400));

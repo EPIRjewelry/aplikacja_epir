@@ -331,6 +331,10 @@ export const KAZKA_COLLECTION_PRODUCTS_BY_HANDLE_QUERY = `
               amount
               currencyCode
             }
+            maxVariantPrice {
+              amount
+              currencyCode
+            }
           }
           variants(first: 3) {
             nodes {
@@ -362,6 +366,16 @@ export const KAZKA_PRODUCT_BY_HANDLE_QUERY = `
       description
       descriptionHtml
       availableForSale
+      priceRange {
+        minVariantPrice {
+          amount
+          currencyCode
+        }
+        maxVariantPrice {
+          amount
+          currencyCode
+        }
+      }
       options(first: 5) {
         name
         values
@@ -416,6 +430,7 @@ export type KazkaHydrateProduct = {
   variants?: {nodes: KazkaHydrateVariant[]};
   priceRange?: {
     minVariantPrice?: KazkaHydrateMoney | null;
+    maxVariantPrice?: KazkaHydrateMoney | null;
   };
 };
 
@@ -477,6 +492,10 @@ const KAZKA_ADMIN_COLLECTION_BY_HANDLE_QUERY = `
           tags
           description
           status
+          priceRangeV2 {
+            minVariantPrice { amount currencyCode }
+            maxVariantPrice { amount currencyCode }
+          }
           options {
             name
             values
@@ -508,6 +527,10 @@ const KAZKA_ADMIN_PRODUCT_BY_HANDLE_QUERY = `
       description
       descriptionHtml
       status
+      priceRangeV2 {
+        minVariantPrice { amount currencyCode }
+        maxVariantPrice { amount currencyCode }
+      }
       options {
         name
         values
@@ -524,6 +547,11 @@ const KAZKA_ADMIN_PRODUCT_BY_HANDLE_QUERY = `
     }
   }
 `;
+
+type AdminKazkaMoney = {
+  amount?: string | null;
+  currencyCode?: string | null;
+};
 
 type AdminKazkaVariantNode = {
   id: string;
@@ -545,26 +573,52 @@ type AdminKazkaProductNode = {
   status?: string | null;
   options?: Array<{name: string; values: string[]}>;
   variants?: {nodes: AdminKazkaVariantNode[]};
+  priceRangeV2?: {
+    minVariantPrice?: AdminKazkaMoney | null;
+    maxVariantPrice?: AdminKazkaMoney | null;
+  } | null;
 };
 
+function plnAdminAmount(amount?: string | null, currencyCode?: string | null): number | null {
+  const code = (currencyCode ?? 'PLN').trim().toUpperCase();
+  if (code !== 'PLN' || !amount?.trim()) return null;
+  const major = Number(amount.trim().replace(/\s/g, '').replace(',', '.'));
+  if (!Number.isFinite(major) || major <= 0) return null;
+  return major;
+}
+
 function mapAdminVariantToHydrate(v: AdminKazkaVariantNode): KazkaHydrateVariant {
-  const amount = typeof v.price === 'string' ? v.price.trim() : '';
+  const major = typeof v.price === 'string' ? plnAdminAmount(v.price, 'PLN') : null;
   return {
     id: v.id,
     title: v.title,
     sku: v.sku,
     availableForSale: v.availableForSale ?? true,
-    price: amount
-      ? {amount, currencyCode: 'PLN'}
+    price: major !== null
+      ? {amount: major.toFixed(2), currencyCode: 'PLN'}
       : undefined,
   };
 }
 
-function mapAdminProductToHydrate(node: AdminKazkaProductNode): KazkaHydrateProduct {
+export function mapAdminKazkaProductToHydrate(node: AdminKazkaProductNode): KazkaHydrateProduct {
   const variants = node.variants?.nodes ?? [];
-  const firstVariant = variants[0];
-  const amount =
-    typeof firstVariant?.price === 'string' ? firstVariant.price.trim() : '';
+  const variantMajors = variants
+    .map((variant) => (typeof variant.price === 'string' ? plnAdminAmount(variant.price, 'PLN') : null))
+    .filter((amount): amount is number => amount !== null);
+  const rangeMin = plnAdminAmount(
+    node.priceRangeV2?.minVariantPrice?.amount,
+    node.priceRangeV2?.minVariantPrice?.currencyCode,
+  );
+  const rangeMax = plnAdminAmount(
+    node.priceRangeV2?.maxVariantPrice?.amount,
+    node.priceRangeV2?.maxVariantPrice?.currencyCode,
+  );
+  const mins = [...variantMajors];
+  const maxes = [...variantMajors];
+  if (rangeMin !== null) mins.push(rangeMin);
+  if (rangeMax !== null) maxes.push(rangeMax);
+  const min = mins.length ? Math.min(...mins) : null;
+  const max = maxes.length ? Math.max(...maxes) : null;
   return {
     id: node.id,
     handle: node.handle,
@@ -579,10 +633,18 @@ function mapAdminProductToHydrate(node: AdminKazkaProductNode): KazkaHydrateProd
     variants: {
       nodes: variants.map(mapAdminVariantToHydrate),
     },
-    priceRange: amount
-      ? {minVariantPrice: {amount, currencyCode: 'PLN'}}
-      : undefined,
+    priceRange:
+      min !== null
+        ? {
+            minVariantPrice: {amount: min.toFixed(2), currencyCode: 'PLN'},
+            maxVariantPrice: max !== null ? {amount: max.toFixed(2), currencyCode: 'PLN'} : undefined,
+          }
+        : undefined,
   };
+}
+
+function mapAdminProductToHydrate(node: AdminKazkaProductNode): KazkaHydrateProduct {
+  return mapAdminKazkaProductToHydrate(node);
 }
 
 export async function fetchKazkaCollectionProductsByHandleAdmin(

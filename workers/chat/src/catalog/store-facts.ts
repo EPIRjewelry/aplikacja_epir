@@ -1,7 +1,10 @@
 /**
  * Fakty sklepu, których model nie może uogólnić ani przenieść między markami.
  * EPIR: próg 500 zł tylko dla srebra. Darmowa wysyłka złota tylko, gdy fakt jest podany.
- * Kazka: wysyłka z polityki tego sklepu, zamówienia indywidualne i zmiana rozmiaru.
+ * Kazka: darmowa wysyłka powyżej 500 zł (strona /pages/wysylka).
+ * Zwrot: 14 dni dla produktu standardowego; towar na zamówienie albo ściśle
+ * spersonalizowany bez standardowego zwrotu (strona /pages/polityka-zwrotow).
+ * Darmowej zmiany rozmiaru te strony nie podają.
  */
 
 import {detectPolicyInformationIntent} from '../intent/policy-information';
@@ -16,10 +19,10 @@ export const EPIR_SHIPPING_FACT = 'Srebro: wysyłka 15 zł, darmowa od 500 zł.'
 export const EPIR_GOLD_FREE_SHIPPING_FACT = '';
 
 export const KAZKA_SHIPPING_FACT =
-  'Wysyłkę Kazka podaję z polityki tego sklepu, nie z zasad innej linii.';
+  'Wysyłka Kazka: darmowa dla zamówień powyżej 500 zł.';
 
 export const KAZKA_RETURNS_FACT =
-  'Przyjmujemy zamówienia indywidualne. Pierścionek na zamówienie ma jedną darmową zmianę rozmiaru. To nie jest standardowy zwrot.';
+  'Przyjmujemy zamówienia indywidualne. Standardowy produkt: odstąpienie od umowy w ciągu 14 dni od otrzymania. Towar wykonany na zamówienie lub ściśle spersonalizowany nie podlega standardowemu zwrotowi.';
 
 export const KAZKA_ASSORTMENT_FACT =
   'Asortyment Kazka jest w kartach tego katalogu. Nie opisuję osobnej linii srebra.';
@@ -34,9 +37,16 @@ const EPIR_500 =
 
 const EPIR_15 = /wysyłk\p{L}*\s+15\s*zł|15\s*zł[^.?!]{0,24}wysyłk|15\s*zł[^.?!]{0,24}darmow/iu;
 
-const KAZKA_RETURN_14 = /14\s*dni[^.?!]{0,48}zwrot|zwrot[^.?!]{0,48}14\s*dni/iu;
-
 const REFUSES_RETURNS = /nie\s+przyjmuj\p{L}*[^.]{0,48}zwrot|zwrot\p{L}*[^.]{0,40}nie\s+przyjmuj/iu;
+
+const NO_POLICY_DATA =
+  /nie posiadam aktualnych danych|nie mam aktualnych danych|brak aktualnych danych|nie dysponuj/iu;
+
+const DENY_STANDARD_RETURN =
+  /zwrot standardow\p{L}* produktu nie obowiązuje|standardow\p{L}*\s+produkt[^.]{0,60}nie (?:podlega|obowiązuje)/iu;
+
+const FREE_SIZE_CHANGE =
+  /darmow\p{L}*\s+zmian\p{L}*\s+rozmiaru|bezpłatn\p{L}*\s+zmian\p{L}*\s+rozmiaru|jedna\s+(?:darmowa|bezpłatna)\s+zmiana\s+rozmiaru/iu;
 
 const REFUSES_CUSTOM =
   /nie\s+przyjmuj\p{L}*[^.]{0,80}zam[oó]wie\p{L}*\s+indywidual|zam[oó]wie\p{L}*\s+indywidual[^.]{0,48}nie\s+przyjmuj/iu;
@@ -78,8 +88,12 @@ export function storeFactContextLine(brand?: string): string {
 export function promotionRulesForBrand(rules: string, brand?: string): string {
   if (!rules.trim()) return rules;
   if (!isKazkaCatalogBrand(brand)) return rules;
-  if (/500|free shipping|darmow\p{L}*\s+(?:wysył|dostaw)/iu.test(rules)) return '';
-  return rules;
+  return rules
+    .split(/\n+|(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0 && !/15\s*(?:zł|pln)/iu.test(part) && !/\bsrebr/iu.test(part))
+    .join(' ')
+    .trim();
 }
 
 function kazkaPolicyReplacement(userMessage: string | undefined): string | null {
@@ -134,7 +148,13 @@ export function guardStoreFacts(
       }
       continue;
     }
-    if (kazka && (REFUSES_RETURNS.test(sentence) || REFUSES_CUSTOM.test(sentence) || KAZKA_RETURN_14.test(sentence))) {
+    if (
+      kazka &&
+      (REFUSES_RETURNS.test(sentence) ||
+        REFUSES_CUSTOM.test(sentence) ||
+        DENY_STANDARD_RETURN.test(sentence) ||
+        FREE_SIZE_CHANGE.test(sentence))
+    ) {
       replaced = true;
       if (!returnsOnce) {
         next.push(KAZKA_RETURNS_FACT);
@@ -142,7 +162,22 @@ export function guardStoreFacts(
       }
       continue;
     }
-    if (kazka && (EPIR_500.test(sentence) || EPIR_15.test(sentence))) {
+    if (kazka && NO_POLICY_DATA.test(sentence)) {
+      replaced = true;
+      const asked = options?.userMessage ?? '';
+      const aboutReturn = /zwrot|odst[aą]p/iu.test(sentence) || /zwrot|odst[aą]p/iu.test(asked);
+      const aboutShip = /wysy[lł]|dostaw/iu.test(sentence) || /wysy[lł]|dostaw/iu.test(asked) || !aboutReturn;
+      if (aboutShip && !shippingOnce) {
+        next.push(KAZKA_SHIPPING_FACT);
+        shippingOnce = true;
+      }
+      if (aboutReturn && !returnsOnce) {
+        next.push(KAZKA_RETURNS_FACT);
+        returnsOnce = true;
+      }
+      continue;
+    }
+    if (kazka && EPIR_15.test(sentence)) {
       replaced = true;
       if (!shippingOnce) {
         next.push(KAZKA_SHIPPING_FACT);

@@ -58,8 +58,10 @@ describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
     expect(LUXURY_SYSTEM_PROMPT).toContain('mniej podatne na zarysowania');
     expect(LUXURY_SYSTEM_PROMPT).toContain('Nie wymyślaj srebrnego asortymentu Kazka');
     expect(LUXURY_SYSTEM_PROMPT).toContain('tylko krótka odmowa');
-    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('nie używaj progu 500 zł');
-    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('nie standardowy zwrot w 14 dni');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('darmowa dla zamówień powyżej 500 zł');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('odstąpienie w 14 dni od otrzymania');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('Nie obiecuj darmowej zmiany rozmiaru');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).not.toContain('jedna darmowa zmiana rozmiaru');
   });
 
   it('sends an EPIR custom design to the cocreate page, not the Kazka block', () => {
