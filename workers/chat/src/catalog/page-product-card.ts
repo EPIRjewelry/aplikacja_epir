@@ -151,20 +151,47 @@ export function guardPageProductReply(
   return {text, replaced: false};
 }
 
-function cardMinMajor(card: Record<string, unknown>): number | null {
+function cardEdgeMajor(card: Record<string, unknown>, key: 'price_min_display_pl' | 'price_max_display_pl'): number | null {
   if (card.price_is_flat === true) return null;
-  const label = typeof card.price_min_display_pl === 'string' ? card.price_min_display_pl : '';
+  const label = typeof card[key] === 'string' ? card[key] : '';
   if (!label) return null;
   return parsePlnAmountToken(label.replace(/[^\d\s,.]/g, ''));
 }
 
+function cardMinMajor(card: Record<string, unknown>): number | null {
+  return cardEdgeMajor(card, 'price_min_display_pl');
+}
+
 /**
- * Lista „od X” ma cytować minimum karty, nie droższy pierwszy wariant.
+ * Discovery przy różnych wariantach nie zaczyna się od „od X zł”.
+ * Ani minimum karty, ani droższy pierwszy wariant nie jest „tą” ceną.
+ * Odpowiedź mówi, że metal, próba i kamień zmieniają kwotę, podaje zakres całej karty i pyta, który wariant.
  */
 export function guardDiscoveryFromPrice(
   text: string,
   cards: readonly Record<string, unknown>[],
 ): {text: string; replaced: boolean; reason?: string} {
+  const varying = cards.filter(
+    (card) =>
+      card.price_is_flat === false &&
+      typeof card.price_min_display_pl === 'string' &&
+      typeof card.price_max_display_pl === 'string',
+  );
+  if (varying.length) {
+    const leadsWithFrom = /\bod\s+\d/iu.test(text);
+    const asks = /wariant/iu.test(text) && /kt[oó]r/iu.test(text);
+    const allowed = varying.flatMap((card) => {
+      const min = cardMinMajor(card);
+      const max = cardEdgeMajor(card, 'price_max_display_pl');
+      return [min, max].filter((amount): amount is number => amount !== null);
+    });
+    const stated = extractPlnAmountsFromAssistantText(text);
+    const foreign = stated.filter((amount) => !allowed.some((known) => Math.abs(known - amount) < 0.5));
+    if (leadsWithFrom || foreign.length > 0 || !asks) {
+      return {text: formatCatalogBrowseReply(cards), replaced: true, reason: 'variant_choice'};
+    }
+    return {text, replaced: false};
+  }
   const mins = cards
     .map((card) => cardMinMajor(card))
     .filter((amount): amount is number => amount !== null);

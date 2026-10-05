@@ -42,8 +42,8 @@ function samePriceScale(candidate: number, anchor: number): boolean {
 }
 
 /**
- * Cena na liście to minimum karty (priceRange albo najtańszy wariant PLN).
- * Pierwszy dostępny wariant nie jest ceną „od”.
+ * Lista nie zaczyna się od „od X”. Przy różnych cenach podaje zakres całej karty.
+ * Pierwszy wariant nie jest ceną produktu.
  */
 export function kazkaListedPriceLabel(product: KazkaHydrateProduct): string | null {
   const nodes = product.variants?.nodes ?? [];
@@ -69,9 +69,10 @@ export function kazkaListedPriceLabel(product: KazkaHydrateProduct): string | nu
   if (!amounts.length) return null;
   const min = Math.min(...amounts);
   const max = Math.max(...amounts);
-  const label = formatPlnMajorForDisplay(min);
-  if (!label) return null;
-  return max - min > 0.009 ? `od ${label}` : label;
+  const minLabel = formatPlnMajorForDisplay(min);
+  const maxLabel = formatPlnMajorForDisplay(max);
+  if (!minLabel) return null;
+  return max - min > 0.009 && maxLabel ? `zakres karty ${minLabel}–${maxLabel}` : minLabel;
 }
 
 function formatProductLine(product: KazkaHydrateProduct, index?: number): string {
@@ -120,7 +121,7 @@ export function formatKazkaCollectionContext(
 ): string {
   const lines: string[] = [
     `Kontekst kolekcji „${collection.title}” (handle: ${collection.handle}) — produkty widoczne na kanale Kazka:`,
-    'Cena przy pozycji to minimum karty. Gdy jest „od”, nie podawaj droższego wariantu jako ceny początkowej.',
+    'Gdy przy pozycji jest zakres karty, warianty różnią się metalem, próbą albo kamieniem. Nie zaczynaj od „od X zł” i nie podawaj ceny jednego wariantu jako ceny produktu. Podaj zakres i zapytaj, który wariant klient chce.',
   ];
   if (collection.description?.trim()) {
     lines.push(collection.description.trim().slice(0, 400));

@@ -25,6 +25,42 @@ function makeD1Capture() {
 }
 
 describe('SessionDO', () => {
+  it('lets the next buyer turn start only after the previous one ends', async () => {
+    const {state} = makeDurableStateStub();
+    const doStub = new SessionDO(state, mockEnv);
+    const first = await doStub.fetch(
+      new Request('https://session/begin-buyer-turn', {
+        method: 'POST',
+        body: JSON.stringify({turn_id: 'returns'}),
+      }),
+    );
+    expect(first.status).toBe(200);
+    let secondDone = false;
+    const second = doStub
+      .fetch(
+        new Request('https://session/begin-buyer-turn', {
+          method: 'POST',
+          body: JSON.stringify({turn_id: 'size'}),
+        }),
+      )
+      .then((response) => {
+        secondDone = true;
+        return response;
+      });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(secondDone).toBe(false);
+    const ended = await doStub.fetch(
+      new Request('https://session/end-buyer-turn', {
+        method: 'POST',
+        body: JSON.stringify({turn_id: 'returns'}),
+      }),
+    );
+    expect(ended.status).toBe(200);
+    const secondResponse = await second;
+    expect(secondResponse.status).toBe(200);
+    expect(secondDone).toBe(true);
+  });
+
   it('should append and retrieve history', async () => {
     const { state } = makeDurableStateStub();
     const doStub = new SessionDO(state, mockEnv);

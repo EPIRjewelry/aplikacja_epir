@@ -122,7 +122,8 @@ describe('P0quater Kazka shipping, returns, size, and from-price', () => {
         },
       ],
     );
-    expect(listed).toContain(`od ${formatPlnMajorForDisplay(3985)}`);
+    expect(listed).toContain(`zakres karty ${formatPlnMajorForDisplay(3985)}`);
+    expect(listed).not.toMatch(/\bod\s+\d/iu);
     expect(listed).not.toContain('4202');
     expect(listed).not.toContain('4 202');
 
@@ -147,7 +148,8 @@ describe('P0quater Kazka shipping, returns, size, and from-price', () => {
       {handle: 'pierscionki', title: 'Pierścionki'},
       [fromAdmin],
     );
-    expect(adminLine).toContain(`od ${formatPlnMajorForDisplay(3985)}`);
+    expect(adminLine).toContain(`zakres karty ${formatPlnMajorForDisplay(3985)}`);
+    expect(adminLine).not.toMatch(/\bod\s+\d/iu);
     expect(adminLine).not.toContain('4 202');
 
     const presented = presentCatalogForModel(
@@ -186,8 +188,18 @@ describe('P0quater Kazka shipping, returns, size, and from-price', () => {
       [card],
     );
     expect(quoted.replaced).toBe(true);
-    expect(quoted.reason).toBe('from_price');
+    expect(quoted.reason).toBe('variant_choice');
     expect(quoted.text).toContain(formatPlnMajorForDisplay(3985));
     expect(quoted.text).not.toContain(formatPlnMajorForDisplay(4202.55));
+    expect(quoted.text).not.toMatch(/\bod\s+\d/iu);
+    expect(quoted.text).toMatch(/wariant/iu);
+    expect(quoted.text).toMatch(/kt[oó]r/iu);
+
+    const minLead = guardDiscoveryFromPrice(
+      `Polecam Pierścionek Soliter od ${formatPlnMajorForDisplay(3985)}.`,
+      [card],
+    );
+    expect(minLead.replaced).toBe(true);
+    expect(minLead.text).not.toMatch(/\bod\s+\d/iu);
   });
 });
