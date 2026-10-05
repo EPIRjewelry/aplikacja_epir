@@ -72,8 +72,9 @@ export function formatPageCardReply(card: Record<string, unknown>): string {
     typeof card.sizes_label === 'string' && card.sizes_label.trim()
       ? `rozmiary ${card.sizes_label.trim()}`
       : '';
+  const metals = metalsPhrase(card);
   const stone = typeof card.main_stone === 'string' && card.main_stone.trim() ? card.main_stone.trim() : '';
-  const detail = [price, sizes, stone].filter(Boolean).join(', ');
+  const detail = [price, sizes, metals, stone].filter(Boolean).join(', ');
   return detail ? `${name} — ${detail}.` : `${name}.`;
 }
 
@@ -113,6 +114,24 @@ function replyHasSizes(text: string, card: Record<string, unknown>): boolean {
   return text.includes(label) || text.includes(label.replace('–', '-'));
 }
 
+function metalValues(card: Record<string, unknown>): string[] {
+  if (!Array.isArray(card.metals)) return [];
+  return card.metals.filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+}
+
+function metalsPhrase(card: Record<string, unknown>): string {
+  const values = metalValues(card);
+  if (!values.length) return '';
+  return `metale ${values.join(', ')}`;
+}
+
+function replyHasMetals(text: string, card: Record<string, unknown>): boolean {
+  const values = metalValues(card);
+  if (!values.length) return true;
+  const folded = text.toLocaleLowerCase('pl-PL');
+  return values.every((value) => folded.includes(value.toLocaleLowerCase('pl-PL')));
+}
+
 export function guardPageProductReply(
   text: string,
   card: Record<string, unknown>,
@@ -124,7 +143,7 @@ export function guardPageProductReply(
   const foreign = stated.filter((amount) => !allowed.some((known) => Math.abs(known - amount) < 0.5));
   const quotesPrice = stated.length > 0 || /zł|rozmiar/iu.test(text);
   if (!quotesPrice) return {text, replaced: false};
-  if (foreign.length || !replyQuotesCardPrice(text, card) || !replyHasSizes(text, card)) {
+  if (foreign.length || !replyQuotesCardPrice(text, card) || !replyHasSizes(text, card) || !replyHasMetals(text, card)) {
     return {text: close, replaced: true, reason: 'page_card_facts'};
   }
   return {text, replaced: false};

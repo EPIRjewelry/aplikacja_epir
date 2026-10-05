@@ -4,8 +4,10 @@
  */
 
 import {extractCatalogProducts, productMatchesStone} from './stone-retrieval';
+import {detectPolicyInformationIntent} from '../intent/policy-information';
 import {
   buyerAllowsStoneSubstitute,
+  latestTurnClearsProductContext,
   otherStoneMentioned,
   stoneIntentFromConversation,
   textMentionsStone,
@@ -22,6 +24,9 @@ const HANDOFF = /^\s*łączę z asystentem\b|^\s*lacze z asystentem\b/iu;
 
 export const BUYER_RETRY_REPLY =
   'Nie udało się ułożyć odpowiedzi. Napisz proszę jeszcze raz — zostaję przy tym, o co prosisz.';
+
+export const STALE_PRODUCT_CONTEXT_REPLY =
+  'Przy tej próbie nie wracam do poprzedniej listy. Metal biorę z karty produktu, o który pytasz.';
 
 export function isGarbledBuyerText(text: string): boolean {
   const compact = text.replace(/https?:\/\/\S+/g, '').replace(/\s+/g, '');
@@ -89,9 +94,12 @@ function lineForProduct(product: Record<string, unknown>): string {
   const title = typeof product.title === 'string' && product.title.trim() ? product.title.trim() : 'Pozycja z katalogu';
   const url = typeof product.url === 'string' ? product.url.trim() : '';
   const sizes = typeof product.sizes_label === 'string' && product.sizes_label.trim() ? `rozmiary ${product.sizes_label.trim()}` : '';
+  const metals = Array.isArray(product.metals)
+    ? product.metals.filter((value): value is string => typeof value === 'string' && value.trim().length > 0).join(', ')
+    : '';
   const fact = factFromCard(product);
   const name = url ? `[${title}](${url})` : title;
-  const detail = [priceLabel(product), sizes, fact].filter(Boolean).join(', ');
+  const detail = [priceLabel(product), sizes, metals ? `metale ${metals}` : '', fact].filter(Boolean).join(', ');
   return detail ? `- ${name} — ${detail}.` : `- ${name}.`;
 }
 
@@ -132,6 +140,15 @@ export type BuyerReplyContext = {
 
 export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext): {text: string; replaced: boolean; reason?: string} {
   const latest = context.buyerTurns[context.buyerTurns.length - 1] ?? '';
+  if (detectPolicyInformationIntent(latest).match) return {text, replaced: false};
+  if (latestTurnClearsProductContext(latest)) {
+    const prior = stoneIntentFromConversation(context.buyerTurns.slice(0, -1));
+    const citesPriorStone = Boolean(prior && textMentionsStone(text, prior));
+    const citesSku = /\/products\//.test(text);
+    if (citesPriorStone || citesSku) {
+      return {text: STALE_PRODUCT_CONTEXT_REPLY, replaced: true, reason: 'stale_product_context'};
+    }
+  }
   const allowSubstitute = buyerAllowsStoneSubstitute(latest, context.previousAssistant);
   const intent = allowSubstitute ? null : stoneIntentFromConversation(context.buyerTurns);
   const catalogProducts = productsFromCatalogSnapshots(context.catalogSnapshots);
