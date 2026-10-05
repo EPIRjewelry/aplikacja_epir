@@ -80,12 +80,56 @@ function factFromCard(product: Record<string, unknown>): string | undefined {
   return sentence.length > 90 ? `${sentence.slice(0, 89).trimEnd()}…` : sentence;
 }
 
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+}
+
+function karatLabels(product: Record<string, unknown>): string[] {
+  if (!Array.isArray(product.options)) return [];
+  const out: string[] = [];
+  for (const option of product.options) {
+    if (!option || typeof option !== 'object') continue;
+    const name = (option as {name?: unknown}).name;
+    const values = (option as {values?: unknown}).values;
+    if (typeof name !== 'string' || !/pr[oó]b|karat/iu.test(name)) continue;
+    out.push(...stringList(values));
+  }
+  return out;
+}
+
+/**
+ * Cena nie jest jedna: metal, próba i kamień zmieniają kwotę.
+ * Nie zaczynamy od „od X zł” i nie bierzemy ceny pierwszego wariantu.
+ */
+function variantSpread(product: Record<string, unknown>): string {
+  const metals = stringList(product.metals).join(', ');
+  const karats = karatLabels(product).join(', ');
+  const stone = typeof product.main_stone === 'string' ? product.main_stone.trim() : '';
+  const min = typeof product.price_min_display_pl === 'string' ? product.price_min_display_pl : '';
+  const max = typeof product.price_max_display_pl === 'string' ? product.price_max_display_pl : '';
+  const bits = ['warianty różnią się metalem, próbą albo kamieniem'];
+  if (metals) bits.push(`metale ${metals}`);
+  if (karats) bits.push(`próby ${karats}`);
+  if (stone) bits.push(`kamień ${stone}`);
+  if (min && max) bits.push(`zakres karty ${min}–${max}`);
+  return bits.join(', ');
+}
+
+export function productPriceVaries(product: Record<string, unknown>): boolean {
+  return (
+    product.price_is_flat === false &&
+    typeof product.price_min_display_pl === 'string' &&
+    typeof product.price_max_display_pl === 'string'
+  );
+}
+
 function priceLabel(product: Record<string, unknown>): string {
   if (product.price_is_flat === true && typeof product.price_display_pl === 'string') return product.price_display_pl;
-  if (typeof product.price_min_display_pl === 'string' && typeof product.price_max_display_pl === 'string') {
-    return `od ${product.price_min_display_pl} do ${product.price_max_display_pl}`;
+  if (productPriceVaries(product)) return variantSpread(product);
+  if (typeof product.page_price_display_pl === 'string' && !product.page_price_display_pl.startsWith('od ')) {
+    return product.page_price_display_pl;
   }
-  if (typeof product.page_price_display_pl === 'string') return product.page_price_display_pl;
   if (typeof product.price_display_pl === 'string') return product.price_display_pl;
   return '';
 }
@@ -99,13 +143,16 @@ function lineForProduct(product: Record<string, unknown>): string {
     : '';
   const fact = factFromCard(product);
   const name = url ? `[${title}](${url})` : title;
-  const detail = [priceLabel(product), sizes, metals ? `metale ${metals}` : '', fact].filter(Boolean).join(', ');
+  const metalsLine = productPriceVaries(product) || !metals ? '' : `metale ${metals}`;
+  const detail = [priceLabel(product), sizes, metalsLine, fact].filter(Boolean).join(', ');
   return detail ? `- ${name} — ${detail}.` : `- ${name}.`;
 }
 
 export function formatCatalogBrowseReply(products: readonly Record<string, unknown>[]): string {
-  const lines = products.slice(0, 4).map(lineForProduct);
-  return `Te pozycje są w katalogu:\n${lines.join('\n')}`;
+  const shown = products.slice(0, 4);
+  const lines = shown.map(lineForProduct);
+  const ask = shown.some(productPriceVaries) ? '\nKtóry wariant Cię interesuje?' : '';
+  return `Te pozycje są w katalogu:\n${lines.join('\n')}${ask}`;
 }
 
 export function formatStoneBrowseReply(products: readonly Record<string, unknown>[], intent: StoneIntent): string {

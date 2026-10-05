@@ -208,6 +208,26 @@ function decimalPrice(price: unknown): string | undefined {
   return parsed.toFixed(2);
 }
 
+function moneyEdge(value: unknown): {amount: string; currencyCode: string} | undefined {
+  if (!isRecord(value) || value.amount == null) return undefined;
+  const amount = String(value.amount).trim();
+  if (!amount) return undefined;
+  const currencyCode = typeof value.currencyCode === 'string' && value.currencyCode.trim() ? value.currencyCode.trim() : 'PLN';
+  return {amount, currencyCode};
+}
+
+function mapPriceRange(node: Record<string, unknown>): Record<string, unknown> | undefined {
+  const raw = isRecord(node.priceRange) ? node.priceRange : isRecord(node.priceRangeV2) ? node.priceRangeV2 : null;
+  if (!raw) return undefined;
+  const min = moneyEdge(raw.minVariantPrice);
+  const max = moneyEdge(raw.maxVariantPrice);
+  if (!min && !max) return undefined;
+  return {
+    ...(min ? {minVariantPrice: min} : {}),
+    ...(max ? {maxVariantPrice: max} : {}),
+  };
+}
+
 function mapVariant(node: Record<string, unknown>): Record<string, unknown> {
   const price = isRecord(node.price)
     ? node.price
@@ -254,7 +274,7 @@ export function mapStoreProduct(node: Record<string, unknown>): Record<string, u
   const metafields =
     isRecord(node.metafields) && Array.isArray(node.metafields.nodes) ? node.metafields.nodes : [];
   const online = typeof node.onlineStoreUrl === 'string' ? node.onlineStoreUrl : undefined;
-  return {
+  const mapped: Record<string, unknown> = {
     id: node.id,
     handle: node.handle,
     card_source: 'shop',
@@ -268,6 +288,9 @@ export function mapStoreProduct(node: Record<string, unknown>): Record<string, u
     metafields,
     variants: variantNodes.filter(isRecord).map(mapVariant),
   };
+  const priceRange = mapPriceRange(node);
+  if (priceRange) mapped.priceRange = priceRange;
+  return mapped;
 }
 
 const PRODUCT_FIELDS = `
@@ -279,6 +302,10 @@ const PRODUCT_FIELDS = `
   tags
   onlineStoreUrl
   options { name optionValues { name } }
+  priceRangeV2 {
+    minVariantPrice { amount currencyCode }
+    maxVariantPrice { amount currencyCode }
+  }
   metafields(first: 20) { nodes { namespace key value } }
   variants(first: 100) {
     nodes {
@@ -312,6 +339,10 @@ const ADMIN_SEARCH_PLAIN_OPTIONS = `
         vendor
         tags
         onlineStoreUrl
+        priceRangeV2 {
+          minVariantPrice { amount currencyCode }
+          maxVariantPrice { amount currencyCode }
+        }
         metafields(first: 20) { nodes { namespace key value } }
         variants(first: 100) {
           nodes {
@@ -340,6 +371,10 @@ const STOREFRONT_SEARCH = `
         tags
         onlineStoreUrl
         options { name values }
+        priceRange {
+          minVariantPrice { amount currencyCode }
+          maxVariantPrice { amount currencyCode }
+        }
         variants(first: 100) {
           nodes {
             id

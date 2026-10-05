@@ -73,6 +73,8 @@ import { guardBuyerCatalogReply, productsFromCatalogSnapshots } from './catalog/
 import type { StoneLookup } from './catalog/buyer-reply-guard';
 import { buyerAllowsStoneSubstitute } from './catalog/stone-intent';
 import { guardDiscoveryFromPrice, guardForeignCatalogPrices, guardPageProductReply } from './catalog/page-product-card';
+import { BuyerTurnGate } from './catalog/buyer-turn-gate';
+import { groundedTurnReply, replyOrStall } from './catalog/grounded-turn';
 import { planBuyerReplyFrames } from './catalog/reply-commit';
 import { guardStoreFacts, promotionRulesForBrand } from './catalog/store-facts';
 import { seedBuyerTurnContext } from './catalog/turn-seed';
@@ -429,7 +431,9 @@ function isSessionChatRoute(pathname: string): boolean {
     pathname.endsWith('/persist-cart-activity') ||
     pathname.endsWith('/acquire-memory-lock') ||
     pathname.endsWith('/release-memory-lock') ||
-    pathname.endsWith('/refresh-memory-atomic')
+    pathname.endsWith('/refresh-memory-atomic') ||
+    pathname.endsWith('/begin-buyer-turn') ||
+    pathname.endsWith('/end-buyer-turn')
   );
 }
 
@@ -1415,6 +1419,7 @@ export class SessionDO {
   private readonly sql: DurableObjectStorage['sql'];
   private lastRequestTimestamp = 0;
   private requestsInWindow = 0;
+  private readonly buyerTurnGate = new BuyerTurnGate();
   private readonly personMemoryLocks = new Map<string, PersonMemoryLockState>();
   private readonly personMemoryRecentResults = new Map<
     string,
@@ -1554,6 +1559,20 @@ export class SessionDO {
       return new Response(JSON.stringify(this.getHistory()), {
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+
+    if (method === 'POST' && pathname.endsWith('/begin-buyer-turn')) {
+      const payload = (await request.json().catch(() => null)) as { turn_id?: string } | null;
+      if (!payload?.turn_id) return new Response('Bad Request', { status: 400 });
+      await this.buyerTurnGate.begin(payload.turn_id);
+      return new Response('ok');
+    }
+
+    if (method === 'POST' && pathname.endsWith('/end-buyer-turn')) {
+      const payload = (await request.json().catch(() => null)) as { turn_id?: string } | null;
+      if (!payload?.turn_id) return new Response('Bad Request', { status: 400 });
+      this.buyerTurnGate.end(payload.turn_id);
+      return new Response('ok');
     }
 
     // POST /append
@@ -2996,6 +3015,31 @@ async function handleChat(
 
   // Jawny lifecycle krytycznych zapisów SessionDO: fail-closed zamiast cichych async side effects.
   const userMessageTs = now();
+  const buyerTurnId = `${sessionId}:${userMessageTs}`;
+  const lockBuyerTurn = !isOperatorChannel(payload.channel);
+  const releaseBuyerTurn = async () => {
+    if (!lockBuyerTurn) return;
+    try {
+      await stub.fetch('https://session/end-buyer-turn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ turn_id: buyerTurnId }),
+      });
+    } catch (error) {
+      console.warn('[handleChat] end-buyer-turn failed', error);
+    }
+  };
+  if (lockBuyerTurn) {
+    try {
+      await stub.fetch('https://session/begin-buyer-turn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ turn_id: buyerTurnId }),
+      });
+    } catch (error) {
+      console.warn('[handleChat] begin-buyer-turn failed', error);
+    }
+  }
   try {
     if (!payload.session_id) {
       await fetchSessionDO(
@@ -3082,6 +3126,7 @@ async function handleChat(
         session_id: sessionId,
       }),
     );
+    await releaseBuyerTurn();
     return new Response(
       JSON.stringify({
         reply: SESSION_LIFECYCLE_CLIENT_REPLY,
@@ -3117,6 +3162,7 @@ async function handleChat(
         storefrontId: payload.storefrontId ?? null,
       }),
     );
+    await releaseBuyerTurn();
     return new Response(JSON.stringify({ reply: HARD_REFUSAL_REPLY, session_id: sessionId }), {
       headers: { ...cors(env), 'Content-Type': 'application/json' },
     });
@@ -3141,6 +3187,7 @@ async function handleChat(
         storefrontId: payload.storefrontId ?? null,
       }),
     );
+    await releaseBuyerTurn();
     return new Response(JSON.stringify({ reply: jailbreakReply, session_id: sessionId }), {
       headers: { ...cors(env), 'Content-Type': 'application/json' },
     });
@@ -3156,6 +3203,7 @@ async function handleChat(
 
     // Krótkie powitanie zostaje przy marce z brand lock. Nie puszczamy go do modelu:
     // stream wcześniej dopisywał greeting i i tak wołał LLM, który dociągał głos drugiej marki.
+    await releaseBuyerTurn();
     return new Response(JSON.stringify({ reply: greetingReply, session_id: sessionId }), {
       headers: { ...cors(env, request), 'Content-Type': 'application/json' },
     });
@@ -3178,7 +3226,7 @@ async function handleChat(
     path: payload.path,
     locale: payload.locale,
     market: payload.market,
-  }, customerId, executionCtx, customerIdFromUrl, liquidIdentity, softCustomerFirstName);
+  }, customerId, executionCtx, customerIdFromUrl, liquidIdentity, softCustomerFirstName, lockBuyerTurn ? buyerTurnId : undefined);
 }
 
 // ============================================================================
@@ -3218,6 +3266,8 @@ async function streamAssistantResponse(
   liquidIdentity?: LiquidChatIdentity,
   /** OPCJONALNE: miękkie imię klienta na podstawie klient-side hint (nie do autoryzacji). */
   softCustomerFirstName?: string | null,
+  /** Gdy ustawione, tura sesji zwalnia się po jednej odpowiedzi asystenta. */
+  buyerTurnId?: string,
 ): Promise<Response> {
   const { readable, writable } = new TransformStream();
   const encoder = new TextEncoder();
@@ -3240,6 +3290,45 @@ async function streamAssistantResponse(
         if (delta.trim()) buyerDeltaSent = true;
         await writer.write(encoder.encode(`data: ${JSON.stringify({ delta })}\n\n`));
     }
+    async function emitBuyerReply(text: string) {
+      const frames = planBuyerReplyFrames(text);
+      for (const frame of frames) {
+        if (frame.kind === 'persist') {
+          try {
+            await stub.fetch('https://session/append', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                role: 'assistant',
+                content: frame.text,
+                ts: now(),
+              } as HistoryEntry),
+            });
+          } catch (persistErr) {
+            console.error('[streamAssistant] assistant persist failed', persistErr);
+          }
+        } else if (frame.kind === 'delta') {
+          await sendDelta(frame.text);
+        } else {
+          await writer.write(encoder.encode('data: [DONE]\n\n'));
+        }
+      }
+      if (!frames.length) {
+        await writer.write(encoder.encode('data: [DONE]\n\n'));
+      }
+    }
+    async function releaseBuyerTurn() {
+      if (!buyerTurnId) return;
+      try {
+        await stub.fetch('https://session/end-buyer-turn', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ turn_id: buyerTurnId }),
+        });
+      } catch (error) {
+        console.warn('[streamAssistant] end-buyer-turn failed', error);
+      }
+    }
     async function sendGeneratedImages(urls: string[]) {
         if (!urls.length) return;
         await writer.write(
@@ -3247,14 +3336,29 @@ async function streamAssistantResponse(
         );
     }
 
+    let turnBrand: string | undefined;
     try {
       const operatorMode = isOperatorChannel(storefrontContext?.channel);
       const operatorRoleId = operatorMode ? resolveOperatorRoleIdFromHeaders(request.headers) : null;
+      turnBrand =
+        resolveCatalogToolBrand({
+          storefrontId: storefrontContext?.storefrontId,
+          channel: storefrontContext?.channel,
+          brand,
+        }) ?? (storefrontContext?.channel === 'online-store' ? 'epir' : brand);
 
       // 🔴 KROK 1: POPRAWKA SESJI
       // Natychmiast wyślij klientowi ID sesji, aby mógł je zapisać.
       console.log(`[streamAssistant] Inicjalizacja strumienia dla sesji: ${sessionId}`);
       await sendSSE('session', { session_id: sessionId });
+
+      if (!operatorMode) {
+        const grounded = groundedTurnReply(userMessage, turnBrand);
+        if (grounded) {
+          await emitBuyerReply(grounded);
+          return;
+        }
+      }
 
       // 🔴 KROK 2: POBIERZ HISTORIĘ I KONTEKST
       const historyResp = await stub.fetch('https://session/history');
@@ -3515,18 +3619,7 @@ async function streamAssistantResponse(
           channel: storefrontContext?.channel ?? null,
           history_entries: history.length,
         });
-        await sendDelta(currentSessionRecap);
-        await writer.write(encoder.encode('data: [DONE]\n\n'));
-
-        await stub.fetch('https://session/append', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            role: 'assistant',
-            content: currentSessionRecap,
-            ts: now(),
-          } as HistoryEntry),
-        });
+        await emitBuyerReply(currentSessionRecap);
 
         if (imageBase64) {
           maybePersistImageSurrogate();
@@ -4004,10 +4097,11 @@ async function streamAssistantResponse(
           if (pageGuarded.replaced) buyerText = pageGuarded.text;
         } else if (!policyTurn) {
           const cards = productsFromCatalogSnapshots(catalogSnapshotsForPricing);
-          if (cards.length === 1) {
+          const varyingDiscovery = cards.some((card) => card.price_is_flat === false);
+          if (cards.length === 1 && !varyingDiscovery) {
             const single = guardPageProductReply(buyerText, cards[0]!);
             if (single.replaced) buyerText = single.text;
-          } else if (cards.length > 1) {
+          } else if (cards.length > 1 || varyingDiscovery) {
             const fromPrice = guardDiscoveryFromPrice(buyerText, cards);
             if (fromPrice.replaced) buyerText = fromPrice.text;
             else {
@@ -4673,8 +4767,7 @@ async function streamAssistantResponse(
 
       // Ostateczny fallback UX — jeśli dalej pusty (np. błąd modelu / sieci):
       if (!finalTextResponse.trim() && streamedGeneratedImages.length === 0) {
-        finalTextResponse =
-          'Przepraszam, chwilowo nie mogę przygotować pełnej odpowiedzi. Spróbuj proszę ponownie za moment.';
+        finalTextResponse = replyOrStall(userMessage, turnBrand, 'empty');
       }
 
       if (streamedGeneratedImages.length > 0) {
@@ -4688,31 +4781,7 @@ async function streamAssistantResponse(
       // Najpierw historia, potem delta, na końcu [DONE]. Inna kolejność zostawiała
       // pustą bańkę w tej turze i pokazywała odpowiedź dopiero przy następnym odczycie historii.
       console.log('[streamAssistant] ✅ Strumień zakończony. Finalna odpowiedź (tekst):', finalTextResponse.substring(0, 100));
-      const replyFrames = planBuyerReplyFrames(finalTextResponse);
-      for (const frame of replyFrames) {
-        if (frame.kind === 'persist') {
-          try {
-            await stub.fetch('https://session/append', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                role: 'assistant',
-                content: frame.text,
-                ts: now(),
-              } as HistoryEntry),
-            });
-          } catch (persistErr) {
-            console.error('[streamAssistant] assistant persist failed', persistErr);
-          }
-        } else if (frame.kind === 'delta') {
-          await sendDelta(frame.text);
-        } else {
-          await writer.write(encoder.encode('data: [DONE]\n\n'));
-        }
-      }
-      if (!replyFrames.length) {
-        await writer.write(encoder.encode('data: [DONE]\n\n'));
-      }
+      await emitBuyerReply(finalTextResponse);
 
       if (isProjectBChatChannel(storefrontContext?.channel) && executionCtx && sessionId) {
         executionCtx.waitUntil(maybeRefreshSessionDigest(env, sessionId));
@@ -4728,35 +4797,13 @@ async function streamAssistantResponse(
       console.error('Error in streamAssistantResponse:', err);
       try {
         if (!buyerDeltaSent) {
-          const reply =
-            'Przepraszam, chwilowo nie mogę dokończyć odpowiedzi. Napisz proszę jeszcze raz za moment.';
-          const frames = planBuyerReplyFrames(reply);
-          for (const frame of frames) {
-            if (frame.kind === 'persist') {
-              try {
-                await stub.fetch('https://session/append', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    role: 'assistant',
-                    content: frame.text,
-                    ts: now(),
-                  } as HistoryEntry),
-                });
-              } catch (persistErr) {
-                console.error('[streamAssistant] error reply persist failed', persistErr);
-              }
-            } else if (frame.kind === 'delta') {
-              await sendDelta(frame.text);
-            } else {
-              await writer.write(encoder.encode('data: [DONE]\n\n'));
-            }
-          }
+          await emitBuyerReply(replyOrStall(userMessage, turnBrand, 'error'));
         }
       } catch (writeErr) {
         console.error('Failed to write error to stream:', writeErr);
       }
     } finally {
+      await releaseBuyerTurn();
       writer.close();
     }
   })(); // koniec bloku async
