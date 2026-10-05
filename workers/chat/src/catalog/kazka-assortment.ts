@@ -2,10 +2,10 @@
  * Twardy filtr asortymentu Kazka dla narzędzi katalogu (search / lookup / image).
  *
  * Reguła kanoniczna (smart kolekcje EPIR i skrypty separacji):
- * produkt jest Kazka, gdy tag == `kazka` LUB vendor == `Kazka`.
- * Reszta (w tym sam tag `kazka-pierscionek` bez `kazka` i bez vendor Kazka) jest EPIR-only
+ * produkt jest Kazka, gdy tag == `kazka` LUB vendor to `Kazka` albo `Kazka Jewelry`
+ * (publiczna nazwa marki na karcie). Reszta (w tym sam tag `kazka-pierscionek`) jest EPIR-only
  * i nie może wrócić do Gemmy na kanale Kazka.
- * Odwrotnie: ten sam dowód (tag `kazka` lub vendor `Kazka`) wyklucza produkt z karty EPIR.
+ * Odwrotnie: ten sam dowód (tag `kazka` lub vendor `Kazka` / `Kazka Jewelry`) wyklucza produkt z karty EPIR.
  *
  * Sklepowy UCP (`search_catalog` na /api/ucp/mcp) nie filtruje zapytania po vendorze,
  * tagu ani kolekcji. `catalog.query` to tekst swobodny; `catalog.filters` przyjmuje
@@ -88,12 +88,26 @@ export function resolveCatalogToolBrand(input: {
   return input.brand;
 }
 
+export function isKazkaVendorName(vendor?: string | null): boolean {
+  const token = normalizeToken(vendor);
+  if (!token) return false;
+  if (token === KAZKA_ASSORTMENT_VENDOR) return true;
+  return token.startsWith(`${KAZKA_ASSORTMENT_VENDOR} `);
+}
+
 export function isKazkaAssortment(input: {
   vendor?: string | null;
   tags?: readonly string[] | null;
 }): boolean {
-  if (normalizeToken(input.vendor) === KAZKA_ASSORTMENT_VENDOR) return true;
+  if (isKazkaVendorName(input.vendor)) return true;
   return (input.tags ?? []).some((tag) => normalizeToken(tag) === KAZKA_ASSORTMENT_TAG);
+}
+
+/** EPIR i Zaręczyny czytają katalog bez produktów Kazka. Samo `zareczyny` nie jest aliasem EPIR w linkach. */
+export function isEpirFamilyCatalogBrand(brand?: string): boolean {
+  if (isEpirCatalogBrand(brand)) return true;
+  const normalized = brand?.trim().toLowerCase();
+  return normalized === 'zareczyny' || normalized === 'hydrogen-zareczyny';
 }
 
 export function isKazkaFilteredCatalogTool(toolName: string): boolean {
@@ -198,11 +212,7 @@ function variantHasKazkaTag(product: Record<string, unknown>): boolean {
 function localDecision(product: Record<string, unknown>): 'keep' | 'drop' | 'unknown' {
   const vendor = readVendor(product);
   const tags = readProductTags(product);
-  if (
-    normalizeToken(vendor) === KAZKA_ASSORTMENT_VENDOR ||
-    (tags ?? []).some((tag) => normalizeToken(tag) === KAZKA_ASSORTMENT_TAG) ||
-    variantHasKazkaTag(product)
-  ) {
+  if (isKazkaAssortment({vendor, tags}) || variantHasKazkaTag(product)) {
     return 'keep';
   }
   if (vendor !== undefined && tags !== undefined) return 'drop';

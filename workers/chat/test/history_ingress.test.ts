@@ -218,6 +218,42 @@ describe('history ingress', () => {
     expect(await response.text()).toContain('Invalid HMAC signature');
   });
 
+  it('hides a Kazka advisor line from EPIR history on the same session id', async () => {
+    const {env, sessions} = makeEnv();
+    await seedHistory(env, 'shared-buyer');
+    const stub = env.SESSION_DO.get(env.SESSION_DO.idFromName('shared-buyer'));
+    await stub.fetch(
+      new Request('https://session/append', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          role: 'assistant',
+          content: 'Witaj! Jestem Gemma, doradca marki Kazka Jewelry. Jak mogę Ci dzisiaj pomóc? ✨',
+          ts: 4,
+        }),
+      }),
+    );
+
+    const response = await worker.fetch(
+      await makeSignedAppProxyHistoryRequest('shared-buyer'),
+      env,
+      noopCtx,
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {history: Array<{content: string}>};
+    const transcript = payload.history.map((entry) => entry.content).join('\n');
+    expect(transcript).not.toContain('Kazka Jewelry');
+    expect(transcript).toContain('EPIR Art Jewellery');
+    expect(sessions.has('kazka:shared-buyer')).toBe(false);
+    expect(sessions.has('epir:shared-buyer')).toBe(false);
+
+    const kazkaResponse = await worker.fetch(makeS2SHistoryRequest('shared-buyer'), env, noopCtx);
+    expect(kazkaResponse.status).toBe(200);
+    const kazkaPayload = (await kazkaResponse.json()) as {history: Array<{content: string}>};
+    expect(kazkaPayload.history.map((entry) => entry.content).join('\n')).toContain('Kazka Jewelry');
+  });
+
   it('rejects history requests without session_id', async () => {
     const {env} = makeEnv();
     const response = await worker.fetch(

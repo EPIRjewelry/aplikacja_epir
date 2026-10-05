@@ -1198,7 +1198,13 @@ async function fetchAssistantTranscriptFromBackend(section, sessionIdKey) {
       Accept: 'application/json',
     },
     credentials: 'include',
-    body: JSON.stringify({ session_id: sessionId }),
+    body: JSON.stringify({
+      session_id: sessionId,
+      brand: (section && section.dataset && section.dataset.brand) || 'epir',
+      storefrontId: (section && section.dataset && section.dataset.storefrontId) || 'epir-liquid',
+      channel: (section && section.dataset && section.dataset.channel) || 'online-store',
+      page_host: (typeof window !== 'undefined' && window.location && window.location.hostname) || '',
+    }),
   });
 
   if (!response.ok) {
@@ -1788,6 +1794,7 @@ async function sendMessageToWorker(
       brand,
       stream: true,
       path: window.location.pathname,
+      page_host: (typeof window !== 'undefined' && window.location && window.location.hostname) || '',
       customer_id_hint: normalizeLoggedInCustomerId(customerIdentity && customerIdentity.customerId) || undefined,
       customer_id_hint_source:
         normalizeLoggedInCustomerId(customerIdentity && customerIdentity.source) || 'none',
