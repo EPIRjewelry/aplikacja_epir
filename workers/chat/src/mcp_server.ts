@@ -58,6 +58,7 @@ import {
   rewriteCatalogQueryForStone,
   STONE_CATALOG_CANDIDATES,
 } from './catalog/stone-retrieval';
+import {discoveryMetalBrowse, rewriteCatalogQueryForDiscoveryMetal} from './catalog/stone-intent';
 import {
   enforceEpirAssortmentOnCatalogResult,
   enforceKazkaAssortmentOnCatalogResult,
@@ -509,20 +510,23 @@ async function callShopMcp(
       allowSubstitute: allowStoneSubstitute,
       env,
     });
+    const metalBrowse = buyerTurns ? discoveryMetalBrowse(buyerTurns) : null;
     if (intent) {
       catalog.query = rewriteCatalogQueryForStone(currentQuery, {
         buyerTurns,
         allowSubstitute: allowStoneSubstitute,
       });
-      if (!isKazkaCatalogBrand(brand)) {
-        const pagination =
-          catalog.pagination && typeof catalog.pagination === 'object'
-            ? {...(catalog.pagination as Record<string, unknown>)}
-            : {};
-        const limit = typeof pagination.limit === 'number' ? pagination.limit : 3;
-        pagination.limit = Math.max(limit, STONE_CATALOG_CANDIDATES);
-        catalog.pagination = pagination;
-      }
+    } else if (metalBrowse) {
+      catalog.query = rewriteCatalogQueryForDiscoveryMetal(currentQuery, buyerTurns ?? []);
+    }
+    if ((intent || metalBrowse) && !isKazkaCatalogBrand(brand)) {
+      const pagination =
+        catalog.pagination && typeof catalog.pagination === 'object'
+          ? {...(catalog.pagination as Record<string, unknown>)}
+          : {};
+      const limit = typeof pagination.limit === 'number' ? pagination.limit : 3;
+      pagination.limit = Math.max(limit, STONE_CATALOG_CANDIDATES);
+      catalog.pagination = pagination;
     }
   }
 
