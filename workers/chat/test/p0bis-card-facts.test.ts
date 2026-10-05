@@ -3,7 +3,7 @@ import {formatPlnMajorForDisplay} from '../src/mcp/catalog-price-enrich';
 import {guardPageProductReply, loadPageProductCard, buyerAsksAboutPageProduct} from '../src/catalog/page-product-card';
 import {hydrateThinCatalogCards} from '../src/catalog/stone-retrieval';
 import {presentCatalogForModel} from '../src/mcp/catalog-for-model';
-import {guardStoreFacts, promotionRulesForBrand, EPIR_SHIPPING_FACT, KAZKA_SHIPPING_FACT, KAZKA_ASSORTMENT_FACT, HARDNESS_FACT} from '../src/catalog/store-facts';
+import {guardStoreFacts, promotionRulesForBrand, EPIR_SHIPPING_FACT, KAZKA_ASSORTMENT_FACT, HARDNESS_FACT} from '../src/catalog/store-facts';
 import {seedBuyerTurnContext} from '../src/catalog/turn-seed';
 
 const SHOP = 'epir-art-silver-jewellery.myshopify.com';
@@ -185,17 +185,18 @@ describe('store facts', () => {
     expect(hard.text).not.toContain('zarysowania');
   });
 
-  it('does not move EPIR shipping or a silver line onto Kazka', () => {
+  it('keeps Kazka free shipping above 500 and the 14-day withdrawal, and drops the silver line', () => {
     const reply = guardStoreFacts(
       'Darmowa wysyłka od 500 zł. Zwrot w 14 dni. Mamy srebrne obrączki Kazka, to nie jest część EPIR.',
       'kazka',
     );
-    expect(reply.text).toContain(KAZKA_SHIPPING_FACT);
+    expect(reply.text).toMatch(/500 zł/);
+    expect(reply.text).toMatch(/14 dni/);
     expect(reply.text).toContain(KAZKA_ASSORTMENT_FACT);
-    expect(reply.text).not.toMatch(/500 zł/);
-    expect(reply.text).not.toMatch(/14 dni/);
     expect(reply.text).not.toMatch(/srebrne obrączki/i);
-    expect(promotionRulesForBrand('Free shipping over 500 PLN', 'kazka')).toBe('');
+    expect(reply.text).not.toMatch(/15 zł/);
+    expect(promotionRulesForBrand('Free shipping over 500 PLN', 'kazka')).toContain('500');
+    expect(promotionRulesForBrand('Wysyłka 15 zł, darmowa od 500 zł.', 'kazka')).toBe('');
     expect(promotionRulesForBrand('Free shipping over 500 PLN', 'epir')).toContain('500');
   });
 });

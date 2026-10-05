@@ -204,6 +204,35 @@ function metalList(
   return unique.length ? unique : undefined;
 }
 
+function samePriceScale(candidate: number, anchor: number): boolean {
+  if (candidate <= 0 || anchor <= 0) return false;
+  const ratio = candidate / anchor;
+  return ratio >= 0.25 && ratio <= 4;
+}
+
+/**
+ * Minimum listy bierze się z priceRange, gdy zwrócone warianty go nie obejmują
+ * (pierwszy dostępny wariant bywa droższy niż karta „od”).
+ * Kwota z innej skali (grosze potraktowane jak złote) nie wchodzi do zakresu.
+ */
+function pricesForRange(
+  variantPrices: PlnPrice[],
+  range: {min: PlnPrice | null; max: PlnPrice | null},
+): PlnPrice[] {
+  if (!variantPrices.length) {
+    return [range.min, range.max].filter((price): price is PlnPrice => Boolean(price));
+  }
+  const anchor = variantPrices.reduce((best, price) =>
+    price.price_minor < best.price_minor ? price : best,
+  );
+  const compared = [...variantPrices];
+  for (const edge of [range.min, range.max]) {
+    if (!edge) continue;
+    if (samePriceScale(edge.price_minor, anchor.price_minor)) compared.push(edge);
+  }
+  return compared;
+}
+
 function rangeEnds(product: Record<string, unknown>): {min: PlnPrice | null; max: PlnPrice | null} {
   const range = isRecord(product.price_range)
     ? product.price_range
@@ -421,9 +450,7 @@ function slimProduct(
     .map((variant) => priceOf(variant.price) ?? priceOf(variant))
     .filter((price): price is PlnPrice => Boolean(price));
   const range = rangeEnds(product);
-  const compared = variantPrices.length
-    ? variantPrices
-    : [range.min, range.max].filter((price): price is PlnPrice => Boolean(price));
+  const compared = pricesForRange(variantPrices, range);
   const flat = compared.length > 0 && compared.every((price) => sameMinor(price.price_minor, compared[0].price_minor));
   const minPrice = compared.reduce<PlnPrice | null>(
     (best, price) => (!best || price.price_minor < best.price_minor ? price : best),

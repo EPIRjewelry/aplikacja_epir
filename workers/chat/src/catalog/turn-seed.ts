@@ -21,6 +21,7 @@ import {
   type StoneCatalogEnv,
 } from './stone-retrieval';
 import {detectPolicyInformationIntent} from '../intent/policy-information';
+import {detectSizeTableIntent} from '../intent/size-table';
 import {
   buyerAllowsStoneSubstitute,
   buyerAsksForRing,
@@ -76,7 +77,12 @@ export async function seedBuyerTurnContext(input: {
   let pageCard: Record<string, unknown> | null = null;
   const latest = input.buyerTurns[input.buyerTurns.length - 1] ?? '';
   const buyerText = input.buyerTurns.join('\n');
-  if (detectPolicyInformationIntent(latest).match) {
+  if (detectPolicyInformationIntent(latest).match || detectSizeTableIntent(latest).match) {
+    if (detectSizeTableIntent(latest).match && !detectPolicyInformationIntent(latest).match) {
+      lines.push(
+        'Pytanie o rozmiar: odpowiedz wskazówką pomiaru (obwód palca albo średnica wewnętrzna) i tabelą rozmiarów. Nie wklejaj ceny, metalu, kamienia ani specyfikacji karty produktu.',
+      );
+    }
     return {
       lines,
       snapshots,

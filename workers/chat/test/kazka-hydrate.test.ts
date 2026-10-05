@@ -46,7 +46,7 @@ describe('formatKazkaProductContext', () => {
     });
     expect(text).toContain('Pierścionek Soliter');
     expect(text).toContain('handle: soliter');
-    expect(text).toContain('280.0 zł');
+    expect(text).toContain('280 zł');
   });
 });
 

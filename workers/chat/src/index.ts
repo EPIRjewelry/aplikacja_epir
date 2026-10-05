@@ -72,7 +72,7 @@ import { isKazkaFilteredCatalogTool, resolveCatalogToolBrand } from './catalog/k
 import { guardBuyerCatalogReply, productsFromCatalogSnapshots } from './catalog/buyer-reply-guard';
 import type { StoneLookup } from './catalog/buyer-reply-guard';
 import { buyerAllowsStoneSubstitute } from './catalog/stone-intent';
-import { guardForeignCatalogPrices, guardPageProductReply } from './catalog/page-product-card';
+import { guardDiscoveryFromPrice, guardForeignCatalogPrices, guardPageProductReply } from './catalog/page-product-card';
 import { planBuyerReplyFrames } from './catalog/reply-commit';
 import { guardStoreFacts, promotionRulesForBrand } from './catalog/store-facts';
 import { seedBuyerTurnContext } from './catalog/turn-seed';
@@ -80,7 +80,7 @@ import { CATALOG_MODEL_WIRE_BUDGET } from './mcp/catalog-for-model';
 import { TOOL_SCHEMAS, resolveToolSchemas, shouldUseSlimToolSchemas } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2 (+ slim wariant za flagą)
 import { sanitizeHarmonyHistory } from './utils/sanitizeHarmonyHistory';
 import { detectPolicyInformationIntent } from './intent/policy-information';
-import { detectSizeTableIntent } from './intent/size-table';
+import { detectSizeTableIntent, guardSizeQuestionReply } from './intent/size-table';
 import {
   detectIllegalOrHarmfulRequest,
   detectJailbreakOrHarmIntent,
@@ -3994,8 +3994,12 @@ async function streamAssistantResponse(
           );
         }
         const policyTurn = detectPolicyInformationIntent(userMessage).match;
-        let buyerText = seededAboutPage && seededPageCard ? outcome.text : stoneGuarded.text;
-        if (!policyTurn && seededAboutPage && seededPageCard) {
+        const sizeTurn = detectSizeTableIntent(userMessage).match;
+        let buyerText = seededAboutPage && seededPageCard && !sizeTurn ? outcome.text : stoneGuarded.text;
+        if (sizeTurn) {
+          const sized = guardSizeQuestionReply(buyerText);
+          if (sized.replaced) buyerText = sized.text;
+        } else if (!policyTurn && seededAboutPage && seededPageCard) {
           const pageGuarded = guardPageProductReply(buyerText, seededPageCard);
           if (pageGuarded.replaced) buyerText = pageGuarded.text;
         } else if (!policyTurn) {
@@ -4004,8 +4008,12 @@ async function streamAssistantResponse(
             const single = guardPageProductReply(buyerText, cards[0]!);
             if (single.replaced) buyerText = single.text;
           } else if (cards.length > 1) {
-            const foreign = guardForeignCatalogPrices(buyerText, cards);
-            if (foreign.replaced) buyerText = foreign.text;
+            const fromPrice = guardDiscoveryFromPrice(buyerText, cards);
+            if (fromPrice.replaced) buyerText = fromPrice.text;
+            else {
+              const foreign = guardForeignCatalogPrices(buyerText, cards);
+              if (foreign.replaced) buyerText = foreign.text;
+            }
           }
         }
         const factGuarded = guardStoreFacts(buyerText, replyBrand, {userMessage});
