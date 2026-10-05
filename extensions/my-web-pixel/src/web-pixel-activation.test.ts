@@ -12,11 +12,16 @@ describe('web pixel ships with the app, not a Customer Events paste', () => {
     expect(toml).toContain('read_customer_events');
   });
 
-  it('loads on analytics consent without also requiring marketing or data sale', () => {
+  it('loads without a privacy purpose, on the same visits as the Customer Events paste', () => {
     const toml = readFileSync(join(root, 'extensions/my-web-pixel/shopify.extension.toml'), 'utf8');
-    expect(toml).toMatch(/analytics\s*=\s*true/);
-    expect(toml).toMatch(/marketing\s*=\s*false/);
-    expect(toml).toMatch(/sale_of_data\s*=\s*"disabled"/);
+    const privacy = toml.slice(toml.indexOf('[customer_privacy]'));
+    // App pixels stay strict. Lax is the custom-pixel sandbox, not a valid switch here.
+    expect(toml).toMatch(/runtime_context\s*=\s*"strict"/);
+    expect(privacy).toMatch(/analytics\s*=\s*false/);
+    expect(privacy).toMatch(/marketing\s*=\s*false/);
+    expect(privacy).toMatch(/preferences\s*=\s*false/);
+    expect(privacy).toMatch(/sale_of_data\s*=\s*"disabled"/);
+    expect(privacy).not.toMatch(/analytics\s*=\s*true/);
   });
 
   it('activation script creates the web pixel record and does not subscribe like a paste', () => {

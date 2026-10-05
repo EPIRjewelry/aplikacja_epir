@@ -27,41 +27,6 @@ type AttributionPayload = {
   msclkid?: string;
 };
 
-/** Fragment Customer Privacy na obiekcie zdarzenia Web Pixel (event / event.context). */
-type PixelEventPrivacy = {
-  analyticsProcessingAllowed: boolean;
-};
-
-/** Wyłuskaj blok privacy z natywnego obiektu zdarzenia Shopify Web Pixels. */
-function readPrivacyFromPixelEvent(event: unknown): PixelEventPrivacy | null {
-  try {
-    if (!event || typeof event !== "object") return null;
-    const e = event as Record<string, unknown>;
-    const direct = e.customerPrivacy;
-    if (direct && typeof direct === "object") {
-      const ap = (direct as Record<string, unknown>).analyticsProcessingAllowed;
-      if (typeof ap === "boolean") return {analyticsProcessingAllowed: ap};
-    }
-    const ctx = e.context;
-    if (ctx && typeof ctx === "object") {
-      const nested = (ctx as Record<string, unknown>).customerPrivacy;
-      if (nested && typeof nested === "object") {
-        const ap = (nested as Record<string, unknown>).analyticsProcessingAllowed;
-        if (typeof ap === "boolean") return {analyticsProcessingAllowed: ap};
-      }
-    }
-  } catch (_) {
-    /* silent — stabilność w piaskownicy */
-  }
-  return null;
-}
-
-/** Śledzenie analityczne dozwolone tylko przy jawnym analyticsProcessingAllowed === true na evencie. */
-function isAnalyticsProcessingExplicitlyAllowedOnEvent(event: unknown): boolean {
-  const p = readPrivacyFromPixelEvent(event);
-  return p !== null && p.analyticsProcessingAllowed === true;
-}
-
 /** Shopify Web Pixels: `clientId` na evencie (fallback gdy brak ciasteczka Hydrogen). */
 function extractClientIdFromEvent(event: unknown): string | null {
   if (!event || typeof event !== 'object') return null;
@@ -409,11 +374,12 @@ register(async (api) => {
       return inferAttributionFromClickIds(inferFromReferrer(referrer));
     }
     /**
-     * Przed sendPixelEvent: odczyt zgód wyłącznie z obiektu zdarzenia Web Pixel (context.customerPrivacy / customerPrivacy).
+     * Shopify nie uruchamia sandboxu, dopóki nie ma zgody na każdy cel z extension toml.
+     * Ten piksel nie deklaruje celów (strictly necessary), więc zdarzenie idzie także gdy
+     * analyticsProcessingAllowed jest false — tak jak wklejka Customer Events.
      */
     async function emitStandardPixelEvent(eventType: string, pixelEvent: unknown): Promise<void> {
       try {
-        if (!isAnalyticsProcessingExplicitlyAllowedOnEvent(pixelEvent)) return;
         await sendPixelEvent(eventType, pixelEvent, pixelEvent);
       } catch (_) {}
     }
@@ -424,20 +390,15 @@ register(async (api) => {
       payload: unknown,
     ): Promise<void> {
       try {
-        if (!isAnalyticsProcessingExplicitlyAllowedOnEvent(pixelEvent)) return;
         await sendPixelEvent(eventType, payload, pixelEvent);
       } catch (_) {}
     }
 
     // ============================================================================
-    // Event Sending Function — fetch tylko gdy na evencie jawna zgoda na analytics (silent drop)
+    // Event Sending Function — POST na wizycie bez zgody Customer Privacy (jak wklejka)
     // ============================================================================
     async function sendPixelEvent(eventType: string, eventData: unknown, pixelEvent: unknown): Promise<void> {
       try {
-        if (!isAnalyticsProcessingExplicitlyAllowedOnEvent(pixelEvent)) {
-          return;
-        }
-
         const sourceForIdentity = pixelEvent;
         const resolvedSessionId = await resolveEpirSessionId(
           browserApi,
@@ -499,7 +460,7 @@ register(async (api) => {
       }
     }
 
-    // Subskrybuj wybrane zdarzenia klienta (walidacja zgód z obiektu zdarzenia przed sendPixelEvent)
+    // Subskrybuj wybrane zdarzenia klienta
     analytics.subscribe('page_viewed', async (event: unknown) => {
       await emitStandardPixelEvent('page_viewed', event);
     });
