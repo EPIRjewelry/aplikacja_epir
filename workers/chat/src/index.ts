@@ -365,7 +365,34 @@ async function authorizeAppProxyRequest(request: Request, env: Env): Promise<Res
 
 // Stałe konfiguracyjne
 const RATE_LIMIT_WINDOW_MS = 60_000;
+/**
+ * Licznik tylko dla tras spoza tury czatu (replay, podgląd produktu, proactive).
+ * Jedna tura Gemmy woła SessionDO wielokrotnie (append, historia, koszyk, persist).
+ * Ten sam próg 20/min na `/append` zamykał następną wiadomość kodem 429,
+ * a `handleChat` kończył ją jako `session_lifecycle_failed` bez odpowiedzi asystenta.
+ */
 const RATE_LIMIT_MAX_REQUESTS = 20;
+const SESSION_LIFECYCLE_CLIENT_REPLY =
+  'Nie udało się zapisać tej wiadomości. Napisz proszę jeszcze raz za chwilę.';
+
+function isSessionChatRoute(pathname: string): boolean {
+  return (
+    pathname.endsWith('/append') ||
+    pathname.endsWith('/history') ||
+    pathname.endsWith('/cart-id') ||
+    pathname.endsWith('/customer') ||
+    pathname.endsWith('/set-session-id') ||
+    pathname.endsWith('/set-storefront-context') ||
+    pathname.endsWith('/replace-last-user-text') ||
+    pathname.endsWith('/persist-usage') ||
+    pathname.endsWith('/persist-tool-call') ||
+    pathname.endsWith('/persist-cart-activity') ||
+    pathname.endsWith('/acquire-memory-lock') ||
+    pathname.endsWith('/release-memory-lock') ||
+    pathname.endsWith('/refresh-memory-atomic')
+  );
+}
+
 /** Koszt tokenowy RateLimiterDO na jeden GET wykresów (proxy → analytics D1/KV) — ogranicza DoW na billing analytics. */
 const CHART_PROXY_RL_TOKENS_PER_REQUEST = 10;
 const MAX_HISTORY_FOR_AI = 20; // Ogranicz liczbę wiadomości wysyłanych do AI
@@ -1474,12 +1501,12 @@ export class SessionDO {
   }
 
   async fetch(request: Request): Promise<Response> {
-    if (!this.rateLimitOk()) {
+    const url = new URL(request.url);
+    const pathname = url.pathname;
+    if (!isSessionChatRoute(pathname) && !this.rateLimitOk()) {
       return new Response('Rate limit exceeded', { status: 429 });
     }
 
-    const url = new URL(request.url);
-    const pathname = url.pathname;
     const method = request.method.toUpperCase();
 
     // GET /history
@@ -2987,14 +3014,39 @@ async function handleChat(
       );
     }
   } catch (sessionLifecycleError) {
+    const lifecycleError =
+      sessionLifecycleError instanceof Error ? sessionLifecycleError.message : String(sessionLifecycleError);
     console.error('[handleChat] Critical SessionDO lifecycle failed', {
       session_id: sessionId,
-      error: sessionLifecycleError instanceof Error ? sessionLifecycleError.message : String(sessionLifecycleError),
+      error: lifecycleError,
     });
-    return new Response(JSON.stringify({ error: 'session_lifecycle_failed', session_id: sessionId }), {
-      status: 502,
-      headers: { ...cors(env, request), 'Content-Type': 'application/json' },
-    });
+    try {
+      await stub.fetch('https://session/append', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: 'assistant',
+          content: SESSION_LIFECYCLE_CLIENT_REPLY,
+          ts: now(),
+        } as HistoryEntry),
+      });
+    } catch (persistReplyError) {
+      console.warn('[handleChat] SessionDO error reply was not stored', {
+        session_id: sessionId,
+        error: persistReplyError instanceof Error ? persistReplyError.message : String(persistReplyError),
+      });
+    }
+    return new Response(
+      JSON.stringify({
+        error: 'session_lifecycle_failed',
+        reply: SESSION_LIFECYCLE_CLIENT_REPLY,
+        session_id: sessionId,
+      }),
+      {
+        status: 502,
+        headers: { ...cors(env, request), 'Content-Type': 'application/json' },
+      },
+    );
   }
 
   // [GREETING PREFILTER] Bez zmian - dobra optymalizacja (pomijamy gdy jest obraz – ścieżka multimodalna)

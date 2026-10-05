@@ -406,6 +406,13 @@ describe('parseChatRequestBody', () => {
   it('uses fallback shard when session_id is blank after trim', () => {
     expect(buildSessionDOShardName('   ')).toBe('session:v1:fallback');
   });
+
+  it('passes a _shopify_y value and a minted uuid through to SessionDO unchanged', () => {
+    const shopifyY = '8f3c1a20-6b14-4e2a-9c77-0a1b2c3d4e5f';
+    const mintedUuid = '4017ca9b-8f55-45a9-ad7e-b94dc2505056';
+    expect(buildSessionDOShardName(shopifyY)).toBe(shopifyY);
+    expect(buildSessionDOShardName(mintedUuid)).toBe(mintedUuid);
+  });
 });
 
 describe('App Proxy customer_id_hint in body', () => {
@@ -522,3 +529,100 @@ async function makeSignedAppProxyHistoryRequest(sessionId: string) {
     body: JSON.stringify({session_id: sessionId, page_host: 'epirbizuteria.pl', brand: 'kazka'}),
   });
 }
+
+describe('SessionDO lifecycle after the auxiliary rate window', () => {
+  const shopifyY = '8f3c1a20-6b14-4e2a-9c77-0a1b2c3d4e5f';
+
+  it('still stores an assistant reply when the non-chat 20/min window is already full', async () => {
+    const {env, sessions} = makeEnv();
+    const stub = env.SESSION_DO.get(env.SESSION_DO.idFromName(shopifyY));
+    for (let i = 0; i < 20; i++) {
+      const view = await stub.fetch('https://session/track-product-view', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({product_id: `gid://shopify/Product/${i}`}),
+      });
+      expect(view.status).toBe(200);
+    }
+
+    const response = await worker.fetch(
+      makeChatRequest(
+        {
+          'X-EPIR-SHARED-SECRET': 'shared-secret',
+          'X-EPIR-STOREFRONT-ID': 'online-store',
+          'X-EPIR-CHANNEL': 'online-store',
+        },
+        {
+          message: 'hej',
+          stream: false,
+          session_id: shopifyY,
+          brand: 'epir',
+        },
+      ),
+      env,
+      noopCtx,
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {reply?: string; session_id?: string; error?: string};
+    expect(payload.error).toBeUndefined();
+    expect(payload.session_id).toBe(shopifyY);
+    expect(payload.reply).toContain('EPIR Art Jewellery');
+    expect(payload.reply).not.toContain('Kazka');
+    expect(sessions.has(shopifyY)).toBe(true);
+
+    const historyResponse = await stub.fetch('https://session/history');
+    const history = (await historyResponse.json()) as Array<{role: string; content: string}>;
+    expect(history.some((entry) => entry.role === 'assistant' && entry.content.includes('EPIR Art Jewellery'))).toBe(
+      true,
+    );
+  });
+
+  it('returns an explicit client reply when SessionDO append fails', async () => {
+    const {env} = makeEnv({
+      SESSION_DO: {
+        idFromName(name: string) {
+          return name;
+        },
+        get() {
+          return {
+            async fetch(input: RequestInfo | URL, init?: RequestInit) {
+              const request =
+                input instanceof Request
+                  ? input
+                  : new Request(new URL(String(input), 'https://session').toString(), init);
+              if (new URL(request.url).pathname.endsWith('/append')) {
+                return new Response('storage failed', {status: 500});
+              }
+              return new Response('ok');
+            },
+          } as DurableObjectStub;
+        },
+      } as unknown as DurableObjectNamespace,
+    });
+
+    const response = await worker.fetch(
+      makeChatRequest(
+        {
+          'X-EPIR-SHARED-SECRET': 'shared-secret',
+          'X-EPIR-STOREFRONT-ID': 'online-store',
+          'X-EPIR-CHANNEL': 'online-store',
+        },
+        {
+          message: 'hej',
+          stream: false,
+          session_id: shopifyY,
+          brand: 'epir',
+        },
+      ),
+      env,
+      noopCtx,
+    );
+
+    expect(response.status).toBe(502);
+    const payload = (await response.json()) as {reply?: string; session_id?: string; error?: string};
+    expect(payload.error).toBe('session_lifecycle_failed');
+    expect(payload.session_id).toBe(shopifyY);
+    expect(payload.reply).toBe('Nie udało się zapisać tej wiadomości. Napisz proszę jeszcze raz za chwilę.');
+  });
+});

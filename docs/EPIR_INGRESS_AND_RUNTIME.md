@@ -40,6 +40,7 @@ Dotyczy ścieżki czatu obsługiwanej przez `workers/chat/src/index.ts` podczas 
 - status HTTP: `502`,
 - body JSON:
   - `error: "session_lifecycle_failed"`,
+  - `reply: "<jawny komunikat dla klienta, ten sam tekst co ewentualny zapis roli assistant>"`,
   - `session_id: "<id sesji, jeśli został nadany>"`,
 - `Content-Type: application/json`.
 
