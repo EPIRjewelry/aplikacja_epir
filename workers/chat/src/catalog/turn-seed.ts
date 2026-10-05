@@ -25,11 +25,14 @@ import {detectSizeTableIntent} from '../intent/size-table';
 import {
   buyerAllowsStoneSubstitute,
   buyerAsksForRing,
+  discoveryMetalBrowse,
   latestTurnClearsProductContext,
   namedBrowseFromConversation,
   preferJewelryType,
   productLooksLikeRing,
+  productMatchesDiscoveryMetal,
   ringRetryQuery,
+  type DiscoveryMetal,
 } from './stone-intent';
 import {storeFactContextLine} from './store-facts';
 import type {StoneLookup} from './buyer-reply-guard';
@@ -52,6 +55,61 @@ const EMPTY_SEED: SeededBuyerTurn = {
 
 function presentedSnapshot(products: Record<string, unknown>[], note: string, brand?: string): unknown {
   return presentCatalogForModel({products, system_note: note}, {brand});
+}
+
+function productKey(product: Record<string, unknown>): string {
+  if (typeof product.handle === 'string' && product.handle.trim()) return product.handle.trim();
+  if (typeof product.title === 'string' && product.title.trim()) return product.title.trim();
+  return '';
+}
+
+function cardMentionsClassic(product: Record<string, unknown>): boolean {
+  const bits = [product.title, product.handle, product.description];
+  const tags = Array.isArray(product.tags) ? product.tags.join(' ') : '';
+  return /klasyczn/iu.test([...bits, tags].filter((value) => typeof value === 'string').join('\n'));
+}
+
+function selectDiscoveryMetalProducts(
+  products: readonly Record<string, unknown>[],
+  brand: string | undefined,
+  metal: DiscoveryMetal,
+): Record<string, unknown>[] {
+  const seen = new Set<string>();
+  const classic: Record<string, unknown>[] = [];
+  const rest: Record<string, unknown>[] = [];
+  for (const product of products) {
+    const key = productKey(product);
+    if (!key || seen.has(key)) continue;
+    if (!brandKeepsProduct(product, brand)) continue;
+    if (!productLooksLikeRing(product)) continue;
+    if (!productMatchesDiscoveryMetal(product, metal)) continue;
+    seen.add(key);
+    if (cardMentionsClassic(product)) classic.push(product);
+    else rest.push(product);
+  }
+  return [...classic, ...rest].slice(0, 4);
+}
+
+async function loadDiscoveryMetalCards(
+  env: StoneCatalogEnv,
+  brand: string | undefined,
+  metal: DiscoveryMetal,
+  classicQuery: string,
+): Promise<{ok: boolean; products: Record<string, unknown>[]}> {
+  const queries = [classicQuery, `pierścionek ${metal}`, `obrączka ${metal}`];
+  const pool: Record<string, unknown>[] = [];
+  let ok = false;
+  for (const query of queries) {
+    const found = await fetchStoreProductsByQuery(env, query);
+    if (!found.ok) {
+      if (!ok) return {ok: false, products: []};
+      continue;
+    }
+    ok = true;
+    pool.push(...found.products);
+    if (selectDiscoveryMetalProducts(pool, brand, metal).length >= 2) break;
+  }
+  return {ok, products: selectDiscoveryMetalProducts(pool, brand, metal)};
 }
 
 function stoneContextLine(snapshot: unknown, hit: boolean): string {
@@ -114,7 +172,8 @@ export async function seedBuyerTurnContext(input: {
     brand: input.brand,
   });
 
-  if (latestTurnClearsProductContext(latest)) {
+  const metalBrowse = discoveryMetalBrowse(input.buyerTurns);
+  if (!metalBrowse && latestTurnClearsProductContext(latest, input.buyerTurns.slice(0, -1))) {
     return {
       lines,
       snapshots,
@@ -144,6 +203,27 @@ export async function seedBuyerTurnContext(input: {
         snapshots.push(snapshot);
         stoneLookup = kept.length ? 'hit' : 'confirmed_miss';
         lines.push(stoneContextLine(snapshot, kept.length > 0));
+      }
+    } else if (metalBrowse) {
+      const found = await loadDiscoveryMetalCards(input.env, input.brand, metalBrowse.metal, metalBrowse.query);
+      if (!found.ok) {
+        stoneLookup = 'unconfirmed';
+        lines.push(
+          `Nie udało się potwierdzić klasycznego pierścionka w metalu „${metalBrowse.metal}”. Nie pisz, że go nie ma.`,
+        );
+      } else {
+        const kept = found.products;
+        const note = kept.length
+          ? `Klient został przy klasycznym pierścionku i podał metal: ${metalBrowse.metal}. To są karty z katalogu tej marki. Pokaż 2–4 pozycje z ceną z karty, sizes_label i linkiem. Zostań przy tym rodzaju i tym metalu.`
+          : `Brak klasycznych pierścionków w metalu „${metalBrowse.metal}” w katalogu tej marki. Powiedz to wprost, bez innego SKU.`;
+        const snapshot = presentedSnapshot(kept, note, input.brand);
+        snapshots.push(snapshot);
+        stoneLookup = kept.length ? 'hit' : 'confirmed_miss';
+        const text = (snapshot as {content?: Array<{text?: string}>}).content?.[0]?.text ?? '{}';
+        lines.push(`[TRAFENIA KATALOGU]\n${text}`);
+        if (!readPresentedProducts(snapshot).length && kept.length) {
+          stoneLookup = 'unconfirmed';
+        }
       }
     } else {
       const browseQuery = namedBrowseFromConversation(input.buyerTurns);

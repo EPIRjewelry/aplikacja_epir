@@ -71,16 +71,87 @@ export function detectStoneIntent(text: string): StoneIntent | null {
 const METAL_OR_TOPIC_SHIFT =
   /\b(925|585|750|999|pr[oó]b\p{L}*|srebr\p{L}*|z[łl]ot\p{L}*|platyn\p{L}*)\b/iu;
 
+const PURITY_SHIFT = /\b(925|585|750|999|pr[oó]b)/iu;
+
+/** Sam metal jako odpowiedź na odkrywanie. „925 czy 585” i zdanie z dwoma metalami zostają zmianą próby. */
+const METAL_ONLY_ANSWER =
+  /^(?:a\s+)?(?:może\s+|moze\s+)?(?:poprosz[eę]\s+)?(?:tylko\s+)?(?:w\s+)?(?:ze?\s+|z\s+)?(srebr\p{L}*|z[łl]ot\p{L}*|platyn\p{L}*|silver|gold|platinum)[.!?…\s]*$/iu;
+
+const CLASSIC_STYLE = /klasyczn\p{L}*/iu;
+const RING_ASK =
+  /\b(rings?|pier[sś]cion\p{L}*|pier[sś]conk\p{L}*|piersconk\p{L}*|obr[aą]cz\p{L}*|zar[eę]czyn\p{L}*|soliter\p{L}*|solitaire)\b/iu;
+
+export type DiscoveryMetal = 'srebro' | 'złoto' | 'platyna';
+
+export type DiscoveryMetalBrowse = {
+  metal: DiscoveryMetal;
+  query: string;
+};
+
+function discoveryMetalFromWord(word: string): DiscoveryMetal | null {
+  const folded = word.toLocaleLowerCase('pl-PL');
+  if (folded.startsWith('srebr') || folded === 'silver') return 'srebro';
+  if (/^z[łl]ot/.test(folded) || folded === 'gold') return 'złoto';
+  if (folded.startsWith('platyn') || folded === 'platinum') return 'platyna';
+  return null;
+}
+
+/** Krótka odpowiedź metalem, bez próby i bez kamienia w tym samym zdaniu. */
+export function metalPreferenceFromTurn(text: string): DiscoveryMetal | null {
+  const latest = text.trim();
+  if (!latest || detectStoneIntent(latest) || detectPolicyInformationIntent(latest).match) return null;
+  if (PURITY_SHIFT.test(latest)) return null;
+  const match = latest.match(METAL_ONLY_ANSWER);
+  if (!match?.[1]) return null;
+  return discoveryMetalFromWord(match[1]);
+}
+
+function priorAsksClassicRing(prior: readonly string[]): boolean {
+  const joined = prior.join('\n');
+  return CLASSIC_STYLE.test(joined) && RING_ASK.test(joined);
+}
+
+/**
+ * Odkrywanie klasycznego pierścionka, a potem sam metal.
+ * „srebro” / „złoto” zostaje filtrem katalogu, nie zamknięciem listy.
+ * Wcześniejszy kamień albo pytanie o próbę idą starą ścieżką.
+ */
+export function discoveryMetalBrowse(turns: readonly string[]): DiscoveryMetalBrowse | null {
+  const lines = turns.map((turn) => turn.trim()).filter(Boolean);
+  if (lines.length < 2) return null;
+  const latest = lines[lines.length - 1] ?? '';
+  const metal = metalPreferenceFromTurn(latest);
+  if (!metal) return null;
+  const prior = lines.slice(0, -1);
+  if (prior.some((line) => detectStoneIntent(line))) return null;
+  if (!priorAsksClassicRing(prior)) return null;
+  return {metal, query: `pierścionek klasyczny ${metal}`};
+}
+
+export function rewriteCatalogQueryForDiscoveryMetal(query: string, turns: readonly string[]): string {
+  const browse = discoveryMetalBrowse(turns);
+  if (!browse) return query;
+  const trimmed = query.trim();
+  if (!trimmed) return browse.query;
+  const hasRing = RING_ASK.test(trimmed) || /pier[sś]conk|piersconk|obr[aą]cz/iu.test(trimmed);
+  const hasMetal = trimmed.toLocaleLowerCase('pl-PL').includes(browse.metal);
+  if (hasRing && hasMetal) return trimmed;
+  if (hasRing) return `${trimmed} ${browse.metal}`;
+  return browse.query;
+}
+
 /**
  * Nowa próba albo metal w ostatniej turze zamyka poprzednią listę SKU.
  * „Pokaż kilka” i doprecyzowanie ceny jej nie zamykają.
  * Jawny kamień w tym samym zdaniu zostaje.
+ * Sam metal po klasycznym pierścionku nie zamyka odkrywania.
  */
-export function latestTurnClearsProductContext(text: string): boolean {
+export function latestTurnClearsProductContext(text: string, priorTurns: readonly string[] = []): boolean {
   const latest = text.trim();
   if (!latest) return false;
   if (detectStoneIntent(latest)) return false;
   if (detectPolicyInformationIntent(latest).match) return false;
+  if (discoveryMetalBrowse([...priorTurns, latest])) return false;
   return METAL_OR_TOPIC_SHIFT.test(latest);
 }
 
@@ -89,7 +160,7 @@ export function stoneIntentFromConversation(turns: readonly string[]): StoneInte
   const lines = turns.map((turn) => turn.trim()).filter(Boolean);
   if (!lines.length) return null;
   const latestLine = lines[lines.length - 1] ?? '';
-  if (latestTurnClearsProductContext(latestLine)) return null;
+  if (latestTurnClearsProductContext(latestLine, lines.slice(0, -1))) return null;
   if (detectPolicyInformationIntent(latestLine).match) return null;
   const latest = detectStoneIntent(latestLine);
   if (latest) return latest;
@@ -126,8 +197,6 @@ export function otherStoneMentioned(text: string, intent: StoneIntent): boolean 
   return STONES.some((entry) => entry.id !== intent.id && entry.pattern.test(text));
 }
 
-const RING_ASK =
-  /\b(rings?|pier[sś]cion\p{L}*|obr[aą]cz\p{L}*|zar[eę]czyn\p{L}*|soliter\p{L}*|solitaire)\b/iu;
 const RING_PRODUCT = /pier[sś]cion|obr[aą]cz|\bring\b|soliter|solitaire/iu;
 const NECKLACE_PRODUCT = /naszyjnik|necklace/iu;
 
@@ -150,6 +219,44 @@ export function productLooksLikeRing(product: {title?: unknown; handle?: unknown
   if (NECKLACE_PRODUCT.test(haystack)) return false;
   if (/\biluzja\b/iu.test(haystack) && !RING_PRODUCT.test(haystack)) return false;
   return RING_PRODUCT.test(haystack);
+}
+
+function pushText(into: string[], value: unknown): void {
+  if (typeof value === 'string' && value.trim()) into.push(value);
+  if (!Array.isArray(value)) return;
+  for (const item of value) {
+    if (typeof item === 'string' && item.trim()) into.push(item);
+  }
+}
+
+/** Metal z karty: tytuł, uchwyt, opis, tagi, metals albo opcja Metal. */
+export function productMatchesDiscoveryMetal(
+  product: {
+    title?: unknown;
+    handle?: unknown;
+    description?: unknown;
+    tags?: unknown;
+    metals?: unknown;
+    options?: unknown;
+  },
+  metal: DiscoveryMetal,
+): boolean {
+  const chunks: string[] = [];
+  pushText(chunks, product.title);
+  pushText(chunks, product.handle);
+  pushText(chunks, product.description);
+  pushText(chunks, product.tags);
+  pushText(chunks, product.metals);
+  if (Array.isArray(product.options)) {
+    for (const option of product.options) {
+      if (!option || typeof option !== 'object') continue;
+      pushText(chunks, (option as {values?: unknown}).values);
+    }
+  }
+  const haystack = chunks.join('\n');
+  if (metal === 'srebro') return /srebr|silver/iu.test(haystack);
+  if (metal === 'złoto') return /z[łl]ot|\bgold\b/iu.test(haystack);
+  return /platyn|\bplatinum\b/iu.test(haystack);
 }
 
 /**
@@ -204,7 +311,7 @@ export function namedBrowseFromConversation(turns: readonly string[]): string | 
   if (!lines.length) return null;
   const latest = lines[lines.length - 1] ?? '';
   if (detectPolicyInformationIntent(latest).match) return null;
-  if (latestTurnClearsProductContext(latest)) return null;
+  if (latestTurnClearsProductContext(latest, lines.slice(0, -1))) return null;
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     if (detectStoneIntent(lines[index] ?? '')) return null;
     const query = detectNamedBrowseQuery(lines[index] ?? '');

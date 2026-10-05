@@ -7,8 +7,11 @@ import {extractCatalogProducts, productMatchesStone} from './stone-retrieval';
 import {detectPolicyInformationIntent} from '../intent/policy-information';
 import {
   buyerAllowsStoneSubstitute,
+  discoveryMetalBrowse,
   latestTurnClearsProductContext,
   otherStoneMentioned,
+  productLooksLikeRing,
+  productMatchesDiscoveryMetal,
   stoneIntentFromConversation,
   textMentionsStone,
   type StoneIntent,
@@ -21,6 +24,8 @@ const MASKED_FAILURE =
   /Nie udało się ułożyć odpowiedzi|Nie mogę podać pewnej ceny|Jeszcze nie potwierdziłam kart/iu;
 
 const HANDOFF = /^\s*łączę z asystentem\b|^\s*lacze z asystentem\b/iu;
+
+const DISCOVERY_META_LEAK = /nie wracam do poprzedniej|metal bior[eę] z karty/iu;
 
 export const BUYER_RETRY_REPLY =
   'Nie udało się ułożyć odpowiedzi. Napisz proszę jeszcze raz — zostaję przy tym, o co prosisz.';
@@ -141,10 +146,12 @@ function lineForProduct(product: Record<string, unknown>): string {
   const metals = Array.isArray(product.metals)
     ? product.metals.filter((value): value is string => typeof value === 'string' && value.trim().length > 0).join(', ')
     : '';
-  const fact = factFromCard(product);
+  const fact = factFromCard(product)?.replace(/[.!?…]+$/u, '');
   const name = url ? `[${title}](${url})` : title;
   const metalsLine = productPriceVaries(product) || !metals ? '' : `metale ${metals}`;
-  const detail = [priceLabel(product), sizes, metalsLine, fact].filter(Boolean).join(', ');
+  const factLine =
+    fact && metalsLine.toLocaleLowerCase('pl-PL').includes(fact.toLocaleLowerCase('pl-PL')) ? '' : fact;
+  const detail = [priceLabel(product), sizes, metalsLine, factLine].filter(Boolean).join(', ');
   return detail ? `- ${name} — ${detail}.` : `- ${name}.`;
 }
 
@@ -185,10 +192,34 @@ export type BuyerReplyContext = {
   stoneLookup?: StoneLookup;
 };
 
+function discoveryMetalCards(
+  snapshots: readonly unknown[],
+  metal: 'srebro' | 'złoto' | 'platyna',
+): Record<string, unknown>[] {
+  return productsFromCatalogSnapshots(snapshots).filter(
+    (product) => productLooksLikeRing(product) && productMatchesDiscoveryMetal(product, metal),
+  );
+}
+
 export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext): {text: string; replaced: boolean; reason?: string} {
   const latest = context.buyerTurns[context.buyerTurns.length - 1] ?? '';
   if (detectPolicyInformationIntent(latest).match) return {text, replaced: false};
-  if (latestTurnClearsProductContext(latest)) {
+  const metalBrowse = discoveryMetalBrowse(context.buyerTurns);
+  if (metalBrowse) {
+    const shown = discoveryMetalCards(context.catalogSnapshots, metalBrowse.metal);
+    const leaks = DISCOVERY_META_LEAK.test(text);
+    if (shown.length && (leaks || !citesProduct(text, shown) || isGarbledBuyerText(text) || FALSE_EMPTY.test(text))) {
+      return {text: formatCatalogBrowseReply(shown), replaced: true, reason: 'discovery_metal'};
+    }
+    if (leaks) {
+      return {
+        text: `Nie mam teraz w ofercie klasycznego pierścionka w metalu „${metalBrowse.metal}”. Mogę sprawdzić inny metal?`,
+        replaced: true,
+        reason: 'discovery_metal',
+      };
+    }
+  }
+  if (!metalBrowse && latestTurnClearsProductContext(latest, context.buyerTurns.slice(0, -1))) {
     const prior = stoneIntentFromConversation(context.buyerTurns.slice(0, -1));
     const citesPriorStone = Boolean(prior && textMentionsStone(text, prior));
     const citesSku = /\/products\//.test(text);

@@ -1,11 +1,14 @@
 import {describe, expect, it} from 'vitest';
 import {
   buyerAllowsStoneSubstitute,
+  buyerAsksForRing,
   detectNamedBrowseQuery,
   detectStoneIntent,
+  discoveryMetalBrowse,
   expandCatalogQuery,
   namedBrowseFromConversation,
   preferJewelryType,
+  rewriteCatalogQueryForDiscoveryMetal,
   stoneIntentFromConversation,
 } from '../src/catalog/stone-intent';
 
@@ -74,5 +77,20 @@ describe('catalog query and jewelry type', () => {
   it('drops a carried stone when the latest turn changes metal or purity', () => {
     expect(stoneIntentFromConversation(['cos z szafirem', '925 czy 585'])).toBeNull();
     expect(namedBrowseFromConversation(['pierścionki zaręczynowe', 'ile kosztuje wysyłka'])).toBeNull();
+  });
+
+  it('keeps a classic ring when the next turn is only the metal', () => {
+    expect(buyerAsksForRing('szukam piersconka, ale klasycznego')).toBe(true);
+    expect(discoveryMetalBrowse(['szukam piersconka, ale klasycznego', 'srebro'])).toEqual({
+      metal: 'srebro',
+      query: 'pierścionek klasyczny srebro',
+    });
+    expect(discoveryMetalBrowse(['szukam pierścionka klasycznego', 'złoto'])?.metal).toBe('złoto');
+    expect(discoveryMetalBrowse(['szukam pierścionka klasycznego', 'w srebrze'])?.metal).toBe('srebro');
+    expect(discoveryMetalBrowse(['cos z szafirem', 'srebro'])).toBeNull();
+    expect(discoveryMetalBrowse(['szukam pierścionka klasycznego', 'a 925 czy 585?'])).toBeNull();
+    expect(
+      rewriteCatalogQueryForDiscoveryMetal('srebro', ['szukam piersconka, ale klasycznego', 'srebro']),
+    ).toBe('pierścionek klasyczny srebro');
   });
 });
