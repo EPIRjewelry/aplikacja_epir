@@ -3,9 +3,10 @@ name = "my-web-pixel"
 uid = "5dd0f111-62d8-91e2-8f50-8436afb95d0bfe12168a"
 runtime_context = "strict"
 
-# Analytics consent is required: that is when Shopify exposes clientId
-# (the replacement for _shopify_y). Marketing and sale-of-data are not required,
-# so the pixel still runs for visitors who allow analytics only.
+# Analytics consent is required: Shopify loads this strict app pixel only after
+# analytics is allowed, and that is when it exposes clientId (the replacement
+# for _shopify_y). Do not set analytics = false — that would run the pixel
+# without consent. Marketing and sale-of-data are not required.
 [customer_privacy]
 analytics = true
 marketing = false
