@@ -1844,7 +1844,15 @@ async function sendMessageToWorker(
         'E',
       );
       // #endregion
-      throw new Error(`Serwer zwrócił błąd (${res.status}).`);
+      var explicitReply = '';
+      try {
+        var parsedErr = JSON.parse(errText);
+        if (parsedErr && typeof parsedErr.reply === 'string') explicitReply = parsedErr.reply.trim();
+        if (parsedErr && parsedErr.session_id) {
+          persistAssistantSessionIdFromWorker(sessionIdKey, parsedErr.session_id);
+        }
+      } catch (parseErr) {}
+      throw new Error(explicitReply || ('Serwer zwrócił błąd (' + res.status + ').'));
     }
 
     const contentType = res.headers.get('content-type') || '';
@@ -1950,7 +1958,15 @@ async function sendMessageToWorker(
       render_mode: renderMode,
     });
     const safeMsg = err instanceof Error ? err.message : 'Nieznany błąd.';
-    const finalText = accumulated.length > 0 ? `${accumulated} (Błąd: ${safeMsg})` : 'Przepraszam, wystąpił błąd. Spróbuj ponownie.';
+    const genericFallback = 'Przepraszam, wystąpił błąd. Spróbuj ponownie.';
+    const explicitClientMessage =
+      safeMsg &&
+      safeMsg !== genericFallback &&
+      safeMsg.indexOf('Serwer zwrócił błąd') !== 0 &&
+      safeMsg !== 'Nieznany błąd.'
+        ? safeMsg
+        : genericFallback;
+    const finalText = accumulated.length > 0 ? `${accumulated} (Błąd: ${explicitClientMessage})` : explicitClientMessage;
     updateAssistantMessage(msgId, finalText);
     const el = document.getElementById(msgId);
     if (el) el.classList.add('msg-error');

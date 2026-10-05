@@ -69,15 +69,50 @@ describe('SessionDO', () => {
     expect(cartData.cart_id).toBe('gid://shopify/Cart/xyz');
   });
 
-  it('should enforce local rate limit for DO endpoints', async () => {
+  it('should enforce local rate limit for non-chat DO endpoints', async () => {
     const { state } = makeDurableStateStub();
     const doStub = new SessionDO(state, mockEnv);
 
     for (let i = 0; i < 21; i++) {
-      const r = await doStub.fetch(new Request('https://session/history'));
+      const r = await doStub.fetch(
+        new Request('https://session/track-product-view', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ product_id: `gid://shopify/Product/${i}` }),
+        }),
+      );
       if (i < 20) expect(r.status).toBe(200);
       else expect(r.status).toBe(429);
     }
+  });
+
+  it('keeps accepting chat appends after the auxiliary 20/min window is full', async () => {
+    const { state } = makeDurableStateStub();
+    const doStub = new SessionDO(state, mockEnv);
+
+    for (let i = 0; i < 20; i++) {
+      const view = await doStub.fetch(
+        new Request('https://session/track-product-view', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ product_id: `gid://shopify/Product/${i}` }),
+        }),
+      );
+      expect(view.status).toBe(200);
+    }
+
+    const append = await doStub.fetch(
+      new Request('https://session/append', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'user', content: 'Poproszę o obrączkę', ts: Date.now() }),
+      }),
+    );
+    expect(append.status).toBe(200);
+
+    const historyRes = await doStub.fetch(new Request('https://session/history'));
+    const history = (await historyRes.json()) as Array<{ role: string; content: string }>;
+    expect(history.some((entry) => entry.role === 'user' && entry.content === 'Poproszę o obrączkę')).toBe(true);
   });
 
   it('should replace latest user message text by timestamp', async () => {
