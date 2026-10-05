@@ -278,6 +278,11 @@ function getSessionDOStub(env: Env, sessionId: string): DurableObjectStub {
   return env.SESSION_DO.get(doId);
 }
 
+/** Cloudflare `DurableObjectId.toString()` — not a browser cookie / pixel session id. */
+function isInternalDurableObjectHexId(value: string): boolean {
+  return /^[0-9a-f]{64}$/i.test(value);
+}
+
 function brandLockFromChatRequest(
   request: Request,
   raw: unknown,
@@ -1897,7 +1902,21 @@ export class SessionDO {
   }
 
   private setSessionId(sessionId: string): void {
-    this.updateSessionContext({ session_id: sessionId });
+    const next = sessionId.trim();
+    if (!next) return;
+    const current = this.getSessionContext().session_id?.trim() ?? '';
+    // id.toString() is 64 hex chars. Pixel rows use the browser cookie
+    // (`_epir_session_id` / `_shopify_y`), so a later hex write must not replace it.
+    if (current && !isInternalDurableObjectHexId(current) && isInternalDurableObjectHexId(next)) {
+      console.warn(
+        JSON.stringify({
+          tag: 'chat.session_id.refuse_do_hex_overwrite',
+          kept_prefix: current.slice(0, 8),
+        }),
+      );
+      return;
+    }
+    this.updateSessionContext({ session_id: next });
   }
 
   private setStorefrontContext(storefrontId?: string, channel?: string): void {
@@ -3041,14 +3060,18 @@ async function handleChat(
     }
   }
   try {
-    if (!payload.session_id) {
+    // The DO is named with the browser id, but messages.session_id comes from
+    // session_context. Without this write, getSessionId() falls back to the
+    // internal hex id and the pixel↔chat join stays at 0.
+    const canonicalSessionId = normalizeSessionId(sessionId);
+    if (canonicalSessionId) {
       await fetchSessionDO(
         stub,
         'set-session-id',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId }),
+          body: JSON.stringify({ session_id: canonicalSessionId }),
         },
         'set-session-id',
       );
