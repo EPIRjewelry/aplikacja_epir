@@ -22,13 +22,15 @@ const METAFIELD_VALUE_MAX = 240;
 const MAX_METAFIELDS = 8;
 
 const CARD_NOTE =
-  'Karta jest całą ofertą tego SKU. Gdy price_is_flat jest true, cytuj wyłącznie price_display_pl (to samo co page_price_display_pl) i pełną listę sizes albo sizes_label — cena nie zależy od rozmiaru. Zakres podawaj tylko gdy price_is_flat jest false: page_price_display_pl oraz price_min_display_pl–price_max_display_pl, a konkretną kwotę bierz z wariantu. Nie traktuj pierwszego wariantu jako całej oferty. Nie dopisuj kamienia, rozmiaru ani cechy spoza tej karty i nie przenoś ich z innego SKU. Wariant chwal tylko za options tego wariantu. Rozmiary podawaj z sizes_label, gdy jest, inaczej z sizes, bez skracania i bez przeliczenia na inną skalę. Link wyłącznie z pola url. Do koszyka użyj id wariantu, który klient wybrał.';
+  'Karta jest całą ofertą tego SKU. Gdy price_is_flat jest true, cytuj wyłącznie price_display_pl (to samo co page_price_display_pl) i pełną listę sizes albo sizes_label — cena nie zależy od rozmiaru. Zakres podawaj tylko gdy price_is_flat jest false: page_price_display_pl oraz price_min_display_pl–price_max_display_pl, a konkretną kwotę bierz z wariantu. Nie traktuj pierwszego wariantu jako całej oferty. Nie dopisuj kamienia, rozmiaru ani cechy spoza tej karty i nie przenoś ich z innego SKU. Wariant chwal tylko za options tego wariantu. Rozmiary podawaj z sizes_label, gdy jest, inaczej z sizes, bez skracania i bez przeliczenia na inną skalę. Metale podawaj z metals, gdy pole jest na karcie. Link wyłącznie z pola url. Do koszyka użyj id wariantu, który klient wybrał.';
 
 /** Publiczne PDP. Apex to Online Store; Kazka jest na subdomenie Hydrogen, nie na apex. */
 const EPIR_PRODUCT_ORIGIN = 'https://epirbizuteria.pl';
 const KAZKA_PRODUCT_ORIGIN = 'https://kazka.epirbizuteria.pl';
 
 const SIZE_OPTION_RE = /rozmiar|size|wielko/i;
+const METAL_OPTION_RE = /metal|złot|zlot|materiał|material/i;
+const METAL_VALUE_RE = /złot|zlot|srebr|platyn|pallad|gold|silver|platinum/i;
 const LATER_PASS_METAFIELD_RE = /wysy[lł]|dostaw|shipping|delivery|grawer|engrav|fineness|pr[oó]ba|metal_purity/i;
 
 type PlnPrice = {
@@ -166,6 +168,40 @@ function sizeList(
     if (size) fromVariants.push(size.value);
   }
   return fromVariants.length ? fromVariants : undefined;
+}
+
+function uniqueLabels(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const label = value.trim();
+    const key = label.toLocaleLowerCase('pl-PL');
+    if (!label || seen.has(key)) continue;
+    seen.add(key);
+    out.push(label);
+  }
+  return out;
+}
+
+function metalList(
+  groups: Array<{name: string; values: string[]}>,
+  variants: Record<string, unknown>[],
+): string[] | undefined {
+  const named = groups.find((group) => !SIZE_OPTION_RE.test(group.name) && METAL_OPTION_RE.test(group.name));
+  if (named?.values.length) return uniqueLabels(named.values);
+  const fromValues = groups.find(
+    (group) => !SIZE_OPTION_RE.test(group.name) && group.values.some((value) => METAL_VALUE_RE.test(value)),
+  );
+  if (fromValues?.values.length) return uniqueLabels(fromValues.values.filter((value) => METAL_VALUE_RE.test(value)));
+  const fromVariants: string[] = [];
+  for (const variant of variants) {
+    const metal = variantOptions(variant).find(
+      (option) => !SIZE_OPTION_RE.test(option.name) && (METAL_OPTION_RE.test(option.name) || METAL_VALUE_RE.test(option.value)),
+    );
+    if (metal && METAL_VALUE_RE.test(metal.value)) fromVariants.push(metal.value);
+  }
+  const unique = uniqueLabels(fromVariants);
+  return unique.length ? unique : undefined;
 }
 
 function rangeEnds(product: Record<string, unknown>): {min: PlnPrice | null; max: PlnPrice | null} {
@@ -439,6 +475,11 @@ function slimProduct(
     out.sizes = sizes;
     const label = sizesLabel(sizes);
     if (label) out.sizes_label = label;
+  }
+  const metals = metalList(groups, variantsAll);
+  if (metals?.length) {
+    out.metals = metals;
+    out.metals_label = metals.join(', ');
   }
   const stoneField = allMetafields.find((field) => /main_stone|gemstone_type/i.test(field.key));
   if (stoneField) out.main_stone = stoneField.value;

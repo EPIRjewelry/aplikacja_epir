@@ -11,8 +11,11 @@ import {
 } from '../config/shopify-api-version';
 import {isEpirFamilyCatalogBrand} from './kazka-assortment';
 import {
+  buyerAsksForRing,
   expandCatalogQuery,
   preferJewelryType,
+  productLooksLikeRing,
+  ringRetryQuery,
   shopifyStoneQuery,
   stoneIntentFromConversation,
   textMentionsStone,
@@ -535,12 +538,25 @@ export async function fetchStoneProducts(
   env: StoneCatalogEnv,
   intent: StoneIntent,
   brand: string | undefined,
+  buyerText = '',
 ): Promise<{products: Record<string, unknown>[]; confirmed: boolean}> {
   if (!hasShopToken(env)) return {products: [], confirmed: false};
-  const keyword = await searchShop(env, shopifyStoneQuery(intent));
+  const wantsRing = buyerAsksForRing(buyerText);
+  const keyword = await searchShop(env, wantsRing ? `${shopifyStoneQuery(intent)} pierścionek` : shopifyStoneQuery(intent));
   if (!keyword.ok) return {products: [], confirmed: false};
   let found = keyword.products.filter((product) => productMatchesStone(product, intent));
-  if (!found.length) {
+  if (wantsRing) {
+    const rings = found.filter((product) => productLooksLikeRing(product));
+    if (rings.length) {
+      found = rings;
+    } else {
+      const again = await searchShop(env, ringRetryQuery(shopifyStoneQuery(intent)));
+      found = again.ok
+        ? again.products.filter((product) => productMatchesStone(product, intent) && productLooksLikeRing(product))
+        : [];
+    }
+  }
+  if (!found.length && !wantsRing) {
     const metafield = intent.lemmas.map((lemma) => `metafields.custom.main_stone:${lemma}`).join(' OR ');
     const byMetafield = await searchShop(env, metafield);
     if (byMetafield.ok) found = byMetafield.products.filter((product) => productMatchesStone(product, intent));
@@ -583,8 +599,12 @@ export async function rescueStoneCatalog(
     const hydrated = await hydrateStoneCards(input.env, matches, intent);
     if (hydrated.length) matches = hydrated;
   }
+  if (matches.length && buyerAsksForRing(buyerText)) {
+    const rings = matches.filter((product) => productLooksLikeRing(product));
+    matches = rings;
+  }
   if (!matches.length) {
-    const found = await fetchStoneProducts(input.env, intent, input.brand);
+    const found = await fetchStoneProducts(input.env, intent, input.brand, buyerText);
     shopLookup = true;
     if (!found.confirmed) {
       console.log(
@@ -607,7 +627,11 @@ export async function rescueStoneCatalog(
     matches = found.products;
   }
   const picked = preferJewelryType(matches, buyerText);
-  const note = picked.length ? stoneHitNote(intent.labelPl) : stoneMissNote(intent.labelPl);
+  const note = picked.length
+    ? stoneHitNote(intent.labelPl)
+    : buyerAsksForRing(buyerText)
+      ? `Brak pierścionków z kamieniem „${intent.labelPl}” w katalogu tej marki. Nie proponuj naszyjnika Iluzja.`
+      : stoneMissNote(intent.labelPl);
   console.log(
     JSON.stringify({
       tag: 'chat.stone_retrieval',

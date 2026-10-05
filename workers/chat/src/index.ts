@@ -73,6 +73,7 @@ import { guardBuyerCatalogReply, productsFromCatalogSnapshots } from './catalog/
 import type { StoneLookup } from './catalog/buyer-reply-guard';
 import { buyerAllowsStoneSubstitute } from './catalog/stone-intent';
 import { guardForeignCatalogPrices, guardPageProductReply } from './catalog/page-product-card';
+import { planBuyerReplyFrames } from './catalog/reply-commit';
 import { guardStoreFacts, promotionRulesForBrand } from './catalog/store-facts';
 import { seedBuyerTurnContext } from './catalog/turn-seed';
 import { CATALOG_MODEL_WIRE_BUDGET } from './mcp/catalog-for-model';
@@ -4007,7 +4008,7 @@ async function streamAssistantResponse(
             if (foreign.replaced) buyerText = foreign.text;
           }
         }
-        const factGuarded = guardStoreFacts(buyerText, replyBrand);
+        const factGuarded = guardStoreFacts(buyerText, replyBrand, {userMessage});
         if (factGuarded.replaced) {
           console.log(
             JSON.stringify({
@@ -4634,14 +4635,8 @@ async function streamAssistantResponse(
             // GPT-OSS-120B hermetyzuje wywołania narzędzi w oddzielnym kanale (`commentary`)
             // oraz reasoning w kanale `analysis` — wycieki do widoku klienta są fizycznie
             // niemożliwe na poziomie API, więc nie sanityzujemy treści regexami.
-            finalTextResponse = iterationText;
-
-            if (finalTextResponse.trim()) {
-              finalTextResponse = applyPricingSanitizer(finalTextResponse);
-              if (finalTextResponse.trim()) {
-                await sendDelta(finalTextResponse);
-              }
-            }
+            // Delta idzie dopiero po zapisie historii, razem z [DONE].
+            finalTextResponse = applyPricingSanitizer(iterationText);
           }
           break;
         }
@@ -4662,9 +4657,6 @@ async function streamAssistantResponse(
           });
           if (typeof recoveryText === 'string' && recoveryText.trim()) {
             finalTextResponse = applyPricingSanitizer(recoveryText.trim());
-            if (finalTextResponse) {
-              await sendDelta(finalTextResponse);
-            }
           }
         } catch (recoveryErr) {
           console.error('[streamAssistant] ❌ Fallback getGroqResponse failed:', recoveryErr);
@@ -4675,7 +4667,6 @@ async function streamAssistantResponse(
       if (!finalTextResponse.trim() && streamedGeneratedImages.length === 0) {
         finalTextResponse =
           'Przepraszam, chwilowo nie mogę przygotować pełnej odpowiedzi. Spróbuj proszę ponownie za moment.';
-        await sendDelta(finalTextResponse);
       }
 
       if (streamedGeneratedImages.length > 0) {
@@ -4686,20 +4677,33 @@ async function streamAssistantResponse(
       }
 
       // 🔴 KROK 5: FINALIZACJA I ZAPIS
+      // Najpierw historia, potem delta, na końcu [DONE]. Inna kolejność zostawiała
+      // pustą bańkę w tej turze i pokazywała odpowiedź dopiero przy następnym odczycie historii.
       console.log('[streamAssistant] ✅ Strumień zakończony. Finalna odpowiedź (tekst):', finalTextResponse.substring(0, 100));
-      await writer.write(encoder.encode('data: [DONE]\n\n'));
-
-      // Zapisz finalną odpowiedź asystenta do DO
-      if (finalTextResponse.trim()) {
-        await stub.fetch('https://session/append', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            role: 'assistant',
-            content: finalTextResponse,
-            ts: now(),
-          } as HistoryEntry),
-        });
+      const replyFrames = planBuyerReplyFrames(finalTextResponse);
+      for (const frame of replyFrames) {
+        if (frame.kind === 'persist') {
+          try {
+            await stub.fetch('https://session/append', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                role: 'assistant',
+                content: frame.text,
+                ts: now(),
+              } as HistoryEntry),
+            });
+          } catch (persistErr) {
+            console.error('[streamAssistant] assistant persist failed', persistErr);
+          }
+        } else if (frame.kind === 'delta') {
+          await sendDelta(frame.text);
+        } else {
+          await writer.write(encoder.encode('data: [DONE]\n\n'));
+        }
+      }
+      if (!replyFrames.length) {
+        await writer.write(encoder.encode('data: [DONE]\n\n'));
       }
 
       if (isProjectBChatChannel(storefrontContext?.channel) && executionCtx && sessionId) {
@@ -4718,8 +4722,28 @@ async function streamAssistantResponse(
         if (!buyerDeltaSent) {
           const reply =
             'Przepraszam, chwilowo nie mogę dokończyć odpowiedzi. Napisz proszę jeszcze raz za moment.';
-          await sendDelta(reply);
-          await writer.write(encoder.encode('data: [DONE]\n\n'));
+          const frames = planBuyerReplyFrames(reply);
+          for (const frame of frames) {
+            if (frame.kind === 'persist') {
+              try {
+                await stub.fetch('https://session/append', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    role: 'assistant',
+                    content: frame.text,
+                    ts: now(),
+                  } as HistoryEntry),
+                });
+              } catch (persistErr) {
+                console.error('[streamAssistant] error reply persist failed', persistErr);
+              }
+            } else if (frame.kind === 'delta') {
+              await sendDelta(frame.text);
+            } else {
+              await writer.write(encoder.encode('data: [DONE]\n\n'));
+            }
+          }
         }
       } catch (writeErr) {
         console.error('Failed to write error to stream:', writeErr);

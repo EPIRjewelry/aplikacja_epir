@@ -20,7 +20,16 @@ import {
   stoneUnconfirmedNote,
   type StoneCatalogEnv,
 } from './stone-retrieval';
-import {buyerAllowsStoneSubstitute, namedBrowseFromConversation, preferJewelryType} from './stone-intent';
+import {detectPolicyInformationIntent} from '../intent/policy-information';
+import {
+  buyerAllowsStoneSubstitute,
+  buyerAsksForRing,
+  latestTurnClearsProductContext,
+  namedBrowseFromConversation,
+  preferJewelryType,
+  productLooksLikeRing,
+  ringRetryQuery,
+} from './stone-intent';
 import {storeFactContextLine} from './store-facts';
 import type {StoneLookup} from './buyer-reply-guard';
 
@@ -67,6 +76,15 @@ export async function seedBuyerTurnContext(input: {
   let pageCard: Record<string, unknown> | null = null;
   const latest = input.buyerTurns[input.buyerTurns.length - 1] ?? '';
   const buyerText = input.buyerTurns.join('\n');
+  if (detectPolicyInformationIntent(latest).match) {
+    return {
+      lines,
+      snapshots,
+      stoneLookup,
+      pageCard,
+      aboutPageProduct: false,
+    };
+  }
 
   const handle = input.productHandle?.trim();
   if (handle) {
@@ -90,9 +108,19 @@ export async function seedBuyerTurnContext(input: {
     brand: input.brand,
   });
 
+  if (latestTurnClearsProductContext(latest)) {
+    return {
+      lines,
+      snapshots,
+      stoneLookup,
+      pageCard,
+      aboutPageProduct: Boolean(pageCard) && buyerAsksAboutPageProduct(latest),
+    };
+  }
+
   try {
     if (stone) {
-      const found = await fetchStoneProducts(input.env, stone, input.brand);
+      const found = await fetchStoneProducts(input.env, stone, input.brand, buyerText);
       if (!found.confirmed) {
         stoneLookup = 'unconfirmed';
         lines.push(stoneUnconfirmedNote(stone.labelPl));
@@ -101,7 +129,11 @@ export async function seedBuyerTurnContext(input: {
           found.products.filter((product) => brandKeepsProduct(product, input.brand)),
           buyerText,
         );
-        const note = kept.length ? stoneHitNote(stone.labelPl) : stoneMissNote(stone.labelPl);
+        const note = kept.length
+          ? stoneHitNote(stone.labelPl)
+          : buyerAsksForRing(buyerText)
+            ? `Brak pierścionków z kamieniem „${stone.labelPl}” w katalogu tej marki. Nie proponuj naszyjnika Iluzja.`
+            : stoneMissNote(stone.labelPl);
         const snapshot = presentedSnapshot(kept, note, input.brand);
         snapshots.push(snapshot);
         stoneLookup = kept.length ? 'hit' : 'confirmed_miss';
@@ -115,7 +147,20 @@ export async function seedBuyerTurnContext(input: {
           stoneLookup = 'unconfirmed';
           lines.push('Nie udało się potwierdzić tej pozycji w sklepie. Nie pisz, że jej nie ma.');
         } else {
-          const kept = found.products.filter((product) => brandKeepsProduct(product, input.brand)).slice(0, 4);
+          let matched = found.products.filter((product) => brandKeepsProduct(product, input.brand));
+          if (buyerAsksForRing(buyerText) || buyerAsksForRing(browseQuery)) {
+            let rings = matched.filter((product) => productLooksLikeRing(product));
+            if (!rings.length) {
+              const again = await fetchStoreProductsByQuery(input.env, ringRetryQuery(browseQuery));
+              if (again.ok) {
+                rings = again.products.filter(
+                  (product) => brandKeepsProduct(product, input.brand) && productLooksLikeRing(product),
+                );
+              }
+            }
+            matched = rings;
+          }
+          const kept = matched.slice(0, 4);
           const note = kept.length
             ? 'To są karty z katalogu tej marki. Pokaż 2–4 pozycje z ceną z karty i sizes_label. Nie pisz, że pozycji nie ma.'
             : `Brak pozycji dla „${browseQuery}” w katalogu tej marki. Powiedz to wprost, bez innego SKU.`;

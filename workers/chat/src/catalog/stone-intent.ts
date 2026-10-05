@@ -3,6 +3,8 @@
  * Jeden kamień w zdaniu blokuje podmianę. Dwa kamienie naraz nie wymuszają filtra.
  */
 
+import {detectPolicyInformationIntent} from '../intent/policy-information';
+
 export type StoneIntent = {
   id: string;
   labelPl: string;
@@ -66,11 +68,30 @@ export function detectStoneIntent(text: string): StoneIntent | null {
   return {id: match.id, labelPl: match.labelPl, lemmas: match.lemmas, pattern: match.pattern};
 }
 
+const METAL_OR_TOPIC_SHIFT =
+  /\b(925|585|750|999|pr[oó]b\p{L}*|srebr\p{L}*|z[łl]ot\p{L}*|platyn\p{L}*)\b/iu;
+
+/**
+ * Nowa próba albo metal w ostatniej turze zamyka poprzednią listę SKU.
+ * „Pokaż kilka” i doprecyzowanie ceny jej nie zamykają.
+ * Jawny kamień w tym samym zdaniu zostaje.
+ */
+export function latestTurnClearsProductContext(text: string): boolean {
+  const latest = text.trim();
+  if (!latest) return false;
+  if (detectStoneIntent(latest)) return false;
+  if (detectPolicyInformationIntent(latest).match) return false;
+  return METAL_OR_TOPIC_SHIFT.test(latest);
+}
+
 /** Ostatnia wiadomość z jednym kamieniem wygrywa. Inaczej najnowsza wcześniejsza. */
 export function stoneIntentFromConversation(turns: readonly string[]): StoneIntent | null {
   const lines = turns.map((turn) => turn.trim()).filter(Boolean);
   if (!lines.length) return null;
-  const latest = detectStoneIntent(lines[lines.length - 1] ?? '');
+  const latestLine = lines[lines.length - 1] ?? '';
+  if (latestTurnClearsProductContext(latestLine)) return null;
+  if (detectPolicyInformationIntent(latestLine).match) return null;
+  const latest = detectStoneIntent(latestLine);
   if (latest) return latest;
   for (let index = lines.length - 2; index >= 0; index -= 1) {
     const found = detectStoneIntent(lines[index] ?? '');
@@ -105,17 +126,37 @@ export function otherStoneMentioned(text: string, intent: StoneIntent): boolean 
   return STONES.some((entry) => entry.id !== intent.id && entry.pattern.test(text));
 }
 
-const JEWELRY_TYPE_HINTS: Array<{pattern: RegExp; title: RegExp}> = [
-  {
-    pattern: /\b(rings?|pier[sś]cion\p{L}*|obr[aą]cz\p{L}*)\b/iu,
-    title: /pier[sś]cion|obr[aą]cz|ring/iu,
-  },
-  {pattern: /\b(necklaces?|naszyjnik\p{L}*)\b/iu, title: /naszyjnik/iu},
-  {pattern: /\b(earrings?|kolczyk\p{L}*)\b/iu, title: /kolczyk/iu},
-  {pattern: /\b(bracelets?|bransolet\p{L}*)\b/iu, title: /bransolet/iu},
+const RING_ASK =
+  /\b(rings?|pier[sś]cion\p{L}*|obr[aą]cz\p{L}*|zar[eę]czyn\p{L}*|soliter\p{L}*|solitaire)\b/iu;
+const RING_PRODUCT = /pier[sś]cion|obr[aą]cz|\bring\b|soliter|solitaire/iu;
+const NECKLACE_PRODUCT = /naszyjnik|necklace/iu;
+
+const JEWELRY_TYPE_HINTS: Array<{id: string; pattern: RegExp; title: RegExp}> = [
+  {id: 'ring', pattern: RING_ASK, title: RING_PRODUCT},
+  {pattern: /\b(necklaces?|naszyjnik\p{L}*)\b/iu, title: /naszyjnik/iu, id: 'necklace'},
+  {pattern: /\b(earrings?|kolczyk\p{L}*)\b/iu, title: /kolczyk/iu, id: 'earring'},
+  {pattern: /\b(bracelets?|bransolet\p{L}*)\b/iu, title: /bransolet/iu, id: 'bracelet'},
 ];
 
-/** Gdy klient doprecyzował rodzaj, zostawiamy go. Pusta lista rodzaju wraca do wszystkich trafień kamienia. */
+export function buyerAsksForRing(text: string): boolean {
+  return RING_ASK.test(text);
+}
+
+/** Naszyjnik Iluzja nie jest pierścionkiem, nawet gdy w opisie jest brylant. */
+export function productLooksLikeRing(product: {title?: unknown; handle?: unknown}): boolean {
+  const title = typeof product.title === 'string' ? product.title : '';
+  const handle = typeof product.handle === 'string' ? product.handle : '';
+  const haystack = `${title} ${handle}`;
+  if (NECKLACE_PRODUCT.test(haystack)) return false;
+  if (/\biluzja\b/iu.test(haystack) && !RING_PRODUCT.test(haystack)) return false;
+  return RING_PRODUCT.test(haystack);
+}
+
+/**
+ * Gdy klient doprecyzował rodzaj, zostawiamy go.
+ * Brak pierścionka nie wraca do naszyjnika (Iluzja).
+ * Bez rodzaju zostają pierwsze trafienia kamienia.
+ */
 export function preferJewelryType<T extends {title?: unknown; handle?: unknown}>(
   products: readonly T[],
   buyerText: string,
@@ -123,11 +164,12 @@ export function preferJewelryType<T extends {title?: unknown; handle?: unknown}>
   const hint = JEWELRY_TYPE_HINTS.find((entry) => entry.pattern.test(buyerText));
   if (!hint) return products.slice(0, 4);
   const preferred = products.filter((product) => {
+    if (hint.id === 'ring') return productLooksLikeRing(product);
     const haystack = `${typeof product.title === 'string' ? product.title : ''} ${typeof product.handle === 'string' ? product.handle : ''}`;
     return hint.title.test(haystack);
   });
   if (preferred.length > 0) return preferred.slice(0, 4);
-  return products.slice(0, 4);
+  return [];
 }
 
 export function expandCatalogQuery(current: string, intent: StoneIntent): string {
@@ -152,8 +194,17 @@ export function detectNamedBrowseQuery(text: string): string | null {
   return null;
 }
 
+export function ringRetryQuery(base: string): string {
+  const trimmed = base.trim();
+  return `${trimmed} pierścionek obrączka soliter -naszyjnik -iluzja`;
+}
+
 export function namedBrowseFromConversation(turns: readonly string[]): string | null {
   const lines = turns.map((turn) => turn.trim()).filter(Boolean);
+  if (!lines.length) return null;
+  const latest = lines[lines.length - 1] ?? '';
+  if (detectPolicyInformationIntent(latest).match) return null;
+  if (latestTurnClearsProductContext(latest)) return null;
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     if (detectStoneIntent(lines[index] ?? '')) return null;
     const query = detectNamedBrowseQuery(lines[index] ?? '');

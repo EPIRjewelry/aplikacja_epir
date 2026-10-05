@@ -66,5 +66,13 @@ describe('catalog query and jewelry type', () => {
       'obraczka-z-szafirem-epir-jewellery',
     ]);
     expect(preferJewelryType(products, 'cos z szafirem')).toHaveLength(2);
+    expect(preferJewelryType([{title: 'Naszyjnik Iluzja', handle: 'naszyjnik-iluzja'}], 'pierścionek zaręczynowy')).toEqual(
+      [],
+    );
+  });
+
+  it('drops a carried stone when the latest turn changes metal or purity', () => {
+    expect(stoneIntentFromConversation(['cos z szafirem', '925 czy 585'])).toBeNull();
+    expect(namedBrowseFromConversation(['pierścionki zaręczynowe', 'ile kosztuje wysyłka'])).toBeNull();
   });
 });
