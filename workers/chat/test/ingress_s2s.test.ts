@@ -431,3 +431,94 @@ describe('App Proxy customer_id_hint in body', () => {
     expect(payload.reply).toBeTruthy();
   });
 });
+
+describe('brand-locked greeting', () => {
+  it('answers cześć on the EPIR shop in the EPIR voice even when the body says Kazka and stream is on', async () => {
+    const {env, sessions} = makeEnv();
+    const nowTs = Math.floor(Date.now() / 1000);
+    const request = await makeSignedAppProxyRequest(
+      `https://asystent.epirbizuteria.pl/chat?shop=epir-art-silver-jewellery.myshopify.com&timestamp=${nowTs}`,
+      {
+        message: 'cześć',
+        stream: true,
+        brand: 'kazka',
+        storefrontId: 'kazka',
+        channel: 'hydrogen-kazka',
+        session_id: 'phone-session',
+        page_host: 'epirbizuteria.pl',
+        path: '/collections/zlota-bizuteria',
+      },
+    );
+    request.headers.set('Referer', 'https://epirbizuteria.pl/collections/zlota-bizuteria');
+
+    const response = await worker.fetch(request, env, noopCtx);
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {reply?: string; session_id?: string};
+    expect(payload.session_id).toBe('phone-session');
+    expect(payload.reply).toContain('EPIR Art Jewellery');
+    expect(payload.reply).not.toContain('Kazka Jewelry');
+    expect(buildSessionDOShardName('phone-session')).toBe('phone-session');
+    expect(sessions.get('phone-session')).toBeTruthy();
+    expect(sessions.get('epir:phone-session')).toBeUndefined();
+    expect(sessions.get('kazka:phone-session')).toBeUndefined();
+  });
+
+  it('does not continue a Kazka greeting when the same session id later hits EPIR', async () => {
+    const {env, sessions} = makeEnv();
+    const shared = 'shared-across-brands';
+    const kazkaResponse = await worker.fetch(
+      makeChatRequest(
+        {
+          'X-EPIR-SHARED-SECRET': 'shared-secret',
+          'X-EPIR-STOREFRONT-ID': 'kazka',
+          'X-EPIR-CHANNEL': 'hydrogen-kazka',
+        },
+        {message: 'hej', stream: false, session_id: shared, brand: 'kazka'},
+      ),
+      env,
+      noopCtx,
+    );
+    const kazkaPayload = (await kazkaResponse.json()) as {reply?: string};
+    expect(kazkaPayload.reply).toContain('Kazka Jewelry');
+
+    const nowTs = Math.floor(Date.now() / 1000);
+    const epirResponse = await worker.fetch(
+      await makeSignedAppProxyRequest(
+        `https://asystent.epirbizuteria.pl/chat?shop=epir-art-silver-jewellery.myshopify.com&timestamp=${nowTs}`,
+        {message: 'hej', stream: false, session_id: shared, brand: 'kazka', page_host: 'epirbizuteria.pl'},
+      ),
+      env,
+      noopCtx,
+    );
+    const epirPayload = (await epirResponse.json()) as {reply?: string};
+    expect(epirPayload.reply).toContain('EPIR Art Jewellery');
+    expect(epirPayload.reply).not.toContain('Kazka Jewelry');
+
+    const history = await worker.fetch(
+      await makeSignedAppProxyHistoryRequest(shared),
+      env,
+      noopCtx,
+    );
+    const historyPayload = (await history.json()) as {history: Array<{content: string}>};
+    expect(historyPayload.history.map((entry) => entry.content).join('\n')).not.toContain('Kazka Jewelry');
+    expect(historyPayload.history.map((entry) => entry.content).join('\n')).toContain('EPIR Art Jewellery');
+    expect(sessions.get(shared)).toBeTruthy();
+    expect(sessions.get(`epir:${shared}`)).toBeUndefined();
+    expect(sessions.get(`kazka:${shared}`)).toBeUndefined();
+  });
+});
+
+async function makeSignedAppProxyHistoryRequest(sessionId: string) {
+  const nowTs = Math.floor(Date.now() / 1000);
+  const url = new URL(
+    `https://asystent.epirbizuteria.pl/apps/assistant/history?shop=epir-art-silver-jewellery.myshopify.com&timestamp=${nowTs}`,
+  );
+  const canonical = shopifyAppProxyCanonicalString(url.searchParams);
+  const signature = await computeHmac('shopify-app-secret', canonical);
+  url.searchParams.set('signature', signature);
+  return new Request(url.toString(), {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({session_id: sessionId, page_host: 'epirbizuteria.pl', brand: 'kazka'}),
+  });
+}

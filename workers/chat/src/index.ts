@@ -28,6 +28,15 @@ import { RateLimiterDO, checkRateLimit } from './rate-limiter';
 import { TokenVaultDO, TokenVault, getTokenVaultStub } from './token-vault';
 import { guardAssistantPricingAgainstCatalog } from './pricing-guard';
 import { stripForeignBrandLinks } from './brand-reply-host';
+import {
+  greetingForBrandLock,
+  guardBuyerReply,
+  projectHistoryForBrand,
+  resolveChatBrandLock,
+  scrubKazkaAdvisorCopy,
+  sideFromRouting,
+  type ChatBrandLock,
+} from './brand-lock';
 import { buildCommerceActionPayload, isLikelyAjaxCartFakeGid } from './utils/commerce-result';
 import {
   analyticsReadUnauthorizedResponse,
@@ -256,6 +265,29 @@ function buildSessionDOShardName(sessionId: string): string {
 function getSessionDOStub(env: Env, sessionId: string): DurableObjectStub {
   const doId = env.SESSION_DO.idFromName(buildSessionDOShardName(sessionId));
   return env.SESSION_DO.get(doId);
+}
+
+function brandLockFromChatRequest(
+  request: Request,
+  raw: unknown,
+  contextOverride?: ChatContextOverride,
+  appProxyVerified?: boolean,
+): ChatBrandLock {
+  const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const text = (key: string): string | undefined => {
+    const value = record[key];
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+  };
+  return resolveChatBrandLock({
+    appProxyVerified,
+    contextOverride,
+    bodyBrand: text('brand'),
+    bodyStorefrontId: text('storefrontId'),
+    bodyChannel: text('channel'),
+    pageHost: text('page_host') ?? text('pageHost'),
+    origin: request.headers.get('Origin'),
+    referer: request.headers.get('Referer'),
+  });
 }
 
 async function fetchSessionDO(
@@ -587,7 +619,11 @@ function normalizeHistoryForUi(history: HistoryEntry[]): Array<{ role: 'user' | 
     .filter((entry) => entry.content.length > 0);
 }
 
-async function handleHistoryRequest(request: Request, env: Env): Promise<Response> {
+async function handleHistoryRequest(
+  request: Request,
+  env: Env,
+  ingress?: {appProxyVerified?: boolean; contextOverride?: ChatContextOverride},
+): Promise<Response> {
   const raw = await request.json().catch(() => null);
   const payload = parseHistoryRequestBody(raw);
   if (!payload) {
@@ -597,6 +633,12 @@ async function handleHistoryRequest(request: Request, env: Env): Promise<Respons
     });
   }
 
+  const brandLock = brandLockFromChatRequest(
+    request,
+    raw,
+    ingress?.contextOverride,
+    ingress?.appProxyVerified,
+  );
   const stub = getSessionDOStub(env, payload.session_id);
 
   let historyRaw: unknown;
@@ -617,7 +659,10 @@ async function handleHistoryRequest(request: Request, env: Env): Promise<Respons
     });
   }
 
-  const history = normalizeHistoryForUi(ensureHistoryArray(historyRaw));
+  const history = projectHistoryForBrand(
+    normalizeHistoryForUi(ensureHistoryArray(historyRaw)),
+    brandLock.side,
+  );
   return new Response(JSON.stringify({ session_id: payload.session_id, history }), {
     status: 200,
     headers: {
@@ -2614,6 +2659,26 @@ async function handleChat(
     return new Response('Bad Request: message required', { status: 400, headers: cors(env, request) });
   }
 
+  const brandLock = brandLockFromChatRequest(
+    request,
+    raw,
+    contextOverride,
+    ingressOptions?.appProxyVerified,
+  );
+  payload.brand = brandLock.brand;
+  payload.storefrontId = brandLock.storefrontId;
+  payload.channel = brandLock.channel;
+  console.log(
+    JSON.stringify({
+      tag: 'chat.brand_lock',
+      source: brandLock.source,
+      side: brandLock.side,
+      storefrontId: brandLock.storefrontId,
+      channel: brandLock.channel,
+      brand_key: brandLock.brandKey,
+    }),
+  );
+
   // [TOKEN VAULT] Bez zmian
   const url = new URL(request.url);
   const customerIdFromUrl = normalizeOptionalString(url.searchParams.get('logged_in_customer_id'));
@@ -2962,27 +3027,18 @@ async function handleChat(
   }
 
   if (isShortGreeting) {
-    const greetingReply = isProjectBChatChannel(payload.channel)
-      ? 'Witaj! Jestem wewnętrznym agentem analityczno-doradczym EPIR (dane sklepu, pixel, kampanie). W czym pomóc?'
-      : (payload.storefrontId === 'kazka' || payload.brand === 'kazka')
-        ? 'Witaj! Jestem Gemma, doradca marki Kazka Jewelry. Jak mogę Ci dzisiaj pomóc? ✨'
-        : (payload.storefrontId === 'zareczyny' || payload.brand === 'zareczyny')
-          ? 'Witaj! Jestem Gemma, doradca pierścionków zaręczynowych EPIR. Jak mogę Ci dzisiaj pomóc? 💍'
-          : 'Witaj! Jestem Gemma, doradca z pracowni EPIR Art Jewellery. Jak mogę Ci dzisiaj pomóc? 🌟';
+    const greetingReply = greetingForBrandLock(brandLock);
     await stub.fetch('https://session/append', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role: 'assistant', content: greetingReply, ts: now() } as HistoryEntry),
     });
 
-    // 🔴 POPRAWKA SESJI: Zwróć greeting, ale DOŁĄCZ session_id, aby klient mógł ją zapisać
-    // (W trybie non-stream; w trybie stream jest to obsługiwane przez streamAssistantResponse)
-    if (!payload.stream) {
-        return new Response(JSON.stringify({ reply: greetingReply, session_id: sessionId }), {
-          headers: { ...cors(env), 'Content-Type': 'application/json' },
-        });
-    }
-    // Jeśli stream=true, przejdź do streamAssistantResponse
+    // Krótkie powitanie zostaje przy marce z brand lock. Nie puszczamy go do modelu:
+    // stream wcześniej dopisywał greeting i i tak wołał LLM, który dociągał głos drugiej marki.
+    return new Response(JSON.stringify({ reply: greetingReply, session_id: sessionId }), {
+      headers: { ...cors(env, request), 'Content-Type': 'application/json' },
+    });
   }
   
   // 🔴 ZMIANA: Usunięto logikę `else` (non-streaming).
@@ -3082,6 +3138,14 @@ async function streamAssistantResponse(
       const historyResp = await stub.fetch('https://session/history');
       const historyData = await historyResp.json().catch(() => []);
       history = ensureHistoryArray(historyData); // Pełna historia (z rolami 'tool')
+      const historyBrandSide = operatorMode
+        ? 'operator'
+        : (sideFromRouting(
+            storefrontContext?.storefrontId,
+            storefrontContext?.channel,
+            brand,
+          ) ?? 'epir');
+      history = projectHistoryForBrand(history, historyBrandSide);
 
       let cartId: string | null | undefined = null;
       if (!operatorMode) {
@@ -3396,10 +3460,23 @@ async function streamAssistantResponse(
           storefrontId: storefrontContext?.storefrontId ?? null,
         });
       }
-      const aiProfile = operatorMode
+      const fetchedAiProfile = operatorMode
         ? null
         : await fetchAIProfile(activeStorefrontConfig?.aiProfileGid, aiProfileToken, env.SHOP_DOMAIN);
-      const aiProfilePrompt = aiProfile ? buildAIProfilePrompt(aiProfile) : null;
+      const aiProfile =
+        fetchedAiProfile &&
+        !isKazkaHeadlessChannel(storefrontContext?.channel, storefrontContext?.storefrontId)
+          ? {
+              brand_voice: scrubKazkaAdvisorCopy(fetchedAiProfile.brand_voice),
+              core_values: scrubKazkaAdvisorCopy(fetchedAiProfile.core_values),
+              faq_theme: scrubKazkaAdvisorCopy(fetchedAiProfile.faq_theme),
+              promotion_rules: scrubKazkaAdvisorCopy(fetchedAiProfile.promotion_rules),
+            }
+          : fetchedAiProfile;
+      const aiProfilePrompt =
+        aiProfile && Object.values(aiProfile).some((value) => value.trim().length > 0)
+          ? buildAIProfilePrompt(aiProfile)
+          : null;
 
       if (!operatorMode && activeStorefrontConfig?.aiProfileGid && !aiProfile) {
         console.warn(
@@ -3459,6 +3536,13 @@ async function streamAssistantResponse(
           ctxParts.push('Marka Kazka Jewelry – kamienie szlachetne, biżuteria artystyczna.');
         } else if (sfKey === 'zareczyny') {
           ctxParts.push('Kontekst: pierścionki zaręczynowe EPIR.');
+          ctxParts.push(
+            'Nie przedstawiaj się jako doradca Kazka Jewelry i nie polecaj produktów linii Kazka (w tym Pierścionek Soliter).',
+          );
+        } else {
+          ctxParts.push(
+            'Marka tej rozmowy: EPIR Art Jewellery. Nie przedstawiaj się jako doradca Kazka Jewelry i nie polecaj produktów linii Kazka (w tym Pierścionek Soliter).',
+          );
         }
         dynamicContext.push(`Kontekst storefrontu: ${ctxParts.join(', ')}`);
       }
@@ -3746,7 +3830,25 @@ async function streamAssistantResponse(
             }),
           );
         }
-        return locked.text;
+        const voiced = guardBuyerReply(locked.text, {
+          side:
+            replyBrand === 'kazka' || storefrontContext?.storefrontId === 'kazka'
+              ? 'kazka'
+              : replyBrand === 'zareczyny' || storefrontContext?.storefrontId === 'zareczyny'
+                ? 'zareczyny'
+                : 'epir',
+        });
+        if (voiced.rewritten) {
+          console.log(
+            JSON.stringify({
+              tag: 'chat.brand_voice_lock',
+              session_id: sessionId,
+              brand: replyBrand ?? null,
+              storefrontId: storefrontContext?.storefrontId ?? null,
+            }),
+          );
+        }
+        return voiced.text;
       };
       // Harmony zużywa część budżetu na kanał `analysis` (reasoning) — bierzemy limity
       // bezpośrednio z `model-params.ts` zamiast trzymać tu lokalne magic numbers,
@@ -5149,7 +5251,7 @@ export default {
 
     // Historia czatu storefrontu (App Proxy)
     if (url.pathname === '/apps/assistant/history' && request.method === 'POST') {
-      return handleHistoryRequest(request, env);
+      return handleHistoryRequest(request, env, {appProxyVerified: true});
     }
 
     // Endpoint czatu headless / BFF – zabezpieczony shared secret + headers kontekstowe.
@@ -5179,14 +5281,14 @@ export default {
         if (appProxyAuthError) {
           return appProxyAuthError;
         }
-        return handleHistoryRequest(request, env);
+        return handleHistoryRequest(request, env, {appProxyVerified: true});
       }
 
       const s2sHistory = verifyS2SChatRequest(request, env);
       if (!s2sHistory.ok) {
         return s2sHistory.response;
       }
-      return handleHistoryRequest(request, env);
+      return handleHistoryRequest(request, env, {contextOverride: s2sHistory.contextOverride});
     }
 
     // Consent Gate (S2S jak /chat — ten sam kontrakt nagłówków)

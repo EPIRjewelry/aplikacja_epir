@@ -3,6 +3,7 @@ import {callMcpToolDirect} from '../src/mcp_server';
 import {
   enforceEpirAssortmentOnCatalogResult,
   enforceKazkaAssortmentOnCatalogResult,
+  isEpirFamilyCatalogBrand,
   isKazkaAssortment,
   resolveCatalogToolBrand,
 } from '../src/catalog/kazka-assortment';
@@ -98,7 +99,8 @@ describe('Kazka assortment rule', () => {
     expect(isKazkaAssortment({vendor: 'EPIR', tags: ['Kazka']})).toBe(true);
     expect(isKazkaAssortment({vendor: 'EPIR', tags: ['srebro', 'organika']})).toBe(false);
     expect(isKazkaAssortment({vendor: 'EPIR', tags: ['kazka-pierscionek']})).toBe(false);
-    expect(isKazkaAssortment({vendor: 'Kazka Jewelry', tags: []})).toBe(false);
+    expect(isKazkaAssortment({vendor: 'Kazka Jewelry', tags: []})).toBe(true);
+    expect(isKazkaAssortment({vendor: 'Kazka Jewelry Studio', tags: ['srebro']})).toBe(true);
   });
 
   it('routes hydrogen-kazka and kazka_headless onto the Kazka catalog brand', () => {
@@ -113,6 +115,9 @@ describe('Kazka assortment rule', () => {
     expect(resolveCatalogToolBrand({storefrontId: 'online-store', channel: 'online-store', brand: 'epir'})).toBe(
       'epir',
     );
+    expect(isEpirFamilyCatalogBrand('epir')).toBe(true);
+    expect(isEpirFamilyCatalogBrand('zareczyny')).toBe(true);
+    expect(isEpirFamilyCatalogBrand('kazka')).toBe(false);
   });
 });
 

@@ -54,7 +54,7 @@ import { presentCatalogForModel } from './mcp/catalog-for-model';
 import {
   enforceEpirAssortmentOnCatalogResult,
   enforceKazkaAssortmentOnCatalogResult,
-  isEpirCatalogBrand,
+  isEpirFamilyCatalogBrand,
   isKazkaCatalogBrand,
   isKazkaCatalogSearchTool,
   isKazkaFilteredCatalogTool,
@@ -656,7 +656,7 @@ async function callShopMcp(
       resultPayload = await enforceKazkaAssortmentOnCatalogResult(resultPayload, env, {
         maxProducts: isKazkaCatalogSearchTool(toolName) ? KAZKA_CATALOG_SEARCH_LIMIT : undefined,
       });
-    } else if (isEpirCatalogBrand(brand) && isKazkaFilteredCatalogTool(toolName)) {
+    } else if (isEpirFamilyCatalogBrand(brand) && isKazkaFilteredCatalogTool(toolName)) {
       resultPayload = await enforceEpirAssortmentOnCatalogResult(resultPayload, env);
     }
     if (presentCatalog) {
