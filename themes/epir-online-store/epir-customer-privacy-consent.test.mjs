@@ -148,14 +148,77 @@ test('install does not call setTrackingConsent and leaves the banner visible', (
   assert.equal(doc.banner.hidden, false);
 });
 
-test('a stored choice hides the banner and still does not write consent on load', () => {
+test('a stored accept-all does not hide the banner until Shopify analytics is allowed', () => {
   const calls = [];
   const doc = bannerDoc();
   const storage = memoryStorage({ [api.STORAGE_KEY]: 'accept-all' });
   api.install({ Shopify: shopifyRecorder(calls), localStorage: storage }, doc);
+  assert.deepEqual(calls, []);
+  assert.equal(doc.banner.hidden, false);
+  doc.dispatch(doc.acceptAll);
+  assert.deepEqual(calls, [api.trackingConsentPayload(api.acceptAllDecision())]);
+});
+
+test('a stored accept-all hides when Shopify already allows analytics and does not rewrite consent', () => {
+  const calls = [];
+  const doc = bannerDoc();
+  const storage = memoryStorage({ [api.STORAGE_KEY]: 'accept-all' });
+  const shopify = shopifyRecorder(calls);
+  shopify.customerPrivacy.analyticsProcessingAllowed = () => true;
+  api.install({ Shopify: shopify, localStorage: storage }, doc);
   doc.dispatch(doc.acceptAll);
   assert.deepEqual(calls, []);
   assert.equal(doc.banner.hidden, true);
+});
+
+test('a stored accept-all hides when consent-tracking-api loads an existing analytics grant', () => {
+  const calls = [];
+  const doc = bannerDoc();
+  const storage = memoryStorage({ [api.STORAGE_KEY]: 'accept-all' });
+  const shopify = {
+    loadFeatures(_requested, cb) {
+      shopify.customerPrivacy = {
+        setTrackingConsent(payload) {
+          calls.push(payload);
+        },
+        analyticsProcessingAllowed() {
+          return true;
+        },
+      };
+      cb();
+    },
+  };
+  api.install({ Shopify: shopify, localStorage: storage }, doc);
+  assert.deepEqual(calls, []);
+  assert.equal(doc.banner.hidden, true);
+  doc.dispatch(doc.acceptAll);
+  assert.deepEqual(calls, []);
+});
+
+test('a stored necessary choice hides the banner and does not grant analytics', () => {
+  const calls = [];
+  const doc = bannerDoc();
+  const storage = memoryStorage({ [api.STORAGE_KEY]: 'necessary' });
+  api.install({ Shopify: shopifyRecorder(calls), localStorage: storage }, doc);
+  doc.dispatch(doc.acceptAll);
+  assert.deepEqual(calls, []);
+  assert.equal(doc.banner.hidden, true);
+});
+
+test('a setTrackingConsent error keeps the banner and does not store the choice', () => {
+  const doc = bannerDoc();
+  const storage = memoryStorage();
+  const shopify = {
+    customerPrivacy: {
+      setTrackingConsent(_payload, cb) {
+        cb({ error: 'region' });
+      },
+    },
+  };
+  api.install({ Shopify: shopify }, doc, storage);
+  doc.dispatch(doc.acceptAll);
+  assert.equal(storage.getItem(api.STORAGE_KEY), null);
+  assert.equal(doc.banner.hidden, false);
 });
 
 test('Zaakceptuj wszystkie click writes the three purposes, chat flag, and hides the banner', () => {

@@ -35,8 +35,18 @@ interface MockWebPixelAPI {
             customer?: {
                 id: string;
             } | null;
+            customerPrivacy?: {
+                analyticsProcessingAllowed?: boolean;
+            };
         };
         context?: Record<string, unknown>;
+        clientId?: string;
+        customerPrivacy?: {
+            analyticsProcessingAllowed?: boolean;
+        };
+    };
+    customerPrivacy?: {
+        analyticsProcessingAllowed?: boolean;
     };
     settings: {
         pixelEndpoint?: string;
@@ -100,6 +110,7 @@ async function invokePixelCallback(overrides: Partial<MockWebPixelAPI> = {}): Pr
             },
             ...overrides.browser,
         },
+        customerPrivacy: overrides.customerPrivacy,
     };
 
     if (mockState.registeredCallback) {
@@ -815,6 +826,50 @@ describe('web-pixel extension – customer privacy gate', () => {
 
     afterEach(() => {
         vi.unstubAllGlobals();
+    });
+
+    it('posts pixel_sender and clientId when only init.customerPrivacy allows analytics', async () => {
+        const {subscriptions} = await invokePixelCallback({
+            init: {customerPrivacy: {analyticsProcessingAllowed: true}},
+            browser: {
+                cookie: {get: vi.fn().mockResolvedValue(null)},
+            },
+        });
+        const handler = subscriptions.get('page_viewed');
+        await handler!({
+            name: 'page_viewed',
+            clientId: 'shopify-client-after-consent',
+            context: {
+                document: {location: {href: 'https://epirbizuteria.pl/products/pierscionek'}},
+            },
+        });
+        expect(fetch).toHaveBeenCalledOnce();
+        const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+        expect(body.type).toBe('page_viewed');
+        expect(body.data.pixel_sender).toBe('web_pixel_extension');
+        expect(body.data.session_id).toBe('shopify-client-after-consent');
+        expect(body.data.sessionId).toBe('shopify-client-after-consent');
+    });
+
+    it('does not fetch when init.customerPrivacy disallows analytics', async () => {
+        const {subscriptions} = await invokePixelCallback({
+            init: {customerPrivacy: {analyticsProcessingAllowed: false}},
+        });
+        const handler = subscriptions.get('page_viewed');
+        await handler!({clientId: 'should-not-send'});
+        expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('does not fetch when the event disallows analytics even if init allows it', async () => {
+        const {subscriptions} = await invokePixelCallback({
+            init: {customerPrivacy: {analyticsProcessingAllowed: true}},
+        });
+        const handler = subscriptions.get('page_viewed');
+        await handler!({
+            clientId: 'should-not-send',
+            context: {customerPrivacy: {analyticsProcessingAllowed: false}},
+        });
+        expect(fetch).not.toHaveBeenCalled();
     });
 
     it('does not fetch when pixel event omits customerPrivacy fields', async () => {

@@ -27,28 +27,28 @@ type AttributionPayload = {
   msclkid?: string;
 };
 
-/** Fragment Customer Privacy na obiekcie zdarzenia Web Pixel (event / event.context). */
+/** Fragment Customer Privacy (event albo `init.customerPrivacy` z Web Pixels API). */
 type PixelEventPrivacy = {
   analyticsProcessingAllowed: boolean;
 };
+
+function privacyFlag(source: unknown): boolean | null {
+  if (!source || typeof source !== "object") return null;
+  const value = (source as Record<string, unknown>).analyticsProcessingAllowed;
+  return typeof value === "boolean" ? value : null;
+}
 
 /** Wyłuskaj blok privacy z natywnego obiektu zdarzenia Shopify Web Pixels. */
 function readPrivacyFromPixelEvent(event: unknown): PixelEventPrivacy | null {
   try {
     if (!event || typeof event !== "object") return null;
     const e = event as Record<string, unknown>;
-    const direct = e.customerPrivacy;
-    if (direct && typeof direct === "object") {
-      const ap = (direct as Record<string, unknown>).analyticsProcessingAllowed;
-      if (typeof ap === "boolean") return {analyticsProcessingAllowed: ap};
-    }
+    const direct = privacyFlag(e.customerPrivacy);
+    if (direct !== null) return {analyticsProcessingAllowed: direct};
     const ctx = e.context;
     if (ctx && typeof ctx === "object") {
-      const nested = (ctx as Record<string, unknown>).customerPrivacy;
-      if (nested && typeof nested === "object") {
-        const ap = (nested as Record<string, unknown>).analyticsProcessingAllowed;
-        if (typeof ap === "boolean") return {analyticsProcessingAllowed: ap};
-      }
+      const nested = privacyFlag((ctx as Record<string, unknown>).customerPrivacy);
+      if (nested !== null) return {analyticsProcessingAllowed: nested};
     }
   } catch (_) {
     /* silent — stabilność w piaskownicy */
@@ -56,10 +56,45 @@ function readPrivacyFromPixelEvent(event: unknown): PixelEventPrivacy | null {
   return null;
 }
 
-/** Śledzenie analityczne dozwolone tylko przy jawnym analyticsProcessingAllowed === true na evencie. */
-function isAnalyticsProcessingExplicitlyAllowedOnEvent(event: unknown): boolean {
-  const p = readPrivacyFromPixelEvent(event);
-  return p !== null && p.analyticsProcessingAllowed === true;
+/**
+ * Zgoda analityczna z Web Pixels API.
+ * Standardowe zdarzenia (page_viewed, …) nie niosą `customerPrivacy`.
+ * Shopify trzyma ją na `init.customerPrivacy` (boolean, nie metoda storefrontu).
+ * `[customer_privacy] analytics = true` i tak nie ładuje sandboxa przed zgodą.
+ * Jawne `false` albo brak flagi = brak POST. Brak flagi nie jest zgodą.
+ */
+function readInitAnalyticsAllowed(initApi: unknown): boolean | null {
+  try {
+    if (!initApi || typeof initApi !== "object") return null;
+    const initRecord = initApi as Record<string, unknown>;
+    const direct = privacyFlag(initRecord.customerPrivacy);
+    if (direct !== null) return direct;
+    const data = initRecord.data;
+    if (data && typeof data === "object") {
+      return privacyFlag((data as Record<string, unknown>).customerPrivacy);
+    }
+  } catch (_) {
+    return null;
+  }
+  return null;
+}
+
+function isAnalyticsProcessingExplicitlyAllowed(
+  event: unknown,
+  initApi: unknown,
+  apiPrivacy?: unknown,
+): boolean {
+  const fromEvent = readPrivacyFromPixelEvent(event);
+  const fromInit = readInitAnalyticsAllowed(initApi);
+  const fromApi = privacyFlag(apiPrivacy);
+  if (fromEvent?.analyticsProcessingAllowed === false || fromInit === false || fromApi === false) {
+    return false;
+  }
+  return (
+    fromEvent?.analyticsProcessingAllowed === true ||
+    fromInit === true ||
+    fromApi === true
+  );
 }
 
 /** Shopify Web Pixels: `clientId` na evencie (fallback gdy brak ciasteczka Hydrogen). */
@@ -154,6 +189,7 @@ async function resolveEpirSessionId(
 
 register(async (api) => {
     const { analytics, browser, init, settings } = api;
+    const apiPrivacy = (api as {customerPrivacy?: unknown}).customerPrivacy;
 
     const browserApi = browser as PixelBrowser;
     const sessionMemory: {id: string} = {id: ''};
@@ -409,11 +445,12 @@ register(async (api) => {
       return inferAttributionFromClickIds(inferFromReferrer(referrer));
     }
     /**
-     * Przed sendPixelEvent: odczyt zgód wyłącznie z obiektu zdarzenia Web Pixel (context.customerPrivacy / customerPrivacy).
+     * Przed sendPixelEvent: zgoda z init.customerPrivacy (Web Pixels API) albo z eventu, gdy Shopify ją tam położy.
+     * Jawne false albo brak flagi = cisza. Toml zostaje analytics = true.
      */
     async function emitStandardPixelEvent(eventType: string, pixelEvent: unknown): Promise<void> {
       try {
-        if (!isAnalyticsProcessingExplicitlyAllowedOnEvent(pixelEvent)) return;
+        if (!isAnalyticsProcessingExplicitlyAllowed(pixelEvent, init, apiPrivacy)) return;
         await sendPixelEvent(eventType, pixelEvent, pixelEvent);
       } catch (_) {}
     }
@@ -424,7 +461,7 @@ register(async (api) => {
       payload: unknown,
     ): Promise<void> {
       try {
-        if (!isAnalyticsProcessingExplicitlyAllowedOnEvent(pixelEvent)) return;
+        if (!isAnalyticsProcessingExplicitlyAllowed(pixelEvent, init, apiPrivacy)) return;
         await sendPixelEvent(eventType, payload, pixelEvent);
       } catch (_) {}
     }
@@ -434,7 +471,7 @@ register(async (api) => {
     // ============================================================================
     async function sendPixelEvent(eventType: string, eventData: unknown, pixelEvent: unknown): Promise<void> {
       try {
-        if (!isAnalyticsProcessingExplicitlyAllowedOnEvent(pixelEvent)) {
+        if (!isAnalyticsProcessingExplicitlyAllowed(pixelEvent, init, apiPrivacy)) {
           return;
         }
 

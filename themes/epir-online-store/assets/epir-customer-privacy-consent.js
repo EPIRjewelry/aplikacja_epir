@@ -179,6 +179,7 @@
       if (stale()) return;
       if (!customerPrivacy || typeof customerPrivacy.setTrackingConsent !== 'function') return;
       customerPrivacy.setTrackingConsent(payload, function (data) {
+        if (data && data.error) return;
         if (typeof options.onResult === 'function') options.onResult(data);
       });
     }
@@ -225,6 +226,16 @@
     attempt(0);
   }
 
+  function shopifyAnalyticsAllowed(shopify) {
+    try {
+      var privacy = shopify && shopify.customerPrivacy;
+      if (!privacy || typeof privacy.analyticsProcessingAllowed !== 'function') return null;
+      return privacy.analyticsProcessingAllowed() === true;
+    } catch (e) {
+      return null;
+    }
+  }
+
   function install(win, doc, storage) {
     if (!win || !doc || typeof doc.getElementById !== 'function') return;
     if (typeof doc.addEventListener !== 'function') return;
@@ -234,9 +245,26 @@
     win.__epirCustomerPrivacyConsentInstalled = true;
 
     var store = storage || win.localStorage || null;
-    if (storedChoice(store)) {
+    var choice = storedChoice(store);
+    // localStorage is not Shopify consent. Hide only after Customer Privacy says analytics is on,
+    // or when the visitor already chose necessary-only. Otherwise the next click must call
+    // setTrackingConsent — that is what starts the app pixel sandbox.
+    function shopifyAlreadyAllows() {
+      return shopifyAnalyticsAllowed(win.Shopify) === true;
+    }
+    if (choice === 'necessary' || (choice && shopifyAlreadyAllows())) {
       hideBanner(banner);
       return;
+    }
+    if (choice && win.Shopify && typeof win.Shopify.loadFeatures === 'function') {
+      win.Shopify.loadFeatures([{ name: 'consent-tracking-api', version: '0.1' }], function (error) {
+        if (error) return;
+        if (shopifyAnalyticsAllowed(win.Shopify) === true) hideBanner(banner);
+      });
+      if (shopifyAlreadyAllows()) {
+        hideBanner(banner);
+        return;
+      }
     }
     showBanner(banner);
 
