@@ -571,27 +571,8 @@ function ChatWidgetFallback({
         });
 
         if (!res.ok) {
-          const errData = (await res.json().catch(() => ({}))) as {
-            error?: string;
-            reply?: string;
-            session_id?: string;
-          };
-          if (errData.session_id) {
-            persistChatSessionIdFromWorker(errData.session_id, SESSION_ID_KEY);
-          }
-          const explicitReply = typeof errData.reply === 'string' ? errData.reply.trim() : '';
-          if (explicitReply) {
-            const assistantMessage: ChatMessage = {
-              id: `assistant-${Date.now()}`,
-              role: 'assistant',
-              text: explicitReply,
-            };
-            const nextMessages = [...messagesRef.current, assistantMessage];
-            commitMessages(nextMessages);
-            syncPersistedChatMessages(storefrontId, channel, nextMessages);
-            return;
-          }
-          throw new Error(errData.error ?? `HTTP ${res.status}`);
+          const errData = await res.json().catch(() => ({}));
+          throw new Error((errData as {error?: string}).error ?? `HTTP ${res.status}`);
         }
 
         if (res.headers.get('content-type')?.includes('text/event-stream')) {
