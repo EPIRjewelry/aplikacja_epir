@@ -1,0 +1,140 @@
+/**
+ * Ostatnia siatka odpowiedzi: fałszywy brak kamienia, cicha podmiana, urwany tekst.
+ * Lista pozycji bierze się z kart, które worker już dostał — model jej nie wymyśla.
+ */
+
+import {extractCatalogProducts, productMatchesStone} from './stone-retrieval';
+import {
+  buyerAllowsStoneSubstitute,
+  otherStoneMentioned,
+  stoneIntentFromConversation,
+  textMentionsStone,
+  type StoneIntent,
+} from './stone-intent';
+
+const FALSE_EMPTY =
+  /nie ma (?:produkt|biżuter|bizuter|pierścion|pierscion|obrącz|obracz|ofert)|w (?:naszej |naszym )?(?:ofercie|katalogu|kolekcji) nie ma|brak (?:produkt|biżuter|bizuter|pierścion|ofert)|nie mamy (?:w ofercie|biżuter|bizuter|produkt|pierścion)|opisanych wyłącznie|nie znalazł[aąe]m/iu;
+
+const HANDOFF = /^\s*łączę z asystentem\b|^\s*lacze z asystentem\b/iu;
+
+export const BUYER_RETRY_REPLY =
+  'Nie udało się ułożyć odpowiedzi. Napisz proszę jeszcze raz — zostaję przy tym, o co prosisz.';
+
+export function isGarbledBuyerText(text: string): boolean {
+  const compact = text.replace(/https?:\/\/\S+/g, '').replace(/\s+/g, '');
+  if (compact.length < 8) return false;
+  if (/(.)\1{5,}/u.test(compact)) return true;
+  if (/(.{2})\1/u.test(compact)) return true;
+  if (/(\p{L}{3,5})\1/u.test(compact)) return true;
+  return false;
+}
+
+export function isHandoffShell(text: string): boolean {
+  const normalized = text.replace(/[.!?…]/g, '').trim();
+  return HANDOFF.test(normalized) && normalized.length < 90;
+}
+
+export function productsFromCatalogSnapshots(snapshots: readonly unknown[]): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  for (const snapshot of snapshots) {
+    for (const product of extractCatalogProducts(snapshot)) {
+      const key =
+        (typeof product.handle === 'string' && product.handle) ||
+        (typeof product.url === 'string' && product.url) ||
+        (typeof product.title === 'string' && product.title) ||
+        '';
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(product);
+    }
+  }
+  return out;
+}
+
+function metalFact(title: string): string | undefined {
+  if (/srebrn/iu.test(title)) return 'srebro';
+  if (/z[łl]ot/iu.test(title)) return 'złoto';
+  if (/platyn/iu.test(title)) return 'platyna';
+  return undefined;
+}
+
+function factFromCard(product: Record<string, unknown>): string | undefined {
+  const title = typeof product.title === 'string' ? product.title : '';
+  const metal = metalFact(title);
+  if (metal) return metal;
+  const main = typeof product.main_stone === 'string' ? product.main_stone.trim() : '';
+  if (main) return main;
+  const description = typeof product.description === 'string' ? product.description.trim() : '';
+  if (!description) return undefined;
+  const sentence = description.split(/(?<=[.!?])\s/)[0]?.trim() ?? '';
+  if (!sentence) return undefined;
+  return sentence.length > 90 ? `${sentence.slice(0, 89).trimEnd()}…` : sentence;
+}
+
+export function formatStoneBrowseReply(products: readonly Record<string, unknown>[], intent: StoneIntent): string {
+  const lines = products.slice(0, 4).map((product) => {
+    const title = typeof product.title === 'string' && product.title.trim() ? product.title.trim() : 'Pozycja z katalogu';
+    const url = typeof product.url === 'string' ? product.url.trim() : '';
+    const price =
+      typeof product.price_display_pl === 'string'
+        ? product.price_display_pl
+        : typeof product.page_price_display_pl === 'string'
+          ? product.page_price_display_pl
+          : '';
+    const fact = factFromCard(product);
+    const name = url ? `[${title}](${url})` : title;
+    const detail = [price, fact].filter(Boolean).join(', ');
+    return detail ? `- ${name} — ${detail}.` : `- ${name}.`;
+  });
+  return `Te pozycje mają w karcie kamień ${intent.labelPl}:\n${lines.join('\n')}\nMogę zawęzić do pierścionka, obrączki albo innego rodzaju.`;
+}
+
+export function formatStoneMissReply(intent: StoneIntent): string {
+  return `Nie mam teraz w ofercie kamienia „${intent.labelPl}”. Mogę pokazać inny kamień?`;
+}
+
+function citesProduct(reply: string, products: readonly Record<string, unknown>[]): boolean {
+  return products.some((product) => {
+    const url = typeof product.url === 'string' ? product.url : '';
+    return Boolean(url) && reply.includes(url);
+  });
+}
+
+export type BuyerReplyContext = {
+  buyerTurns: readonly string[];
+  previousAssistant?: string;
+  catalogSnapshots: readonly unknown[];
+};
+
+export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext): {text: string; replaced: boolean; reason?: string} {
+  const latest = context.buyerTurns[context.buyerTurns.length - 1] ?? '';
+  const allowSubstitute = buyerAllowsStoneSubstitute(latest, context.previousAssistant);
+  const intent = allowSubstitute ? null : stoneIntentFromConversation(context.buyerTurns);
+  const products = intent
+    ? productsFromCatalogSnapshots(context.catalogSnapshots).filter((product) => productMatchesStone(product, intent))
+    : [];
+  const broken = isGarbledBuyerText(text) || isHandoffShell(text);
+  if (!intent) {
+    if (!broken) return {text, replaced: false};
+    return {text: BUYER_RETRY_REPLY, replaced: true, reason: 'garbled'};
+  }
+  const substitutes = otherStoneMentioned(text, intent) && !textMentionsStone(text, intent);
+  const falseEmpty = FALSE_EMPTY.test(text) && !citesProduct(text, products);
+  if (!broken && !substitutes && !falseEmpty) return {text, replaced: false};
+  if (products.length) {
+    return {
+      text: formatStoneBrowseReply(products, intent),
+      replaced: true,
+      reason: broken ? 'garbled' : substitutes ? 'substitute' : 'false_empty',
+    };
+  }
+  if (substitutes || falseEmpty) {
+    const unconfirmed = context.catalogSnapshots.some((snapshot) =>
+      JSON.stringify(snapshot).includes('Nie udało się potwierdzić'),
+    );
+    if (unconfirmed) return {text: BUYER_RETRY_REPLY, replaced: true, reason: 'unconfirmed'};
+    return {text: formatStoneMissReply(intent), replaced: true, reason: substitutes ? 'substitute' : 'false_empty'};
+  }
+  return {text: BUYER_RETRY_REPLY, replaced: true, reason: 'garbled'};
+}

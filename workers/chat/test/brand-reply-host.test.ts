@@ -24,6 +24,26 @@ describe('stripForeignBrandLinks', () => {
     expect(locked.text).not.toContain('https://epirbizuteria.pl');
   });
 
+  it('drops a Kazka host written without a scheme on EPIR', () => {
+    const locked = stripForeignBrandLinks(
+      'Zobacz kazka.epirbizuteria.pl/products/soliter albo epirbizuteria.pl/products/obraczka.',
+      'epir',
+    );
+    expect(locked.stripped).toBe(true);
+    expect(locked.text).not.toContain('kazka.epirbizuteria.pl');
+    expect(locked.text).toContain('epirbizuteria.pl/products/obraczka');
+  });
+
+  it('drops a bare apex host on Kazka without touching the Kazka subdomain', () => {
+    const locked = stripForeignBrandLinks(
+      'Zostaje kazka.epirbizuteria.pl/products/soliter, odpada epirbizuteria.pl/products/obraczka.',
+      'kazka',
+    );
+    expect(locked.stripped).toBe(true);
+    expect(locked.text).toContain('kazka.epirbizuteria.pl/products/soliter');
+    expect(locked.text).not.toContain('epirbizuteria.pl/products/obraczka');
+  });
+
   it('leaves checkout and the in-page Kazka brief alone', () => {
     const text =
       'Koszyk: https://epir-art-silver-jewellery.myshopify.com/cart/c/abc. Brief: [Wspólnie](#kazka-custom-order).';

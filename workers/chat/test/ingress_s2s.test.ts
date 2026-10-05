@@ -619,9 +619,9 @@ describe('SessionDO lifecycle after the auxiliary rate window', () => {
       noopCtx,
     );
 
-    expect(response.status).toBe(502);
+    expect(response.status).toBe(200);
     const payload = (await response.json()) as {reply?: string; session_id?: string; error?: string};
-    expect(payload.error).toBe('session_lifecycle_failed');
+    expect(payload.error).toBeUndefined();
     expect(payload.session_id).toBe(shopifyY);
     expect(payload.reply).toBe('Nie udało się zapisać tej wiadomości. Napisz proszę jeszcze raz za chwilę.');
   });

@@ -52,6 +52,12 @@ import {
 import { getSizeTable } from './size-table';
 import { presentCatalogForModel } from './mcp/catalog-for-model';
 import {
+  catalogStoneIntent,
+  rescueStoneCatalog,
+  rewriteCatalogQueryForStone,
+  STONE_CATALOG_CANDIDATES,
+} from './catalog/stone-retrieval';
+import {
   enforceEpirAssortmentOnCatalogResult,
   enforceKazkaAssortmentOnCatalogResult,
   isEpirFamilyCatalogBrand,
@@ -358,6 +364,10 @@ export type CallShopMcpOptions = {
   /** Cart GID z SessionDO — wstrzykiwany gdy model / klient nie podał poprawnego cart_id. */
   sessionCartId?: string | null;
   commerceContext?: CommerceContext;
+  /** Ostatnie wypowiedzi klienta. Kamień z wcześniejszej tury obowiązuje przy „pokaż kilka”. */
+  buyerTurns?: string[];
+  /** Jawna zgoda na inny kamień. „Słucham” i „ring” jej nie włączają. */
+  allowStoneSubstitute?: boolean;
 };
 
 async function callShopMcp(
@@ -368,6 +378,8 @@ async function callShopMcp(
 ): Promise<{ result?: any; error?: any }> {
   const brand = typeof options === 'string' ? options : options?.brand;
   const sessionCartId = typeof options === 'string' ? undefined : options?.sessionCartId;
+  const buyerTurns = typeof options === 'string' ? undefined : options?.buyerTurns;
+  const allowStoneSubstitute = typeof options === 'string' ? false : options?.allowStoneSubstitute === true;
   const commerceContext =
     typeof options === 'string'
       ? resolveCommerceContext(brand)
@@ -484,6 +496,59 @@ async function callShopMcp(
     if (validationError) {
       return { error: validationError };
     }
+  }
+
+  const stoneSearch = toolName === 'search_catalog' || toolName === 'catalog_search';
+  if (stoneSearch && args && typeof args === 'object' && args.catalog && typeof args.catalog === 'object') {
+    const catalog = args.catalog as Record<string, unknown>;
+    const currentQuery = typeof catalog.query === 'string' ? catalog.query : '';
+    const intent = catalogStoneIntent({
+      buyerTurns,
+      catalogQuery: currentQuery,
+      allowSubstitute: allowStoneSubstitute,
+      env,
+    });
+    if (intent) {
+      catalog.query = rewriteCatalogQueryForStone(currentQuery, {
+        buyerTurns,
+        allowSubstitute: allowStoneSubstitute,
+      });
+      if (!isKazkaCatalogBrand(brand)) {
+        const pagination =
+          catalog.pagination && typeof catalog.pagination === 'object'
+            ? {...(catalog.pagination as Record<string, unknown>)}
+            : {};
+        const limit = typeof pagination.limit === 'number' ? pagination.limit : 3;
+        pagination.limit = Math.max(limit, STONE_CATALOG_CANDIDATES);
+        catalog.pagination = pagination;
+      }
+    }
+  }
+
+  const catalogQueryForStone = (): string | undefined => {
+    if (!args || typeof args !== 'object' || !args.catalog || typeof args.catalog !== 'object') return undefined;
+    const query = (args.catalog as {query?: unknown}).query;
+    return typeof query === 'string' ? query : undefined;
+  };
+
+  async function catalogAfterStoneRescue(payload: unknown): Promise<unknown> {
+    if (!stoneSearch) return payload;
+    const rescued = await rescueStoneCatalog(payload, {
+      buyerTurns,
+      catalogQuery: catalogQueryForStone(),
+      allowSubstitute: allowStoneSubstitute,
+      brand,
+      env,
+    });
+    let next = rescued.result;
+    if (rescued.matchCount > 0 && isKazkaCatalogBrand(brand)) {
+      next = await enforceKazkaAssortmentOnCatalogResult(next, env, {
+        maxProducts: KAZKA_CATALOG_SEARCH_LIMIT,
+      });
+    } else if (rescued.matchCount > 0 && isEpirFamilyCatalogBrand(brand)) {
+      next = await enforceEpirAssortmentOnCatalogResult(next, env);
+    }
+    return next;
   }
 
   const mcpToolName = cartMcpToolName
@@ -620,7 +685,7 @@ async function callShopMcp(
         (res.status === 522 || res.status === 503 || res.status >= 500)
       ) {
         console.warn(`[mcp] Shop MCP ${res.status} for ${toolName}, returning safe fallback`);
-        return { result: CATALOG_FALLBACK };
+        return { result: presentCatalogForModel(await catalogAfterStoneRescue(CATALOG_FALLBACK), { brand }) };
       }
       const body = await res.text().catch(() => '');
       return { error: { code: res.status, message: `Shop MCP HTTP ${res.status}`, details: body.slice(0, 500) } };
@@ -634,7 +699,7 @@ async function callShopMcp(
         toolName === 'catalog_image_search'
       ) {
         console.warn('[mcp] Invalid JSON from shop MCP for search_catalog, returning safe fallback');
-        return { result: CATALOG_FALLBACK };
+        return { result: presentCatalogForModel(await catalogAfterStoneRescue(CATALOG_FALLBACK), { brand }) };
       }
       return { error: { code: -32700, message: 'Invalid JSON response from shop MCP' } };
     }
@@ -659,6 +724,7 @@ async function callShopMcp(
     } else if (isEpirFamilyCatalogBrand(brand) && isKazkaFilteredCatalogTool(toolName)) {
       resultPayload = await enforceEpirAssortmentOnCatalogResult(resultPayload, env);
     }
+    resultPayload = await catalogAfterStoneRescue(resultPayload);
     if (presentCatalog) {
       resultPayload = presentCatalogForModel(resultPayload, { brand });
       if (
@@ -688,7 +754,7 @@ async function callShopMcp(
       (isAbortError || isNetworkError)
     ) {
       console.warn(`[mcp] Timeout/Network error for ${toolName}, returning safe fallback`, { error: errMsg });
-      return { result: CATALOG_FALLBACK };
+      return { result: presentCatalogForModel(await catalogAfterStoneRescue(CATALOG_FALLBACK), { brand }) };
     }
     
     console.error('[mcp] Shop MCP call failed', { tool: toolName, error: errMsg });
