@@ -16,7 +16,7 @@ Bazy:
 ### A. Capture piksela
 
 1. **Skąd:** Web Pixel `extensions/my-web-pixel`. Toml ma `analytics = true` i `runtime_context = "strict"` — Shopify nie ładuje sandboxa przed zgodą analityczną. POST wychodzi tylko gdy `init.customerPrivacy.analyticsProcessingAllowed === true` (Web Pixels API) albo to samo pole na evencie. Jawne `false` albo brak flagi = cichy `return` (bez fetch).
-2. **Tożsamość:** cookie `_epir_session_id`, a gdy puste — `clientId` z eventu. Puste oba → `session_id: ""` w body; worker zapisuje **`NULL`** w D1 (bez losowego `session_*`), log `console.error`.
+2. **Tożsamość:** cookie `_epir_session_id`, a gdy puste — `clientId` z eventu. Puste oba → `session_id: ""` w body; worker zapisuje **`NULL`** w D1 (bez losowego `session_*`), log `console.error`. Wklejka Customer Events (`extensions/my-web-pixel/storefront-custom-pixel.js`) nie czyta ciasteczka: gdy `event.clientId` jest puste, bierze `init.clientId`, potem `init.data.clientId`, i wpisuje wartość w `data.sessionId`, `data.session_id` oraz `data.clientId`. Worker czyta te pola w tej kolejności i **nie** czyta nagłówka `Cookie`.
 3. **HTTP:** `POST {pixelEndpoint}/pixel` z body `{ type, data }` (`session_id`, `customerId`, `storefront_id`, `channel`, atrybucja).
 4. **Przyjmuje:** `epir-art-jewellery-worker` (`workers/chat`). Każdy `/pixel*` idzie service bindingiem `ANALYTICS_WORKER` na `https://analytics.internal/pixel…`. Brak bindingu → HTTP 503 `pixel_proxy_not_configured`.
 5. **Zapisuje:** `epir-analityc-worker` `POST /pixel` i `POST /pixel/events` → `handlePixelPost`.
@@ -248,6 +248,7 @@ Q1 liczy sesje czatu z `role='user'`, sesje zakupu po `event_type`, join po `ses
 | Krok | Plik |
 |------|------|
 | Zgoda piksela, cookie `_epir_session_id`, payload POST | `extensions/my-web-pixel/src/index.test.ts` |
+| Wklejka Customer Events: `event.clientId`, potem `init.clientId` | `extensions/my-web-pixel/src/custom-pixel-payload.test.ts` |
 | `POST /pixel` → kolumny D1, heatmap, URL, UTM, webhook zamówienia / abandoned / VIP | `workers/analytics/src/index.test.ts` |
 | Mapowanie wiersza D1 → rekord streamu (kształt kodu, nie kontrakt §2) | `workers/bigquery-batch/src/pixel-pipeline-record.test.ts` |
 | `pixelCreatedAtMs` / ISO | `d1-timestamps.test.ts` |

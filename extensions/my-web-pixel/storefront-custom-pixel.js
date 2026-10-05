@@ -3,10 +3,18 @@
  * „EPIR Art Jewellery Pixel” (id 272171340). Nie deployuje się z `shopify app deploy`.
  *
  * Live do 2026-10-01 wysyłał tylko event.data i gubił event.clientId → NULL session_id.
+ * Gdy event.clientId jest puste, bierz init.clientId (potem init.data.clientId).
+ * Worker czyta data.sessionId, data.session_id, data.clientId — nie Cookie.
  * Kontrakt: extensions/my-web-pixel/src/custom-pixel-payload.ts
  */
 analytics.subscribe('all_standard_events', function (event) {
   var sessionId = event && typeof event.clientId === 'string' ? event.clientId.trim() : '';
+  if (!sessionId && typeof init !== 'undefined' && init) {
+    if (typeof init.clientId === 'string') sessionId = init.clientId.trim();
+    if (!sessionId && init.data && typeof init.data.clientId === 'string') {
+      sessionId = init.data.clientId.trim();
+    }
+  }
   var commerce = event && event.data && typeof event.data === 'object' ? event.data : {};
   var data = {};
   var key;
