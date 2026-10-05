@@ -59,13 +59,36 @@ describe('guardBuyerCatalogReply', () => {
     expect(guarded.text).toBe(reply);
   });
 
-  it('asks before offering another stone when the catalog really has none', () => {
-    const guarded = guardBuyerCatalogReply('Polecę czarny turmalin, 280 zł.', {
+  it('asks before offering another stone only after a confirmed miss', () => {
+    const unconfirmed = guardBuyerCatalogReply('Polecę czarny turmalin, 280 zł.', {
       buyerTurns: ['szafir'],
       catalogSnapshots: [],
     });
+    expect(unconfirmed.text).not.toContain('Nie mam teraz w ofercie');
+    expect(unconfirmed.text).toContain('Jeszcze nie potwierdziłam');
+    expect(unconfirmed.text).not.toContain('280');
+
+    const guarded = guardBuyerCatalogReply('Polecę czarny turmalin, 280 zł.', {
+      buyerTurns: ['szafir'],
+      catalogSnapshots: [],
+      stoneLookup: 'confirmed_miss',
+    });
     expect(guarded.text).toContain('Nie mam teraz w ofercie kamienia „szafir”');
     expect(guarded.text).not.toContain('280');
+  });
+
+  it('surfaces sapphire cards on the first stone turn, before „pokaż kilka”', () => {
+    const guarded = guardBuyerCatalogReply('Nie mam teraz w ofercie kamienia szafir.', {
+      buyerTurns: ['cos z szafirem'],
+      catalogSnapshots: [SAPPHIRE],
+      stoneLookup: 'hit',
+    });
+    expect(guarded.replaced).toBe(true);
+    expect(guarded.reason).toBe('false_empty');
+    expect(guarded.text).toContain('obraczka-z-szafirem-epir-jewellery');
+    expect(guarded.text).toContain('zloty-pierscionek-z-naturalnym-szafirem');
+    expect(guarded.text).toContain('310 zł');
+    expect(guarded.text).not.toContain('Nie mam teraz w ofercie');
   });
 
   it('treats a repeated token as garbled and does not leave it in the reply', () => {

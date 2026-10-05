@@ -69,15 +69,21 @@ import { LUXURY_SYSTEM_PROMPT, KAZKA_HEADLESS_PERSONA_ADDON } from './prompts/lu
 import { parseStorefrontPathContext } from './storefront/path-context';
 import { buildKazkaHeadlessStorefrontContext, isKazkaHeadlessChannel } from './storefront/kazka-hydrate';
 import { isKazkaFilteredCatalogTool, resolveCatalogToolBrand } from './catalog/kazka-assortment';
-import { guardBuyerCatalogReply } from './catalog/buyer-reply-guard';
+import { guardBuyerCatalogReply, productsFromCatalogSnapshots } from './catalog/buyer-reply-guard';
+import type { StoneLookup } from './catalog/buyer-reply-guard';
 import { buyerAllowsStoneSubstitute } from './catalog/stone-intent';
+import { guardForeignCatalogPrices, guardPageProductReply } from './catalog/page-product-card';
+import { guardStoreFacts, promotionRulesForBrand } from './catalog/store-facts';
+import { seedBuyerTurnContext } from './catalog/turn-seed';
 import { CATALOG_MODEL_WIRE_BUDGET } from './mcp/catalog-for-model';
 import { TOOL_SCHEMAS, resolveToolSchemas, shouldUseSlimToolSchemas } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2 (+ slim wariant za flagą)
 import { sanitizeHarmonyHistory } from './utils/sanitizeHarmonyHistory';
 import { detectPolicyInformationIntent } from './intent/policy-information';
 import { detectSizeTableIntent } from './intent/size-table';
 import {
+  detectIllegalOrHarmfulRequest,
   detectJailbreakOrHarmIntent,
+  HARD_REFUSAL_REPLY,
   JAILBREAK_REDIRECT_REPLY,
 } from './intent/jailbreak-prefilter';
 import { truncateWithSummary, type Message as HistoryMessage } from './utils/history'; // 🔵 History truncation
@@ -3092,6 +3098,29 @@ async function handleChat(
   const greetingPattern = /^(cześć|czesc|hej|witaj|witam|dzień dobry|dzien dobry|dobry wieczór|dobry wieczor|hi|hello|hey)$/i;
   const isShortGreeting = !payload.image_base64 && greetingCheck.length < 15 && greetingPattern.test(greetingCheck);
 
+  // [HARD REFUSAL] Narkotyki i podobna prośba — sama odmowa, bez briefu projektu.
+  if (
+    !payload.image_base64 &&
+    !isProjectBChatChannel(payload.channel) &&
+    detectIllegalOrHarmfulRequest(payload.message)
+  ) {
+    await stub.fetch('https://session/append', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'assistant', content: HARD_REFUSAL_REPLY, ts: now() } as HistoryEntry),
+    });
+    console.log(
+      JSON.stringify({
+        tag: 'chat.hard_refusal',
+        session_id: sessionId,
+        storefrontId: payload.storefrontId ?? null,
+      }),
+    );
+    return new Response(JSON.stringify({ reply: HARD_REFUSAL_REPLY, session_id: sessionId }), {
+      headers: { ...cors(env), 'Content-Type': 'application/json' },
+    });
+  }
+
   // [JAILBREAK PREFILTER] Odmowa + redirect do zakupów — nie puszczaj szumu do LLM / Q3
   if (
     !payload.image_base64 &&
@@ -3555,16 +3584,21 @@ async function streamAssistantResponse(
       const fetchedAiProfile = operatorMode
         ? null
         : await fetchAIProfile(activeStorefrontConfig?.aiProfileGid, aiProfileToken, env.SHOP_DOMAIN);
+      const kazkaChannel = isKazkaHeadlessChannel(storefrontContext?.channel, storefrontContext?.storefrontId);
       const aiProfile =
-        fetchedAiProfile &&
-        !isKazkaHeadlessChannel(storefrontContext?.channel, storefrontContext?.storefrontId)
+        fetchedAiProfile && !kazkaChannel
           ? {
               brand_voice: scrubKazkaAdvisorCopy(fetchedAiProfile.brand_voice),
               core_values: scrubKazkaAdvisorCopy(fetchedAiProfile.core_values),
               faq_theme: scrubKazkaAdvisorCopy(fetchedAiProfile.faq_theme),
               promotion_rules: scrubKazkaAdvisorCopy(fetchedAiProfile.promotion_rules),
             }
-          : fetchedAiProfile;
+          : fetchedAiProfile
+            ? {
+                ...fetchedAiProfile,
+                promotion_rules: promotionRulesForBrand(fetchedAiProfile.promotion_rules, 'kazka'),
+              }
+            : fetchedAiProfile;
       const aiProfilePrompt =
         aiProfile && Object.values(aiProfile).some((value) => value.trim().length > 0)
           ? buildAIProfilePrompt(aiProfile)
@@ -3589,6 +3623,10 @@ async function streamAssistantResponse(
 
       // Zbudowanie dynamicznych linii (koszyk, sklep, cross-session); trafią do ostatniego usera, nie do systemu.
       const dynamicContext: string[] = [];
+      let seededStoneLookup: StoneLookup = 'none';
+      let seededPageCard: Record<string, unknown> | null = null;
+      let seededAboutPage = false;
+      const seededCatalogSnapshots: unknown[] = [];
 
       if (!operatorMode && cartId) {
         dynamicContext.push(`Aktualny cart_id sesji to: ${cartId}`);
@@ -3639,11 +3677,32 @@ async function streamAssistantResponse(
         dynamicContext.push(`Kontekst storefrontu: ${ctxParts.join(', ')}`);
       }
 
+      if (!operatorMode) {
+        const catalogBrandForSeed =
+          resolveCatalogToolBrand({
+            storefrontId: storefrontContext?.storefrontId,
+            channel: storefrontContext?.channel,
+            brand,
+          }) ?? (storefrontContext?.channel === 'online-store' ? 'epir' : brand);
+        const seeded = await seedBuyerTurnContext({
+          env,
+          brand: catalogBrandForSeed,
+          productHandle: storefrontContext?.productHandle,
+          buyerTurns: recentBuyerTurns(aiHistory, userMessage),
+          previousAssistant: lastAssistantText(aiHistory),
+        });
+        seededStoneLookup = seeded.stoneLookup;
+        seededPageCard = seeded.pageCard;
+        seededAboutPage = seeded.aboutPageProduct;
+        seededCatalogSnapshots.push(...seeded.snapshots);
+        for (const line of seeded.lines) dynamicContext.push(line);
+      }
+
       if (
         !operatorMode &&
         isKazkaHeadlessChannel(storefrontContext?.channel, storefrontContext?.storefrontId)
       ) {
-        if (storefrontContext?.productHandle || storefrontContext?.collectionHandle) {
+        if (!seededPageCard && (storefrontContext?.productHandle || storefrontContext?.collectionHandle)) {
           const kazkaHydrated = await buildKazkaHeadlessStorefrontContext(env, {
             productHandle: storefrontContext?.productHandle,
             collectionHandle: storefrontContext?.collectionHandle,
@@ -3896,7 +3955,7 @@ async function streamAssistantResponse(
       // piaskownicy i przeglądu ESOG; opóźnienia MCP ogranicza pętla i MAX_TOOL_CALLS.
       const MAX_TOOL_CALLS = 5;
       /** Wyniki search_catalog w tej turze — walidacja cen po wygenerowaniu odpowiedzi. */
-      const catalogSnapshotsForPricing: unknown[] = [];
+      const catalogSnapshotsForPricing: unknown[] = [...seededCatalogSnapshots];
       const buyerTurns = recentBuyerTurns(aiHistory, userMessage);
       const previousAssistantText = lastAssistantText(aiHistory);
       const allowStoneSubstitute = buyerAllowsStoneSubstitute(
@@ -3911,6 +3970,7 @@ async function streamAssistantResponse(
         }) ?? (storefrontContext?.channel === 'online-store' ? 'epir' : undefined);
       const applyPricingSanitizer = (txt: string): string => {
         if (isProjectBChatChannel(storefrontContext?.channel)) return txt;
+        if (detectIllegalOrHarmfulRequest(userMessage)) return HARD_REFUSAL_REPLY;
         const outcome = guardAssistantPricingAgainstCatalog(txt, catalogSnapshotsForPricing, {
           sessionId,
         });
@@ -3921,6 +3981,7 @@ async function streamAssistantResponse(
           buyerTurns,
           previousAssistant: previousAssistantText,
           catalogSnapshots: catalogSnapshotsForPricing,
+          stoneLookup: seededStoneLookup,
         });
         if (stoneGuarded.replaced) {
           console.log(
@@ -3931,7 +3992,32 @@ async function streamAssistantResponse(
             }),
           );
         }
-        const locked = stripForeignBrandLinks(stoneGuarded.text, replyBrand);
+        const policyTurn = detectPolicyInformationIntent(userMessage).match;
+        let buyerText = seededAboutPage && seededPageCard ? outcome.text : stoneGuarded.text;
+        if (!policyTurn && seededAboutPage && seededPageCard) {
+          const pageGuarded = guardPageProductReply(buyerText, seededPageCard);
+          if (pageGuarded.replaced) buyerText = pageGuarded.text;
+        } else if (!policyTurn) {
+          const cards = productsFromCatalogSnapshots(catalogSnapshotsForPricing);
+          if (cards.length === 1) {
+            const single = guardPageProductReply(buyerText, cards[0]!);
+            if (single.replaced) buyerText = single.text;
+          } else if (cards.length > 1) {
+            const foreign = guardForeignCatalogPrices(buyerText, cards);
+            if (foreign.replaced) buyerText = foreign.text;
+          }
+        }
+        const factGuarded = guardStoreFacts(buyerText, replyBrand);
+        if (factGuarded.replaced) {
+          console.log(
+            JSON.stringify({
+              tag: 'chat.store_fact_guard',
+              session_id: sessionId,
+              brand: replyBrand ?? null,
+            }),
+          );
+        }
+        const locked = stripForeignBrandLinks(factGuarded.text, replyBrand);
         if (locked.stripped) {
           console.log(
             JSON.stringify({
