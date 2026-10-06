@@ -71,6 +71,7 @@ import { parseStorefrontPathContext } from './storefront/path-context';
 import { buildKazkaHeadlessStorefrontContext, isKazkaHeadlessChannel } from './storefront/kazka-hydrate';
 import { isKazkaFilteredCatalogTool, resolveCatalogToolBrand } from './catalog/kazka-assortment';
 import { guardBuyerCatalogReply, productsFromCatalogSnapshots } from './catalog/buyer-reply-guard';
+import { finalizeBuyerFacingReply } from './catalog/buyer-reply-pipeline';
 import type { StoneLookup } from './catalog/buyer-reply-guard';
 import { buyerAllowsStoneSubstitute } from './catalog/stone-intent';
 import { guardDiscoveryFromPrice, guardForeignCatalogPrices, guardPageProductReply } from './catalog/page-product-card';
@@ -4086,104 +4087,21 @@ async function streamAssistantResponse(
           channel: storefrontContext?.channel,
           brand,
         }) ?? (storefrontContext?.channel === 'online-store' ? 'epir' : undefined);
-      const applyPricingSanitizer = (txt: string): string => {
-        if (isProjectBChatChannel(storefrontContext?.channel)) return txt;
-        if (detectIllegalOrHarmfulRequest(userMessage)) return HARD_REFUSAL_REPLY;
-        const outcome = guardAssistantPricingAgainstCatalog(txt, catalogSnapshotsForPricing, {
-          sessionId,
-        });
-        if (outcome.sanitized && outcome.log) {
-          console.log(JSON.stringify(outcome.log));
-        }
-        const stoneGuarded = guardBuyerCatalogReply(outcome.text, {
+      const applyPricingSanitizer = (txt: string): string =>
+        finalizeBuyerFacingReply({
+          text: txt,
+          userMessage,
           buyerTurns,
           previousAssistant: previousAssistantText,
           catalogSnapshots: catalogSnapshotsForPricing,
           stoneLookup: seededStoneLookup,
           brand: replyBrand,
+          storefrontId: storefrontContext?.storefrontId,
+          channel: storefrontContext?.channel,
+          pageCard: seededPageCard,
+          aboutPageProduct: seededAboutPage,
+          sessionId,
         });
-        if (stoneGuarded.replaced) {
-          console.log(
-            JSON.stringify({
-              tag: 'chat.stone_reply_guard',
-              session_id: sessionId,
-              reason: stoneGuarded.reason ?? null,
-            }),
-          );
-        }
-        const policyTurn = detectPolicyInformationIntent(userMessage).match;
-        const sizeTurn = detectSizeTableIntent(userMessage).match;
-        let buyerText = stoneGuarded.text;
-        if (sizeTurn) {
-          const sized = guardSizeQuestionReply(buyerText);
-          if (sized.replaced) buyerText = sized.text;
-        } else if (!policyTurn && seededAboutPage && seededPageCard) {
-          const pageGuarded = guardPageProductReply(buyerText, seededPageCard);
-          if (pageGuarded.replaced) buyerText = pageGuarded.text;
-        } else if (!policyTurn) {
-          const cards = productsFromCatalogSnapshots(catalogSnapshotsForPricing);
-          const varyingDiscovery = cards.some((card) => card.price_is_flat === false);
-          if (cards.length > 1 || varyingDiscovery) {
-            const fromPrice = guardDiscoveryFromPrice(buyerText, cards);
-            if (fromPrice.replaced) buyerText = fromPrice.text;
-            else {
-              const foreign = guardForeignCatalogPrices(buyerText, cards);
-              if (foreign.replaced) buyerText = foreign.text;
-            }
-          }
-        }
-        const factGuarded = guardStoreFacts(buyerText, replyBrand, {userMessage});
-        if (factGuarded.replaced) {
-          console.log(
-            JSON.stringify({
-              tag: 'chat.store_fact_guard',
-              session_id: sessionId,
-              brand: replyBrand ?? null,
-            }),
-          );
-        }
-        const locked = stripForeignBrandLinks(factGuarded.text, replyBrand);
-        if (locked.stripped) {
-          console.log(
-            JSON.stringify({
-              tag: 'chat.brand_host_lock',
-              session_id: sessionId,
-              brand: replyBrand ?? null,
-              removed: locked.removed,
-            }),
-          );
-        }
-        const liveLinked = guardLiveCatalogProductLinks(locked.text, catalogSnapshotsForPricing);
-        if (liveLinked.changed) {
-          console.log(
-            JSON.stringify({
-              tag: 'chat.live_product_link_guard',
-              session_id: sessionId,
-              brand: replyBrand ?? null,
-              removed: liveLinked.removed,
-            }),
-          );
-        }
-        const voiced = guardBuyerReply(liveLinked.text, {
-          side:
-            replyBrand === 'kazka' || storefrontContext?.storefrontId === 'kazka'
-              ? 'kazka'
-              : replyBrand === 'zareczyny' || storefrontContext?.storefrontId === 'zareczyny'
-                ? 'zareczyny'
-                : 'epir',
-        });
-        if (voiced.rewritten) {
-          console.log(
-            JSON.stringify({
-              tag: 'chat.brand_voice_lock',
-              session_id: sessionId,
-              brand: replyBrand ?? null,
-              storefrontId: storefrontContext?.storefrontId ?? null,
-            }),
-          );
-        }
-        return voiced.text;
-      };
       // Harmony zużywa część budżetu na kanał `analysis` (reasoning) — bierzemy limity
       // bezpośrednio z `model-params.ts` zamiast trzymać tu lokalne magic numbers,
       // żeby A/B model wariantów nie ucinał finalnej odpowiedzi w połowie.

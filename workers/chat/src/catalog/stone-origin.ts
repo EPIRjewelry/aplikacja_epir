@@ -4,7 +4,13 @@
  */
 
 import {isKazkaCatalogBrand} from './kazka-assortment';
-import {detectNamedBrowseQuery, detectStoneIntent, shopifyStoneQuery, type StoneIntent} from './stone-intent';
+import {
+  detectNamedBrowseQuery,
+  detectStoneIntent,
+  shopifyStoneQuery,
+  textMentionsStone,
+  type StoneIntent,
+} from './stone-intent';
 
 export type StoneOriginAsk = 'natural' | 'lab';
 
@@ -25,7 +31,13 @@ const LAB_ORIGIN_ASK_RE =
   /syntet|syntetczn|laboratoryj|lab(?:oratory)?[-\s]?grown|\blab\b|hodowan|sztuczn|lab\s*grown/iu;
 
 const GENERAL_ORIGIN_ASK =
-  /u[zż]ywacie\s+naturaln|czy\s+(?:u[zż]ywacie|są|sa|macie|mamy)\s+(?:kamie\w*\s+)?(?:naturaln|syntet|laboratoryj)|tylko\s+(?:z\s+)?naturaln|tylko\s+syntet|kamienie\s+(?:naturaln|syntet)|pochodzeni[ea]\s+kamien|czy\s+kamie\w*\s+(?:są|sa)\s+naturaln/iu;
+  /u[zż]ywacie\s+naturaln|u[zż]ywacie.{0,48}(?:diament|brylant|diamond).{0,32}naturaln|czy\s+(?:u[zż]ywacie|są|sa|macie|mamy)\s+(?:kamie\w*\s+)?(?:naturaln|syntet|laboratoryj)|macie\s+naturaln|naturaln\w*\s+(?:diament|brylant|szafir|kamie)|tylko\s+(?:z\s+)?naturaln|tylko\s+syntet|kamienie\s+(?:naturaln|syntet)|pochodzeni[ea]\s+kamien|czy\s+kamie\w*\s+(?:są|sa)\s+naturaln|(?:diament|brylant|diamond).{0,24}naturaln/iu;
+
+const NATURAL_VS_LAB_PRICE_ASK =
+  /wersj\w*\s+naturaln|naturaln\w*.{0,32}\b(?:a|i)\b.{0,32}(?:lab|laboratoryj)|ile\s+kosztuje.{0,40}naturaln.{0,40}lab/iu;
+
+const FALSE_EMPTY_LIKE =
+  /nie mam teraz w ofercie|nie ma(?:my)?\s+(?:w\s+ofercie\s+)?(?:diament|brylant)|nie\s+u[zż]ywamy\s+(?:diament|brylant)/iu;
 
 const CERTIFICATE_ASK =
   /certyfik|certificate|hallmark|atest(?:\s+kamien)?/iu;
@@ -142,7 +154,28 @@ export function applyOriginFilterWithFallback(
 export function isStoneOriginAssortmentQuestion(text: string): boolean {
   if (!text.trim()) return false;
   if (CERTIFICATE_ASK.test(text) && !GENERAL_ORIGIN_ASK.test(text)) return false;
+  const named = detectStoneIntent(text);
+  const origin = detectStoneOriginAsk(text);
+  if (
+    named &&
+    origin &&
+    (/\b(?:pokaz|poka[zż]|pier[sś]cion|obr[aą]cz)\b/iu.test(text) || detectPriceCapPln(text) != null)
+  ) {
+    return false;
+  }
   return GENERAL_ORIGIN_ASK.test(text) || GENERAL_ORIGIN_ASK.test(foldStoneText(text));
+}
+
+/** Pytanie asortymentowe Tak/Nie — nie „pokaż pierścionek … do N zł”. */
+export function isAssortmentYesNoAsk(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  const folded = foldStoneText(trimmed);
+  if (/\b(?:pokaz|poka[zż]|pier[sś]cion|obr[aą]cz|bransolet)\b/iu.test(trimmed) && detectPriceCapPln(trimmed) != null) {
+    return false;
+  }
+  if (/\b(?:pokaz|poka[zż])\b/iu.test(trimmed) && detectStoneIntent(trimmed)) return false;
+  return /^(?:macie|mamy|czy\s+macie|u[zż]ywacie|uzywacie)\b/iu.test(trimmed) || /^(?:macie|mamy|czy\s+macie|uzywacie)\b/u.test(folded);
 }
 
 export function isCertificateQuestion(text: string): boolean {
@@ -189,10 +222,59 @@ function lineForProduct(product: Record<string, unknown>): string {
   return price ? `- ${name} — ${price}.` : `- ${name}.`;
 }
 
-function formatOriginCardList(products: readonly Record<string, unknown>[]): string {
+export function formatOriginCardList(products: readonly Record<string, unknown>[]): string {
   const shown = products.slice(0, 4);
   const ask = shown.some((product) => product.price_is_flat === false) ? '\nKtóry wariant Cię interesuje?' : '';
   return `Te pozycje są w katalogu:\n${shown.map(lineForProduct).join('\n')}${ask}`;
+}
+
+export function qualityPriceFactsSentencePl(groups: readonly QualityPriceGroup[]): string | undefined {
+  const natural = groups.find((group) => group.kind === 'natural');
+  const lab = groups.find((group) => group.kind === 'lab');
+  const parts: string[] = [];
+  if (natural?.price_min_display_pl) {
+    const max = natural.price_max_display_pl ? ` do ${natural.price_max_display_pl}` : '';
+    parts.push(`Wersja z brylantem naturalnym: od ${natural.price_min_display_pl}${max}.`);
+  }
+  if (lab?.price_min_display_pl) {
+    const max = lab.price_max_display_pl && lab.price_max_display_pl !== lab.price_min_display_pl
+      ? ` do ${lab.price_max_display_pl}`
+      : '';
+    parts.push(`Wersja laboratoryjna (LAB): od ${lab.price_min_display_pl}${max}.`);
+  }
+  return parts.length ? parts.join(' ') : undefined;
+}
+
+export function isNaturalVsLabPriceQuestion(text: string): boolean {
+  return NATURAL_VS_LAB_PRICE_ASK.test(text) || NATURAL_VS_LAB_PRICE_ASK.test(foldStoneText(text));
+}
+
+function productMatchesStoneLocal(product: Record<string, unknown>, intent: StoneIntent): boolean {
+  return textMentionsStone(productHaystack(product), intent);
+}
+
+export function formatNaturalAssortmentYesNoReply(
+  products: readonly Record<string, unknown>[],
+  stone: StoneIntent,
+): string {
+  const stoneCards = products.filter((product) => productMatchesStoneLocal(product, stone));
+  const natural = filterProductsByOriginAsk(stoneCards, 'natural');
+  const yes = natural.length > 0;
+  const lead = yes
+    ? `Tak, mamy naturalny ${stone.labelPl} w ofercie.`
+    : `Nie, naturalnego ${stone.labelPl} teraz nie mamy w ofercie.`;
+  const list = yes ? natural : stoneCards;
+  const cards = list.length ? list.slice(0, 4) : pickMixedOriginCards(products, 3);
+  return `${lead}\n${formatOriginCardList(cards)}`;
+}
+
+export function formatDiamentAssortmentYesReply(products: readonly Record<string, unknown>[], brand?: string): string {
+  const lead = isKazkaCatalogBrand(brand)
+    ? 'Tak, w ofercie Kazka są diamenty i brylanty — w tym wersje naturalne w opcji Jakość.'
+    : 'Tak, w katalogu są diamenty i brylanty — naturalne i laboratoryjne, zależnie od modelu.';
+  const mixed = pickMixedOriginCards(products, 4);
+  if (!mixed.length) return `${lead} ${ORIGIN_UNKNOWN_ON_CARD}`;
+  return `${lead}\n${formatOriginCardList(mixed)}`;
 }
 
 export function kazkaQualityKind(value: string): 'natural' | 'lab' | null {
@@ -567,6 +649,7 @@ export function guardStoneOriginClaims(
   const assortment = isStoneOriginAssortmentQuestion(latest);
   const certAsk = isCertificateQuestion(latest);
   const products = input.catalogProducts;
+  const stone = input.stone ?? detectStoneIntent(latest);
 
   if (certAsk) {
     const anyCert = products.some(cardMentionsCertificate);
@@ -575,6 +658,46 @@ export function guardStoneOriginClaims(
     }
     if (!anyCert && /\/products\//.test(text) && !products.some((product) => cardMentionsCertificate(product))) {
       return {text: CERTIFICATE_UNKNOWN, replaced: true, reason: 'certificate_product_fallback'};
+    }
+  }
+
+  if (ask === 'natural' && stone) {
+    const naturalHits = filterProductsByOriginAsk(
+      products.filter((product) => productMatchesStoneLocal(product, stone)),
+      'natural',
+    );
+    const stoneCards = products.filter((product) => productMatchesStoneLocal(product, stone));
+    if (stoneCards.length && naturalHits.length === 0) {
+      const label = stone.labelPl;
+      const lines = stoneCards.slice(0, 4).map((product) => {
+        const title = typeof product.title === 'string' ? product.title : 'Pozycja';
+        const url = typeof product.url === 'string' ? product.url : '';
+        const origin = originOnCardLabel(product);
+        const name = url ? `[${title}](${url})` : title;
+        return `- ${name} — pochodzenie: ${origin}.`;
+      });
+      return {
+        text: `Naturalnego ${label} nie mam teraz w ofercie. Karty z ${label} podają:\n${lines.join('\n')}`,
+        replaced: true,
+        reason: 'natural_synth_only',
+      };
+    }
+    if (isAssortmentYesNoAsk(latest) || /^macie\s+naturaln/i.test(latest)) {
+      return {
+        text: formatNaturalAssortmentYesNoReply(products, stone),
+        replaced: true,
+        reason: 'origin_assortment_natural',
+      };
+    }
+  }
+
+  if (isAssortmentYesNoAsk(latest) && stone?.id === 'diament' && cardsSupportOriginClaim(products, 'diamond')) {
+    if (replyMakesAbsoluteOriginClaim(text) || FALSE_EMPTY_LIKE.test(text) || isAssortmentYesNoAsk(latest)) {
+      return {
+        text: formatDiamentAssortmentYesReply(products, input.brand),
+        replaced: true,
+        reason: 'origin_assortment_diament',
+      };
     }
   }
 
@@ -604,9 +727,9 @@ export function guardStoneOriginClaims(
     }
   }
 
-  if (ask === 'natural') {
+  if (ask === 'natural' && !stone && products.length) {
     const naturalHits = filterProductsByOriginAsk(products, 'natural');
-    const onlyLab = products.length > 0 && naturalHits.length === 0;
+    const onlyLab = naturalHits.length === 0;
     if (onlyLab) {
       const label = input.stone?.labelPl ?? 'kamienia';
       const lines = products.slice(0, 4).map((product) => {

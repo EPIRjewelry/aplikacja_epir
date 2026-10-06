@@ -12,7 +12,7 @@
 
 import {isEpirCatalogBrand, isKazkaCatalogBrand} from '../catalog/kazka-assortment';
 import {kazkaLeadTimePhrase} from '../catalog/kazka-lead-time';
-import {kazkaQualityKind, originOnCardLabel} from '../catalog/stone-origin';
+import {kazkaQualityKind, originOnCardLabel, qualityPriceFactsSentencePl} from '../catalog/stone-origin';
 import {stripForeignBrandLinks} from '../brand-reply-host';
 import {plnDisplayFromUcpMoney} from './catalog-price-enrich';
 
@@ -594,7 +594,11 @@ function slimProduct(
     out.metals_label = metals.join(', ');
   }
   const qualityGroups = qualityPriceGroups(variantsAll, product);
-  if (qualityGroups?.length) out.quality_price_groups = qualityGroups;
+  if (qualityGroups?.length) {
+    out.quality_price_groups = qualityGroups;
+    const facts = qualityPriceFactsSentencePl(qualityGroups);
+    if (facts) out.quality_price_facts_pl = facts;
+  }
   out.origin_on_card = originOnCardLabel(product);
   const stoneField = allMetafields.find((field) => /main_stone|gemstone_type/i.test(field.key));
   if (stoneField) out.main_stone = stoneField.value;

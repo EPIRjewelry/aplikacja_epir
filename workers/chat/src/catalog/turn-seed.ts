@@ -16,6 +16,7 @@ import {
   AUDITED_SOLITER_HANDLES,
   fetchStoneProducts,
   fetchStoreProductsByQuery,
+  productMatchesStone,
   stoneHitNote,
   stoneMissNote,
   stoneUnconfirmedNote,
@@ -25,6 +26,7 @@ import {detectPolicyInformationIntent} from '../intent/policy-information';
 import {detectSizeTableIntent} from '../intent/size-table';
 import {
   buyerAllowsStoneSubstitute,
+  detectStoneIntent,
   buyerAsksForRing,
   buyerAsksForWeddingBand,
   discoveryMetalBrowse,
@@ -46,6 +48,7 @@ import {
   applyOriginFilterWithFallback,
   originAskForTurn,
   filterProductsByOriginAsk,
+  isAssortmentYesNoAsk,
   isStoneOriginAssortmentQuestion,
   latestTurnSearchHints,
   originAssortmentSearchQueries,
@@ -218,7 +221,24 @@ export async function seedBuyerTurnContext(input: {
   try {
     const originAsk = originAskForTurn(input.buyerTurns);
     const originAssortment = isStoneOriginAssortmentQuestion(latest);
-    if ((originAssortment && !stone) || (originAsk && !stone && !metalBrowse)) {
+    const namedOnLatest = detectStoneIntent(latest);
+    if (originAssortment && namedOnLatest && isAssortmentYesNoAsk(latest)) {
+      const found = await fetchStoneProducts(input.env, namedOnLatest, input.brand, buyerText);
+      if (found.confirmed) {
+        let kept = preferJewelryType(
+          found.products.filter((product) => brandKeepsProduct(product, input.brand)),
+          latest,
+        );
+        kept = applyTurnSearchHints(kept, latestTurnSearchHints(latest), originAsk);
+        const note = kept.length
+          ? `${originSafeLead(input.brand)} Pokaż karty z kamieniem ${namedOnLatest.labelPl}. Przy pytaniu o naturalny zacznij od Tak/Nie.`
+          : stoneMissNote(namedOnLatest.labelPl);
+        const snapshot = presentedSnapshot(kept, note, input.brand);
+        snapshots.push(snapshot);
+        stoneLookup = kept.length ? 'hit' : 'confirmed_miss';
+        lines.push(stoneContextLine(snapshot, kept.length > 0));
+      }
+    } else if ((originAssortment && !stone) || (originAsk && !stone && !metalBrowse)) {
       const queries = originAssortment
         ? originAssortmentSearchQueries(input.brand)
         : [originCatalogQuery(originAsk, stone)];
@@ -259,6 +279,7 @@ export async function seedBuyerTurnContext(input: {
           found.products.filter((product) => brandKeepsProduct(product, input.brand)),
           latest,
         );
+        kept = kept.filter((product) => productMatchesStone(product, stone));
         kept = applyTurnSearchHints(kept, latestTurnSearchHints(latest), originAsk);
         const note = kept.length
           ? stoneHitNote(stone.labelPl)

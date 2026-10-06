@@ -17,12 +17,23 @@
       "urlDomain": "kazka.epirbizuteria.pl"
     },
     {
+      "id": "gk_natural_diamond_assortment",
+      "brand": "kazka",
+      "turns": ["uzywacie diamentow naturalnych?"],
+      "minCards": 1,
+      "replyMustMatch": ["Tak"],
+      "replyMustNotMatch": ["Nie mam teraz w ofercie", "nie używamy"]
+    },
+    {
       "id": "gk_natural_diamond_budget",
       "brand": "kazka",
       "turns": ["pokaz pierscionek z naturalnym diamentem do 6000 zl"],
       "minCards": 1,
+      "preferHandle": "101-10010-3-7",
+      "replyMustMatch": ["naturaln|laborator"],
       "replyMustNotMatch": ["Nie mam teraz w ofercie"],
-      "maxPricePln": 6000
+      "maxPricePln": 6000,
+      "maxReplyPricePln": 6000
     },
     {
       "id": "gk_lab_grown_assortment",
@@ -50,6 +61,7 @@
       "brand": "epir",
       "turns": ["macie naturalny szafir?"],
       "minCards": 1,
+      "replyMustMatch": ["^Tak|^Nie"],
       "replyMustNotMatch": ["syntetyczn"]
     },
     {
@@ -75,11 +87,26 @@
     },
     {
       "id": "gk_pdp_soliter_quality",
-      "type": "pdp",
       "brand": "kazka",
       "pageHandle": "101-10010-3-7",
-      "qualitiesInclude": ["LAB"],
-      "qualityPricesInclude": ["3729,62", "4001,14"]
+      "turns": ["ile kosztuje wersja naturalna a ile lab?"],
+      "replyMustContainPrices": ["3729,62", "4001,14"],
+      "replyMustNotMatch": ["chwilowo"]
+    },
+    {
+      "id": "gk_pdp_soliter_certificate",
+      "brand": "kazka",
+      "pageHandle": "101-10010-3-7",
+      "turns": ["ma certyfikat?"],
+      "replyMustNotMatch": ["chwilowo", "certyfikowany"]
+    },
+    {
+      "id": "ge_pdp_moissanit_origin",
+      "brand": "epir",
+      "pageHandle": "zloty-pierscionek-z-moissanitem-galazka",
+      "turns": ["czy ten moissanit jest naturalny?"],
+      "replyMustMatch": ["laboratoryj|syntetyczn"],
+      "replyMustNotMatch": ["^od\\s+\\d"]
     },
     {
       "id": "ge_multi_turn_silver_ring",

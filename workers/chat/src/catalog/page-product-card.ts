@@ -9,6 +9,16 @@ import {presentCatalogForModel} from '../mcp/catalog-for-model';
 import {isEpirFamilyCatalogBrand, isKazkaAssortment, isKazkaCatalogBrand} from './kazka-assortment';
 import {fetchStoreProductsByQuery, type StoneCatalogEnv} from './stone-retrieval';
 import {formatCatalogBrowseReply, isGarbledBuyerText} from './buyer-reply-guard';
+import {
+  cardStoneOrigin,
+  CERTIFICATE_UNKNOWN,
+  detectStoneOriginAsk,
+  isCertificateQuestion,
+  isNaturalVsLabPriceQuestion,
+  originOnCardLabel,
+  qualityPriceFactsSentencePl,
+  type QualityPriceGroup,
+} from './stone-origin';
 
 const PAGE_NOTE =
   'To jest karta produktu otwartego na stronie. Odpowiadaj tylko z niej. Nie pisz, że produktu nie ma.';
@@ -132,6 +142,80 @@ function replyHasMetals(text: string, card: Record<string, unknown>): boolean {
   if (!values.length) return true;
   const folded = text.toLocaleLowerCase('pl-PL');
   return values.every((value) => folded.includes(value.toLocaleLowerCase('pl-PL')));
+}
+
+function cardMentionsCertificate(card: Record<string, unknown>): boolean {
+  const blob = JSON.stringify(card);
+  return /certyfik|certificate|gia|igi|hrd/iu.test(blob);
+}
+
+export function formatPageOriginReply(card: Record<string, unknown>): string {
+  const title = typeof card.title === 'string' && card.title.trim() ? card.title.trim() : 'Ten produkt';
+  const blob = `${typeof card.handle === 'string' ? card.handle : ''} ${title} ${typeof card.main_stone === 'string' ? card.main_stone : ''}`;
+  if (/moissanit/i.test(blob)) return `${title}: moissanit jest laboratoryjny (syntetyczny).`;
+  const origin = cardStoneOrigin(card);
+  if (origin === 'lab') return `${title}: kamień jest laboratoryjny (syntetyczny).`;
+  if (origin === 'natural') return `${title}: kamień jest naturalny.`;
+  if (origin === 'mixed') {
+    return `To zależy od wariantu: na karcie są wersje naturalne i laboratoryjne (${originOnCardLabel(card)}).`;
+  }
+  return `${title}: ${originOnCardLabel(card)} — szczegóły potwierdzi pracownia.`;
+}
+
+function formatPageCertificateReply(card: Record<string, unknown>): string {
+  const title = typeof card.title === 'string' && card.title.trim() ? card.title.trim() : 'Ten produkt';
+  if (cardMentionsCertificate(card)) {
+    return `${title}: opis produktu wspomina certyfikat — szczegóły są na stronie tej pozycji.`;
+  }
+  return CERTIFICATE_UNKNOWN;
+}
+
+function formatPageNaturalLabPriceReply(card: Record<string, unknown>): string {
+  const title = typeof card.title === 'string' && card.title.trim() ? card.title.trim() : 'Ten produkt';
+  const groups = Array.isArray(card.quality_price_groups)
+    ? (card.quality_price_groups as QualityPriceGroup[])
+    : [];
+  const facts = qualityPriceFactsSentencePl(groups);
+  if (facts) return `${title}: ${facts}`;
+  return formatPageCardReply(card);
+}
+
+export function guardPageProductBuyerReply(
+  text: string,
+  card: Record<string, unknown>,
+  userMessage: string,
+): {text: string; replaced: boolean; reason?: string} {
+  if (isCertificateQuestion(userMessage)) {
+    if (NOT_ON_CARD.test(text) || isGarbledBuyerText(text) || /chwilowo nie mog[eę]/iu.test(text)) {
+      return {text: formatPageCertificateReply(card), replaced: true, reason: 'page_certificate'};
+    }
+  }
+  if (detectStoneOriginAsk(userMessage) || /czy\s+ten\b.{0,40}naturaln/iu.test(userMessage)) {
+    const originReply = formatPageOriginReply(card);
+    const priceHeavy = /\bod\s+\d/iu.test(text) && extractPlnAmountsFromAssistantText(text).length >= 2;
+    if (NOT_ON_CARD.test(text) || priceHeavy || !/naturaln|laboratoryj|syntetyczn|zależy od wariantu/i.test(text)) {
+      return {text: originReply, replaced: true, reason: 'page_origin'};
+    }
+  }
+  if (isNaturalVsLabPriceQuestion(userMessage)) {
+    const groups = Array.isArray(card.quality_price_groups) ? card.quality_price_groups : [];
+    if (groups.length) {
+      const facts = formatPageNaturalLabPriceReply(card);
+      const natural = groups.find((group) => group && typeof group === 'object' && (group as {kind?: string}).kind === 'natural');
+      const lab = groups.find((group) => group && typeof group === 'object' && (group as {kind?: string}).kind === 'lab');
+      const stated = extractPlnAmountsFromAssistantText(text);
+      const needsBoth =
+        natural &&
+        lab &&
+        (!stated.length ||
+          !replyHasAmount(text, String((natural as {price_min_display_pl?: string}).price_min_display_pl ?? '')) ||
+          !replyHasAmount(text, String((lab as {price_min_display_pl?: string}).price_min_display_pl ?? '')));
+      if (needsBoth || /\bod\s+\d/iu.test(text)) {
+        return {text: facts, replaced: true, reason: 'page_natural_lab_price'};
+      }
+    }
+  }
+  return guardPageProductReply(text, card);
 }
 
 export function guardPageProductReply(
