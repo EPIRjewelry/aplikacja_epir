@@ -313,20 +313,19 @@ function refKeys(product: Record<string, unknown>): string[] {
 function hasLivePublicationSignal(product: Record<string, unknown>): boolean {
   return (
     typeof product.status === 'string' ||
-    typeof product.publishedOnCurrentPublication === 'boolean' ||
     typeof product.onlineStoreUrl === 'string' ||
     (typeof product.url === 'string' && product.url.includes('/products/'))
   );
 }
 
-/** Draft / archiwum / brak Online Store — odpada na obu markach, zanim liczy się asortyment. */
-function passesLiveStoreGate(product: Record<string, unknown>): boolean {
+/** Draft / archiwum — odpada na obu markach. Brak Online Store dyskwalifikuje tylko EPIR. */
+function passesLiveStoreGate(product: Record<string, unknown>, channel: 'kazka' | 'epir'): boolean {
   if (!hasLivePublicationSignal(product)) return true;
-  return isLivePublishedProduct(product);
+  return isLivePublishedProduct(product, {channel});
 }
 
 function keepProduct(product: Record<string, unknown>, membership: MembershipIndex): boolean {
-  if (!passesLiveStoreGate(product)) return false;
+  if (!passesLiveStoreGate(product, 'kazka')) return false;
   const decision = localDecision(product);
   if (decision === 'keep') return true;
   if (decision === 'drop') return false;
@@ -336,7 +335,7 @@ function keepProduct(product: Record<string, unknown>, membership: MembershipInd
 }
 
 function keepEpirProduct(product: Record<string, unknown>, membership: MembershipIndex): boolean {
-  if (!passesLiveStoreGate(product)) return false;
+  if (!passesLiveStoreGate(product, 'epir')) return false;
   const decision = localDecision(product);
   if (decision === 'keep') return false;
   if (decision === 'drop') return true;
@@ -529,7 +528,6 @@ const MEMBERSHIP_NODES_QUERY = `
         vendor
         tags
         status
-        publishedOnCurrentPublication
         onlineStoreUrl
       }
       ... on ProductVariant {
@@ -541,7 +539,6 @@ const MEMBERSHIP_NODES_QUERY = `
           vendor
           tags
           status
-          publishedOnCurrentPublication
           onlineStoreUrl
         }
       }
@@ -558,7 +555,52 @@ const MEMBERSHIP_SEARCH_QUERY = `
         vendor
         tags
         status
-        publishedOnCurrentPublication
+        onlineStoreUrl
+        variants(first: 20) {
+          nodes {
+            id
+            sku
+          }
+        }
+      }
+    }
+  }
+`;
+
+const STOREFRONT_MEMBERSHIP_NODES_QUERY = `
+  query KazkaAssortmentStorefrontNodes($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      __typename
+      ... on Product {
+        id
+        handle
+        vendor
+        tags
+        onlineStoreUrl
+      }
+      ... on ProductVariant {
+        id
+        sku
+        product {
+          id
+          handle
+          vendor
+          tags
+          onlineStoreUrl
+        }
+      }
+    }
+  }
+`;
+
+const STOREFRONT_MEMBERSHIP_SEARCH_QUERY = `
+  query KazkaAssortmentStorefrontSearch($search: String!) {
+    products(first: 20, query: $search) {
+      nodes {
+        id
+        handle
+        vendor
+        tags
         onlineStoreUrl
         variants(first: 20) {
           nodes {
@@ -594,9 +636,11 @@ async function loadMembership(env: KazkaAssortmentEnv, bag: RefBag): Promise<Mem
     : {'Content-Type': 'application/json', 'X-Shopify-Storefront-Access-Token': storefrontToken!};
 
   const jobs: Array<Promise<void>> = [];
+  const nodesQuery = adminToken ? MEMBERSHIP_NODES_QUERY : STOREFRONT_MEMBERSHIP_NODES_QUERY;
+  const searchQuery = adminToken ? MEMBERSHIP_SEARCH_QUERY : STOREFRONT_MEMBERSHIP_SEARCH_QUERY;
   if (ids.length > 0) {
     jobs.push(
-      postGraphql(endpoint, headers, MEMBERSHIP_NODES_QUERY, {ids}).then((data) => {
+      postGraphql(endpoint, headers, nodesQuery, {ids}).then((data) => {
         ingestNodes(data, index);
       }),
     );
@@ -604,7 +648,7 @@ async function loadMembership(env: KazkaAssortmentEnv, bag: RefBag): Promise<Mem
   if (search) {
     const liveSearch = adminToken ? withActiveStatusQuery(search) : search;
     jobs.push(
-      postGraphql(endpoint, headers, MEMBERSHIP_SEARCH_QUERY, {search: liveSearch}).then((data) => {
+      postGraphql(endpoint, headers, searchQuery, {search: liveSearch}).then((data) => {
         ingestProducts(data, index);
       }),
     );
@@ -670,30 +714,24 @@ function rememberProduct(
     vendor?: string | null;
     tags?: string[] | null;
     status?: string | null;
-    publishedOnCurrentPublication?: boolean | null;
     onlineStoreUrl?: string | null;
   },
   variants?: Array<{id?: string | null; sku?: string | null}>,
 ): void {
-  const hasPublicationFields =
-    typeof product.status === 'string' ||
-    typeof product.publishedOnCurrentPublication === 'boolean' ||
-    typeof product.onlineStoreUrl === 'string';
-  if (
-    hasPublicationFields &&
-    !isLivePublishedProduct({
-      status: product.status ?? undefined,
-      publishedOnCurrentPublication:
-        typeof product.publishedOnCurrentPublication === 'boolean'
-          ? product.publishedOnCurrentPublication
-          : undefined,
-      onlineStoreUrl: product.onlineStoreUrl ?? undefined,
-    })
-  ) {
-    // Draft / archiwum / brak Online Store — bez wpisu w indeksie (fail closed na obu markach).
-    return;
-  }
   const kazka = isKazkaAssortment({vendor: product.vendor, tags: product.tags});
+  const hasPublicationFields = typeof product.status === 'string' || typeof product.onlineStoreUrl === 'string';
+  if (hasPublicationFields) {
+    const live = isLivePublishedProduct(
+      {
+        status: product.status ?? undefined,
+        onlineStoreUrl: product.onlineStoreUrl ?? undefined,
+      },
+      {channel: kazka ? 'kazka' : 'epir'},
+    );
+    if (!live) {
+      return;
+    }
+  }
   if (product.id) index.set(`id:${product.id}`, kazka);
   if (product.handle) index.set(`handle:${product.handle.trim().toLocaleLowerCase('en-US')}`, kazka);
   for (const variant of variants ?? []) {
@@ -713,7 +751,6 @@ function ingestNodes(data: unknown, index: MembershipIndex): void {
         vendor?: string | null;
         tags?: string[] | null;
         status?: string | null;
-        publishedOnCurrentPublication?: boolean | null;
         onlineStoreUrl?: string | null;
       };
       rememberProduct(index, product, [
@@ -727,8 +764,6 @@ function ingestNodes(data: unknown, index: MembershipIndex): void {
       vendor: typeof node.vendor === 'string' ? node.vendor : null,
       tags: Array.isArray(node.tags) ? node.tags.filter((tag): tag is string => typeof tag === 'string') : [],
       status: typeof node.status === 'string' ? node.status : null,
-      publishedOnCurrentPublication:
-        typeof node.publishedOnCurrentPublication === 'boolean' ? node.publishedOnCurrentPublication : null,
       onlineStoreUrl: typeof node.onlineStoreUrl === 'string' ? node.onlineStoreUrl : null,
     });
   }
@@ -752,8 +787,6 @@ function ingestProducts(data: unknown, index: MembershipIndex): void {
         vendor: typeof node.vendor === 'string' ? node.vendor : null,
         tags: Array.isArray(node.tags) ? node.tags.filter((tag): tag is string => typeof tag === 'string') : [],
         status: typeof node.status === 'string' ? node.status : null,
-        publishedOnCurrentPublication:
-          typeof node.publishedOnCurrentPublication === 'boolean' ? node.publishedOnCurrentPublication : null,
         onlineStoreUrl: typeof node.onlineStoreUrl === 'string' ? node.onlineStoreUrl : null,
       },
       variants,

@@ -461,6 +461,12 @@ function absoluteProductUrl(raw: string | undefined): string | undefined {
 
 function catalogProductUrl(product: Record<string, unknown>, brand?: string): string | undefined {
   const raw = readUrlString(product.onlineStoreUrl) ?? readUrlString(product.url);
+  if (isKazkaCatalogBrand(brand) && product.kazka_storefront === true) {
+    const handle = asString(product.handle);
+    const fromLive = productPathFromLiveUrl(raw);
+    const path = fromLive ?? (handle ? `/products/${handle}` : undefined);
+    if (path) return `${KAZKA_PRODUCT_ORIGIN}${path}`;
+  }
   const path = productPathFromLiveUrl(raw);
   if (!path) return undefined;
   const origin = productOrigin(brand);
