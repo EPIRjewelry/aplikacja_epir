@@ -111,7 +111,7 @@ async function loadDiscoveryMetalCards(
   const pool: Record<string, unknown>[] = [];
   let ok = false;
   for (const query of queries) {
-    const found = await fetchStoreProductsByQuery(env, query);
+    const found = await fetchStoreProductsByQuery(env, query, brand);
     if (!found.ok) {
       if (!ok) return {ok: false, products: []};
       continue;
@@ -219,7 +219,7 @@ export async function seedBuyerTurnContext(input: {
       const pool: Record<string, unknown>[] = [];
       let ok = false;
       for (const query of queries) {
-        const found = await fetchStoreProductsByQuery(input.env, query);
+        const found = await fetchStoreProductsByQuery(input.env, query, input.brand);
         if (!found.ok) continue;
         ok = true;
         pool.push(...found.products.filter((product) => brandKeepsProduct(product, input.brand)));
@@ -291,7 +291,7 @@ export async function seedBuyerTurnContext(input: {
     } else {
       const browseQuery = namedBrowseFromConversation(input.buyerTurns);
       if (browseQuery) {
-        const found = await fetchStoreProductsByQuery(input.env, browseQuery);
+        const found = await fetchStoreProductsByQuery(input.env, browseQuery, input.brand);
         if (!found.ok) {
           stoneLookup = 'unconfirmed';
           lines.push('Nie udało się potwierdzić tej pozycji w sklepie. Nie pisz, że jej nie ma.');
@@ -300,7 +300,7 @@ export async function seedBuyerTurnContext(input: {
           if (buyerAsksForRing(buyerText) || buyerAsksForRing(browseQuery)) {
             let rings = matched.filter((product) => productLooksLikeRing(product));
             if (!rings.length) {
-              const again = await fetchStoreProductsByQuery(input.env, ringRetryQuery(browseQuery));
+              const again = await fetchStoreProductsByQuery(input.env, ringRetryQuery(browseQuery), input.brand);
               if (again.ok) {
                 rings = again.products.filter(
                   (product) => brandKeepsProduct(product, input.brand) && productLooksLikeRing(product),

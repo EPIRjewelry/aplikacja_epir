@@ -1,6 +1,7 @@
 /**
- * Tylko produkty ACTIVE i opublikowane w Online Store trafiają do Gemmy z linkiem.
- * Admin API bez status:active oddaje drafty; sam handle nie wystarczy do URL.
+ * Tylko produkty ACTIVE i opublikowane w kanale sklepu trafiają do Gemmy z linkiem.
+ * EPIR: Online Store URL. Kazka: Storefront kanału Hydrogen (nie Online Store).
+ * Admin API bez status:active oddaje drafty; sam handle nie wystarczy do URL EPIR.
  */
 
 const PRODUCT_PATH_RE = /\/products\/([^/?#]+)/i;
@@ -46,11 +47,30 @@ export function normalizeProductUrlKey(url: string): string | null {
   return handle ? handle.toLocaleLowerCase('en-US') : null;
 }
 
-/** Węzeł Admin/Storefront albo karta po mapowaniu — live = ACTIVE + URL Online Store. */
-export function isLivePublishedProduct(node: Record<string, unknown>): boolean {
+/**
+ * Live dla EPIR = ACTIVE (albo brak statusu) + niepusty URL ze ścieżką /products/.
+ * Live dla Kazka ≠ Online Store: nie wymagamy onlineStoreUrl.
+ * publishedOnCurrentPublication nie oznacza publikacji w kanale sklepu.
+ */
+
+export type LiveCatalogChannel = 'epir' | 'kazka';
+
+export type LivePublishedOptions = {
+  channel?: LiveCatalogChannel;
+};
+
+/** Węzeł Admin/Storefront albo karta po mapowaniu. */
+export function isLivePublishedProduct(
+  node: Record<string, unknown>,
+  options: LivePublishedOptions = {},
+): boolean {
   const status = typeof node.status === 'string' ? node.status.trim().toUpperCase() : '';
   if (status && status !== 'ACTIVE') return false;
-  if (node.publishedOnCurrentPublication === false) return false;
+
+  const channel = options.channel ?? 'epir';
+  if (channel === 'kazka') {
+    return true;
+  }
 
   const online =
     (typeof node.onlineStoreUrl === 'string' && node.onlineStoreUrl.trim()) ||
@@ -62,8 +82,9 @@ export function isLivePublishedProduct(node: Record<string, unknown>): boolean {
 
 export function filterLivePublishedProducts(
   products: readonly Record<string, unknown>[],
+  options: LivePublishedOptions = {},
 ): Record<string, unknown>[] {
-  return products.filter((product) => isLivePublishedProduct(product));
+  return products.filter((product) => isLivePublishedProduct(product, options));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -46,7 +46,7 @@ describe('withActiveStatusQuery', () => {
 });
 
 describe('isLivePublishedProduct', () => {
-  it('drops DRAFT, ARCHIVED, ACTIVE-but-unpublished, and missing onlineStoreUrl', () => {
+  it('drops DRAFT, ARCHIVED, and ACTIVE without onlineStoreUrl; app publication false is still live', () => {
     expect(
       isLivePublishedProduct({
         status: 'DRAFT',
@@ -65,7 +65,7 @@ describe('isLivePublishedProduct', () => {
         publishedOnCurrentPublication: false,
         onlineStoreUrl: 'https://epirbizuteria.pl/products/hidden',
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       isLivePublishedProduct({
         status: 'ACTIVE',
@@ -79,6 +79,16 @@ describe('isLivePublishedProduct', () => {
         onlineStoreUrl: 'https://epirbizuteria.pl/products/live-ring',
       }),
     ).toBe(true);
+  });
+
+  it('does not require Online Store URL for Kazka', () => {
+    expect(
+      isLivePublishedProduct(
+        {status: 'ACTIVE', handle: '101-10010-3-7', publishedOnCurrentPublication: false},
+        {channel: 'kazka'},
+      ),
+    ).toBe(true);
+    expect(isLivePublishedProduct({status: 'DRAFT', handle: 'draft-soliter'}, {channel: 'kazka'})).toBe(false);
   });
 
   it('filters Admin nodes through mapStoreProduct', () => {
@@ -119,9 +129,32 @@ describe('isLivePublishedProduct', () => {
         onlineStoreUrl: 'https://epirbizuteria.pl/products/live-sapphire',
         variants: {nodes: []},
       },
+      {
+        id: 'gid://shopify/Product/5',
+        handle: 'zloty-pierscionek-z-naturalnym-szafirem',
+        title: 'Złoty pierścionek z naturalnym szafirem',
+        status: 'ACTIVE',
+        publishedOnCurrentPublication: false,
+        onlineStoreUrl: 'https://epirbizuteria.pl/products/zloty-pierscionek-z-naturalnym-szafirem',
+        variants: {nodes: []},
+      },
+      {
+        id: 'gid://shopify/Product/6',
+        handle: 'pierscionek-srebrny-fale-wody-z-szafirem',
+        title: 'Pierścionek srebrny fale wody z szafirem',
+        status: 'ACTIVE',
+        publishedOnCurrentPublication: false,
+        onlineStoreUrl: 'https://epirbizuteria.pl/products/pierscionek-srebrny-fale-wody-z-szafirem',
+        variants: {nodes: []},
+      },
     ].map((node) => mapStoreProduct(node));
 
-    expect(filterLivePublishedProducts(nodes).map((product) => product.handle)).toEqual(['live-sapphire']);
+    expect(filterLivePublishedProducts(nodes).map((product) => product.handle)).toEqual([
+      'live-sapphire',
+      'zloty-pierscionek-z-naturalnym-szafirem',
+      'pierscionek-srebrny-fale-wody-z-szafirem',
+    ]);
+    expect(nodes.some((product) => 'publishedOnCurrentPublication' in product)).toBe(false);
   });
 });
 

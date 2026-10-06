@@ -560,7 +560,7 @@ async function callShopMcp(
   }
 
   async function presentBuyerCatalog(payload: unknown): Promise<unknown> {
-    return presentCatalogForModel(await hydrateThinCatalogCards(payload, env), {brand});
+    return presentCatalogForModel(await hydrateThinCatalogCards(payload, env, brand), {brand});
   }
 
   const mcpToolName = cartMcpToolName

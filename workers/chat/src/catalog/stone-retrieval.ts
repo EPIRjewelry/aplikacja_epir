@@ -9,8 +9,12 @@ import {
   SHOPIFY_ADMIN_API_VERSION,
   SHOPIFY_STOREFRONT_API_VERSION,
 } from '../config/shopify-api-version';
-import {isEpirFamilyCatalogBrand} from './kazka-assortment';
-import {filterLivePublishedProducts, withActiveStatusQuery} from './live-store-product';
+import {isEpirFamilyCatalogBrand, isKazkaCatalogBrand} from './kazka-assortment';
+import {
+  filterLivePublishedProducts,
+  type LiveCatalogChannel,
+  withActiveStatusQuery,
+} from './live-store-product';
 import {
   applyTurnSearchHints,
   detectStoneOriginAsk,
@@ -281,11 +285,18 @@ function mapOptions(node: Record<string, unknown>): Array<{name: string; values:
   return groups;
 }
 
-export function mapStoreProduct(node: Record<string, unknown>): Record<string, unknown> {
+export function mapStoreProduct(
+  node: Record<string, unknown>,
+  options: {kazkaStorefront?: boolean} = {},
+): Record<string, unknown> {
   const variantNodes = isRecord(node.variants) && Array.isArray(node.variants.nodes) ? node.variants.nodes : [];
   const metafields =
     isRecord(node.metafields) && Array.isArray(node.metafields.nodes) ? node.metafields.nodes : [];
+  const handle = typeof node.handle === 'string' ? node.handle.trim() : '';
   const online = typeof node.onlineStoreUrl === 'string' ? node.onlineStoreUrl : undefined;
+  const kazkaStorefront = options.kazkaStorefront === true;
+  const kazkaUrl =
+    kazkaStorefront && handle ? `https://kazka.epirbizuteria.pl/products/${handle}` : undefined;
   const mapped: Record<string, unknown> = {
     id: node.id,
     handle: node.handle,
@@ -295,13 +306,13 @@ export function mapStoreProduct(node: Record<string, unknown>): Record<string, u
     vendor: node.vendor,
     tags: node.tags,
     status: node.status,
-    publishedOnCurrentPublication: node.publishedOnCurrentPublication,
     onlineStoreUrl: online,
-    url: online,
+    url: kazkaUrl ?? online,
     options: mapOptions(node),
     metafields,
     variants: variantNodes.filter(isRecord).map(mapVariant),
   };
+  if (kazkaStorefront) mapped.kazka_storefront = true;
   const priceRange = mapPriceRange(node);
   if (priceRange) mapped.priceRange = priceRange;
   return mapped;
@@ -315,7 +326,6 @@ const PRODUCT_FIELDS = `
   vendor
   tags
   status
-  publishedOnCurrentPublication
   onlineStoreUrl
   options { name optionValues { name } }
   priceRangeV2 {
@@ -355,7 +365,6 @@ const ADMIN_SEARCH_PLAIN_OPTIONS = `
         vendor
         tags
         status
-        publishedOnCurrentPublication
         onlineStoreUrl
         priceRangeV2 {
           minVariantPrice { amount currencyCode }
@@ -434,6 +443,7 @@ function nodesOf(data: unknown): Record<string, unknown>[] {
 async function searchAdmin(
   env: StoneCatalogEnv,
   query: string,
+  channel: LiveCatalogChannel = 'epir',
 ): Promise<{ok: boolean; products: Record<string, unknown>[]}> {
   const shop = env.SHOP_DOMAIN?.trim();
   const token = env.SHOPIFY_ADMIN_TOKEN?.trim();
@@ -443,13 +453,13 @@ async function searchAdmin(
   const liveQuery = withActiveStatusQuery(query);
   try {
     const data = await postGraphql(endpoint, headers, ADMIN_SEARCH, {query: liveQuery});
-    return {ok: true, products: filterLivePublishedProducts(nodesOf(data).map(mapStoreProduct))};
+    return {ok: true, products: filterLivePublishedProducts(nodesOf(data).map(mapStoreProduct), {channel})};
   } catch (error) {
     console.warn('[stone-retrieval] admin search with options failed', error instanceof Error ? error.message : error);
   }
   try {
     const data = await postGraphql(endpoint, headers, ADMIN_SEARCH_PLAIN_OPTIONS, {query: liveQuery});
-    return {ok: true, products: filterLivePublishedProducts(nodesOf(data).map(mapStoreProduct))};
+    return {ok: true, products: filterLivePublishedProducts(nodesOf(data).map(mapStoreProduct), {channel})};
   } catch (error) {
     console.warn('[stone-retrieval] admin search failed', error instanceof Error ? error.message : error);
     return {ok: false, products: []};
@@ -459,11 +469,16 @@ async function searchAdmin(
 async function searchStorefront(
   env: StoneCatalogEnv,
   query: string,
+  options: {kazka?: boolean} = {},
 ): Promise<{ok: boolean; products: Record<string, unknown>[]}> {
   const shop = env.SHOP_DOMAIN?.trim();
-  const token = env.SHOPIFY_STOREFRONT_TOKEN?.trim() || env.PUBLIC_STOREFRONT_API_TOKEN_KAZKA?.trim();
+  const kazka = options.kazka === true;
+  const token = kazka
+    ? env.PUBLIC_STOREFRONT_API_TOKEN_KAZKA?.trim()
+    : env.SHOPIFY_STOREFRONT_TOKEN?.trim();
   if (!shop || !token) return {ok: false, products: []};
   const endpoint = `https://${shop}/api/${SHOPIFY_STOREFRONT_API_VERSION}/graphql.json`;
+  const channel: LiveCatalogChannel = kazka ? 'kazka' : 'epir';
   try {
     const data = await postGraphql(
       endpoint,
@@ -471,7 +486,13 @@ async function searchStorefront(
       STOREFRONT_SEARCH,
       {query},
     );
-    return {ok: true, products: filterLivePublishedProducts(nodesOf(data).map(mapStoreProduct))};
+    return {
+      ok: true,
+      products: filterLivePublishedProducts(
+        nodesOf(data).map((node) => mapStoreProduct(node, {kazkaStorefront: kazka})),
+        {channel},
+      ),
+    };
   } catch (error) {
     console.warn('[stone-retrieval] storefront search failed', error instanceof Error ? error.message : error);
     return {ok: false, products: []};
@@ -486,10 +507,15 @@ function hasShopToken(env: StoneCatalogEnv): boolean {
   );
 }
 
+function shopChannel(brand?: string): LiveCatalogChannel {
+  return isKazkaCatalogBrand(brand) ? 'kazka' : 'epir';
+}
+
 async function hydrateStoneCards(
   env: StoneCatalogEnv,
   products: readonly Record<string, unknown>[],
   intent: StoneIntent,
+  brand?: string,
 ): Promise<Record<string, unknown>[]> {
   const handles = products
     .map((product) => (typeof product.handle === 'string' ? product.handle.trim() : ''))
@@ -497,7 +523,7 @@ async function hydrateStoneCards(
     .slice(0, STONE_SEARCH_LIMIT);
   if (!handles.length) return [];
   const query = handles.map((handle) => `handle:${handle}`).join(' OR ');
-  const found = await searchShop(env, query);
+  const found = await searchShop(env, query, brand);
   if (!found.ok) return [];
   return found.products.filter((product) => productMatchesStone(product, intent));
 }
@@ -505,8 +531,9 @@ async function hydrateStoneCards(
 export async function fetchStoreProductsByQuery(
   env: StoneCatalogEnv,
   query: string,
+  brand?: string,
 ): Promise<{ok: boolean; products: Record<string, unknown>[]}> {
-  return searchShop(env, query);
+  return searchShop(env, query, brand);
 }
 
 function variantRecords(product: Record<string, unknown>): Record<string, unknown>[] {
@@ -546,7 +573,11 @@ export function catalogCardIsComplete(product: Record<string, unknown>): boolean
   return true;
 }
 
-export async function hydrateThinCatalogCards(result: unknown, env: StoneCatalogEnv): Promise<unknown> {
+export async function hydrateThinCatalogCards(
+  result: unknown,
+  env: StoneCatalogEnv,
+  brand?: string,
+): Promise<unknown> {
   if (!hasShopToken(env)) return result;
   const current = extractCatalogProducts(result);
   const thinHandles = current
@@ -555,7 +586,7 @@ export async function hydrateThinCatalogCards(result: unknown, env: StoneCatalog
     .filter(Boolean)
     .slice(0, STONE_SEARCH_LIMIT);
   if (!thinHandles.length) return result;
-  const found = await searchShop(env, thinHandles.map((handle) => `handle:${handle}`).join(' OR '));
+  const found = await searchShop(env, thinHandles.map((handle) => `handle:${handle}`).join(' OR '), brand);
   if (!found.ok || !found.products.length) return result;
   const byHandle = new Map<string, Record<string, unknown>>();
   for (const product of found.products) {
@@ -573,17 +604,33 @@ export async function hydrateThinCatalogCards(result: unknown, env: StoneCatalog
   return replaceCatalogProducts(result, merged, '');
 }
 
-async function searchShop(env: StoneCatalogEnv, query: string): Promise<{ok: boolean; products: Record<string, unknown>[]}> {
+async function searchShop(
+  env: StoneCatalogEnv,
+  query: string,
+  brand?: string,
+): Promise<{ok: boolean; products: Record<string, unknown>[]}> {
   if (!hasShopToken(env)) return {ok: false, products: []};
+  const channel = shopChannel(brand);
   const adminToken = Boolean(env.SHOP_DOMAIN?.trim() && env.SHOPIFY_ADMIN_TOKEN?.trim());
-  const storefrontToken = Boolean(
-    env.SHOPIFY_STOREFRONT_TOKEN?.trim() || env.PUBLIC_STOREFRONT_API_TOKEN_KAZKA?.trim(),
-  );
+  const kazkaStorefrontToken = Boolean(env.PUBLIC_STOREFRONT_API_TOKEN_KAZKA?.trim());
+  const epirStorefrontToken = Boolean(env.SHOPIFY_STOREFRONT_TOKEN?.trim());
+
+  if (channel === 'kazka') {
+    if (kazkaStorefrontToken) {
+      const kazka = await searchStorefront(env, query, {kazka: true});
+      if (kazka.ok && kazka.products.length) return kazka;
+      if (kazka.ok && !adminToken) return kazka;
+      if (!kazka.ok && !adminToken) return {ok: false, products: []};
+    }
+    if (adminToken) return searchAdmin(env, query, 'kazka');
+    return {ok: false, products: []};
+  }
+
   if (adminToken) {
-    const admin = await searchAdmin(env, query);
+    const admin = await searchAdmin(env, query, 'epir');
     if (admin.ok && admin.products.length) return admin;
-    if (admin.ok && !storefrontToken) return admin;
-    if (!admin.ok && !storefrontToken) return {ok: false, products: []};
+    if (admin.ok && !epirStorefrontToken) return admin;
+    if (!admin.ok && !epirStorefrontToken) return {ok: false, products: []};
   }
   return searchStorefront(env, query);
 }
@@ -600,7 +647,7 @@ export async function fetchStoneProducts(
   const baseQuery = originAsk
     ? originCatalogQuery(originAsk, intent)
     : shopifyStoneQuery(intent);
-  const keyword = await searchShop(env, wantsRing ? `${baseQuery} pierścionek` : baseQuery);
+  const keyword = await searchShop(env, wantsRing ? `${baseQuery} pierścionek` : baseQuery, brand);
   if (!keyword.ok) return {products: [], confirmed: false};
   let found = keyword.products.filter((product) => productMatchesStone(product, intent));
   found = filterProductsByOriginAsk(found, originAsk);
@@ -609,7 +656,7 @@ export async function fetchStoneProducts(
     if (rings.length) {
       found = rings;
     } else {
-      const again = await searchShop(env, ringRetryQuery(baseQuery));
+      const again = await searchShop(env, ringRetryQuery(baseQuery), brand);
       found = again.ok
         ? again.products
             .filter((product) => productMatchesStone(product, intent) && productLooksLikeRing(product))
@@ -619,7 +666,7 @@ export async function fetchStoneProducts(
   }
   if (!found.length && originAsk === 'natural') {
     const naturalQuery = `${shopifyStoneQuery(intent)} naturalny`;
-    const again = await searchShop(env, naturalQuery);
+    const again = await searchShop(env, naturalQuery, brand);
     if (again.ok) {
       found = again.products
         .filter((product) => productMatchesStone(product, intent))
@@ -628,12 +675,12 @@ export async function fetchStoneProducts(
   }
   if (!found.length && !wantsRing && !originAsk) {
     const metafield = intent.lemmas.map((lemma) => `metafields.custom.main_stone:${lemma}`).join(' OR ');
-    const byMetafield = await searchShop(env, metafield);
+    const byMetafield = await searchShop(env, metafield, brand);
     if (byMetafield.ok) found = byMetafield.products.filter((product) => productMatchesStone(product, intent));
   }
   if (!found.length && intent.id === 'szafir' && isEpirFamilyCatalogBrand(brand)) {
     const handles = AUDITED_SAPPHIRE_HANDLES.map((handle) => `handle:${handle}`).join(' OR ');
-    const byHandle = await searchShop(env, handles);
+    const byHandle = await searchShop(env, handles, brand);
     if (byHandle.ok) {
       found = byHandle.products.filter((product) => productMatchesStone(product, intent));
       found = filterProductsByOriginAsk(found, originAsk);
@@ -679,7 +726,7 @@ export async function rescueStoneCatalog(
   let matches = current;
   let shopLookup = false;
   if (matches.length && hasShopToken(input.env)) {
-    const hydrated = await hydrateStoneCards(input.env, matches, intent);
+    const hydrated = await hydrateStoneCards(input.env, matches, intent, input.brand);
     if (hydrated.length) matches = hydrated;
   }
   if (matches.length && buyerAsksForRing(buyerText)) {

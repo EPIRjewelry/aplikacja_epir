@@ -227,7 +227,7 @@ export async function loadPageProductCard(
 ): Promise<{card: Record<string, unknown>; snapshot: unknown} | null> {
   const slug = handle.trim();
   if (!slug) return null;
-  const found = await fetchStoreProductsByQuery(env, `handle:${slug}`);
+  const found = await fetchStoreProductsByQuery(env, `handle:${slug}`, brand);
   if (!found.ok || !found.products.length) return null;
   const product = found.products.find((item) => item.handle === slug) ?? found.products[0];
   if (!product || !brandKeepsProduct(product, brand)) return null;

@@ -133,7 +133,7 @@ describe('enforceKazkaAssortmentOnCatalogResult', () => {
     vi.unstubAllGlobals();
   });
 
-  it('drops DRAFT and ACTIVE-but-unpublished Kazka cards even when vendor/tags match', async () => {
+  it('drops DRAFT Kazka cards and keeps ACTIVE cards without Online Store URL', async () => {
     const filtered = await enforceKazkaAssortmentOnCatalogResult(
       {
         products: [
@@ -146,7 +146,7 @@ describe('enforceKazkaAssortmentOnCatalogResult', () => {
             variants: [{sku: 'KAZKA-DRAFT'}],
           },
           {
-            title: 'Unpublished Soliter',
+            title: 'Hydrogen Soliter',
             vendor: 'Kazka',
             tags: ['kazka'],
             status: 'ACTIVE',
@@ -167,7 +167,10 @@ describe('enforceKazkaAssortmentOnCatalogResult', () => {
       {SHOP_DOMAIN: SHOP},
       {maxProducts: 3},
     );
-    expect(skusOf((filtered as {products: Array<Record<string, unknown>>}).products)).toEqual([KAZKA_SKU]);
+    expect(skusOf((filtered as {products: Array<Record<string, unknown>>}).products)).toEqual([
+      'KAZKA-UNPUB',
+      KAZKA_SKU,
+    ]);
   });
 
   it('drops an EPIR-only SKU and keeps a Kazka SKU when vendor and tags are on the payload', async () => {
@@ -492,5 +495,65 @@ describe('callMcpToolDirect Kazka catalog filter', () => {
     expect(parsed.product).toBeNull();
     expect(parsed.system_note).toContain('asortymentu Kazka');
     expect(text).not.toContain(EPIR_ONLY_SKU);
+  });
+});
+
+describe('Storefront membership GraphQL', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('does not send status or publishedOnCurrentPublication to Storefront', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(String(url)).toContain('/api/2024-10/graphql.json');
+      const body = JSON.parse(String(init?.body ?? '{}')) as {query?: string};
+      expect(body.query ?? '').not.toMatch(/\bstatus\b/);
+      expect(body.query ?? '').not.toContain('publishedOnCurrentPublication');
+      return new Response(
+        JSON.stringify({
+          data: {
+            nodes: [
+              {
+                __typename: 'ProductVariant',
+                id: KAZKA_VARIANT_ID,
+                sku: KAZKA_SKU,
+                product: {
+                  id: 'gid://shopify/Product/2',
+                  handle: 'soliter',
+                  vendor: 'Kazka',
+                  tags: ['kazka'],
+                },
+              },
+            ],
+            products: {
+              nodes: [
+                {
+                  id: 'gid://shopify/Product/2',
+                  handle: 'soliter',
+                  vendor: 'Kazka',
+                  tags: ['kazka'],
+                  variants: {nodes: [{id: KAZKA_VARIANT_ID, sku: KAZKA_SKU}]},
+                },
+              ],
+            },
+          },
+        }),
+        {status: 200, headers: {'Content-Type': 'application/json'}},
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const filtered = await enforceKazkaAssortmentOnCatalogResult(
+      {
+        products: [
+          catalogProduct('Gałązki', EPIR_VARIANT_ID, EPIR_ONLY_SKU),
+          catalogProduct('Solitaire', KAZKA_VARIANT_ID, KAZKA_SKU),
+        ],
+      },
+      {SHOP_DOMAIN: SHOP, PUBLIC_STOREFRONT_API_TOKEN_KAZKA: 'kazka-sf'},
+    );
+    expect(skusOf((filtered as {products: Array<Record<string, unknown>>}).products)).toEqual([KAZKA_SKU]);
+    expect(fetchMock).toHaveBeenCalled();
   });
 });
