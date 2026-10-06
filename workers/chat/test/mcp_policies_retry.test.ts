@@ -87,7 +87,10 @@ describe('Shop MCP search_shop_policies_and_faqs', () => {
     });
 
     expect(out.error).toBeUndefined();
-    expect(out.result).toMatchObject({
+    const payload = out.result as {content?: Array<{text?: string}>; products?: unknown[]; system_note?: string};
+    const parsed =
+      typeof payload.content?.[0]?.text === 'string' ? JSON.parse(payload.content[0].text) : payload;
+    expect(parsed).toMatchObject({
       products: [],
       system_note: expect.stringContaining('niedostępny'),
     });

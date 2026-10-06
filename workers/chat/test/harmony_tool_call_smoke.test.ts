@@ -372,7 +372,18 @@ describe('Harmony smoke — parallel tool_calls w jednej turze', () => {
     const mcpSpy = vi.spyOn(mcpServer, 'callMcpToolDirect').mockImplementation(
       async (_env: any, tool: string) => {
         if (tool === 'search_catalog') {
-          return { result: { products: [{ id: '1', title: 'Aura', price_display_pl: '1 290 zł' }] } };
+          return {
+            result: {
+              products: [
+                {
+                  id: '1',
+                  title: 'Aura',
+                  price_display_pl: '1 290 zł',
+                  url: 'https://epir-test.myshopify.com/products/aura',
+                },
+              ],
+            },
+          };
         }
         if (tool === 'search_shop_policies_and_faqs') {
           return {

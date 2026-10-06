@@ -4100,6 +4100,7 @@ async function streamAssistantResponse(
           previousAssistant: previousAssistantText,
           catalogSnapshots: catalogSnapshotsForPricing,
           stoneLookup: seededStoneLookup,
+          brand: replyBrand,
         });
         if (stoneGuarded.replaced) {
           console.log(
@@ -4112,7 +4113,7 @@ async function streamAssistantResponse(
         }
         const policyTurn = detectPolicyInformationIntent(userMessage).match;
         const sizeTurn = detectSizeTableIntent(userMessage).match;
-        let buyerText = seededAboutPage && seededPageCard && !sizeTurn ? outcome.text : stoneGuarded.text;
+        let buyerText = stoneGuarded.text;
         if (sizeTurn) {
           const sized = guardSizeQuestionReply(buyerText);
           if (sized.replaced) buyerText = sized.text;
@@ -4122,10 +4123,7 @@ async function streamAssistantResponse(
         } else if (!policyTurn) {
           const cards = productsFromCatalogSnapshots(catalogSnapshotsForPricing);
           const varyingDiscovery = cards.some((card) => card.price_is_flat === false);
-          if (cards.length === 1 && !varyingDiscovery) {
-            const single = guardPageProductReply(buyerText, cards[0]!);
-            if (single.replaced) buyerText = single.text;
-          } else if (cards.length > 1 || varyingDiscovery) {
+          if (cards.length > 1 || varyingDiscovery) {
             const fromPrice = guardDiscoveryFromPrice(buyerText, cards);
             if (fromPrice.replaced) buyerText = fromPrice.text;
             else {
@@ -4831,6 +4829,7 @@ async function streamAssistantResponse(
     } catch (err) {
       console.error('Error in streamAssistantResponse:', err);
       try {
+        await sendSSE('error', { message: 'stream_failed' });
         if (!buyerDeltaSent) {
           await emitBuyerReply(replyOrStall(userMessage, turnBrand, 'error'));
         }

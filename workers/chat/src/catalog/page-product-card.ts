@@ -63,7 +63,7 @@ export function formatPageCardReply(card: Record<string, unknown>): string {
   const url = typeof card.url === 'string' ? card.url.trim() : '';
   const name = url ? `[${title}](${url})` : title;
   let price = '';
-  if (card.price_is_flat === true && typeof card.price_display_pl === 'string') {
+  if (typeof card.price_display_pl === 'string' && card.price_is_flat !== false) {
     price = card.price_display_pl;
   } else if (typeof card.price_min_display_pl === 'string' && typeof card.price_max_display_pl === 'string') {
     price = `od ${card.price_min_display_pl} do ${card.price_max_display_pl}`;
