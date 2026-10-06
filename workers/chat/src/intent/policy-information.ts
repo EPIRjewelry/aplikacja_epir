@@ -24,6 +24,9 @@ const POLICY_MARKERS_PL = [
   'rękojmi',
   'rekojmi',
   'faq',
+  'certyfik',
+  'certyfikat',
+  'certyfikowany',
   // Kontakt / lokalizacja — must → search_shop_policies_and_faqs (Q3: krótkie „Kontakt”)
   'kontakt',
   'telefon',
@@ -49,6 +52,8 @@ const POLICY_MARKERS_EN = [
   'withdrawal',
   'complaint',
   'faq',
+  'certificate',
+  'certified stone',
   'contact',
   'phone number',
   'opening hours',

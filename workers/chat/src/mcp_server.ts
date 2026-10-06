@@ -59,6 +59,7 @@ import {
   STONE_CATALOG_CANDIDATES,
 } from './catalog/stone-retrieval';
 import {discoveryMetalBrowse, rewriteCatalogQueryForDiscoveryMetal} from './catalog/stone-intent';
+import {rewriteCatalogQueryForOriginAndHints} from './catalog/stone-origin';
 import {
   enforceEpirAssortmentOnCatalogResult,
   enforceKazkaAssortmentOnCatalogResult,
@@ -518,6 +519,8 @@ async function callShopMcp(
       });
     } else if (metalBrowse) {
       catalog.query = rewriteCatalogQueryForDiscoveryMetal(currentQuery, buyerTurns ?? []);
+    } else if (buyerTurns?.length) {
+      catalog.query = rewriteCatalogQueryForOriginAndHints(currentQuery, buyerTurns);
     }
     if ((intent || metalBrowse) && !isKazkaCatalogBrand(brand)) {
       const pagination =

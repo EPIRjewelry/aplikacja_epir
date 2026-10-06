@@ -39,7 +39,7 @@ const STONES: readonly StoneDef[] = [
   stone('tanzanit', 'tanzanit', ['tanzanit', 'tanzanite'], ['tanzanit', 'tanzanite']),
   stone('cytryn', 'cytryn', ['cytryn', 'citrine'], ['cytryn', 'citrine']),
   stone('kwarc', 'kwarc', ['kwarc', 'quartz'], ['kwarc', 'quartz']),
-  stone('diament', 'diament', ['diament', 'brylant', 'diamond'], ['diament', 'brylant', 'diamond']),
+  stone('diament', 'diament', ['diament', 'brylant', 'brylancik', 'diamond'], ['diament', 'brylant', 'brylancik', 'diamond']),
   stone('rubin', 'rubin', ['rubin', 'ruby'], ['rubin', 'ruby']),
   stone('szmaragd', 'szmaragd', ['szmaragd', 'emerald'], ['szmaragd', 'emerald']),
   stone('topaz', 'topaz', ['topaz'], ['topaz']),

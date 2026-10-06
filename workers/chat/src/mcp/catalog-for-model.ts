@@ -12,6 +12,7 @@
 
 import {isEpirCatalogBrand, isKazkaCatalogBrand} from '../catalog/kazka-assortment';
 import {kazkaLeadTimePhrase} from '../catalog/kazka-lead-time';
+import {kazkaQualityKind} from '../catalog/stone-origin';
 import {stripForeignBrandLinks} from '../brand-reply-host';
 import {plnDisplayFromUcpMoney} from './catalog-price-enrich';
 
@@ -22,7 +23,7 @@ const METAFIELD_VALUE_MAX = 240;
 const MAX_METAFIELDS = 8;
 
 const CARD_NOTE =
-  'Karta jest całą ofertą tego SKU. Gdy price_is_flat jest true, cytuj wyłącznie price_display_pl (to samo co page_price_display_pl) i pełną listę sizes albo sizes_label — cena nie zależy od rozmiaru. Gdy price_is_flat jest false, nie zaczynaj od „od X zł” i nie podawaj ceny pierwszego wariantu jako ceny produktu. Napisz, że warianty różnią się metalem, próbą albo kamieniem, podaj zakres karty price_min_display_pl–price_max_display_pl i zapytaj, który wariant klient chce. Nie dopisuj kamienia, rozmiaru ani cechy spoza tej karty i nie przenoś ich z innego SKU. Wariant chwal tylko za options tego wariantu. Rozmiary podawaj z sizes_label, gdy jest, inaczej z sizes, bez skracania i bez przeliczenia na inną skalę. Metale podawaj z metals, gdy pole jest na karcie. Link wyłącznie z pola url. Do koszyka użyj id wariantu, który klient wybrał.';
+  'Karta jest całą ofertą tego SKU. Gdy price_is_flat jest true, cytuj wyłącznie price_display_pl (to samo co page_price_display_pl) i pełną listę sizes albo sizes_label — cena nie zależy od rozmiaru. Gdy price_is_flat jest false, nie zaczynaj od „od X zł” i nie podawaj ceny pierwszego wariantu jako ceny produktu. Napisz, że warianty różnią się metalem, próbą albo kamieniem, podaj zakres karty price_min_display_pl–price_max_display_pl i zapytaj, który wariant klient chce. Gdy jest quality_price_groups, podaj osobny zakres dla kind=natural i kind=lab z tych pól, potem zapytaj, który wariant klient chce. Nie dopisuj kamienia, rozmiaru ani cechy spoza tej karty i nie przenoś ich z innego SKU. Wariant chwal tylko za options tego wariantu. Rozmiary podawaj z sizes_label, gdy jest, inaczej z sizes, bez skracania i bez przeliczenia na inną skalę. Metale podawaj z metals, gdy pole jest na karcie. Pochodzenie kamienia wyłącznie z karty (main_stone, description, options, quality_price_groups). Link wyłącznie z pola url. Do koszyka użyj id wariantu, który klient wybrał.';
 
 /** Publiczne PDP. Apex to Online Store; Kazka jest na subdomenie Hydrogen, nie na apex. */
 const EPIR_PRODUCT_ORIGIN = 'https://epirbizuteria.pl';
@@ -181,6 +182,53 @@ function uniqueLabels(values: string[]): string[] {
     out.push(label);
   }
   return out;
+}
+
+function qualityOptionValue(variant: Record<string, unknown>): string | undefined {
+  const quality = variantOptions(variant).find((option) => /jako[sś][cć]|quality|diamond|brylant/i.test(option.name));
+  return quality?.value;
+}
+
+function qualityPriceGroups(
+  variants: Record<string, unknown>[],
+  product: Record<string, unknown>,
+): Array<{kind: 'natural' | 'lab'; qualities: string[]; price_min_display_pl: string; price_max_display_pl: string}> | undefined {
+  const handle = asString(product.handle) ?? '';
+  const title = asString(product.title) ?? '';
+  const tags = Array.isArray(product.tags) ? product.tags.join(' ') : '';
+  const bigLab = /big[-\s]?lab/iu.test(`${handle} ${title} ${tags}`);
+  const buckets = new Map<'natural' | 'lab', {labels: string[]; prices: PlnPrice[]}>();
+  for (const variant of variants) {
+    const price = priceOf(variant.price) ?? priceOf(variant);
+    if (!price) continue;
+    const label = qualityOptionValue(variant) ?? (bigLab ? 'LAB' : '');
+    const kind = bigLab ? 'lab' : kazkaQualityKind(label);
+    if (!kind) continue;
+    const bucket = buckets.get(kind) ?? {labels: [], prices: []};
+    if (label) bucket.labels.push(label);
+    bucket.prices.push(price);
+    buckets.set(kind, bucket);
+  }
+  if (!buckets.size) return undefined;
+  const groups: Array<{
+    kind: 'natural' | 'lab';
+    qualities: string[];
+    price_min_display_pl: string;
+    price_max_display_pl: string;
+  }> = [];
+  for (const kind of ['natural', 'lab'] as const) {
+    const bucket = buckets.get(kind);
+    if (!bucket?.prices.length) continue;
+    const min = bucket.prices.reduce((best, price) => (price.price_minor < best.price_minor ? price : best));
+    const max = bucket.prices.reduce((best, price) => (price.price_minor > best.price_minor ? price : best));
+    groups.push({
+      kind,
+      qualities: uniqueLabels(bucket.labels),
+      price_min_display_pl: min.price_display_pl,
+      price_max_display_pl: max.price_display_pl,
+    });
+  }
+  return groups.length ? groups : undefined;
 }
 
 function metalList(
@@ -510,6 +558,8 @@ function slimProduct(
     out.metals = metals;
     out.metals_label = metals.join(', ');
   }
+  const qualityGroups = qualityPriceGroups(variantsAll, product);
+  if (qualityGroups?.length) out.quality_price_groups = qualityGroups;
   const stoneField = allMetafields.find((field) => /main_stone|gemstone_type/i.test(field.key));
   if (stoneField) out.main_stone = stoneField.value;
   if (groups.length) out.options = groups;

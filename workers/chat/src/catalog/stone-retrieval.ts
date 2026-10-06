@@ -12,6 +12,17 @@ import {
 import {isEpirFamilyCatalogBrand} from './kazka-assortment';
 import {filterLivePublishedProducts, withActiveStatusQuery} from './live-store-product';
 import {
+  applyTurnSearchHints,
+  detectStoneOriginAsk,
+  filterProductsByOriginAsk,
+  isCertificateQuestion,
+  isStoneOriginAssortmentQuestion,
+  latestTurnSearchHints,
+  originCatalogQuery,
+  productMatchesOriginAsk,
+  rewriteCatalogQueryForOriginAndHints,
+} from './stone-origin';
+import {
   buyerAsksForRing,
   expandCatalogQuery,
   preferJewelryType,
@@ -584,22 +595,38 @@ export async function fetchStoneProducts(
   buyerText = '',
 ): Promise<{products: Record<string, unknown>[]; confirmed: boolean}> {
   if (!hasShopToken(env)) return {products: [], confirmed: false};
+  const originAsk = detectStoneOriginAsk(buyerText);
   const wantsRing = buyerAsksForRing(buyerText);
-  const keyword = await searchShop(env, wantsRing ? `${shopifyStoneQuery(intent)} pierścionek` : shopifyStoneQuery(intent));
+  const baseQuery = originAsk
+    ? originCatalogQuery(originAsk, intent)
+    : shopifyStoneQuery(intent);
+  const keyword = await searchShop(env, wantsRing ? `${baseQuery} pierścionek` : baseQuery);
   if (!keyword.ok) return {products: [], confirmed: false};
   let found = keyword.products.filter((product) => productMatchesStone(product, intent));
+  found = filterProductsByOriginAsk(found, originAsk);
   if (wantsRing) {
     const rings = found.filter((product) => productLooksLikeRing(product));
     if (rings.length) {
       found = rings;
     } else {
-      const again = await searchShop(env, ringRetryQuery(shopifyStoneQuery(intent)));
+      const again = await searchShop(env, ringRetryQuery(baseQuery));
       found = again.ok
-        ? again.products.filter((product) => productMatchesStone(product, intent) && productLooksLikeRing(product))
+        ? again.products
+            .filter((product) => productMatchesStone(product, intent) && productLooksLikeRing(product))
+            .filter((product) => !originAsk || productMatchesOriginAsk(product, originAsk))
         : [];
     }
   }
-  if (!found.length && !wantsRing) {
+  if (!found.length && originAsk === 'natural') {
+    const naturalQuery = `${shopifyStoneQuery(intent)} naturalny`;
+    const again = await searchShop(env, naturalQuery);
+    if (again.ok) {
+      found = again.products
+        .filter((product) => productMatchesStone(product, intent))
+        .filter((product) => productMatchesOriginAsk(product, 'natural'));
+    }
+  }
+  if (!found.length && !wantsRing && !originAsk) {
     const metafield = intent.lemmas.map((lemma) => `metafields.custom.main_stone:${lemma}`).join(' OR ');
     const byMetafield = await searchShop(env, metafield);
     if (byMetafield.ok) found = byMetafield.products.filter((product) => productMatchesStone(product, intent));
@@ -607,14 +634,22 @@ export async function fetchStoneProducts(
   if (!found.length && intent.id === 'szafir' && isEpirFamilyCatalogBrand(brand)) {
     const handles = AUDITED_SAPPHIRE_HANDLES.map((handle) => `handle:${handle}`).join(' OR ');
     const byHandle = await searchShop(env, handles);
-    if (byHandle.ok) found = byHandle.products.filter((product) => productMatchesStone(product, intent));
+    if (byHandle.ok) {
+      found = byHandle.products.filter((product) => productMatchesStone(product, intent));
+      found = filterProductsByOriginAsk(found, originAsk);
+    }
   }
+  const hints = latestTurnSearchHints(buyerText);
+  found = applyTurnSearchHints(found, hints);
   return {products: found, confirmed: true};
 }
 
 export function catalogStoneIntent(input: StoneRescueInput): StoneIntent | null {
   if (input.allowSubstitute) return null;
-  const turns = [...(input.buyerTurns ?? [])];
+  const buyerTurns = [...(input.buyerTurns ?? [])];
+  const buyerLatest = buyerTurns[buyerTurns.length - 1] ?? '';
+  if (isStoneOriginAssortmentQuestion(buyerLatest) || isCertificateQuestion(buyerLatest)) return null;
+  const turns = [...buyerTurns];
   if (input.catalogQuery?.trim()) turns.push(input.catalogQuery);
   return stoneIntentFromConversation(turns);
 }
@@ -623,9 +658,11 @@ export function rewriteCatalogQueryForStone(
   query: string,
   input: Pick<StoneRescueInput, 'buyerTurns' | 'allowSubstitute'>,
 ): string {
+  const turns = input.buyerTurns ?? [];
   const intent = catalogStoneIntent({...input, catalogQuery: query, env: {}});
-  if (!intent) return query;
-  return expandCatalogQuery(query, intent);
+  let next = intent ? expandCatalogQuery(query, intent) : query;
+  next = rewriteCatalogQueryForOriginAndHints(next, turns);
+  return next;
 }
 
 export async function rescueStoneCatalog(
@@ -635,7 +672,10 @@ export async function rescueStoneCatalog(
   const intent = catalogStoneIntent(input);
   if (!intent) return {result, rescued: false, matchCount: 0};
   const buyerText = (input.buyerTurns ?? []).join('\n');
-  const current = extractCatalogProducts(result).filter((product) => productMatchesStone(product, intent));
+  const originAsk = detectStoneOriginAsk(buyerText);
+  const current = extractCatalogProducts(result)
+    .filter((product) => productMatchesStone(product, intent))
+    .filter((product) => !originAsk || productMatchesOriginAsk(product, originAsk));
   let matches = current;
   let shopLookup = false;
   if (matches.length && hasShopToken(input.env)) {
@@ -669,10 +709,16 @@ export async function rescueStoneCatalog(
     }
     matches = found.products;
   }
-  const picked = preferJewelryType(matches, buyerText);
+  let picked = preferJewelryType(matches, buyerText);
+  picked = applyTurnSearchHints(picked, latestTurnSearchHints(buyerText));
+  if (originAsk) picked = filterProductsByOriginAsk(picked, originAsk);
   const note = picked.length
     ? stoneHitNote(intent.labelPl)
-    : buyerAsksForRing(buyerText)
+    : originAsk
+      ? originAsk === 'natural'
+        ? `Brak trafień naturalnego kamienia „${intent.labelPl}”. Powiedz to wprost. Zaproponuj pokrewny kamień naturalny tylko jako pytanie, bez SKU syntetycznego.`
+        : `Brak trafień syntetycznego albo laboratoryjnego kamienia „${intent.labelPl}”. Powiedz to wprost.`
+      : buyerAsksForRing(buyerText)
       ? `Brak pierścionków z kamieniem „${intent.labelPl}” w katalogu tej marki. Nie proponuj naszyjnika Iluzja.`
       : stoneMissNote(intent.labelPl);
   console.log(

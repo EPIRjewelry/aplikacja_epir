@@ -36,6 +36,17 @@ import {
 } from './stone-intent';
 import {storeFactContextLine} from './store-facts';
 import type {StoneLookup} from './buyer-reply-guard';
+import {
+  applyTurnSearchHints,
+  detectStoneOriginAsk,
+  filterProductsByOriginAsk,
+  isStoneOriginAssortmentQuestion,
+  latestTurnSearchHints,
+  originAssortmentSearchQueries,
+  originCatalogQuery,
+  originSafeLead,
+  pickMixedOriginCards,
+} from './stone-origin';
 
 export type SeededBuyerTurn = {
   lines: string[];
@@ -135,12 +146,12 @@ export async function seedBuyerTurnContext(input: {
   let pageCard: Record<string, unknown> | null = null;
   const latest = input.buyerTurns[input.buyerTurns.length - 1] ?? '';
   const buyerText = input.buyerTurns.join('\n');
-  if (detectPolicyInformationIntent(latest).match || detectSizeTableIntent(latest).match) {
-    if (detectSizeTableIntent(latest).match && !detectPolicyInformationIntent(latest).match) {
-      lines.push(
-        'Pytanie o rozmiar: odpowiedz wskazówką pomiaru (obwód palca albo średnica wewnętrzna) i tabelą rozmiarów. Nie wklejaj ceny, metalu, kamienia ani specyfikacji karty produktu.',
-      );
-    }
+  const policyTurn = detectPolicyInformationIntent(latest).match;
+  const sizeTurn = detectSizeTableIntent(latest).match;
+  if (sizeTurn && !policyTurn) {
+    lines.push(
+      'Pytanie o rozmiar: odpowiedz wskazówką pomiaru (obwód palca albo średnica wewnętrzna) i tabelą rozmiarów. Nie wklejaj ceny, metalu, kamienia ani specyfikacji karty produktu.',
+    );
     return {
       lines,
       snapshots,
@@ -164,6 +175,21 @@ export async function seedBuyerTurnContext(input: {
     }
   }
 
+  if (policyTurn) {
+    if (/certyfik|certificate/iu.test(latest)) {
+      lines.push(
+        'Pytanie o certyfikat: cytuj wyłącznie pole z karty tej tury albo wynik search_shop_policies_and_faqs. Jeśli karta nie podaje certyfikatu, napisz: karta tego nie podaje, proszę o kontakt z pracownią. Nie pokazuj losowego produktu.',
+      );
+    }
+    return {
+      lines,
+      snapshots,
+      stoneLookup,
+      pageCard,
+      aboutPageProduct: Boolean(pageCard) && buyerAsksAboutPageProduct(latest),
+    };
+  }
+
   const allowSubstitute = buyerAllowsStoneSubstitute(latest, input.previousAssistant);
   const stone = catalogStoneIntent({
     buyerTurns: input.buyerTurns,
@@ -184,19 +210,56 @@ export async function seedBuyerTurnContext(input: {
   }
 
   try {
-    if (stone) {
+    const originAsk = detectStoneOriginAsk(latest) ?? detectStoneOriginAsk(buyerText);
+    const originAssortment = isStoneOriginAssortmentQuestion(latest);
+    if (originAssortment || (originAsk && !stone && !metalBrowse)) {
+      const queries = originAssortment
+        ? originAssortmentSearchQueries(input.brand)
+        : [originCatalogQuery(originAsk, stone)];
+      const pool: Record<string, unknown>[] = [];
+      let ok = false;
+      for (const query of queries) {
+        const found = await fetchStoreProductsByQuery(input.env, query);
+        if (!found.ok) continue;
+        ok = true;
+        pool.push(...found.products.filter((product) => brandKeepsProduct(product, input.brand)));
+      }
+      if (!ok) {
+        stoneLookup = 'unconfirmed';
+        lines.push('Nie udało się potwierdzić pochodzenia kamieni w katalogu. Nie generalizuj asortymentu.');
+      } else {
+        let kept = originAssortment
+          ? pickMixedOriginCards(pool, 3)
+          : pickMixedOriginCards(filterProductsByOriginAsk(pool, originAsk), 3);
+        kept = applyTurnSearchHints(kept, latestTurnSearchHints(latest));
+        const note = originAssortment
+          ? `${originSafeLead(input.brand)} Pokaż 2–3 karty z tego wyniku. Nie mów, że wszystko jest naturalne albo wszystko syntetyczne.`
+          : originAsk === 'natural'
+            ? 'Tylko karty z kamieniem naturalnym. Syntetyki (w tym obraczka-z-szafirem-epir-jewellery) odpadają. Przy braku powiedz to wprost.'
+            : 'Tylko karty z kamieniem syntetycznym albo laboratoryjnym.';
+        const snapshot = presentedSnapshot(kept, note, input.brand);
+        snapshots.push(snapshot);
+        stoneLookup = kept.length ? 'hit' : 'confirmed_miss';
+        const text = (snapshot as {content?: Array<{text?: string}>}).content?.[0]?.text ?? '{}';
+        lines.push(`[TRAFENIA KATALOGU]\n${text}\n${originSafeLead(input.brand)}`);
+      }
+    } else if (stone) {
       const found = await fetchStoneProducts(input.env, stone, input.brand, buyerText);
       if (!found.confirmed) {
         stoneLookup = 'unconfirmed';
         lines.push(stoneUnconfirmedNote(stone.labelPl));
       } else {
-        const kept = preferJewelryType(
+        let kept = preferJewelryType(
           found.products.filter((product) => brandKeepsProduct(product, input.brand)),
           buyerText,
         );
+        kept = filterProductsByOriginAsk(kept, originAsk);
+        kept = applyTurnSearchHints(kept, latestTurnSearchHints(latest));
         const note = kept.length
           ? stoneHitNote(stone.labelPl)
-          : buyerAsksForRing(buyerText)
+          : originAsk === 'natural'
+            ? `Brak naturalnego kamienia „${stone.labelPl}”. Powiedz to wprost. Nie pokazuj syntetyków.`
+            : buyerAsksForRing(buyerText)
             ? `Brak pierścionków z kamieniem „${stone.labelPl}” w katalogu tej marki. Nie proponuj naszyjnika Iluzja.`
             : stoneMissNote(stone.labelPl);
         const snapshot = presentedSnapshot(kept, note, input.brand);

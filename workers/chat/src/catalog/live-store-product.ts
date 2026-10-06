@@ -99,7 +99,7 @@ export function liveProductRefsFromSnapshots(snapshots: readonly unknown[]): Liv
     const url = readUrl(node);
     const title = readTitle(node);
     const key = normalizeProductUrlKey(url);
-    if (key && title && !seen.has(key) && isLivePublishedProduct(node)) {
+    if (key && title && !seen.has(key)) {
       seen.add(key);
       out.push({
         title,
@@ -167,7 +167,7 @@ export function guardLiveCatalogProductLinks(
     if (!ref) {
       removed.push(url);
       changed = true;
-      return '';
+      return label.trim() || '';
     }
     const nextLabel = isGenericLinkLabel(label) || !label.trim() ? ref.title : label.trim();
     const next = `[${nextLabel}](${ref.url})`;

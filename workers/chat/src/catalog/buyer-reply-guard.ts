@@ -6,7 +6,15 @@
 import {extractCatalogProducts, productMatchesStone} from './stone-retrieval';
 import {detectPolicyInformationIntent} from '../intent/policy-information';
 import {
+  detectStoneOriginAsk,
+  formatOriginMissReply,
+  guardStoneOriginClaims,
+  isCertificateQuestion,
+  isStoneOriginAssortmentQuestion,
+} from './stone-origin';
+import {
   buyerAllowsStoneSubstitute,
+  detectStoneIntent,
   discoveryMetalBrowse,
   latestTurnClearsProductContext,
   otherStoneMentioned,
@@ -190,6 +198,7 @@ export type BuyerReplyContext = {
   catalogSnapshots: readonly unknown[];
   /** none = retrieval jeszcze nie zaszedł. Pusta lista bez confirmed_miss nie jest brakiem oferty. */
   stoneLookup?: StoneLookup;
+  brand?: string;
 };
 
 function discoveryMetalCards(
@@ -203,7 +212,23 @@ function discoveryMetalCards(
 
 export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext): {text: string; replaced: boolean; reason?: string} {
   const latest = context.buyerTurns[context.buyerTurns.length - 1] ?? '';
-  if (detectPolicyInformationIntent(latest).match) return {text, replaced: false};
+  const catalogProducts = productsFromCatalogSnapshots(context.catalogSnapshots);
+  const namedNow = detectStoneIntent(latest);
+  const originAsk = detectStoneOriginAsk(latest);
+  const originGuarded = guardStoneOriginClaims(text, {
+    buyerTurns: context.buyerTurns,
+    previousAssistant: context.previousAssistant,
+    catalogProducts,
+    brand: context.brand,
+    stone: namedNow ?? stoneIntentFromConversation(context.buyerTurns),
+  });
+  if (originGuarded.replaced) return originGuarded;
+  if (isCertificateQuestion(latest) || detectPolicyInformationIntent(latest).match) {
+    return {text, replaced: false};
+  }
+  if (isStoneOriginAssortmentQuestion(latest)) {
+    return {text, replaced: false};
+  }
   const metalBrowse = discoveryMetalBrowse(context.buyerTurns);
   if (metalBrowse) {
     const shown = discoveryMetalCards(context.catalogSnapshots, metalBrowse.metal);
@@ -219,8 +244,9 @@ export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext)
       };
     }
   }
-  if (!metalBrowse && latestTurnClearsProductContext(latest, context.buyerTurns.slice(0, -1))) {
-    const prior = stoneIntentFromConversation(context.buyerTurns.slice(0, -1));
+  const priorTurns = context.buyerTurns.slice(0, -1);
+  if (!metalBrowse && priorTurns.length && latestTurnClearsProductContext(latest, priorTurns)) {
+    const prior = stoneIntentFromConversation(priorTurns);
     const citesPriorStone = Boolean(prior && textMentionsStone(text, prior));
     const citesSku = /\/products\//.test(text);
     if (citesPriorStone || citesSku) {
@@ -229,7 +255,6 @@ export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext)
   }
   const allowSubstitute = buyerAllowsStoneSubstitute(latest, context.previousAssistant);
   const intent = allowSubstitute ? null : stoneIntentFromConversation(context.buyerTurns);
-  const catalogProducts = productsFromCatalogSnapshots(context.catalogSnapshots);
   const products = intent ? catalogProducts.filter((product) => productMatchesStone(product, intent)) : [];
   const broken = isGarbledBuyerText(text) || isHandoffShell(text) || MASKED_FAILURE.test(text);
   const unconfirmedNote = context.catalogSnapshots.some((snapshot) =>
@@ -262,8 +287,15 @@ export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext)
       reason: broken ? 'garbled' : substitutes ? 'substitute' : 'false_empty',
     };
   }
+  const missIntent = namedNow ?? intent;
   if (lookup === 'confirmed_miss' && (substitutes || falseEmpty || broken)) {
-    return {text: formatStoneMissReply(intent), replaced: true, reason: substitutes ? 'substitute' : 'false_empty'};
+    if (originAsk) {
+      return {text: formatOriginMissReply(originAsk, missIntent), replaced: true, reason: 'origin_miss'};
+    }
+    if (!namedNow) {
+      return {text: formatStoneUnconfirmedReply(intent), replaced: true, reason: 'unconfirmed'};
+    }
+    return {text: formatStoneMissReply(missIntent), replaced: true, reason: substitutes ? 'substitute' : 'false_empty'};
   }
   if (substitutes || falseEmpty || broken || lookup === 'unconfirmed' || lookup === 'none') {
     return {text: formatStoneUnconfirmedReply(intent), replaced: true, reason: 'unconfirmed'};
