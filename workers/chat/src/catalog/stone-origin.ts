@@ -13,8 +13,8 @@ export type CardStoneOrigin = 'natural' | 'lab' | 'mixed' | 'unknown';
 export type QualityPriceGroup = {
   kind: 'natural' | 'lab';
   qualities: string[];
-  price_min_display_pl: string;
-  price_max_display_pl: string;
+  price_min_display_pl?: string;
+  price_max_display_pl?: string;
 };
 
 const NATURAL_RE =
@@ -268,14 +268,54 @@ export function pickMixedOriginCards(
 
 export type TurnSearchHints = {
   price: 'higher' | 'lower' | null;
+  /** Górny limit budżetu w PLN (np. „do 6000 zł”). */
+  priceCapPln: number | null;
   tokens: string[];
 };
+
+function parsePlnMajor(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'string') return null;
+  const parsed = Number(value.replace(/[^\d.,]/g, '').replace(/\s/g, '').replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function detectPriceCapPln(text: string): number | null {
+  const match = text.match(/\bdo\s+(\d{1,3}(?:[\s\u00a0]?\d{3})*|\d+)\s*(?:zł|zl|pln)?\b/iu);
+  if (!match?.[1]) return null;
+  const amount = Number(match[1].replace(/[\s\u00a0]/g, ''));
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+/** Najniższa cena karty (min wariantów albo flat). */
+export function productMinPricePln(product: Record<string, unknown>): number | null {
+  const fromDisplay =
+    parsePlnMajor(product.price_min_display_pl) ??
+    parsePlnMajor(product.price_display_pl) ??
+    parsePlnMajor(product.page_price_display_pl);
+  if (fromDisplay != null) return fromDisplay;
+  if (!Array.isArray(product.variants)) return null;
+  let min: number | null = null;
+  for (const variant of product.variants) {
+    if (!variant || typeof variant !== 'object') continue;
+    const amount =
+      parsePlnMajor((variant as {price_display_pl?: unknown}).price_display_pl) ??
+      parsePlnMajor(
+        typeof (variant as {price?: unknown}).price === 'object' && (variant as {price?: {amount?: unknown}}).price
+          ? (variant as {price: {amount?: unknown}}).price.amount
+          : (variant as {price?: unknown}).price,
+      );
+    if (amount == null) continue;
+    min = min == null ? amount : Math.min(min, amount);
+  }
+  return min;
+}
 
 export function latestTurnSearchHints(text: string): TurnSearchHints {
   const price = PRICE_HIGHER.test(text) ? 'higher' : PRICE_LOWER.test(text) ? 'lower' : null;
   const tokens: string[] = [];
   if (/fale\s+wody/iu.test(text)) tokens.push('fale wody');
-  return {price, tokens};
+  return {price, priceCapPln: detectPriceCapPln(text), tokens};
 }
 
 export function applyTurnSearchHints<T extends Record<string, unknown>>(
@@ -290,13 +330,24 @@ export function applyTurnSearchHints<T extends Record<string, unknown>>(
     });
     if (narrowed.length) next = narrowed;
   }
+  if (hints.priceCapPln != null) {
+    const cap = hints.priceCapPln;
+    const inBudget = next.filter((product) => {
+      const min = productMinPricePln(product);
+      return min != null && min <= cap + 0.01;
+    });
+    if (inBudget.length) {
+      next = inBudget;
+    } else if (next.length) {
+      next = [...next].sort((left, right) => (productMinPricePln(left) ?? 1e12) - (productMinPricePln(right) ?? 1e12)).slice(0, 1);
+      for (const product of next) {
+        (product as Record<string, unknown>).budget_miss = true;
+        (product as Record<string, unknown>).budget_cap_pln = cap;
+      }
+    }
+  }
   if (hints.price) {
-    const minor = (product: T): number => {
-      const min = product.price_min_display_pl ?? product.price_display_pl;
-      if (typeof min !== 'string') return 0;
-      const parsed = Number(min.replace(/[^\d.,]/g, '').replace(',', '.'));
-      return Number.isFinite(parsed) ? parsed : 0;
-    };
+    const minor = (product: T): number => productMinPricePln(product) ?? 0;
     next.sort((left, right) => (hints.price === 'higher' ? minor(right) - minor(left) : minor(left) - minor(right)));
   }
   return next;

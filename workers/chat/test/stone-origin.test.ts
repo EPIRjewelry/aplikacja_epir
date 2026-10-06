@@ -120,6 +120,19 @@ describe('origin and certificate reply guards', () => {
     expect(guarded.replaced).toBe(true);
     expect(guarded.reason).toBe('repeat_turn');
     expect(latestTurnSearchHints('fale wody z szafirem?').tokens).toContain('fale wody');
+    expect(latestTurnSearchHints('pokaz pierscionek do 6000 zl').priceCapPln).toBe(6000);
+  });
+
+  it('filters catalog cards above a buyer price cap', async () => {
+    const {applyTurnSearchHints, latestTurnSearchHints} = await import('../src/catalog/stone-origin');
+    const kept = applyTurnSearchHints(
+      [
+        {handle: 'cheap', title: 'A', price_display_pl: '4200 zł'},
+        {handle: 'pricey', title: 'B', price_min_display_pl: '7200 zł', price_max_display_pl: '9000 zł'},
+      ],
+      latestTurnSearchHints('pokaz pierscionek z naturalnym diamentem do 6000 zl'),
+    );
+    expect(kept.map((product) => product.handle)).toEqual(['cheap']);
   });
 
   it('does not put a miss template for a random stone on a ruby card', () => {

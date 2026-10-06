@@ -198,27 +198,60 @@ export function otherStoneMentioned(text: string, intent: StoneIntent): boolean 
 }
 
 const RING_PRODUCT = /pier[sś]cion|obr[aą]cz|\bring\b|soliter|solitaire/iu;
+const FINGER_RING_PRODUCT = /pier[sś]cion|\bring\b/iu;
+const BAND_PRODUCT = /obr[aą]cz/iu;
+const EARRING_PRODUCT = /kolczyk|earring/iu;
 const NECKLACE_PRODUCT = /naszyjnik|necklace/iu;
+const BRACELET_PRODUCT = /bransolet|bracelet/iu;
 
 const JEWELRY_TYPE_HINTS: Array<{id: string; pattern: RegExp; title: RegExp}> = [
+  {id: 'band', pattern: /\bobr[aą]cz\p{L}*\b/iu, title: BAND_PRODUCT},
   {id: 'ring', pattern: RING_ASK, title: RING_PRODUCT},
   {pattern: /\b(necklaces?|naszyjnik\p{L}*)\b/iu, title: /naszyjnik/iu, id: 'necklace'},
   {pattern: /\b(earrings?|kolczyk\p{L}*)\b/iu, title: /kolczyk/iu, id: 'earring'},
   {pattern: /\b(bracelets?|bransolet\p{L}*)\b/iu, title: /bransolet/iu, id: 'bracelet'},
 ];
 
+function productHaystackTitle(product: {title?: unknown; handle?: unknown}): string {
+  const title = typeof product.title === 'string' ? product.title : '';
+  const handle = typeof product.handle === 'string' ? product.handle : '';
+  return `${title} ${handle}`;
+}
+
 export function buyerAsksForRing(text: string): boolean {
   return RING_ASK.test(text);
 }
 
-/** Naszyjnik Iluzja nie jest pierścionkiem, nawet gdy w opisie jest brylant. */
+/** Samo „obrączki” (bez pierścionka/solitera) — nie podmieniać na zaręczynowe. */
+export function buyerAsksForWeddingBand(text: string): boolean {
+  if (!/\bobr[aą]cz/iu.test(text)) return false;
+  if (/pier[sś]cion|soliter|solitaire|zar[eę]czyn/iu.test(text)) return false;
+  return true;
+}
+
+export function productLooksLikeWeddingBand(product: {title?: unknown; handle?: unknown}): boolean {
+  const haystack = productHaystackTitle(product);
+  if (EARRING_PRODUCT.test(haystack) || NECKLACE_PRODUCT.test(haystack) || BRACELET_PRODUCT.test(haystack)) {
+    return false;
+  }
+  if (FINGER_RING_PRODUCT.test(haystack) && !BAND_PRODUCT.test(haystack)) return false;
+  return BAND_PRODUCT.test(haystack);
+}
+
+/** Naszyjnik / kolczyki nie są pierścionkiem, nawet gdy w tytule jest „Soliter”. */
 export function productLooksLikeRing(product: {title?: unknown; handle?: unknown}): boolean {
-  const title = typeof product.title === 'string' ? product.title : '';
-  const handle = typeof product.handle === 'string' ? product.handle : '';
-  const haystack = `${title} ${handle}`;
+  const haystack = productHaystackTitle(product);
   if (NECKLACE_PRODUCT.test(haystack)) return false;
+  if (EARRING_PRODUCT.test(haystack)) return false;
+  if (BRACELET_PRODUCT.test(haystack)) return false;
   if (/\biluzja\b/iu.test(haystack) && !RING_PRODUCT.test(haystack)) return false;
   return RING_PRODUCT.test(haystack);
+}
+
+/** Soliter bez „kolczyki” → najpierw pierścionki na palec. */
+export function productLooksLikeFingerRing(product: {title?: unknown; handle?: unknown}): boolean {
+  if (!productLooksLikeRing(product)) return false;
+  return FINGER_RING_PRODUCT.test(productHaystackTitle(product));
 }
 
 function pushText(into: string[], value: unknown): void {
@@ -253,10 +286,24 @@ export function productMatchesDiscoveryMetal(
       pushText(chunks, (option as {values?: unknown}).values);
     }
   }
-  const haystack = chunks.join('\n');
-  if (metal === 'srebro') return /srebr|silver/iu.test(haystack);
-  if (metal === 'złoto') return /z[łl]ot|\bgold\b/iu.test(haystack);
-  return /platyn|\bplatinum\b/iu.test(haystack);
+  const tags = Array.isArray(product.tags)
+    ? product.tags.filter((tag): tag is string => typeof tag === 'string').map((tag) => tag.toLocaleLowerCase('en-US'))
+    : [];
+  if (metal === 'srebro') {
+    if (tags.includes('metal_silver')) return true;
+    if (tags.includes('metal_gold') || tags.includes('metal_platinum')) return false;
+    return /srebr|silver/iu.test(chunks.join('\n'));
+  }
+  if (metal === 'złoto') {
+    if (tags.includes('metal_gold')) return true;
+    if (tags.includes('metal_silver') || tags.includes('metal_platinum')) return false;
+    const haystack = chunks.join('\n');
+    if (/srebr|silver/iu.test(haystack) && !/z[łl]ot|\bgold\b/iu.test(haystack)) return false;
+    return /z[łl]ot|\bgold\b/iu.test(haystack);
+  }
+  if (tags.includes('metal_platinum')) return true;
+  if (tags.includes('metal_gold') || tags.includes('metal_silver')) return false;
+  return /platyn|\bplatinum\b/iu.test(chunks.join('\n'));
 }
 
 /**
@@ -268,11 +315,25 @@ export function preferJewelryType<T extends {title?: unknown; handle?: unknown}>
   products: readonly T[],
   buyerText: string,
 ): T[] {
+  if (buyerAsksForWeddingBand(buyerText)) {
+    const bands = products.filter((product) => productLooksLikeWeddingBand(product));
+    return bands.slice(0, 4);
+  }
   const hint = JEWELRY_TYPE_HINTS.find((entry) => entry.pattern.test(buyerText));
   if (!hint) return products.slice(0, 4);
+  if (hint.id === 'band') {
+    return products.filter((product) => productLooksLikeWeddingBand(product)).slice(0, 4);
+  }
+  if (hint.id === 'ring') {
+    const soliterAsk = /soliter|solitaire/iu.test(buyerText) && !/kolczyk/iu.test(buyerText);
+    if (soliterAsk) {
+      const finger = products.filter((product) => productLooksLikeFingerRing(product));
+      if (finger.length) return finger.slice(0, 4);
+    }
+    return products.filter((product) => productLooksLikeRing(product)).slice(0, 4);
+  }
   const preferred = products.filter((product) => {
-    if (hint.id === 'ring') return productLooksLikeRing(product);
-    const haystack = `${typeof product.title === 'string' ? product.title : ''} ${typeof product.handle === 'string' ? product.handle : ''}`;
+    const haystack = productHaystackTitle(product);
     return hint.title.test(haystack);
   });
   if (preferred.length > 0) return preferred.slice(0, 4);
@@ -293,10 +354,15 @@ export function shopifyStoneQuery(intent: StoneIntent): string {
   return intent.lemmas.join(' OR ');
 }
 
-/** Soliter / zaręczyny, gdy w zdaniu nie ma jednego kamienia. Kamień idzie osobną ścieżką. */
+/** Soliter / zaręczyny / bransoletka, gdy w zdaniu nie ma jednego kamienia. */
 export function detectNamedBrowseQuery(text: string): string | null {
   if (detectStoneIntent(text)) return null;
-  if (/soliter|solitaire/iu.test(text)) return 'soliter';
+  if (/soliter|solitaire/iu.test(text)) {
+    if (/kolczyk/iu.test(text)) return 'kolczyki soliter';
+    return 'pierścionek soliter';
+  }
+  if (buyerAsksForWeddingBand(text)) return 'obrączka';
+  if (/bransolet/iu.test(text)) return 'bransoletka';
   if (/zar[eę]czyn/iu.test(text)) return 'pierścionek zaręczynowy';
   return null;
 }

@@ -117,7 +117,7 @@ describe('callMcpToolDirect stone rescue', () => {
     const mcpCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/api/ucp/mcp'));
     const mcpBody = JSON.parse(String(mcpCall?.[1]?.body));
     expect(mcpBody.params.arguments.catalog.query).toBe('szafir sapphire');
-    expect(mcpBody.params.arguments.catalog.pagination.limit).toBe(8);
+    expect(mcpBody.params.arguments.catalog.pagination.limit).toBe(12);
 
     const adminCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/admin/api/'));
     const adminBody = JSON.parse(String(adminCall?.[1]?.body));
@@ -256,11 +256,30 @@ describe('Etap 1 live-store hotfix', () => {
       const body = JSON.parse(String(init?.body ?? '{}')) as {query?: string};
       expect(body.query ?? '').not.toMatch(/\bstatus\b/);
       expect(body.query ?? '').not.toContain('publishedOnCurrentPublication');
+      expect(body.query ?? '').toContain('variants(first: 250)');
       return new Response(
         JSON.stringify({
           data: {
             products: {
               nodes: [
+                {
+                  id: 'gid://shopify/Product/200',
+                  handle: 'kolczyki-soliter-motylek',
+                  title: 'Kolczyki Soliter Motylek',
+                  description: 'Kolczyki.',
+                  vendor: 'Kazka',
+                  tags: ['kazka'],
+                  variants: {
+                    nodes: [
+                      {
+                        id: 'gid://shopify/ProductVariant/200',
+                        title: 'Default',
+                        availableForSale: true,
+                        price: {amount: '5579.06', currencyCode: 'PLN'},
+                      },
+                    ],
+                  },
+                },
                 {
                   id: 'gid://shopify/Product/101',
                   handle: '101-10010-3-7',
@@ -268,6 +287,7 @@ describe('Etap 1 live-store hotfix', () => {
                   description: 'Soliter, brylant.',
                   vendor: 'Kazka',
                   tags: ['kazka', 'soliter'],
+                  options: [{name: 'Jakość', values: ['BLACK', 'D/VVS2', 'F/VS2', 'G/SI', 'G/VS2', 'LAB']}],
                   variants: {
                     nodes: [
                       {
@@ -276,6 +296,7 @@ describe('Etap 1 live-store hotfix', () => {
                         sku: 'KAZKA-SOLITER',
                         availableForSale: true,
                         price: {amount: '4001.14', currencyCode: 'PLN'},
+                        selectedOptions: [{name: 'Jakość', value: 'BLACK'}],
                       },
                     ],
                   },
@@ -309,14 +330,6 @@ describe('Etap 1 live-store hotfix', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const env = {SHOP_DOMAIN: SHOP, PUBLIC_STOREFRONT_API_TOKEN_KAZKA: 'kazka-sf'};
-    const found = await fetchStoreProductsByQuery(env, 'soliter', 'kazka');
-    expect(found.ok).toBe(true);
-    expect(found.products.map((product) => product.handle)).toEqual(['101-10010-3-7', '101-10019']);
-    expect(found.products.map((product) => product.url)).toEqual([
-      'https://kazka.epirbizuteria.pl/products/101-10010-3-7',
-      'https://kazka.epirbizuteria.pl/products/101-10019',
-    ]);
-
     const seeded = await seedBuyerTurnContext({
       env,
       brand: 'kazka',
@@ -324,9 +337,40 @@ describe('Etap 1 live-store hotfix', () => {
     });
     expect(seeded.stoneLookup).toBe('hit');
     const cards = seeded.snapshots.flatMap((snapshot) => readPresentedProducts(snapshot));
-    expect(cards.length).toBeGreaterThan(0);
+    expect(cards.map((card) => card.handle).sort()).toEqual(['101-10010-3-7', '101-10019'].sort());
     expect(cards.every((card) => String(card.url).startsWith('https://kazka.epirbizuteria.pl/products/'))).toBe(true);
-    expect(cards.some((card) => /soliter/i.test(String(card.title)))).toBe(true);
+    expect(JSON.stringify(cards)).not.toContain('kolczyki');
     expect(JSON.stringify(cards)).not.toContain('https://epirbizuteria.pl/products/');
+  });
+
+  it('keeps LAB and G/VS2 on Soliter when variants are truncated but options list Jakość', async () => {
+    const {presentCatalogForModel} = await import('../src/mcp/catalog-for-model');
+    const {mapStoreProduct} = await import('../src/catalog/stone-retrieval');
+    const mapped = mapStoreProduct(
+      {
+        id: 'gid://shopify/Product/101',
+        handle: '101-10010-3-7',
+        title: 'Pierścionek Soliter',
+        vendor: 'Kazka',
+        tags: ['kazka'],
+        options: [{name: 'Jakość', values: ['BLACK', 'D/VVS2', 'F/VS2', 'G/SI', 'G/VS2', 'LAB']}],
+        variants: {
+          nodes: Array.from({length: 25}, (_, index) => ({
+            id: `gid://shopify/ProductVariant/${index}`,
+            title: `nat-${index}`,
+            availableForSale: true,
+            price: {amount: '4000.00', currencyCode: 'PLN'},
+            selectedOptions: [{name: 'Jakość', value: index % 2 ? 'BLACK' : 'D/VVS2'}],
+          })),
+        },
+      },
+      {kazkaStorefront: true},
+    );
+    const presented = presentCatalogForModel({products: [mapped]}, {brand: 'kazka'});
+    const card = readPresentedProducts(presented)[0]!;
+    const qualities = JSON.stringify(card.quality_price_groups ?? card.options);
+    expect(qualities).toMatch(/LAB/);
+    expect(qualities).toMatch(/G\/VS2/);
+    expect(card.url).toBe('https://kazka.epirbizuteria.pl/products/101-10010-3-7');
   });
 });
