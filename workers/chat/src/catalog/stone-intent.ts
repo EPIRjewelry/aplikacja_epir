@@ -54,6 +54,7 @@ const STONES: readonly StoneDef[] = [
   stone('aleksandryt', 'aleksandryt', ['aleksandryt', 'alexandrite'], ['aleksandryt', 'alexandrite']),
   stone('spinel', 'spinel', ['spinel'], ['spinel']),
   stone('cyrkonia', 'cyrkonia', ['cyrkonia', 'zirconia'], ['cyrkonia', 'zirconia']),
+  stone('moissanit', 'moissanit', ['moissanit', 'moissanite'], ['moissanit', 'moissanite']),
 ];
 
 export function detectStoneIntent(text: string): StoneIntent | null {
@@ -152,6 +153,8 @@ export function latestTurnClearsProductContext(text: string, priorTurns: readonl
   if (detectStoneIntent(latest)) return false;
   if (detectPolicyInformationIntent(latest).match) return false;
   if (discoveryMetalBrowse([...priorTurns, latest])) return false;
+  if (detectNamedBrowseQuery(latest)) return false;
+  if (buyerAsksForRing(latest) || buyerAsksForWeddingBand(latest) || /bransolet/iu.test(latest)) return false;
   return METAL_OR_TOPIC_SHIFT.test(latest);
 }
 
@@ -162,6 +165,7 @@ export function stoneIntentFromConversation(turns: readonly string[]): StoneInte
   const latestLine = lines[lines.length - 1] ?? '';
   if (latestTurnClearsProductContext(latestLine, lines.slice(0, -1))) return null;
   if (detectPolicyInformationIntent(latestLine).match) return null;
+  if (detectNamedBrowseQuery(latestLine) && !detectStoneIntent(latestLine)) return null;
   const latest = detectStoneIntent(latestLine);
   if (latest) return latest;
   for (let index = lines.length - 2; index >= 0; index -= 1) {
@@ -343,20 +347,38 @@ export function preferJewelryType<T extends {title?: unknown; handle?: unknown}>
 export function expandCatalogQuery(current: string, intent: StoneIntent): string {
   const trimmed = current.trim();
   const lower = trimmed.toLocaleLowerCase('pl-PL');
+  const group = shopifyStoneLemmaGroup(intent);
   const present = intent.lemmas.filter((lemma) => lower.includes(lemma.toLocaleLowerCase('pl-PL')));
-  if (!trimmed) return intent.lemmas.join(' ');
-  if (present.length === 0) return intent.lemmas.join(' ');
-  const missing = intent.lemmas.filter((lemma) => !lower.includes(lemma.toLocaleLowerCase('pl-PL')));
-  return missing.length ? `${trimmed} ${missing.join(' ')}` : trimmed;
+  if (!trimmed) return group;
+  if (present.length === 0) return group;
+  if (present.length >= intent.lemmas.length) return trimmed;
+  let next = trimmed;
+  for (const lemma of present) {
+    next = next.replace(new RegExp(escapeRegExp(lemma), 'iu'), group);
+  }
+  if (!foldLemma(next).includes(foldLemma(group))) next = `${trimmed} ${group}`.trim();
+  return next;
+}
+
+function foldLemma(value: string): string {
+  return value.toLocaleLowerCase('pl-PL');
+}
+
+export function shopifyStoneLemmaGroup(intent: StoneIntent): string {
+  const unique = [...new Set(intent.lemmas.map((lemma) => lemma.trim()).filter(Boolean))];
+  return unique.length > 1 ? `(${unique.join(' OR ')})` : unique[0] ?? intent.id;
 }
 
 export function shopifyStoneQuery(intent: StoneIntent): string {
-  return intent.lemmas.join(' OR ');
+  return shopifyStoneLemmaGroup(intent);
 }
 
 /** Soliter / zaręczyny / bransoletka, gdy w zdaniu nie ma jednego kamienia. */
 export function detectNamedBrowseQuery(text: string): string | null {
   if (detectStoneIntent(text)) return null;
+  if (/pier[sś]cion/iu.test(text) && !detectStoneIntent(text) && !/soliter|solitaire|zar[eę]czyn|obr[aą]cz/iu.test(text)) {
+    return 'pierścionek';
+  }
   if (/soliter|solitaire/iu.test(text)) {
     if (/kolczyk/iu.test(text)) return 'kolczyki soliter';
     return 'pierścionek soliter';
@@ -369,7 +391,8 @@ export function detectNamedBrowseQuery(text: string): string | null {
 
 export function ringRetryQuery(base: string): string {
   const trimmed = base.trim();
-  return `${trimmed} pierścionek obrączka soliter -naszyjnik -iluzja`;
+  const stonePart = trimmed || '';
+  return `${stonePart} (pierścionek OR obrączka OR soliter) -naszyjnik -iluzja`.trim();
 }
 
 export function namedBrowseFromConversation(turns: readonly string[]): string | null {

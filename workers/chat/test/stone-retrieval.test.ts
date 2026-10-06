@@ -116,7 +116,7 @@ describe('callMcpToolDirect stone rescue', () => {
 
     const mcpCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/api/ucp/mcp'));
     const mcpBody = JSON.parse(String(mcpCall?.[1]?.body));
-    expect(mcpBody.params.arguments.catalog.query).toBe('szafir sapphire');
+    expect(mcpBody.params.arguments.catalog.query).toBe('(szafir OR sapphire)');
     expect(mcpBody.params.arguments.catalog.pagination.limit).toBe(12);
 
     const adminCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/admin/api/'));

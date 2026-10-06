@@ -43,7 +43,8 @@ import {storeFactContextLine} from './store-facts';
 import type {StoneLookup} from './buyer-reply-guard';
 import {
   applyTurnSearchHints,
-  detectStoneOriginAsk,
+  applyOriginFilterWithFallback,
+  originAskForTurn,
   filterProductsByOriginAsk,
   isStoneOriginAssortmentQuestion,
   latestTurnSearchHints,
@@ -215,9 +216,9 @@ export async function seedBuyerTurnContext(input: {
   }
 
   try {
-    const originAsk = detectStoneOriginAsk(latest) ?? detectStoneOriginAsk(buyerText);
+    const originAsk = originAskForTurn(input.buyerTurns);
     const originAssortment = isStoneOriginAssortmentQuestion(latest);
-    if (originAssortment || (originAsk && !stone && !metalBrowse)) {
+    if ((originAssortment && !stone) || (originAsk && !stone && !metalBrowse)) {
       const queries = originAssortment
         ? originAssortmentSearchQueries(input.brand)
         : [originCatalogQuery(originAsk, stone)];
@@ -236,7 +237,7 @@ export async function seedBuyerTurnContext(input: {
         let kept = originAssortment
           ? pickMixedOriginCards(pool, 3)
           : pickMixedOriginCards(filterProductsByOriginAsk(pool, originAsk), 3);
-        kept = applyTurnSearchHints(kept, latestTurnSearchHints(latest));
+        kept = applyTurnSearchHints(kept, latestTurnSearchHints(latest), originAsk);
         const note = originAssortment
           ? `${originSafeLead(input.brand)} Pokaż 2–3 karty z tego wyniku. Nie mów, że wszystko jest naturalne albo wszystko syntetyczne.`
           : originAsk === 'natural'
@@ -256,10 +257,9 @@ export async function seedBuyerTurnContext(input: {
       } else {
         let kept = preferJewelryType(
           found.products.filter((product) => brandKeepsProduct(product, input.brand)),
-          buyerText,
+          latest,
         );
-        kept = filterProductsByOriginAsk(kept, originAsk);
-        kept = applyTurnSearchHints(kept, latestTurnSearchHints(latest));
+        kept = applyTurnSearchHints(kept, latestTurnSearchHints(latest), originAsk);
         const note = kept.length
           ? stoneHitNote(stone.labelPl)
           : originAsk === 'natural'
@@ -294,8 +294,13 @@ export async function seedBuyerTurnContext(input: {
         }
       }
     } else {
-      const browseQuery = namedBrowseFromConversation(input.buyerTurns);
+      let browseQuery = namedBrowseFromConversation(input.buyerTurns);
       if (browseQuery) {
+        if (/z[łl]ot/iu.test(latest) && !/z[łl]ot|\bgold\b/iu.test(browseQuery)) browseQuery = `${browseQuery} złoto`;
+        if (/srebr/iu.test(latest) && !/srebr|silver/iu.test(browseQuery)) browseQuery = `${browseQuery} srebro`;
+        if (/ślubn|slubn|wedding/iu.test(latest) && !/ślubn|slubn|wedding/iu.test(browseQuery)) {
+          browseQuery = `${browseQuery} ślubne`;
+        }
         const found = await fetchStoreProductsByQuery(input.env, browseQuery, input.brand);
         if (!found.ok) {
           stoneLookup = 'unconfirmed';
@@ -308,8 +313,9 @@ export async function seedBuyerTurnContext(input: {
             if (metalHits.length) matched = metalHits;
             else if (/obr[aą]cz|pier[sś]cion|bransolet/iu.test(latest)) matched = [];
           }
-          if (buyerAsksForWeddingBand(buyerText) || buyerAsksForWeddingBand(browseQuery)) {
-            matched = matched.filter((product) => productLooksLikeWeddingBand(product));
+          if (buyerAsksForWeddingBand(latest) || buyerAsksForWeddingBand(browseQuery)) {
+            const bands = matched.filter((product) => productLooksLikeWeddingBand(product));
+            if (bands.length) matched = bands;
           } else if (/pierścionek soliter|soliter|solitaire/iu.test(browseQuery) && !/kolczyk/iu.test(latest)) {
             let rings = matched.filter((product) => productLooksLikeFingerRing(product));
             if (!rings.length) {
@@ -350,7 +356,7 @@ export async function seedBuyerTurnContext(input: {
               ];
             }
             matched = rings;
-          } else if (buyerAsksForRing(buyerText) || buyerAsksForRing(browseQuery)) {
+          } else if (buyerAsksForRing(latest) || buyerAsksForRing(browseQuery)) {
             let rings = matched.filter((product) => productLooksLikeRing(product));
             if (!rings.length) {
               const again = await fetchStoreProductsByQuery(input.env, ringRetryQuery(browseQuery), input.brand);
@@ -368,11 +374,11 @@ export async function seedBuyerTurnContext(input: {
               return /bransolet|bracelet/iu.test(`${title} ${handle}`);
             });
           }
-          matched = applyTurnSearchHints(matched, latestTurnSearchHints(latest));
-          const kept = preferJewelryType(matched, buyerText).length
-            ? preferJewelryType(matched, buyerText)
+          matched = applyTurnSearchHints(matched, latestTurnSearchHints(latest), originAskForTurn(input.buyerTurns));
+          const kept = preferJewelryType(matched, latest).length
+            ? preferJewelryType(matched, latest)
             : matched.slice(0, 4);
-          const bandMiss = buyerAsksForWeddingBand(buyerText) && !kept.length;
+          const bandMiss = buyerAsksForWeddingBand(latest) && !kept.length;
           const note = kept.length
             ? kept.some((product) => product.budget_miss === true)
               ? `Żadna pozycja nie mieści się w budżecie do ${kept[0]?.budget_cap_pln} zł. Pokaż najtańszą opcję z karty i powiedz to wprost.`

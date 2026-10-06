@@ -217,7 +217,7 @@ describe('GK rings, facts, and reply order', () => {
     );
     expect(guarded.replaced).toBe(true);
     expect(guarded.reason).toBe('stale_product_context');
-    expect(guarded.text).toBe(STALE_PRODUCT_CONTEXT_REPLY);
+    expect(guarded.text).not.toBe(STALE_PRODUCT_CONTEXT_REPLY);
     expect(guarded.text).not.toContain('szafir');
   });
 

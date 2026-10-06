@@ -31,6 +31,11 @@ describe('detectStoneIntent', () => {
     expect(intent?.id).toBe('szafir');
   });
 
+  it('drops the prior stone when the buyer names a new product type without a stone', () => {
+    expect(stoneIntentFromConversation(['pierścionek z szafirem', 'obrączki'])).toBeNull();
+    expect(namedBrowseFromConversation(['pierścionek z szafirem', 'obrączki'])).toBe('obrączka');
+  });
+
   it('switches the stone when the latest line names a different one', () => {
     expect(stoneIntentFromConversation(['szafir', 'a może turmalin'])?.id).toBe('turmalin');
   });
@@ -63,8 +68,8 @@ describe('buyerAllowsStoneSubstitute', () => {
 describe('catalog query and jewelry type', () => {
   it('replaces a query that dropped the stone with both lemmas', () => {
     const intent = detectStoneIntent('szafir')!;
-    expect(expandCatalogQuery('czarny turmalin', intent)).toBe('szafir sapphire');
-    expect(expandCatalogQuery('pierścionek szafir', intent)).toBe('pierścionek szafir sapphire');
+    expect(expandCatalogQuery('czarny turmalin', intent)).toBe('(szafir OR sapphire)');
+    expect(expandCatalogQuery('pierścionek szafir', intent)).toBe('pierścionek (szafir OR sapphire)');
   });
 
   it('narrows ring to a band or a ring and falls back to every stone hit', () => {

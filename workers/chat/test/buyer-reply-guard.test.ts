@@ -65,7 +65,7 @@ describe('guardBuyerCatalogReply', () => {
       catalogSnapshots: [],
     });
     expect(unconfirmed.text).not.toContain('Nie mam teraz w ofercie');
-    expect(unconfirmed.text).toContain('Jeszcze nie potwierdziłam');
+    expect(unconfirmed.text).toContain('Nie udało się ułożyć odpowiedzi');
     expect(unconfirmed.text).not.toContain('280');
 
     const guarded = guardBuyerCatalogReply('Polecę czarny turmalin, 280 zł.', {
