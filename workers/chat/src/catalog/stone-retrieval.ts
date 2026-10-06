@@ -12,6 +12,7 @@ import {
 import {isEpirFamilyCatalogBrand, isKazkaCatalogBrand} from './kazka-assortment';
 import {
   filterLivePublishedProducts,
+  isLivePublishedProduct,
   type LiveCatalogChannel,
   withActiveStatusQuery,
 } from './live-store-product';
@@ -53,14 +54,18 @@ export type StoneRescueInput = {
   env: StoneCatalogEnv;
 };
 
-const STONE_SEARCH_LIMIT = 8;
+const STONE_SEARCH_LIMIT = 12;
 
-/** Karty z audytu 2026-10-05. Drugi przebieg, gdy wyszukiwanie po słowie nic nie odda. */
+/** Karty z audytu 2026-10-05. Drugi przebieg / dopełnienie listy szafirów. */
 const AUDITED_SAPPHIRE_HANDLES = [
-  'obraczka-z-szafirem-epir-jewellery',
-  'pierscionek-srebrny-fale-wody-z-szafirem',
   'zloty-pierscionek-z-naturalnym-szafirem',
+  'pierscionek-srebrny-fale-wody-z-szafirem',
+  'zloty-pierscionek-z-szafirem',
+  'obraczka-z-szafirem-epir-jewellery',
 ] as const;
+
+/** Pierścionki Soliter z audytu GK (nie kolczyki). */
+export const AUDITED_SOLITER_HANDLES = ['101-10010-3-7', '101-10019'] as const;
 
 export function stoneHitNote(label: string): string {
   return `Trafienia kamienia „${label}” są w products. To jest oferta tej marki. Pokaż 2–4 pozycje: nazwa, cena z price_display_pl, jedna cecha z karty, link z url. Nie pisz, że kamienia nie ma. Nie proponuj innego kamienia bez jawnej zgody. Przy „pokaż kilka” najpierw lista, potem jedno pytanie.`;
@@ -287,16 +292,20 @@ function mapOptions(node: Record<string, unknown>): Array<{name: string; values:
 
 export function mapStoreProduct(
   node: Record<string, unknown>,
-  options: {kazkaStorefront?: boolean} = {},
+  options: {kazkaStorefront?: boolean; kazkaChannel?: boolean} = {},
 ): Record<string, unknown> {
   const variantNodes = isRecord(node.variants) && Array.isArray(node.variants.nodes) ? node.variants.nodes : [];
   const metafields =
     isRecord(node.metafields) && Array.isArray(node.metafields.nodes) ? node.metafields.nodes : [];
   const handle = typeof node.handle === 'string' ? node.handle.trim() : '';
   const online = typeof node.onlineStoreUrl === 'string' ? node.onlineStoreUrl : undefined;
-  const kazkaStorefront = options.kazkaStorefront === true;
+  const status = typeof node.status === 'string' ? node.status.trim().toUpperCase() : '';
+  const activeOrUnknown = !status || status === 'ACTIVE';
+  const kazkaChannel = options.kazkaStorefront === true || options.kazkaChannel === true;
   const kazkaUrl =
-    kazkaStorefront && handle ? `https://kazka.epirbizuteria.pl/products/${handle}` : undefined;
+    kazkaChannel && activeOrUnknown && handle
+      ? `https://kazka.epirbizuteria.pl/products/${handle}`
+      : undefined;
   const mapped: Record<string, unknown> = {
     id: node.id,
     handle: node.handle,
@@ -312,7 +321,8 @@ export function mapStoreProduct(
     metafields,
     variants: variantNodes.filter(isRecord).map(mapVariant),
   };
-  if (kazkaStorefront) mapped.kazka_storefront = true;
+  if (options.kazkaStorefront === true) mapped.kazka_storefront = true;
+  if (kazkaChannel && activeOrUnknown) mapped.kazka_channel = true;
   const priceRange = mapPriceRange(node);
   if (priceRange) mapped.priceRange = priceRange;
   return mapped;
@@ -333,7 +343,7 @@ const PRODUCT_FIELDS = `
     maxVariantPrice { amount currencyCode }
   }
   metafields(first: 20) { nodes { namespace key value } }
-  variants(first: 100) {
+  variants(first: 250) {
     nodes {
       id
       title
@@ -366,12 +376,13 @@ const ADMIN_SEARCH_PLAIN_OPTIONS = `
         tags
         status
         onlineStoreUrl
+        options { name optionValues { name } }
         priceRangeV2 {
           minVariantPrice { amount currencyCode }
           maxVariantPrice { amount currencyCode }
         }
         metafields(first: 20) { nodes { namespace key value } }
-        variants(first: 100) {
+        variants(first: 250) {
           nodes {
             id
             title
@@ -386,34 +397,42 @@ const ADMIN_SEARCH_PLAIN_OPTIONS = `
   }
 `;
 
+const STOREFRONT_PRODUCT_FIELDS = `
+  id
+  handle
+  title
+  description
+  vendor
+  tags
+  onlineStoreUrl
+  options { name values }
+  priceRange {
+    minVariantPrice { amount currencyCode }
+    maxVariantPrice { amount currencyCode }
+  }
+  variants(first: 250) {
+    nodes {
+      id
+      title
+      sku
+      availableForSale
+      price { amount currencyCode }
+      selectedOptions { name value }
+    }
+  }
+`;
+
 const STOREFRONT_SEARCH = `
   query StoneCatalogStorefront($query: String!) {
     products(first: ${STONE_SEARCH_LIMIT}, query: $query) {
-      nodes {
-        id
-        handle
-        title
-        description
-        vendor
-        tags
-        onlineStoreUrl
-        options { name values }
-        priceRange {
-          minVariantPrice { amount currencyCode }
-          maxVariantPrice { amount currencyCode }
-        }
-        variants(first: 100) {
-          nodes {
-            id
-            title
-            sku
-            availableForSale
-            price { amount currencyCode }
-            selectedOptions { name value }
-          }
-        }
-      }
+      nodes { ${STOREFRONT_PRODUCT_FIELDS} }
     }
+  }
+`;
+
+const STOREFRONT_PRODUCT_BY_HANDLE = `
+  query StoneCatalogStorefrontByHandle($handle: String!) {
+    product(handle: $handle) { ${STOREFRONT_PRODUCT_FIELDS} }
   }
 `;
 
@@ -451,19 +470,82 @@ async function searchAdmin(
   const endpoint = `https://${shop}/admin/api/${SHOPIFY_ADMIN_API_VERSION}/graphql.json`;
   const headers = {'Content-Type': 'application/json', 'X-Shopify-Access-Token': token};
   const liveQuery = withActiveStatusQuery(query);
+  const mapNode = (node: Record<string, unknown>) =>
+    mapStoreProduct(node, {kazkaChannel: channel === 'kazka'});
   try {
     const data = await postGraphql(endpoint, headers, ADMIN_SEARCH, {query: liveQuery});
-    return {ok: true, products: filterLivePublishedProducts(nodesOf(data).map(mapStoreProduct), {channel})};
+    return {ok: true, products: filterLivePublishedProducts(nodesOf(data).map(mapNode), {channel})};
   } catch (error) {
     console.warn('[stone-retrieval] admin search with options failed', error instanceof Error ? error.message : error);
   }
   try {
     const data = await postGraphql(endpoint, headers, ADMIN_SEARCH_PLAIN_OPTIONS, {query: liveQuery});
-    return {ok: true, products: filterLivePublishedProducts(nodesOf(data).map(mapStoreProduct), {channel})};
+    return {ok: true, products: filterLivePublishedProducts(nodesOf(data).map(mapNode), {channel})};
   } catch (error) {
     console.warn('[stone-retrieval] admin search failed', error instanceof Error ? error.message : error);
     return {ok: false, products: []};
   }
+}
+
+function handlesFromQuery(query: string): string[] {
+  const handles: string[] = [];
+  const re = /\bhandle:("?)([^\s"')]+)\1/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(query)) != null) {
+    const handle = match[2]?.trim();
+    if (handle) handles.push(handle);
+  }
+  return [...new Set(handles)];
+}
+
+async function searchStorefrontByHandles(
+  env: StoneCatalogEnv,
+  handles: readonly string[],
+  options: {kazka?: boolean} = {},
+): Promise<{ok: boolean; products: Record<string, unknown>[]}> {
+  const shop = env.SHOP_DOMAIN?.trim();
+  const kazka = options.kazka === true;
+  const token = kazka
+    ? env.PUBLIC_STOREFRONT_API_TOKEN_KAZKA?.trim()
+    : env.SHOPIFY_STOREFRONT_TOKEN?.trim();
+  if (!shop || !token || !handles.length) return {ok: false, products: []};
+  const endpoint = `https://${shop}/api/${SHOPIFY_STOREFRONT_API_VERSION}/graphql.json`;
+  const headers = {'Content-Type': 'application/json', 'X-Shopify-Storefront-Access-Token': token};
+  const channel: LiveCatalogChannel = kazka ? 'kazka' : 'epir';
+  const products: Record<string, unknown>[] = [];
+  let anyOk = false;
+  for (const handle of handles.slice(0, STONE_SEARCH_LIMIT)) {
+    try {
+      const data = await postGraphql(endpoint, headers, STOREFRONT_PRODUCT_BY_HANDLE, {handle});
+      anyOk = true;
+      if (!isRecord(data) || !isRecord(data.product)) continue;
+      const mapped = mapStoreProduct(data.product, {kazkaStorefront: kazka, kazkaChannel: kazka});
+      if (isLivePublishedProduct(mapped, {channel})) products.push(mapped);
+    } catch (error) {
+      if (kazka) {
+        console.log(
+          JSON.stringify({
+            tag: 'chat.kazka_storefront',
+            status: 'fail',
+            count: 0,
+            handle,
+            error: error instanceof Error ? error.message : 'unknown',
+          }),
+        );
+      }
+    }
+  }
+  if (kazka) {
+    console.log(
+      JSON.stringify({
+        tag: 'chat.kazka_storefront',
+        status: anyOk ? 'ok' : 'fail',
+        count: products.length,
+        query: `product(handle) x${handles.length}`,
+      }),
+    );
+  }
+  return {ok: anyOk, products};
 }
 
 async function searchStorefront(
@@ -477,6 +559,11 @@ async function searchStorefront(
     ? env.PUBLIC_STOREFRONT_API_TOKEN_KAZKA?.trim()
     : env.SHOPIFY_STOREFRONT_TOKEN?.trim();
   if (!shop || !token) return {ok: false, products: []};
+  const handleOnly = handlesFromQuery(query);
+  // Storefront products(query:"handle:…") często ignoruje filtr — bierzemy product(handle).
+  if (handleOnly.length && !query.replace(/\bhandle:("?)[^\s"')]+\1/gi, '').replace(/\bOR\b/gi, '').trim()) {
+    return searchStorefrontByHandles(env, handleOnly, options);
+  }
   const endpoint = `https://${shop}/api/${SHOPIFY_STOREFRONT_API_VERSION}/graphql.json`;
   const channel: LiveCatalogChannel = kazka ? 'kazka' : 'epir';
   try {
@@ -486,14 +573,32 @@ async function searchStorefront(
       STOREFRONT_SEARCH,
       {query},
     );
-    return {
-      ok: true,
-      products: filterLivePublishedProducts(
-        nodesOf(data).map((node) => mapStoreProduct(node, {kazkaStorefront: kazka})),
-        {channel},
-      ),
-    };
+    const products = filterLivePublishedProducts(
+      nodesOf(data).map((node) => mapStoreProduct(node, {kazkaStorefront: kazka, kazkaChannel: kazka})),
+      {channel},
+    );
+    if (kazka) {
+      console.log(
+        JSON.stringify({
+          tag: 'chat.kazka_storefront',
+          status: 'ok',
+          count: products.length,
+          query: query.slice(0, 80),
+        }),
+      );
+    }
+    return {ok: true, products};
   } catch (error) {
+    if (kazka) {
+      console.log(
+        JSON.stringify({
+          tag: 'chat.kazka_storefront',
+          status: 'fail',
+          count: 0,
+          error: error instanceof Error ? error.message : 'unknown',
+        }),
+      );
+    }
     console.warn('[stone-retrieval] storefront search failed', error instanceof Error ? error.message : error);
     return {ok: false, products: []};
   }
@@ -593,12 +698,24 @@ export async function hydrateThinCatalogCards(
     if (typeof product.handle === 'string' && product.handle) byHandle.set(product.handle, product);
   }
   let changed = false;
+  const kazkaBrand = isKazkaCatalogBrand(brand);
   const merged = current.map((product) => {
     const handle = typeof product.handle === 'string' ? product.handle : '';
     const full = handle ? byHandle.get(handle) : undefined;
     if (!full) return product;
     changed = true;
-    return full;
+    if (!kazkaBrand) return full;
+    const prevUrl = typeof product.url === 'string' ? product.url : '';
+    const nextUrl =
+      (typeof full.url === 'string' && full.url) ||
+      prevUrl ||
+      (handle ? `https://kazka.epirbizuteria.pl/products/${handle}` : '');
+    return {
+      ...full,
+      url: nextUrl || full.url,
+      kazka_storefront: full.kazka_storefront === true || product.kazka_storefront === true,
+      kazka_channel: true,
+    };
   });
   if (!changed) return result;
   return replaceCatalogProducts(result, merged, '');
@@ -616,6 +733,9 @@ async function searchShop(
   const epirStorefrontToken = Boolean(env.SHOPIFY_STOREFRONT_TOKEN?.trim());
 
   if (channel === 'kazka') {
+    if (!kazkaStorefrontToken) {
+      console.log(JSON.stringify({tag: 'chat.kazka_storefront', status: 'missing_token', count: 0}));
+    }
     if (kazkaStorefrontToken) {
       const kazka = await searchStorefront(env, query, {kazka: true});
       if (kazka.ok && kazka.products.length) return kazka;
@@ -678,12 +798,34 @@ export async function fetchStoneProducts(
     const byMetafield = await searchShop(env, metafield, brand);
     if (byMetafield.ok) found = byMetafield.products.filter((product) => productMatchesStone(product, intent));
   }
-  if (!found.length && intent.id === 'szafir' && isEpirFamilyCatalogBrand(brand)) {
-    const handles = AUDITED_SAPPHIRE_HANDLES.map((handle) => `handle:${handle}`).join(' OR ');
-    const byHandle = await searchShop(env, handles, brand);
-    if (byHandle.ok) {
-      found = byHandle.products.filter((product) => productMatchesStone(product, intent));
-      found = filterProductsByOriginAsk(found, originAsk);
+  if (intent.id === 'szafir' && isEpirFamilyCatalogBrand(brand)) {
+    const auditedPool: Record<string, unknown>[] = [];
+    for (const handle of AUDITED_SAPPHIRE_HANDLES) {
+      const byHandle = await searchShop(env, `handle:${handle}`, brand);
+      if (!byHandle.ok) continue;
+      for (const product of byHandle.products) {
+        if (typeof product.handle === 'string' && product.handle === handle) auditedPool.push(product);
+      }
+    }
+    const audited = auditedPool
+      .filter((product) => productMatchesStone(product, intent))
+      .filter((product) => !originAsk || productMatchesOriginAsk(product, originAsk));
+    if (audited.length) {
+      const byHandleMap = new Map<string, Record<string, unknown>>();
+      for (const product of [...audited, ...found]) {
+        const handle = typeof product.handle === 'string' ? product.handle : '';
+        if (!handle || byHandleMap.has(handle)) continue;
+        byHandleMap.set(handle, product);
+      }
+      const preferred = AUDITED_SAPPHIRE_HANDLES.map((handle) => byHandleMap.get(handle)).filter(
+        (product): product is Record<string, unknown> => Boolean(product),
+      );
+      const rest = [...byHandleMap.values()].filter(
+        (product) =>
+          typeof product.handle !== 'string' ||
+          !AUDITED_SAPPHIRE_HANDLES.includes(product.handle as (typeof AUDITED_SAPPHIRE_HANDLES)[number]),
+      );
+      found = [...preferred, ...rest];
     }
   }
   const hints = latestTurnSearchHints(buyerText);

@@ -229,7 +229,9 @@ export async function loadPageProductCard(
   if (!slug) return null;
   const found = await fetchStoreProductsByQuery(env, `handle:${slug}`, brand);
   if (!found.ok || !found.products.length) return null;
-  const product = found.products.find((item) => item.handle === slug) ?? found.products[0];
+  const product = found.products.find(
+    (item) => typeof item.handle === 'string' && item.handle.trim() === slug,
+  );
   if (!product || !brandKeepsProduct(product, brand)) return null;
   const snapshot = presentCatalogForModel({products: [product], system_note: PAGE_NOTE}, {brand});
   const card = readPresentedProducts(snapshot)[0];

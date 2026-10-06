@@ -2,12 +2,15 @@ import {describe, expect, it} from 'vitest';
 import {
   buyerAllowsStoneSubstitute,
   buyerAsksForRing,
+  buyerAsksForWeddingBand,
   detectNamedBrowseQuery,
   detectStoneIntent,
   discoveryMetalBrowse,
   expandCatalogQuery,
   namedBrowseFromConversation,
   preferJewelryType,
+  productLooksLikeRing,
+  productMatchesDiscoveryMetal,
   rewriteCatalogQueryForDiscoveryMetal,
   stoneIntentFromConversation,
 } from '../src/catalog/stone-intent';
@@ -33,7 +36,11 @@ describe('detectStoneIntent', () => {
   });
 
   it('keeps soliter browse when the line does not name a stone', () => {
-    expect(detectNamedBrowseQuery('pokaż pierścionek soliter')).toBe('soliter');
+    expect(detectNamedBrowseQuery('pokaż pierścionek soliter')).toBe('pierścionek soliter');
+    expect(detectNamedBrowseQuery('soliter')).toBe('pierścionek soliter');
+    expect(detectNamedBrowseQuery('kolczyki soliter')).toBe('kolczyki soliter');
+    expect(detectNamedBrowseQuery('obrączki')).toBe('obrączka');
+    expect(detectNamedBrowseQuery('bransoletka do 300 zł')).toBe('bransoletka');
     expect(detectNamedBrowseQuery('cos z szafirem')).toBeNull();
     expect(namedBrowseFromConversation(['pierścionki zaręczynowe', 'jaka cena'])).toBe('pierścionek zaręczynowy');
   });
@@ -72,6 +79,36 @@ describe('catalog query and jewelry type', () => {
     expect(preferJewelryType([{title: 'Naszyjnik Iluzja', handle: 'naszyjnik-iluzja'}], 'pierścionek zaręczynowy')).toEqual(
       [],
     );
+  });
+
+  it('keeps finger Soliter rings and drops Soliter earrings; obrączki stay bands', () => {
+    expect(productLooksLikeRing({title: 'Kolczyki Soliter Motylek', handle: 'kolczyki-soliter'})).toBe(false);
+    expect(productLooksLikeRing({title: 'Pierścionek Soliter', handle: '101-10010-3-7'})).toBe(true);
+    const pool = [
+      {title: 'Kolczyki Soliter Wieczność', handle: 'kolczyki-soliter-wiecznosc'},
+      {title: 'Pierścionek Soliter', handle: '101-10010-3-7'},
+      {title: 'Pierścionek Soliter klasyczny', handle: '101-10019'},
+    ];
+    expect(preferJewelryType(pool, 'soliter').map((product) => product.handle)).toEqual([
+      '101-10010-3-7',
+      '101-10019',
+    ]);
+    expect(buyerAsksForWeddingBand('obrączki')).toBe(true);
+    expect(
+      preferJewelryType(
+        [
+          {title: 'Pierścionek Soliter', handle: '101-10010-3-7'},
+          {title: 'Srebrne obrączki ślubne Kora', handle: 'kora'},
+        ],
+        'obrączki',
+      ).map((product) => product.handle),
+    ).toEqual(['kora']);
+    expect(
+      productMatchesDiscoveryMetal(
+        {title: 'Srebrne obrączki ślubne', handle: 'kora', tags: ['metal_silver']},
+        'złoto',
+      ),
+    ).toBe(false);
   });
 
   it('drops a carried stone when the latest turn changes metal or purity', () => {

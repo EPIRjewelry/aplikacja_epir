@@ -189,6 +189,12 @@ function qualityOptionValue(variant: Record<string, unknown>): string | undefine
   return quality?.value;
 }
 
+function qualityLabelsFromOptions(product: Record<string, unknown>): string[] {
+  const groups = optionGroups(product);
+  const named = groups.find((group) => /jako[sś][cć]|quality|diamond|brylant/i.test(group.name));
+  return named?.values?.length ? uniqueLabels(named.values) : [];
+}
+
 function qualityPriceGroups(
   variants: Record<string, unknown>[],
   product: Record<string, unknown>,
@@ -198,35 +204,49 @@ function qualityPriceGroups(
   const tags = Array.isArray(product.tags) ? product.tags.join(' ') : '';
   const bigLab = /big[-\s]?lab/iu.test(`${handle} ${title} ${tags}`);
   const buckets = new Map<'natural' | 'lab', {labels: string[]; prices: PlnPrice[]}>();
+  const remember = (label: string, price: PlnPrice | null) => {
+    const kind = bigLab ? 'lab' : kazkaQualityKind(label);
+    if (!kind) return;
+    const bucket = buckets.get(kind) ?? {labels: [], prices: []};
+    if (label) bucket.labels.push(label);
+    if (price) bucket.prices.push(price);
+    buckets.set(kind, bucket);
+  };
   for (const variant of variants) {
     const price = priceOf(variant.price) ?? priceOf(variant);
     if (!price) continue;
     const label = qualityOptionValue(variant) ?? (bigLab ? 'LAB' : '');
-    const kind = bigLab ? 'lab' : kazkaQualityKind(label);
-    if (!kind) continue;
-    const bucket = buckets.get(kind) ?? {labels: [], prices: []};
-    if (label) bucket.labels.push(label);
-    bucket.prices.push(price);
-    buckets.set(kind, bucket);
+    remember(label, price);
+  }
+  // Oś „Jakość” z options nie zależy od limitu variants — LAB nie może zniknąć.
+  for (const label of qualityLabelsFromOptions(product)) {
+    remember(label, null);
   }
   if (!buckets.size) return undefined;
   const groups: Array<{
     kind: 'natural' | 'lab';
     qualities: string[];
-    price_min_display_pl: string;
-    price_max_display_pl: string;
+    price_min_display_pl?: string;
+    price_max_display_pl?: string;
   }> = [];
   for (const kind of ['natural', 'lab'] as const) {
     const bucket = buckets.get(kind);
-    if (!bucket?.prices.length) continue;
-    const min = bucket.prices.reduce((best, price) => (price.price_minor < best.price_minor ? price : best));
-    const max = bucket.prices.reduce((best, price) => (price.price_minor > best.price_minor ? price : best));
-    groups.push({
-      kind,
-      qualities: uniqueLabels(bucket.labels),
-      price_min_display_pl: min.price_display_pl,
-      price_max_display_pl: max.price_display_pl,
-    });
+    if (!bucket) continue;
+    const qualities = uniqueLabels(bucket.labels);
+    if (!qualities.length) continue;
+    const entry: {
+      kind: 'natural' | 'lab';
+      qualities: string[];
+      price_min_display_pl?: string;
+      price_max_display_pl?: string;
+    } = {kind, qualities};
+    if (bucket.prices.length) {
+      const min = bucket.prices.reduce((best, price) => (price.price_minor < best.price_minor ? price : best));
+      const max = bucket.prices.reduce((best, price) => (price.price_minor > best.price_minor ? price : best));
+      entry.price_min_display_pl = min.price_display_pl;
+      entry.price_max_display_pl = max.price_display_pl;
+    }
+    groups.push(entry);
   }
   return groups.length ? groups : undefined;
 }
@@ -444,8 +464,9 @@ function productPathFromLiveUrl(raw: string | undefined): string | undefined {
 
 /**
  * Shop MCP zwraca URL Online Store (apex) dla obu kanałów.
- * Karta Kazki dostaje ten sam path na hoście kazka.epirbizuteria.pl.
- * EPIR zostaje na apex. Bez prawdziwego onlineStoreUrl/url — brak linku (nie składamy z handle).
+ * Karta Kazka (po filtrze asortymentu) dostaje host kazka.epirbizuteria.pl z handle —
+ * te SKU nie są w Online Store, więc onlineStoreUrl bywa null.
+ * EPIR: tylko prawdziwy live URL (bez składania z handle).
  */
 function absoluteProductUrl(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
@@ -459,14 +480,22 @@ function absoluteProductUrl(raw: string | undefined): string | undefined {
   }
 }
 
+function productStatusActive(product: Record<string, unknown>): boolean {
+  const status = asString(product.status)?.toUpperCase();
+  return !status || status === 'ACTIVE';
+}
+
 function catalogProductUrl(product: Record<string, unknown>, brand?: string): string | undefined {
-  const raw = readUrlString(product.onlineStoreUrl) ?? readUrlString(product.url);
-  if (isKazkaCatalogBrand(brand) && product.kazka_storefront === true) {
+  if (isKazkaCatalogBrand(brand)) {
+    if (!productStatusActive(product)) return undefined;
     const handle = asString(product.handle);
-    const fromLive = productPathFromLiveUrl(raw);
-    const path = fromLive ?? (handle ? `/products/${handle}` : undefined);
+    if (handle) return `${KAZKA_PRODUCT_ORIGIN}/products/${handle}`;
+    const raw = readUrlString(product.onlineStoreUrl) ?? readUrlString(product.url);
+    const path = productPathFromLiveUrl(raw);
     if (path) return `${KAZKA_PRODUCT_ORIGIN}${path}`;
+    return undefined;
   }
+  const raw = readUrlString(product.onlineStoreUrl) ?? readUrlString(product.url);
   const path = productPathFromLiveUrl(raw);
   if (!path) return undefined;
   const origin = productOrigin(brand);

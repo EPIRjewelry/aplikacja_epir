@@ -13,6 +13,7 @@ import {
 } from './page-product-card';
 import {
   catalogStoneIntent,
+  AUDITED_SOLITER_HANDLES,
   fetchStoneProducts,
   fetchStoreProductsByQuery,
   stoneHitNote,
@@ -25,11 +26,15 @@ import {detectSizeTableIntent} from '../intent/size-table';
 import {
   buyerAllowsStoneSubstitute,
   buyerAsksForRing,
+  buyerAsksForWeddingBand,
   discoveryMetalBrowse,
   latestTurnClearsProductContext,
+  metalPreferenceFromTurn,
   namedBrowseFromConversation,
   preferJewelryType,
+  productLooksLikeFingerRing,
   productLooksLikeRing,
+  productLooksLikeWeddingBand,
   productMatchesDiscoveryMetal,
   ringRetryQuery,
   type DiscoveryMetal,
@@ -297,7 +302,55 @@ export async function seedBuyerTurnContext(input: {
           lines.push('Nie udało się potwierdzić tej pozycji w sklepie. Nie pisz, że jej nie ma.');
         } else {
           let matched = found.products.filter((product) => brandKeepsProduct(product, input.brand));
-          if (buyerAsksForRing(buyerText) || buyerAsksForRing(browseQuery)) {
+          const metalWanted = metalPreferenceFromTurn(latest) ?? (/z[łl]ot/iu.test(latest) ? 'złoto' : /srebr/iu.test(latest) ? 'srebro' : null);
+          if (metalWanted) {
+            const metalHits = matched.filter((product) => productMatchesDiscoveryMetal(product, metalWanted));
+            if (metalHits.length) matched = metalHits;
+            else if (/obr[aą]cz|pier[sś]cion|bransolet/iu.test(latest)) matched = [];
+          }
+          if (buyerAsksForWeddingBand(buyerText) || buyerAsksForWeddingBand(browseQuery)) {
+            matched = matched.filter((product) => productLooksLikeWeddingBand(product));
+          } else if (/pierścionek soliter|soliter|solitaire/iu.test(browseQuery) && !/kolczyk/iu.test(latest)) {
+            let rings = matched.filter((product) => productLooksLikeFingerRing(product));
+            if (!rings.length) {
+              const again = await fetchStoreProductsByQuery(
+                input.env,
+                'pierścionek soliter -kolczyki -kolczyk',
+                input.brand,
+              );
+              if (again.ok) {
+                rings = again.products.filter(
+                  (product) => brandKeepsProduct(product, input.brand) && productLooksLikeFingerRing(product),
+                );
+              }
+            }
+            const auditedRings: Record<string, unknown>[] = [];
+            for (const handle of AUDITED_SOLITER_HANDLES) {
+              const audited = await fetchStoreProductsByQuery(input.env, `handle:${handle}`, input.brand);
+              if (!audited.ok) continue;
+              for (const product of audited.products) {
+                if (product.handle !== handle) continue;
+                if (!brandKeepsProduct(product, input.brand)) continue;
+                if (!productLooksLikeFingerRing(product)) continue;
+                auditedRings.push(product);
+              }
+            }
+            if (auditedRings.length) {
+              const seen = new Set(
+                rings.map((product) => (typeof product.handle === 'string' ? product.handle : '')).filter(Boolean),
+              );
+              rings = [
+                ...auditedRings.filter((product) => {
+                  const handle = typeof product.handle === 'string' ? product.handle : '';
+                  if (!handle || seen.has(handle)) return false;
+                  seen.add(handle);
+                  return true;
+                }),
+                ...rings,
+              ];
+            }
+            matched = rings;
+          } else if (buyerAsksForRing(buyerText) || buyerAsksForRing(browseQuery)) {
             let rings = matched.filter((product) => productLooksLikeRing(product));
             if (!rings.length) {
               const again = await fetchStoreProductsByQuery(input.env, ringRetryQuery(browseQuery), input.brand);
@@ -308,11 +361,25 @@ export async function seedBuyerTurnContext(input: {
               }
             }
             matched = rings;
+          } else if (/bransolet/iu.test(browseQuery)) {
+            matched = matched.filter((product) => {
+              const title = typeof product.title === 'string' ? product.title : '';
+              const handle = typeof product.handle === 'string' ? product.handle : '';
+              return /bransolet|bracelet/iu.test(`${title} ${handle}`);
+            });
           }
-          const kept = matched.slice(0, 4);
+          matched = applyTurnSearchHints(matched, latestTurnSearchHints(latest));
+          const kept = preferJewelryType(matched, buyerText).length
+            ? preferJewelryType(matched, buyerText)
+            : matched.slice(0, 4);
+          const bandMiss = buyerAsksForWeddingBand(buyerText) && !kept.length;
           const note = kept.length
-            ? 'To są karty z katalogu tej marki. Pokaż 2–4 pozycje z ceną z karty i sizes_label. Nie pisz, że pozycji nie ma.'
-            : `Brak pozycji dla „${browseQuery}” w katalogu tej marki. Powiedz to wprost, bez innego SKU.`;
+            ? kept.some((product) => product.budget_miss === true)
+              ? `Żadna pozycja nie mieści się w budżecie do ${kept[0]?.budget_cap_pln} zł. Pokaż najtańszą opcję z karty i powiedz to wprost.`
+              : 'To są karty z katalogu tej marki. Pokaż 2–4 pozycje z ceną z karty, sizes_label i linkiem z url. Nie pisz, że pozycji nie ma.'
+            : bandMiss
+              ? 'Brak obrączek w katalogu tej marki. Powiedz to wprost. Możesz zaproponować pierścionki albo zamówienie indywidualne — nie podmieniaj po cichu na pierścionki zaręczynowe.'
+              : `Brak pozycji dla „${browseQuery}” w katalogu tej marki. Powiedz to wprost, bez innego SKU.`;
           const snapshot = presentedSnapshot(kept, note, input.brand);
           snapshots.push(snapshot);
           stoneLookup = kept.length ? 'hit' : 'confirmed_miss';

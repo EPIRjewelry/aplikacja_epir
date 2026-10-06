@@ -80,12 +80,19 @@ function metalFact(title: string): string | undefined {
   return undefined;
 }
 
-function factFromCard(product: Record<string, unknown>): string | undefined {
+function factFromCard(product: Record<string, unknown>, opts?: {disambiguate?: boolean}): string | undefined {
   const title = typeof product.title === 'string' ? product.title : '';
+  const metals = stringList(product.metals).join(', ');
+  const main = typeof product.main_stone === 'string' ? product.main_stone.trim() : '';
+  const handle = typeof product.handle === 'string' ? product.handle.trim() : '';
+  if (opts?.disambiguate) {
+    const bits = [metals || metalFact(title), main, handle].filter(Boolean);
+    if (bits.length) return bits.join(', ');
+  }
   const metal = metalFact(title);
   if (metal) return metal;
-  const main = typeof product.main_stone === 'string' ? product.main_stone.trim() : '';
   if (main) return main;
+  if (metals) return metals;
   const description = typeof product.description === 'string' ? product.description.trim() : '';
   if (!description) return undefined;
   const sentence = description.split(/(?<=[.!?])\s/)[0]?.trim() ?? '';
@@ -147,31 +154,44 @@ function priceLabel(product: Record<string, unknown>): string {
   return '';
 }
 
-function lineForProduct(product: Record<string, unknown>): string {
+function lineForProduct(product: Record<string, unknown>, disambiguate = false): string {
   const title = typeof product.title === 'string' && product.title.trim() ? product.title.trim() : 'Pozycja z katalogu';
   const url = typeof product.url === 'string' ? product.url.trim() : '';
   const sizes = typeof product.sizes_label === 'string' && product.sizes_label.trim() ? `rozmiary ${product.sizes_label.trim()}` : '';
   const metals = Array.isArray(product.metals)
     ? product.metals.filter((value): value is string => typeof value === 'string' && value.trim().length > 0).join(', ')
     : '';
-  const fact = factFromCard(product)?.replace(/[.!?…]+$/u, '');
+  const fact = factFromCard(product, {disambiguate})?.replace(/[.!?…]+$/u, '');
   const name = url ? `[${title}](${url})` : title;
-  const metalsLine = productPriceVaries(product) || !metals ? '' : `metale ${metals}`;
+  const metalsLine = productPriceVaries(product) || !metals || disambiguate ? '' : `metale ${metals}`;
   const factLine =
     fact && metalsLine.toLocaleLowerCase('pl-PL').includes(fact.toLocaleLowerCase('pl-PL')) ? '' : fact;
   const detail = [priceLabel(product), sizes, metalsLine, factLine].filter(Boolean).join(', ');
   return detail ? `- ${name} — ${detail}.` : `- ${name}.`;
 }
 
+function titlesNeedDisambiguation(products: readonly Record<string, unknown>[]): boolean {
+  const counts = new Map<string, number>();
+  for (const product of products) {
+    const title = typeof product.title === 'string' ? product.title.trim().toLocaleLowerCase('pl-PL') : '';
+    if (!title) continue;
+    counts.set(title, (counts.get(title) ?? 0) + 1);
+  }
+  return [...counts.values()].some((count) => count > 1);
+}
+
 export function formatCatalogBrowseReply(products: readonly Record<string, unknown>[]): string {
   const shown = products.slice(0, 4);
-  const lines = shown.map(lineForProduct);
+  const disambiguate = titlesNeedDisambiguation(shown);
+  const lines = shown.map((product) => lineForProduct(product, disambiguate));
   const ask = shown.some(productPriceVaries) ? '\nKtóry wariant Cię interesuje?' : '';
   return `Te pozycje są w katalogu:\n${lines.join('\n')}${ask}`;
 }
 
 export function formatStoneBrowseReply(products: readonly Record<string, unknown>[], intent: StoneIntent): string {
-  const lines = products.slice(0, 4).map(lineForProduct);
+  const shown = products.slice(0, 4);
+  const disambiguate = titlesNeedDisambiguation(shown);
+  const lines = shown.map((product) => lineForProduct(product, disambiguate));
   return `Te pozycje mają w karcie kamień ${intent.labelPl}:\n${lines.join('\n')}\nMogę zawęzić do pierścionka, obrączki albo innego rodzaju.`;
 }
 
@@ -211,6 +231,9 @@ function discoveryMetalCards(
 }
 
 export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext): {text: string; replaced: boolean; reason?: string} {
+  const original = text;
+  text = text.replace(/\brozmiany\b/giu, 'rozmiary');
+  const typoFixed = text !== original;
   const latest = context.buyerTurns[context.buyerTurns.length - 1] ?? '';
   const catalogProducts = productsFromCatalogSnapshots(context.catalogSnapshots);
   const namedNow = detectStoneIntent(latest);
@@ -224,10 +247,10 @@ export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext)
   });
   if (originGuarded.replaced) return originGuarded;
   if (isCertificateQuestion(latest) || detectPolicyInformationIntent(latest).match) {
-    return {text, replaced: false};
+    return {text, replaced: typoFixed, reason: typoFixed ? 'typo' : undefined};
   }
   if (isStoneOriginAssortmentQuestion(latest)) {
-    return {text, replaced: false};
+    return {text, replaced: typoFixed, reason: typoFixed ? 'typo' : undefined};
   }
   const metalBrowse = discoveryMetalBrowse(context.buyerTurns);
   if (metalBrowse) {
@@ -274,12 +297,14 @@ export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext)
         reason: 'unconfirmed',
       };
     }
-    if (!broken) return {text, replaced: false};
+    if (!broken) return {text, replaced: typoFixed, reason: typoFixed ? 'typo' : undefined};
     return {text: BUYER_RETRY_REPLY, replaced: true, reason: 'garbled'};
   }
   const substitutes = otherStoneMentioned(text, intent) && !textMentionsStone(text, intent);
   const falseEmpty = FALSE_EMPTY.test(text) && !citesProduct(text, products);
-  if (!broken && !substitutes && !falseEmpty) return {text, replaced: false};
+  if (!broken && !substitutes && !falseEmpty) {
+    return {text, replaced: typoFixed, reason: typoFixed ? 'typo' : undefined};
+  }
   if (products.length) {
     return {
       text: formatStoneBrowseReply(products, intent),

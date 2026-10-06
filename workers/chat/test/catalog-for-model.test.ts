@@ -166,9 +166,9 @@ describe('presentCatalogForModel', () => {
     expect(kazkaFromApex?.url).toBe('https://kazka.epirbizuteria.pl/products/soliter');
     expect(kazkaFromApex?.url).toMatch(absolute);
     expect(kazkaFromApex?.price_display_pl).toBe(formatPlnMajorForDisplay(6408));
-    // Bez prawdziwego onlineStoreUrl nie składamy /products/{handle} — draft dałby 404.
-    expect(kazkaFromBare?.url).toBeUndefined();
-    expect(kazkaFromHandleOnly?.url).toBeUndefined();
+    // Kazka (Hydrogen): handle wystarczy — SKU nie są w Online Store.
+    expect(kazkaFromBare?.url).toBe('https://kazka.epirbizuteria.pl/products/soliter');
+    expect(kazkaFromHandleOnly?.url).toBe('https://kazka.epirbizuteria.pl/products/soliter');
     expect(epir?.url).toBe('https://epirbizuteria.pl/products/soliter');
     expect(epir?.url).toMatch(absolute);
     expect(epir?.price_display_pl).toBe(formatPlnMajorForDisplay(6408));
