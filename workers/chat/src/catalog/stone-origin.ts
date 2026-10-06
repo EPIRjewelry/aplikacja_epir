@@ -4,7 +4,7 @@
  */
 
 import {isKazkaCatalogBrand} from './kazka-assortment';
-import type {StoneIntent} from './stone-intent';
+import {detectNamedBrowseQuery, detectStoneIntent, shopifyStoneQuery, type StoneIntent} from './stone-intent';
 
 export type StoneOriginAsk = 'natural' | 'lab';
 
@@ -21,6 +21,8 @@ const NATURAL_RE =
   /naturaln|nateraln|prawdziw|z\s+kopaln|wydobyw|earth[-\s]?mined|mined\s+(?:diamond|sapphire|stone)|z\s+zloz|z\s+złoż/iu;
 const LAB_RE =
   /syntet|syntetczn|laboratoryj|lab(?:oratory)?[-\s]?grown|\blab\b|hodowan|sztuczn|moissanit/iu;
+const LAB_ORIGIN_ASK_RE =
+  /syntet|syntetczn|laboratoryj|lab(?:oratory)?[-\s]?grown|\blab\b|hodowan|sztuczn|lab\s*grown/iu;
 
 const GENERAL_ORIGIN_ASK =
   /u[zż]ywacie\s+naturaln|czy\s+(?:u[zż]ywacie|są|sa|macie|mamy)\s+(?:kamie\w*\s+)?(?:naturaln|syntet|laboratoryj)|tylko\s+(?:z\s+)?naturaln|tylko\s+syntet|kamienie\s+(?:naturaln|syntet)|pochodzeni[ea]\s+kamien|czy\s+kamie\w*\s+(?:są|sa)\s+naturaln/iu;
@@ -62,10 +64,78 @@ export function foldStoneText(value: string): string {
 export function detectStoneOriginAsk(text: string): StoneOriginAsk | null {
   const folded = foldStoneText(text);
   const natural = NATURAL_RE.test(text) || NATURAL_RE.test(folded);
-  const lab = LAB_RE.test(text) || LAB_RE.test(folded);
+  const lab = LAB_ORIGIN_ASK_RE.test(text) || LAB_ORIGIN_ASK_RE.test(folded);
   if (natural && !lab) return 'natural';
   if (lab && !natural) return 'lab';
   return null;
+}
+
+const CONTINUATION_TURN =
+  /^(a\s+)?(poszukaj|szukaj|poka[zż]\s+wi[eę]cej|inny\s+wariant|co\s+jeszcze|jeszcze\s+raz)/iu;
+const WROTE_NATURAL = /naturaln\w*\s+pisałem|pisałem\s+.*naturaln/iu;
+
+/** Dziedziczenie pochodzenia tylko z doprecyzowania bez nowego kamienia / typu produktu. */
+export function isConversationContinuationTurn(latest: string, priorTurns: readonly string[]): boolean {
+  if (!latest.trim() || !priorTurns.length) return false;
+  if (detectStoneIntent(latest)) return false;
+  if (detectNamedBrowseQuery(latest)) return false;
+  const hints = latestTurnSearchHints(latest);
+  if (hints.price || hints.priceCapPln != null || hints.tokens.length) return true;
+  if (CONTINUATION_TURN.test(latest) || WROTE_NATURAL.test(latest)) return true;
+  return false;
+}
+
+export function originAskForTurn(buyerTurns: readonly string[]): StoneOriginAsk | null {
+  const lines = buyerTurns.map((turn) => turn.trim()).filter(Boolean);
+  if (!lines.length) return null;
+  const latest = lines[lines.length - 1] ?? '';
+  const askLatest = detectStoneOriginAsk(latest);
+  if (detectStoneIntent(latest) && askLatest === null) return null;
+  if (askLatest) return askLatest;
+  if (!isConversationContinuationTurn(latest, lines.slice(0, -1))) return null;
+  for (let index = lines.length - 2; index >= 0; index -= 1) {
+    const line = lines[index] ?? '';
+    const ask = detectStoneOriginAsk(line);
+    if (ask) return ask;
+    if (detectStoneIntent(line)) return null;
+  }
+  return null;
+}
+
+export type OriginFilterResult = {
+  products: Record<string, unknown>[];
+  originFallback: boolean;
+  stoneCardsUnfiltered: number;
+};
+
+export function originOnCardLabel(product: Record<string, unknown>): string {
+  const origin = cardStoneOrigin(product);
+  if (origin === 'natural') return 'naturalny';
+  if (origin === 'lab') return 'syntetyczny / laboratoryjny';
+  if (origin === 'mixed') return 'mieszane (naturalny i laboratoryjny)';
+  return 'brak informacji';
+}
+
+export function applyOriginFilterWithFallback(
+  stoneCards: readonly Record<string, unknown>[],
+  ask: StoneOriginAsk | null,
+  opts?: {allowFallback?: boolean},
+): OriginFilterResult {
+  const unfiltered = stoneCards.length;
+  if (!ask) return {products: [...stoneCards], originFallback: false, stoneCardsUnfiltered: unfiltered};
+  const originHits = filterProductsByOriginAsk(stoneCards, ask);
+  if (originHits.length) {
+    return {products: originHits, originFallback: false, stoneCardsUnfiltered: unfiltered};
+  }
+  if (stoneCards.length && opts?.allowFallback !== false) {
+    const stamped = stoneCards.map((product) => ({
+      ...product,
+      origin_on_card: originOnCardLabel(product),
+      origin_fallback: true,
+    }));
+    return {products: stamped, originFallback: true, stoneCardsUnfiltered: unfiltered};
+  }
+  return {products: [], originFallback: false, stoneCardsUnfiltered: unfiltered};
 }
 
 /** Ogólne „używacie naturalnych?” — nie jest pytaniem o jeden SKU. */
@@ -224,6 +294,13 @@ export function cardStoneOrigin(product: Record<string, unknown>): CardStoneOrig
 
 export function productMatchesOriginAsk(product: Record<string, unknown>, ask: StoneOriginAsk): boolean {
   const origin = cardStoneOrigin(product);
+  if (ask === 'natural') {
+    if (origin === 'lab') return false;
+    if (origin === 'natural' || origin === 'mixed') return true;
+    const hay = productHaystack(product);
+    if (/syntet|laboratoryj|\blab\b|sztuczn/iu.test(hay) && !/naturaln/iu.test(hay)) return false;
+    return false;
+  }
   if (origin === 'unknown') return false;
   if (origin === 'mixed') return true;
   return origin === ask;
@@ -318,9 +395,55 @@ export function latestTurnSearchHints(text: string): TurnSearchHints {
   return {price, priceCapPln: detectPriceCapPln(text), tokens};
 }
 
+export function productMinPricePlnForOrigin(
+  product: Record<string, unknown>,
+  ask: StoneOriginAsk | null,
+): number | null {
+  if (ask === 'natural' || ask === 'lab') {
+    const groups = product.quality_price_groups;
+    if (Array.isArray(groups)) {
+      const prices: number[] = [];
+      for (const group of groups) {
+        if (!isRecord(group) || group.kind !== ask) continue;
+        const min = parsePlnMajor(group.price_min_display_pl);
+        if (min != null) prices.push(min);
+      }
+      if (prices.length) return Math.min(...prices);
+    }
+    if (Array.isArray(product.variants)) {
+      const prices: number[] = [];
+      for (const variant of product.variants) {
+        if (!isRecord(variant)) continue;
+        const selected = variant.selectedOptions ?? variant.options;
+        if (!Array.isArray(selected)) continue;
+        let quality = '';
+        for (const option of selected) {
+          if (!isRecord(option)) continue;
+          const name = typeof option.name === 'string' ? option.name : '';
+          const value = typeof option.value === 'string' ? option.value : '';
+          if (/jako/i.test(name)) quality = value;
+        }
+        const kind = kazkaQualityKind(quality);
+        if (kind !== ask) continue;
+        const amount =
+          parsePlnMajor(variant.price_display_pl) ??
+          parsePlnMajor(
+            typeof variant.price === 'object' && isRecord(variant.price)
+              ? variant.price.amount
+              : variant.price,
+          );
+        if (amount != null) prices.push(amount);
+      }
+      if (prices.length) return Math.min(...prices);
+    }
+  }
+  return productMinPricePln(product);
+}
+
 export function applyTurnSearchHints<T extends Record<string, unknown>>(
   products: readonly T[],
   hints: TurnSearchHints,
+  originAsk: StoneOriginAsk | null = null,
 ): T[] {
   let next = [...products];
   if (hints.tokens.length) {
@@ -333,7 +456,7 @@ export function applyTurnSearchHints<T extends Record<string, unknown>>(
   if (hints.priceCapPln != null) {
     const cap = hints.priceCapPln;
     const inBudget = next.filter((product) => {
-      const min = productMinPricePln(product);
+      const min = productMinPricePlnForOrigin(product, originAsk);
       return min != null && min <= cap + 0.01;
     });
     if (inBudget.length) {
@@ -353,23 +476,15 @@ export function applyTurnSearchHints<T extends Record<string, unknown>>(
   return next;
 }
 
-export function originCatalogQuery(ask: StoneOriginAsk | null, stone?: StoneIntent | null): string {
-  const stonePart = stone ? stone.lemmas.join(' ') : '';
-  if (ask === 'natural') return `${stonePart} naturalny`.trim();
-  if (ask === 'lab') return `${stonePart} syntetyczny laboratoryjny lab`.trim();
-  return stonePart;
+export function originCatalogQuery(_ask: StoneOriginAsk | null, stone?: StoneIntent | null): string {
+  return stone ? shopifyStoneQuery(stone) : '';
 }
 
 export function rewriteCatalogQueryForOriginAndHints(query: string, buyerTurns: readonly string[]): string {
   const latest = buyerTurns[buyerTurns.length - 1] ?? '';
   if (isStoneOriginAssortmentQuestion(latest) || isCertificateQuestion(latest)) return query.trim();
-  const ask = detectStoneOriginAsk(latest) ?? detectStoneOriginAsk(buyerTurns.join('\n'));
   const hints = latestTurnSearchHints(latest);
   let next = query.trim();
-  if (ask === 'natural' && !/naturaln/iu.test(next)) next = `${next} naturalny`.trim();
-  if (ask === 'lab' && !/syntet|laboratoryj|\blab\b/iu.test(next)) {
-    next = `${next} syntetyczny laboratoryjny`.trim();
-  }
   for (const token of hints.tokens) {
     if (!foldStoneText(next).includes(foldStoneText(token))) next = `${next} ${token}`.trim();
   }
@@ -448,7 +563,7 @@ export function guardStoneOriginClaims(
   },
 ): {text: string; replaced: boolean; reason?: string} {
   const latest = input.buyerTurns[input.buyerTurns.length - 1] ?? '';
-  const ask = detectStoneOriginAsk(latest);
+  const ask = originAskForTurn(input.buyerTurns);
   const assortment = isStoneOriginAssortmentQuestion(latest);
   const certAsk = isCertificateQuestion(latest);
   const products = input.catalogProducts;
@@ -492,7 +607,22 @@ export function guardStoneOriginClaims(
   if (ask === 'natural') {
     const naturalHits = filterProductsByOriginAsk(products, 'natural');
     const onlyLab = products.length > 0 && naturalHits.length === 0;
-    if (onlyLab || (products.length === 0 && /\/products\//.test(text))) {
+    if (onlyLab) {
+      const label = input.stone?.labelPl ?? 'kamienia';
+      const lines = products.slice(0, 4).map((product) => {
+        const title = typeof product.title === 'string' ? product.title : 'Pozycja';
+        const url = typeof product.url === 'string' ? product.url : '';
+        const origin = originOnCardLabel(product);
+        const name = url ? `[${title}](${url})` : title;
+        return `- ${name} — pochodzenie: ${origin}.`;
+      });
+      return {
+        text: `Naturalnego ${label} nie mam teraz w ofercie. Karty z ${label} podają:\n${lines.join('\n')}`,
+        replaced: true,
+        reason: 'natural_synth_only',
+      };
+    }
+    if (products.length === 0 && /\/products\//.test(text)) {
       return {text: formatOriginMissReply('natural', input.stone), replaced: true, reason: 'natural_synth_only'};
     }
   }

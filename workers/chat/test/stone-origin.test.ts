@@ -103,8 +103,8 @@ describe('origin and certificate reply guards', () => {
       },
     );
     expect(guarded.replaced).toBe(true);
-    expect(guarded.text).toMatch(/naturalnego kamienia „szafir”/i);
-    expect(guarded.text).not.toContain('obraczka-z-szafirem-epir-jewellery');
+    expect(guarded.text).toMatch(/Naturalnego szafir nie mam/i);
+    expect(guarded.text).toContain('syntetyczny / laboratoryjny');
   });
 
   it('rebuilds after an identical previous reply when the latest turn adds droższy', () => {

@@ -8,6 +8,7 @@
     "deploy": "wrangler deploy",
     "tail": "wrangler tail",
     "test": "vitest run",
+    "test:live-eval": "node --import tsx scripts/live-eval.mjs",
     "test:watch": "vitest",
     "smoke:harmony": "tsx scripts/smoke-harmony-tool-call.ts"
   },

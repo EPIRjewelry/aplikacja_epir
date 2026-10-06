@@ -18,7 +18,9 @@ import {
 } from './live-store-product';
 import {
   applyTurnSearchHints,
+  applyOriginFilterWithFallback,
   detectStoneOriginAsk,
+  originAskForTurn,
   filterProductsByOriginAsk,
   isCertificateQuestion,
   isStoneOriginAssortmentQuestion,
@@ -31,6 +33,7 @@ import {
   buyerAsksForRing,
   expandCatalogQuery,
   preferJewelryType,
+  productLooksLikeFingerRing,
   productLooksLikeRing,
   ringRetryQuery,
   shopifyStoneQuery,
@@ -762,15 +765,17 @@ export async function fetchStoneProducts(
   buyerText = '',
 ): Promise<{products: Record<string, unknown>[]; confirmed: boolean}> {
   if (!hasShopToken(env)) return {products: [], confirmed: false};
-  const originAsk = detectStoneOriginAsk(buyerText);
-  const wantsRing = buyerAsksForRing(buyerText);
-  const baseQuery = originAsk
-    ? originCatalogQuery(originAsk, intent)
-    : shopifyStoneQuery(intent);
+  const buyerTurns = buyerText.split('\n').map((turn) => turn.trim()).filter(Boolean);
+  const latestTurn = buyerTurns[buyerTurns.length - 1] ?? buyerText;
+  const originAsk = originAskForTurn(buyerTurns);
+  const wantsRing = buyerAsksForRing(latestTurn) || buyerAsksForRing(buyerText);
+  const baseQuery = shopifyStoneQuery(intent);
   const keyword = await searchShop(env, wantsRing ? `${baseQuery} pierścionek` : baseQuery, brand);
   if (!keyword.ok) return {products: [], confirmed: false};
   let found = keyword.products.filter((product) => productMatchesStone(product, intent));
-  found = filterProductsByOriginAsk(found, originAsk);
+  const explicitOrigin = Boolean(originAsk && detectStoneOriginAsk(latestTurn));
+  const originApplied = applyOriginFilterWithFallback(found, originAsk, {allowFallback: !explicitOrigin});
+  found = originApplied.products;
   if (wantsRing) {
     const rings = found.filter((product) => productLooksLikeRing(product));
     if (rings.length) {
@@ -784,19 +789,40 @@ export async function fetchStoneProducts(
         : [];
     }
   }
-  if (!found.length && originAsk === 'natural') {
-    const naturalQuery = `${shopifyStoneQuery(intent)} naturalny`;
-    const again = await searchShop(env, naturalQuery, brand);
-    if (again.ok) {
-      found = again.products
-        .filter((product) => productMatchesStone(product, intent))
-        .filter((product) => productMatchesOriginAsk(product, 'natural'));
-    }
-  }
   if (!found.length && !wantsRing && !originAsk) {
     const metafield = intent.lemmas.map((lemma) => `metafields.custom.main_stone:${lemma}`).join(' OR ');
     const byMetafield = await searchShop(env, metafield, brand);
     if (byMetafield.ok) found = byMetafield.products.filter((product) => productMatchesStone(product, intent));
+  }
+  if (
+    !found.length &&
+    intent.id === 'diament' &&
+    isKazkaCatalogBrand(brand) &&
+    (originAsk === 'natural' || buyerAsksForRing(latestTurn))
+  ) {
+    const soliterPool: Record<string, unknown>[] = [];
+    for (const handle of AUDITED_SOLITER_HANDLES) {
+      const byHandle = await searchShop(env, `handle:${handle}`, brand);
+      if (!byHandle.ok) continue;
+      for (const product of byHandle.products) {
+        if (product.handle === handle) soliterPool.push(product);
+      }
+    }
+    const soliterSearch = await searchShop(env, 'pierścionek soliter', brand);
+    if (soliterSearch.ok) {
+      for (const product of soliterSearch.products) {
+        if (productLooksLikeFingerRing(product)) soliterPool.push(product);
+      }
+    }
+    found = soliterPool
+      .filter((product) => productMatchesStone(product, intent))
+      .filter((product) => !originAsk || productMatchesOriginAsk(product, originAsk));
+    const dedup = new Map<string, Record<string, unknown>>();
+    for (const product of found) {
+      const handle = typeof product.handle === 'string' ? product.handle : '';
+      if (handle) dedup.set(handle, product);
+    }
+    found = [...dedup.values()];
   }
   if (intent.id === 'szafir' && isEpirFamilyCatalogBrand(brand)) {
     const auditedPool: Record<string, unknown>[] = [];
@@ -828,8 +854,29 @@ export async function fetchStoneProducts(
       found = [...preferred, ...rest];
     }
   }
-  const hints = latestTurnSearchHints(buyerText);
-  found = applyTurnSearchHints(found, hints);
+  const hints = latestTurnSearchHints(latestTurn);
+  if (intent.id === 'diament' && originAsk === 'natural') {
+    const finger = found.filter((product) => productLooksLikeFingerRing(product));
+    if (finger.length) found = finger;
+    else {
+      const rings = found.filter((product) => productLooksLikeRing(product));
+      if (rings.length) found = rings;
+    }
+  }
+  found = applyTurnSearchHints(found, hints, originAsk);
+  if (originApplied.originFallback && found.length) {
+    console.log(
+      JSON.stringify({
+        tag: 'chat.catalog_funnel',
+        stone: intent.id,
+        brand: brand ?? null,
+        origin_ask: originAsk,
+        origin_fallback_to_stone_cards: true,
+        stone_cards_unfiltered: originApplied.stoneCardsUnfiltered,
+        final: found.length,
+      }),
+    );
+  }
   return {products: found, confirmed: true};
 }
 
@@ -860,8 +907,9 @@ export async function rescueStoneCatalog(
 ): Promise<{result: unknown; rescued: boolean; matchCount: number}> {
   const intent = catalogStoneIntent(input);
   if (!intent) return {result, rescued: false, matchCount: 0};
-  const buyerText = (input.buyerTurns ?? []).join('\n');
-  const originAsk = detectStoneOriginAsk(buyerText);
+  const buyerTurns = input.buyerTurns ?? [];
+  const buyerText = buyerTurns.join('\n');
+  const originAsk = originAskForTurn(buyerTurns);
   const current = extractCatalogProducts(result)
     .filter((product) => productMatchesStone(product, intent))
     .filter((product) => !originAsk || productMatchesOriginAsk(product, originAsk));
@@ -899,7 +947,7 @@ export async function rescueStoneCatalog(
     matches = found.products;
   }
   let picked = preferJewelryType(matches, buyerText);
-  picked = applyTurnSearchHints(picked, latestTurnSearchHints(buyerText));
+  picked = applyTurnSearchHints(picked, latestTurnSearchHints(buyerTurns[buyerTurns.length - 1] ?? ''), originAsk);
   if (originAsk) picked = filterProductsByOriginAsk(picked, originAsk);
   const note = picked.length
     ? stoneHitNote(intent.labelPl)

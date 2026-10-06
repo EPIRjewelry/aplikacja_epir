@@ -6,11 +6,12 @@
 import {extractCatalogProducts, productMatchesStone} from './stone-retrieval';
 import {detectPolicyInformationIntent} from '../intent/policy-information';
 import {
-  detectStoneOriginAsk,
   formatOriginMissReply,
   guardStoneOriginClaims,
   isCertificateQuestion,
+  isConversationContinuationTurn,
   isStoneOriginAssortmentQuestion,
+  originAskForTurn,
 } from './stone-origin';
 import {
   buyerAllowsStoneSubstitute,
@@ -34,6 +35,12 @@ const MASKED_FAILURE =
 const HANDOFF = /^\s*łączę z asystentem\b|^\s*lacze z asystentem\b/iu;
 
 const DISCOVERY_META_LEAK = /nie wracam do poprzedniej|metal bior[eę] z karty/iu;
+
+const INTERNAL_INSTRUCTION_LEAK =
+  /\[trafenia katalogu\]|nie wracam do poprzedniej|metal bior[eę] z karty produktu|przy tej próbie|nie pisz, że|zostań przy tym|w tej turze|system_note/iu;
+
+const CLIENT_DATA_LEAK =
+  /\bmetafield\b|\bzakres karty\b|\bw karcie\b|\bkarta produktu\b|\b\d{3}-\d{5}-\d-\d\b/iu;
 
 export const BUYER_RETRY_REPLY =
   'Nie udało się ułożyć odpowiedzi. Napisz proszę jeszcze raz — zostaję przy tym, o co prosisz.';
@@ -128,11 +135,10 @@ function variantSpread(product: Record<string, unknown>): string {
   const stone = typeof product.main_stone === 'string' ? product.main_stone.trim() : '';
   const min = typeof product.price_min_display_pl === 'string' ? product.price_min_display_pl : '';
   const max = typeof product.price_max_display_pl === 'string' ? product.price_max_display_pl : '';
-  const bits = ['warianty różnią się metalem, próbą albo kamieniem'];
-  if (metals) bits.push(`metale ${metals}`);
+  const bits = ['warianty różnią się metalem, próbą albo wykończeniem'];
+  if (metals) bits.push(metals);
   if (karats) bits.push(`próby ${karats}`);
-  if (stone) bits.push(`kamień ${stone}`);
-  if (min && max) bits.push(`zakres karty ${min}–${max}`);
+  if (min && max) bits.push(`ceny ${min} – ${max}`);
   return bits.join(', ');
 }
 
@@ -192,11 +198,11 @@ export function formatStoneBrowseReply(products: readonly Record<string, unknown
   const shown = products.slice(0, 4);
   const disambiguate = titlesNeedDisambiguation(shown);
   const lines = shown.map((product) => lineForProduct(product, disambiguate));
-  return `Te pozycje mają w karcie kamień ${intent.labelPl}:\n${lines.join('\n')}\nMogę zawęzić do pierścionka, obrączki albo innego rodzaju.`;
+  return `Te modele zawierają kamień ${intent.labelPl}:\n${lines.join('\n')}\nMogę zawęzić do pierścionka, obrączki albo innego rodzaju.`;
 }
 
-export function formatStoneUnconfirmedReply(intent: StoneIntent): string {
-  return `Jeszcze nie potwierdziłam kart z kamieniem „${intent.labelPl}”. Napisz proszę jeszcze raz — zostaję przy tym kamieniu.`;
+export function formatStoneUnconfirmedReply(_intent: StoneIntent): string {
+  return BUYER_RETRY_REPLY;
 }
 
 export function formatStoneMissReply(intent: StoneIntent): string {
@@ -219,6 +225,7 @@ export type BuyerReplyContext = {
   /** none = retrieval jeszcze nie zaszedł. Pusta lista bez confirmed_miss nie jest brakiem oferty. */
   stoneLookup?: StoneLookup;
   brand?: string;
+  stoneCardsUnfiltered?: number;
 };
 
 function discoveryMetalCards(
@@ -237,7 +244,7 @@ export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext)
   const latest = context.buyerTurns[context.buyerTurns.length - 1] ?? '';
   const catalogProducts = productsFromCatalogSnapshots(context.catalogSnapshots);
   const namedNow = detectStoneIntent(latest);
-  const originAsk = detectStoneOriginAsk(latest);
+  const originAsk = originAskForTurn(context.buyerTurns);
   const originGuarded = guardStoneOriginClaims(text, {
     buyerTurns: context.buyerTurns,
     previousAssistant: context.previousAssistant,
@@ -273,7 +280,10 @@ export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext)
     const citesPriorStone = Boolean(prior && textMentionsStone(text, prior));
     const citesSku = /\/products\//.test(text);
     if (citesPriorStone || citesSku) {
-      return {text: STALE_PRODUCT_CONTEXT_REPLY, replaced: true, reason: 'stale_product_context'};
+      if (catalogProducts.length) {
+        return {text: formatCatalogBrowseReply(catalogProducts), replaced: true, reason: 'stale_product_context'};
+      }
+      return {text: BUYER_RETRY_REPLY, replaced: true, reason: 'stale_product_context'};
     }
   }
   const allowSubstitute = buyerAllowsStoneSubstitute(latest, context.previousAssistant);
@@ -302,6 +312,12 @@ export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext)
   }
   const substitutes = otherStoneMentioned(text, intent) && !textMentionsStone(text, intent);
   const falseEmpty = FALSE_EMPTY.test(text) && !citesProduct(text, products);
+  if (INTERNAL_INSTRUCTION_LEAK.test(text) || CLIENT_DATA_LEAK.test(text)) {
+    if (catalogProducts.length) {
+      return {text: formatCatalogBrowseReply(catalogProducts), replaced: true, reason: 'instruction_leak'};
+    }
+    return {text: BUYER_RETRY_REPLY, replaced: true, reason: 'instruction_leak'};
+  }
   if (!broken && !substitutes && !falseEmpty) {
     return {text, replaced: typoFixed, reason: typoFixed ? 'typo' : undefined};
   }
@@ -314,11 +330,21 @@ export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext)
   }
   const missIntent = namedNow ?? intent;
   if (lookup === 'confirmed_miss' && (substitutes || falseEmpty || broken)) {
-    if (originAsk) {
+    const unfiltered = context.stoneCardsUnfiltered ?? 0;
+    if (unfiltered > 0 && originAsk) {
+      const shown = catalogProducts.filter((product) => productMatchesStone(product, missIntent));
+      if (shown.length) {
+        return {text: formatStoneBrowseReply(shown, missIntent), replaced: true, reason: 'origin_miss'};
+      }
+    }
+    if (originAsk && unfiltered === 0) {
       return {text: formatOriginMissReply(originAsk, missIntent), replaced: true, reason: 'origin_miss'};
     }
-    if (!namedNow) {
-      return {text: formatStoneUnconfirmedReply(intent), replaced: true, reason: 'unconfirmed'};
+    if (!namedNow && isConversationContinuationTurn(latest, priorTurns) && catalogProducts.length) {
+      return {text: formatCatalogBrowseReply(catalogProducts), replaced: true, reason: 'continuation_browse'};
+    }
+    if (!namedNow && lookup === 'confirmed_miss') {
+      return {text: formatStoneMissReply(missIntent), replaced: true, reason: 'false_empty'};
     }
     return {text: formatStoneMissReply(missIntent), replaced: true, reason: substitutes ? 'substitute' : 'false_empty'};
   }

@@ -94,8 +94,8 @@ describe('P0quin Soliter discovery asks which variant', () => {
     expect(fromFirst.text).not.toMatch(/\bod\s+\d/iu);
     expect(fromFirst.text).not.toContain(formatPlnMajorForDisplay(FIRST_VARIANT));
     expect(fromFirst.text).not.toContain(formatPlnMajorForDisplay(PAGE_ONLY_MAX));
-    expect(fromFirst.text).toContain(`zakres karty ${formatPlnMajorForDisplay(CARD_MIN)}–${formatPlnMajorForDisplay(CARD_MAX)}`);
-    expect(fromFirst.text).toMatch(/warianty różnią się metalem, próbą albo kamieniem/iu);
+    expect(fromFirst.text).toContain(`ceny ${formatPlnMajorForDisplay(CARD_MIN)} – ${formatPlnMajorForDisplay(CARD_MAX)}`);
+    expect(fromFirst.text).toMatch(/warianty różnią się metalem, próbą albo wykończeniem/iu);
     expect(fromFirst.text).toMatch(/próby 585, 750/iu);
     expect(fromFirst.text).toMatch(/Który wariant Cię interesuje/iu);
 
