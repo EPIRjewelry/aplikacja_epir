@@ -10,6 +10,7 @@ import {
   SHOPIFY_STOREFRONT_API_VERSION,
 } from '../config/shopify-api-version';
 import {isEpirFamilyCatalogBrand} from './kazka-assortment';
+import {filterLivePublishedProducts, withActiveStatusQuery} from './live-store-product';
 import {
   buyerAsksForRing,
   expandCatalogQuery,
@@ -282,6 +283,8 @@ export function mapStoreProduct(node: Record<string, unknown>): Record<string, u
     description: node.description,
     vendor: node.vendor,
     tags: node.tags,
+    status: node.status,
+    publishedOnCurrentPublication: node.publishedOnCurrentPublication,
     onlineStoreUrl: online,
     url: online,
     options: mapOptions(node),
@@ -300,6 +303,8 @@ const PRODUCT_FIELDS = `
   description
   vendor
   tags
+  status
+  publishedOnCurrentPublication
   onlineStoreUrl
   options { name optionValues { name } }
   priceRangeV2 {
@@ -338,6 +343,8 @@ const ADMIN_SEARCH_PLAIN_OPTIONS = `
         description
         vendor
         tags
+        status
+        publishedOnCurrentPublication
         onlineStoreUrl
         priceRangeV2 {
           minVariantPrice { amount currencyCode }
@@ -422,15 +429,16 @@ async function searchAdmin(
   if (!shop || !token) return {ok: false, products: []};
   const endpoint = `https://${shop}/admin/api/${SHOPIFY_ADMIN_API_VERSION}/graphql.json`;
   const headers = {'Content-Type': 'application/json', 'X-Shopify-Access-Token': token};
+  const liveQuery = withActiveStatusQuery(query);
   try {
-    const data = await postGraphql(endpoint, headers, ADMIN_SEARCH, {query});
-    return {ok: true, products: nodesOf(data).map(mapStoreProduct)};
+    const data = await postGraphql(endpoint, headers, ADMIN_SEARCH, {query: liveQuery});
+    return {ok: true, products: filterLivePublishedProducts(nodesOf(data).map(mapStoreProduct))};
   } catch (error) {
     console.warn('[stone-retrieval] admin search with options failed', error instanceof Error ? error.message : error);
   }
   try {
-    const data = await postGraphql(endpoint, headers, ADMIN_SEARCH_PLAIN_OPTIONS, {query});
-    return {ok: true, products: nodesOf(data).map(mapStoreProduct)};
+    const data = await postGraphql(endpoint, headers, ADMIN_SEARCH_PLAIN_OPTIONS, {query: liveQuery});
+    return {ok: true, products: filterLivePublishedProducts(nodesOf(data).map(mapStoreProduct))};
   } catch (error) {
     console.warn('[stone-retrieval] admin search failed', error instanceof Error ? error.message : error);
     return {ok: false, products: []};
@@ -452,7 +460,7 @@ async function searchStorefront(
       STOREFRONT_SEARCH,
       {query},
     );
-    return {ok: true, products: nodesOf(data).map(mapStoreProduct)};
+    return {ok: true, products: filterLivePublishedProducts(nodesOf(data).map(mapStoreProduct))};
   } catch (error) {
     console.warn('[stone-retrieval] storefront search failed', error instanceof Error ? error.message : error);
     return {ok: false, products: []};

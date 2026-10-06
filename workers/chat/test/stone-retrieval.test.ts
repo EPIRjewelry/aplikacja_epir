@@ -36,6 +36,8 @@ function sapphireNode() {
     description: 'Obrączka, szafir syntetyczny, srebro.',
     vendor: 'EPIR',
     tags: ['szafir', 'srebro'],
+    status: 'ACTIVE',
+    publishedOnCurrentPublication: true,
     onlineStoreUrl: 'https://epir-art-silver-jewellery.myshopify.com/products/obraczka-z-szafirem-epir-jewellery',
     options: [{name: 'Rozmiar', optionValues: sizes.map((size) => ({name: size}))}],
     metafields: {nodes: [{namespace: 'custom', key: 'main_stone', value: 'szafir syntetyczny'}]},
@@ -114,6 +116,10 @@ describe('callMcpToolDirect stone rescue', () => {
     const mcpBody = JSON.parse(String(mcpCall?.[1]?.body));
     expect(mcpBody.params.arguments.catalog.query).toBe('szafir sapphire');
     expect(mcpBody.params.arguments.catalog.pagination.limit).toBe(8);
+
+    const adminCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/admin/api/'));
+    const adminBody = JSON.parse(String(adminCall?.[1]?.body));
+    expect(String(adminBody.variables?.query ?? '')).toContain('status:active');
 
     const products = productsFrom((out as {result: unknown}).result);
     expect(products.map((product) => product.handle)).toEqual(['obraczka-z-szafirem-epir-jewellery']);

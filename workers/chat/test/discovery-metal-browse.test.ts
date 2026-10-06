@@ -137,8 +137,9 @@ describe('classic ring plus metal stays on the EPIR catalog', () => {
     expect(blob).not.toContain('klasyczna-obraczka-zlota');
     expect(blob).not.toContain('soliter-kazka');
     expect(blob).not.toContain('naszyjnik-srebrny-klasyczny');
+    // Fakt sklepu ma „Metal biorę z karty produktu” — tu chodzi o pełny strażnik listy, nie o ten fakt.
+    expect(blob).not.toContain(STALE_PRODUCT_CONTEXT_REPLY);
     expect(blob).not.toMatch(/nie wracam do poprzedniej/i);
-    expect(blob).not.toMatch(/metal biorę z karty/i);
 
     const guarded = guardBuyerCatalogReply(STALE_PRODUCT_CONTEXT_REPLY, {
       buyerTurns: CLASSIC_TURNS,
@@ -151,8 +152,8 @@ describe('classic ring plus metal stays on the EPIR catalog', () => {
     expect(guarded.text).toContain('rozmiary 12, 14');
     expect(guarded.text).toContain('szeroka-obraczka-klasyczna');
     expect(guarded.text).not.toBe(STALE_PRODUCT_CONTEXT_REPLY);
+    expect(guarded.text).not.toContain(STALE_PRODUCT_CONTEXT_REPLY);
     expect(guarded.text).not.toMatch(/nie wracam do poprzedniej/i);
-    expect(guarded.text).not.toMatch(/metal biorę z karty/i);
   });
 
   it('keeps the classic ring when the metal answer is gold', async () => {

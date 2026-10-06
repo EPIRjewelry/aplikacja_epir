@@ -158,6 +158,7 @@ describe('presentCatalogForModel', () => {
       presentCatalogForModel(soliter('https://epirbizuteria.pl/products/soliter'), {brand: 'kazka'}),
     )[0];
     const kazkaFromBare = productsOf(presentCatalogForModel(soliter('https://'), {brand: 'kazka'}))[0];
+    const kazkaFromHandleOnly = productsOf(presentCatalogForModel(soliter(undefined), {brand: 'kazka'}))[0];
     const epir = productsOf(
       presentCatalogForModel(soliter('https://epirbizuteria.pl/products/soliter?variant=1'), {brand: 'epir'}),
     )[0];
@@ -165,8 +166,9 @@ describe('presentCatalogForModel', () => {
     expect(kazkaFromApex?.url).toBe('https://kazka.epirbizuteria.pl/products/soliter');
     expect(kazkaFromApex?.url).toMatch(absolute);
     expect(kazkaFromApex?.price_display_pl).toBe(formatPlnMajorForDisplay(6408));
-    expect(kazkaFromBare?.url).toBe('https://kazka.epirbizuteria.pl/products/soliter');
-    expect(kazkaFromBare?.url).not.toBe('https://');
+    // Bez prawdziwego onlineStoreUrl nie składamy /products/{handle} — draft dałby 404.
+    expect(kazkaFromBare?.url).toBeUndefined();
+    expect(kazkaFromHandleOnly?.url).toBeUndefined();
     expect(epir?.url).toBe('https://epirbizuteria.pl/products/soliter');
     expect(epir?.url).toMatch(absolute);
     expect(epir?.price_display_pl).toBe(formatPlnMajorForDisplay(6408));
@@ -413,13 +415,13 @@ describe('buyer catalog and cart transcript', () => {
     }, {brand: 'epir'});
 
     const wire = modelWire((out as {result: unknown}).result);
-    const visible = wire.slice(0, TOOL_OUTPUT_LIMIT);
+    const products = productsOf((out as {result: unknown}).result);
     expect(wire.length).toBeLessThan(TOOL_OUTPUT_LIMIT);
-    expect(visible).toContain('Gałązki');
-    expect(visible).toContain(formatPlnMajorForDisplay(3120));
-    expect(visible).toContain(GALAZKI_VARIANT);
-    expect(visible).toContain('opis');
-    expect(visible).toContain('"price_is_flat":true');
+    expect(products[0]?.title).toContain('Gałązki');
+    expect(products[0]?.price_display_pl).toBe(formatPlnMajorForDisplay(3120));
+    expect(products[0]?.price_is_flat).toBe(true);
+    expect(wire).toContain(GALAZKI_VARIANT);
+    expect(products[0]?.description).toContain('opis');
     expect((out as {error?: unknown}).error).toBeUndefined();
   });
 

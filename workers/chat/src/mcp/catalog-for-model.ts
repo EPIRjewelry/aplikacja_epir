@@ -367,36 +367,37 @@ function productOrigin(brand?: string): string | null {
   return null;
 }
 
-function productPath(raw: string | undefined, handle: string | undefined): string | undefined {
-  if (raw) {
-    try {
-      const parsed = new URL(raw);
-      const path = parsed.pathname.replace(/\/+$/, '');
-      if (
-        (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
-        parsed.hostname &&
-        path.startsWith('/products/') &&
-        path.length > '/products/'.length
-      ) {
-        return path;
-      }
-    } catch {
-      /* sam schemat, np. "https://", nie ma hosta ani ścieżki */
+/**
+ * Ścieżka /products/... wyłącznie z prawdziwego URL (onlineStoreUrl / url).
+ * Handle nie wystarcza — drafty i nieopublikowane też mają handle, a /products/{handle} daje 404.
+ */
+function productPathFromLiveUrl(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = new URL(raw);
+    const path = parsed.pathname.replace(/\/+$/, '');
+    if (
+      (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
+      parsed.hostname &&
+      path.startsWith('/products/') &&
+      path.length > '/products/'.length
+    ) {
+      return path;
     }
-    const relative = raw.split(/[?#]/)[0] ?? '';
-    if (relative.startsWith('/products/') && relative.length > '/products/'.length) {
-      return relative.replace(/\/+$/, '');
-    }
+  } catch {
+    /* sam schemat, np. "https://", nie ma hosta ani ścieżki */
   }
-  const slug = handle?.trim();
-  if (!slug || slug.includes('/') || /\s/.test(slug)) return undefined;
-  return `/products/${slug}`;
+  const relative = raw.split(/[?#]/)[0] ?? '';
+  if (relative.startsWith('/products/') && relative.length > '/products/'.length) {
+    return relative.replace(/\/+$/, '');
+  }
+  return undefined;
 }
 
 /**
  * Shop MCP zwraca URL Online Store (apex) dla obu kanałów.
  * Karta Kazki dostaje ten sam path na hoście kazka.epirbizuteria.pl.
- * EPIR zostaje na apex. Sam schemat bez hosta nie przechodzi.
+ * EPIR zostaje na apex. Bez prawdziwego onlineStoreUrl/url — brak linku (nie składamy z handle).
  */
 function absoluteProductUrl(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
@@ -411,10 +412,11 @@ function absoluteProductUrl(raw: string | undefined): string | undefined {
 }
 
 function catalogProductUrl(product: Record<string, unknown>, brand?: string): string | undefined {
-  const raw = readUrlString(product.url) ?? readUrlString(product.onlineStoreUrl);
-  const path = productPath(raw, asString(product.handle));
+  const raw = readUrlString(product.onlineStoreUrl) ?? readUrlString(product.url);
+  const path = productPathFromLiveUrl(raw);
+  if (!path) return undefined;
   const origin = productOrigin(brand);
-  if (origin && path) return `${origin}${path}`;
+  if (origin) return `${origin}${path}`;
   return absoluteProductUrl(raw);
 }
 

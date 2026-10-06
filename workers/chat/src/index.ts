@@ -28,6 +28,7 @@ import { RateLimiterDO, checkRateLimit } from './rate-limiter';
 import { TokenVaultDO, TokenVault, getTokenVaultStub } from './token-vault';
 import { guardAssistantPricingAgainstCatalog } from './pricing-guard';
 import { stripForeignBrandLinks } from './brand-reply-host';
+import { guardLiveCatalogProductLinks } from './catalog/live-store-product';
 import {
   greetingForBrandLock,
   guardBuyerReply,
@@ -4154,7 +4155,18 @@ async function streamAssistantResponse(
             }),
           );
         }
-        const voiced = guardBuyerReply(locked.text, {
+        const liveLinked = guardLiveCatalogProductLinks(locked.text, catalogSnapshotsForPricing);
+        if (liveLinked.changed) {
+          console.log(
+            JSON.stringify({
+              tag: 'chat.live_product_link_guard',
+              session_id: sessionId,
+              brand: replyBrand ?? null,
+              removed: liveLinked.removed,
+            }),
+          );
+        }
+        const voiced = guardBuyerReply(liveLinked.text, {
           side:
             replyBrand === 'kazka' || storefrontContext?.storefrontId === 'kazka'
               ? 'kazka'

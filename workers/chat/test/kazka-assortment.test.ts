@@ -70,6 +70,9 @@ function adminMembershipResponse() {
               handle: 'galazki',
               vendor: 'EPIR',
               tags: ['srebro', 'organika'],
+              status: 'ACTIVE',
+              publishedOnCurrentPublication: true,
+              onlineStoreUrl: 'https://epirbizuteria.pl/products/galazki',
             },
           },
           {
@@ -81,6 +84,9 @@ function adminMembershipResponse() {
               handle: 'solitaire',
               vendor: 'Kazka',
               tags: ['kazka', 'kazka-pierscionek'],
+              status: 'ACTIVE',
+              publishedOnCurrentPublication: true,
+              onlineStoreUrl: 'https://epirbizuteria.pl/products/soliter',
             },
           },
         ],
@@ -125,6 +131,43 @@ describe('enforceKazkaAssortmentOnCatalogResult', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it('drops DRAFT and ACTIVE-but-unpublished Kazka cards even when vendor/tags match', async () => {
+    const filtered = await enforceKazkaAssortmentOnCatalogResult(
+      {
+        products: [
+          {
+            title: 'Draft Soliter',
+            vendor: 'Kazka',
+            tags: ['kazka'],
+            status: 'DRAFT',
+            onlineStoreUrl: 'https://epirbizuteria.pl/products/draft-soliter',
+            variants: [{sku: 'KAZKA-DRAFT'}],
+          },
+          {
+            title: 'Unpublished Soliter',
+            vendor: 'Kazka',
+            tags: ['kazka'],
+            status: 'ACTIVE',
+            publishedOnCurrentPublication: false,
+            variants: [{sku: 'KAZKA-UNPUB'}],
+          },
+          {
+            title: 'Live Soliter',
+            vendor: 'Kazka',
+            tags: ['kazka'],
+            status: 'ACTIVE',
+            publishedOnCurrentPublication: true,
+            onlineStoreUrl: 'https://epirbizuteria.pl/products/soliter',
+            variants: [{sku: KAZKA_SKU}],
+          },
+        ],
+      },
+      {SHOP_DOMAIN: SHOP},
+      {maxProducts: 3},
+    );
+    expect(skusOf((filtered as {products: Array<Record<string, unknown>>}).products)).toEqual([KAZKA_SKU]);
   });
 
   it('drops an EPIR-only SKU and keeps a Kazka SKU when vendor and tags are on the payload', async () => {
@@ -283,7 +326,7 @@ describe('thin UCP catalog payload omits vendor and tags', () => {
     const out = await callMcpToolDirect(
       {SHOP_DOMAIN: SHOP, SHOPIFY_ADMIN_TOKEN: 'admin-token'} as any,
       'search_catalog',
-      {catalog: {query: 'pierścionek ametyst Gałązki'}},
+      {catalog: {query: 'pierścionek Soliter Gałązki'}},
       {brand: 'kazka'},
     );
     const products = productsFromTool((out as {result: unknown}).result);
