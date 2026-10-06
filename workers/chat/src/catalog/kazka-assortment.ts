@@ -20,6 +20,7 @@ import {
   SHOPIFY_ADMIN_API_VERSION,
   SHOPIFY_STOREFRONT_API_VERSION,
 } from '../config/shopify-api-version';
+import {isLivePublishedProduct, withActiveStatusQuery} from './live-store-product';
 import {isKazkaHeadlessChannel} from '../storefront/kazka-hydrate';
 
 export const KAZKA_ASSORTMENT_TAG = 'kazka';
@@ -309,7 +310,23 @@ function refKeys(product: Record<string, unknown>): string[] {
   ];
 }
 
+function hasLivePublicationSignal(product: Record<string, unknown>): boolean {
+  return (
+    typeof product.status === 'string' ||
+    typeof product.publishedOnCurrentPublication === 'boolean' ||
+    typeof product.onlineStoreUrl === 'string' ||
+    (typeof product.url === 'string' && product.url.includes('/products/'))
+  );
+}
+
+/** Draft / archiwum / brak Online Store — odpada na obu markach, zanim liczy się asortyment. */
+function passesLiveStoreGate(product: Record<string, unknown>): boolean {
+  if (!hasLivePublicationSignal(product)) return true;
+  return isLivePublishedProduct(product);
+}
+
 function keepProduct(product: Record<string, unknown>, membership: MembershipIndex): boolean {
+  if (!passesLiveStoreGate(product)) return false;
   const decision = localDecision(product);
   if (decision === 'keep') return true;
   if (decision === 'drop') return false;
@@ -319,6 +336,7 @@ function keepProduct(product: Record<string, unknown>, membership: MembershipInd
 }
 
 function keepEpirProduct(product: Record<string, unknown>, membership: MembershipIndex): boolean {
+  if (!passesLiveStoreGate(product)) return false;
   const decision = localDecision(product);
   if (decision === 'keep') return false;
   if (decision === 'drop') return true;
@@ -510,6 +528,9 @@ const MEMBERSHIP_NODES_QUERY = `
         handle
         vendor
         tags
+        status
+        publishedOnCurrentPublication
+        onlineStoreUrl
       }
       ... on ProductVariant {
         id
@@ -519,6 +540,9 @@ const MEMBERSHIP_NODES_QUERY = `
           handle
           vendor
           tags
+          status
+          publishedOnCurrentPublication
+          onlineStoreUrl
         }
       }
     }
@@ -533,6 +557,9 @@ const MEMBERSHIP_SEARCH_QUERY = `
         handle
         vendor
         tags
+        status
+        publishedOnCurrentPublication
+        onlineStoreUrl
         variants(first: 20) {
           nodes {
             id
@@ -575,8 +602,9 @@ async function loadMembership(env: KazkaAssortmentEnv, bag: RefBag): Promise<Mem
     );
   }
   if (search) {
+    const liveSearch = adminToken ? withActiveStatusQuery(search) : search;
     jobs.push(
-      postGraphql(endpoint, headers, MEMBERSHIP_SEARCH_QUERY, {search}).then((data) => {
+      postGraphql(endpoint, headers, MEMBERSHIP_SEARCH_QUERY, {search: liveSearch}).then((data) => {
         ingestProducts(data, index);
       }),
     );
@@ -636,9 +664,35 @@ async function postGraphql(
 
 function rememberProduct(
   index: MembershipIndex,
-  product: {id?: string | null; handle?: string | null; vendor?: string | null; tags?: string[] | null},
+  product: {
+    id?: string | null;
+    handle?: string | null;
+    vendor?: string | null;
+    tags?: string[] | null;
+    status?: string | null;
+    publishedOnCurrentPublication?: boolean | null;
+    onlineStoreUrl?: string | null;
+  },
   variants?: Array<{id?: string | null; sku?: string | null}>,
 ): void {
+  const hasPublicationFields =
+    typeof product.status === 'string' ||
+    typeof product.publishedOnCurrentPublication === 'boolean' ||
+    typeof product.onlineStoreUrl === 'string';
+  if (
+    hasPublicationFields &&
+    !isLivePublishedProduct({
+      status: product.status ?? undefined,
+      publishedOnCurrentPublication:
+        typeof product.publishedOnCurrentPublication === 'boolean'
+          ? product.publishedOnCurrentPublication
+          : undefined,
+      onlineStoreUrl: product.onlineStoreUrl ?? undefined,
+    })
+  ) {
+    // Draft / archiwum / brak Online Store — bez wpisu w indeksie (fail closed na obu markach).
+    return;
+  }
   const kazka = isKazkaAssortment({vendor: product.vendor, tags: product.tags});
   if (product.id) index.set(`id:${product.id}`, kazka);
   if (product.handle) index.set(`handle:${product.handle.trim().toLocaleLowerCase('en-US')}`, kazka);
@@ -658,6 +712,9 @@ function ingestNodes(data: unknown, index: MembershipIndex): void {
         handle?: string | null;
         vendor?: string | null;
         tags?: string[] | null;
+        status?: string | null;
+        publishedOnCurrentPublication?: boolean | null;
+        onlineStoreUrl?: string | null;
       };
       rememberProduct(index, product, [
         {id: typeof node.id === 'string' ? node.id : null, sku: typeof node.sku === 'string' ? node.sku : null},
@@ -669,6 +726,10 @@ function ingestNodes(data: unknown, index: MembershipIndex): void {
       handle: typeof node.handle === 'string' ? node.handle : null,
       vendor: typeof node.vendor === 'string' ? node.vendor : null,
       tags: Array.isArray(node.tags) ? node.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+      status: typeof node.status === 'string' ? node.status : null,
+      publishedOnCurrentPublication:
+        typeof node.publishedOnCurrentPublication === 'boolean' ? node.publishedOnCurrentPublication : null,
+      onlineStoreUrl: typeof node.onlineStoreUrl === 'string' ? node.onlineStoreUrl : null,
     });
   }
 }
@@ -690,6 +751,10 @@ function ingestProducts(data: unknown, index: MembershipIndex): void {
         handle: typeof node.handle === 'string' ? node.handle : null,
         vendor: typeof node.vendor === 'string' ? node.vendor : null,
         tags: Array.isArray(node.tags) ? node.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+        status: typeof node.status === 'string' ? node.status : null,
+        publishedOnCurrentPublication:
+          typeof node.publishedOnCurrentPublication === 'boolean' ? node.publishedOnCurrentPublication : null,
+        onlineStoreUrl: typeof node.onlineStoreUrl === 'string' ? node.onlineStoreUrl : null,
       },
       variants,
     );
