@@ -6,6 +6,7 @@
 import {detectPolicyInformationIntent} from '../intent/policy-information';
 import {detectSizeTableIntent, SIZE_GUIDANCE_REPLY} from '../intent/size-table';
 import {isEpirFamilyCatalogBrand, isKazkaCatalogBrand} from './kazka-assortment';
+import {CERTIFICATE_UNKNOWN, isCertificateQuestion} from './stone-origin';
 import {EPIR_SHIPPING_FACT, KAZKA_RETURNS_FACT, KAZKA_SHIPPING_FACT} from './store-facts';
 
 export const INCOMPLETE_TURN_REPLY =
@@ -33,5 +34,6 @@ export function groundedTurnReply(userMessage: string, brand?: string): string |
 
 /** Puste albo przerwane domknięcie tury. Fakt sklepu wygrywa z „chwilowo”. */
 export function replyOrStall(userMessage: string, brand: string | undefined, kind: 'empty' | 'error'): string {
+  if (isCertificateQuestion(userMessage)) return CERTIFICATE_UNKNOWN;
   return groundedTurnReply(userMessage, brand) ?? (kind === 'empty' ? EMPTY_TURN_REPLY : INCOMPLETE_TURN_REPLY);
 }

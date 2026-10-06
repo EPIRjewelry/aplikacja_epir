@@ -20,6 +20,7 @@ import {
   applyTurnSearchHints,
   applyOriginFilterWithFallback,
   detectStoneOriginAsk,
+  detectPriceCapPln,
   originAskForTurn,
   filterProductsByOriginAsk,
   isCertificateQuestion,
@@ -31,6 +32,7 @@ import {
 } from './stone-origin';
 import {
   buyerAsksForRing,
+  detectStoneIntent,
   expandCatalogQuery,
   preferJewelryType,
   productLooksLikeFingerRing,
@@ -109,8 +111,48 @@ export function productHaystack(product: Record<string, unknown>): string {
   return parts.join('\n');
 }
 
+const MOISSANIT_FALSE_POSITIVE_HANDLES = new Set(['pierscionek-zloty-galazki-z-kwarcem-turmalinowym']);
+
+function stoneTitleContradictsIntent(product: Record<string, unknown>, intent: StoneIntent): boolean {
+  if (intent.id !== 'moissanit') return false;
+  const title = typeof product.title === 'string' ? product.title.toLocaleLowerCase('pl-PL') : '';
+  const handle = typeof product.handle === 'string' ? product.handle.toLocaleLowerCase('en-US') : '';
+  const handleSaysMoissanit = /moissanit/.test(handle);
+  const titleSaysMoissanit = /moissanit/.test(title);
+  const titleSaysOtherGem = /ametyst|szafir|diament|brylant|rubin|szmaragd/iu.test(title);
+  return handleSaysMoissanit && titleSaysOtherGem && !titleSaysMoissanit;
+}
+
 export function productMatchesStone(product: Record<string, unknown>, intent: StoneIntent): boolean {
-  return textMentionsStone(productHaystack(product), intent);
+  if (stoneTitleContradictsIntent(product, intent)) return false;
+  const handle = typeof product.handle === 'string' ? product.handle.trim().toLocaleLowerCase('en-US') : '';
+  if (intent.id === 'moissanit' && handle && MOISSANIT_FALSE_POSITIVE_HANDLES.has(handle)) return false;
+  const hay = productHaystack(product);
+  if (intent.id === 'moissanit') {
+    const title = typeof product.title === 'string' ? product.title : '';
+    const description = typeof product.description === 'string' ? product.description : '';
+    const handle = typeof product.handle === 'string' ? product.handle : '';
+    const surface = `${title}\n${description}\n${handle}`;
+    return /moissanit/i.test(surface);
+  }
+  return textMentionsStone(hay, intent);
+}
+
+function preferAuditedSoliterFirst(products: readonly Record<string, unknown>[]): Record<string, unknown>[] {
+  const byHandle = new Map<string, Record<string, unknown>>();
+  for (const product of products) {
+    const handle = typeof product.handle === 'string' ? product.handle : '';
+    if (handle) byHandle.set(handle, product);
+  }
+  const preferred = AUDITED_SOLITER_HANDLES.map((handle) => byHandle.get(handle)).filter(
+    (product): product is Record<string, unknown> => Boolean(product),
+  );
+  const rest = products.filter(
+    (product) =>
+      typeof product.handle !== 'string' ||
+      !AUDITED_SOLITER_HANDLES.includes(product.handle as (typeof AUDITED_SOLITER_HANDLES)[number]),
+  );
+  return [...preferred, ...rest];
 }
 
 function parseCatalogBody(text: string): unknown | null {
@@ -795,7 +837,6 @@ export async function fetchStoneProducts(
     if (byMetafield.ok) found = byMetafield.products.filter((product) => productMatchesStone(product, intent));
   }
   if (
-    !found.length &&
     intent.id === 'diament' &&
     isKazkaCatalogBrand(brand) &&
     (originAsk === 'natural' || buyerAsksForRing(latestTurn))
@@ -814,15 +855,15 @@ export async function fetchStoneProducts(
         if (productLooksLikeFingerRing(product)) soliterPool.push(product);
       }
     }
-    found = soliterPool
+    const soliterHits = soliterPool
       .filter((product) => productMatchesStone(product, intent))
       .filter((product) => !originAsk || productMatchesOriginAsk(product, originAsk));
     const dedup = new Map<string, Record<string, unknown>>();
-    for (const product of found) {
+    for (const product of [...soliterHits, ...found]) {
       const handle = typeof product.handle === 'string' ? product.handle : '';
       if (handle) dedup.set(handle, product);
     }
-    found = [...dedup.values()];
+    found = preferAuditedSoliterFirst([...dedup.values()]);
   }
   if (intent.id === 'szafir' && isEpirFamilyCatalogBrand(brand)) {
     const auditedPool: Record<string, unknown>[] = [];
@@ -864,6 +905,9 @@ export async function fetchStoneProducts(
     }
   }
   found = applyTurnSearchHints(found, hints, originAsk);
+  if (intent.id === 'diament' && isKazkaCatalogBrand(brand)) {
+    found = preferAuditedSoliterFirst(found);
+  }
   if (originApplied.originFallback && found.length) {
     console.log(
       JSON.stringify({
@@ -884,7 +928,16 @@ export function catalogStoneIntent(input: StoneRescueInput): StoneIntent | null 
   if (input.allowSubstitute) return null;
   const buyerTurns = [...(input.buyerTurns ?? [])];
   const buyerLatest = buyerTurns[buyerTurns.length - 1] ?? '';
-  if (isStoneOriginAssortmentQuestion(buyerLatest) || isCertificateQuestion(buyerLatest)) return null;
+  if (isCertificateQuestion(buyerLatest)) return null;
+  const namedLatest = detectStoneIntent(buyerLatest);
+  if (isStoneOriginAssortmentQuestion(buyerLatest)) {
+    const browseWithStone =
+      namedLatest &&
+      (/\b(?:pokaz|poka[zż])\b/iu.test(buyerLatest) ||
+        (/\b(?:pier[sś]cion|obr[aą]cz|bransolet)\b/iu.test(buyerLatest) &&
+          detectPriceCapPln(buyerLatest) != null));
+    if (!browseWithStone) return null;
+  }
   const turns = [...buyerTurns];
   if (input.catalogQuery?.trim()) turns.push(input.catalogQuery);
   return stoneIntentFromConversation(turns);
@@ -947,6 +1000,9 @@ export async function rescueStoneCatalog(
     matches = found.products;
   }
   let picked = preferJewelryType(matches, buyerText);
+  if (intent.id === 'moissanit') {
+    picked = picked.filter((product) => productMatchesStone(product, intent));
+  }
   picked = applyTurnSearchHints(picked, latestTurnSearchHints(buyerTurns[buyerTurns.length - 1] ?? ''), originAsk);
   if (originAsk) picked = filterProductsByOriginAsk(picked, originAsk);
   const note = picked.length

@@ -6,12 +6,21 @@
 import {extractCatalogProducts, productMatchesStone} from './stone-retrieval';
 import {detectPolicyInformationIntent} from '../intent/policy-information';
 import {
+  cardsSupportOriginClaim,
+  CERTIFICATE_UNKNOWN,
+  applyTurnSearchHints,
+  formatDiamentAssortmentYesReply,
+  formatNaturalAssortmentYesNoReply,
   formatOriginMissReply,
+  latestTurnSearchHints,
   guardStoneOriginClaims,
   isCertificateQuestion,
   isConversationContinuationTurn,
+  isAssortmentYesNoAsk,
   isStoneOriginAssortmentQuestion,
   originAskForTurn,
+  productMinPricePlnForOrigin,
+  type StoneOriginAsk,
 } from './stone-origin';
 import {
   buyerAllowsStoneSubstitute,
@@ -40,7 +49,9 @@ const INTERNAL_INSTRUCTION_LEAK =
   /\[trafenia katalogu\]|nie wracam do poprzedniej|metal bior[eę] z karty produktu|przy tej próbie|nie pisz, że|zostań przy tym|w tej turze|system_note/iu;
 
 const CLIENT_DATA_LEAK =
-  /\bmetafield\b|\bzakres karty\b|\bw karcie\b|\bkarta produktu\b|\b\d{3}-\d{5}-\d-\d\b/iu;
+  /\bmetafield\b|\bzakres karty\b|\bzakres\b|\bz karty\b|\bna karcie produktu\b|\bw karcie\b|\bkarta produktu\b|\bmieszane \(naturalny i laboratoryjny\)\b|\b\d{3}-\d{5}-\d-\d\b/iu;
+
+const STALL_REPLY = /chwilowo nie mog[eę]|nie mog[eę] doko[nń]czy[cć]/iu;
 
 export const BUYER_RETRY_REPLY =
   'Nie udało się ułożyć odpowiedzi. Napisz proszę jeszcze raz — zostaję przy tym, o co prosisz.';
@@ -160,7 +171,19 @@ function priceLabel(product: Record<string, unknown>): string {
   return '';
 }
 
-function lineForProduct(product: Record<string, unknown>, disambiguate = false): string {
+function originScopedPriceLabel(product: Record<string, unknown>, originAsk: StoneOriginAsk | null): string | null {
+  if (!originAsk) return null;
+  const min = productMinPricePlnForOrigin(product, originAsk);
+  if (min == null) return null;
+  const formatted = min.toLocaleString('pl-PL', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  return `od ${formatted} zł (wybrana jakość)`;
+}
+
+function lineForProduct(
+  product: Record<string, unknown>,
+  disambiguate = false,
+  originAsk: StoneOriginAsk | null = null,
+): string {
   const title = typeof product.title === 'string' && product.title.trim() ? product.title.trim() : 'Pozycja z katalogu';
   const url = typeof product.url === 'string' ? product.url.trim() : '';
   const sizes = typeof product.sizes_label === 'string' && product.sizes_label.trim() ? `rozmiary ${product.sizes_label.trim()}` : '';
@@ -172,7 +195,8 @@ function lineForProduct(product: Record<string, unknown>, disambiguate = false):
   const metalsLine = productPriceVaries(product) || !metals || disambiguate ? '' : `metale ${metals}`;
   const factLine =
     fact && metalsLine.toLocaleLowerCase('pl-PL').includes(fact.toLocaleLowerCase('pl-PL')) ? '' : fact;
-  const detail = [priceLabel(product), sizes, metalsLine, factLine].filter(Boolean).join(', ');
+  const scoped = originScopedPriceLabel(product, originAsk);
+  const detail = [scoped ?? priceLabel(product), sizes, metalsLine, factLine].filter(Boolean).join(', ');
   return detail ? `- ${name} — ${detail}.` : `- ${name}.`;
 }
 
@@ -186,19 +210,32 @@ function titlesNeedDisambiguation(products: readonly Record<string, unknown>[]):
   return [...counts.values()].some((count) => count > 1);
 }
 
-export function formatCatalogBrowseReply(products: readonly Record<string, unknown>[]): string {
+export function formatCatalogBrowseReply(
+  products: readonly Record<string, unknown>[],
+  originAsk: StoneOriginAsk | null = null,
+): string {
   const shown = products.slice(0, 4);
   const disambiguate = titlesNeedDisambiguation(shown);
-  const lines = shown.map((product) => lineForProduct(product, disambiguate));
+  const lines = shown.map((product) => lineForProduct(product, disambiguate, originAsk));
   const ask = shown.some(productPriceVaries) ? '\nKtóry wariant Cię interesuje?' : '';
   return `Te pozycje są w katalogu:\n${lines.join('\n')}${ask}`;
 }
 
-export function formatStoneBrowseReply(products: readonly Record<string, unknown>[], intent: StoneIntent): string {
+export function formatStoneBrowseReply(
+  products: readonly Record<string, unknown>[],
+  intent: StoneIntent,
+  originAsk: StoneOriginAsk | null = null,
+): string {
   const shown = products.slice(0, 4);
   const disambiguate = titlesNeedDisambiguation(shown);
-  const lines = shown.map((product) => lineForProduct(product, disambiguate));
-  return `Te modele zawierają kamień ${intent.labelPl}:\n${lines.join('\n')}\nMogę zawęzić do pierścionka, obrączki albo innego rodzaju.`;
+  const lines = shown.map((product) => lineForProduct(product, disambiguate, originAsk));
+  const lead =
+    originAsk === 'natural'
+      ? `Te modele z naturalnym kamieniem ${intent.labelPl}:`
+      : originAsk === 'lab'
+        ? `Te modele z laboratoryjnym kamieniem ${intent.labelPl}:`
+        : `Te modele zawierają kamień ${intent.labelPl}:`;
+  return `${lead}\n${lines.join('\n')}\nMogę zawęzić do pierścionka, obrączki albo innego rodzaju.`;
 }
 
 export function formatStoneUnconfirmedReply(_intent: StoneIntent): string {
@@ -245,19 +282,78 @@ export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext)
   const catalogProducts = productsFromCatalogSnapshots(context.catalogSnapshots);
   const namedNow = detectStoneIntent(latest);
   const originAsk = originAskForTurn(context.buyerTurns);
+  const conversationStone = namedNow ?? stoneIntentFromConversation(context.buyerTurns);
   const originGuarded = guardStoneOriginClaims(text, {
     buyerTurns: context.buyerTurns,
     previousAssistant: context.previousAssistant,
     catalogProducts,
     brand: context.brand,
-    stone: namedNow ?? stoneIntentFromConversation(context.buyerTurns),
+    stone: conversationStone,
   });
   if (originGuarded.replaced) return originGuarded;
-  if (isCertificateQuestion(latest) || detectPolicyInformationIntent(latest).match) {
+  if (
+    (isAssortmentYesNoAsk(latest) || /^macie\s+naturaln/i.test(latest)) &&
+    originAsk === 'natural' &&
+    conversationStone &&
+    catalogProducts.length
+  ) {
+    return {
+      text: formatNaturalAssortmentYesNoReply(catalogProducts, conversationStone),
+      replaced: true,
+      reason: 'natural_yes_no_early',
+    };
+  }
+  if (isCertificateQuestion(latest)) {
+    if (STALL_REPLY.test(text) || MASKED_FAILURE.test(text)) {
+      return {text: CERTIFICATE_UNKNOWN, replaced: true, reason: 'certificate_stall'};
+    }
+    if (detectPolicyInformationIntent(latest).match) {
+      return {text, replaced: typoFixed, reason: typoFixed ? 'typo' : undefined};
+    }
+  } else if (detectPolicyInformationIntent(latest).match) {
     return {text, replaced: typoFixed, reason: typoFixed ? 'typo' : undefined};
   }
-  if (isStoneOriginAssortmentQuestion(latest)) {
-    return {text, replaced: typoFixed, reason: typoFixed ? 'typo' : undefined};
+  const assortmentIntent = namedNow ?? stoneIntentFromConversation(context.buyerTurns);
+  if (isAssortmentYesNoAsk(latest) || (isStoneOriginAssortmentQuestion(latest) && assortmentIntent && originAsk)) {
+    const falseAssortment =
+      FALSE_EMPTY.test(text) || /nie\s+u[zż]ywamy\s+(?:diament|brylant)/iu.test(text) || /nie\s+ma(?:my)?\s+(?:w\s+ofercie\s+)?(?:diament|brylant)/iu.test(text);
+    if (assortmentIntent?.id === 'diament' && cardsSupportOriginClaim(catalogProducts, 'diamond') && falseAssortment) {
+      return {
+        text: formatDiamentAssortmentYesReply(catalogProducts, context.brand),
+        replaced: true,
+        reason: 'assortment_diament',
+      };
+    }
+    if (
+      assortmentIntent &&
+      originAsk === 'natural' &&
+      catalogProducts.length &&
+      (falseAssortment || isAssortmentYesNoAsk(latest))
+    ) {
+      return {
+        text: formatNaturalAssortmentYesNoReply(catalogProducts, assortmentIntent),
+        replaced: true,
+        reason: 'assortment_natural',
+      };
+    }
+    if (isStoneOriginAssortmentQuestion(latest) && catalogProducts.length && FALSE_EMPTY.test(text)) {
+      return {
+        text: formatDiamentAssortmentYesReply(catalogProducts, context.brand),
+        replaced: true,
+        reason: 'assortment_false_empty',
+      };
+    }
+  }
+  if (
+    originAsk === 'natural' &&
+    assortmentIntent &&
+    /^(?:macie|mamy|czy\s+macie)\s+naturaln/iu.test(latest) &&
+    catalogProducts.length
+  ) {
+    const naturalReply = formatNaturalAssortmentYesNoReply(catalogProducts, assortmentIntent);
+    if (/syntetyczn/i.test(text) || !/^Tak|^Nie/m.test(text.trim()) || FALSE_EMPTY.test(text)) {
+      return {text: naturalReply, replaced: true, reason: 'natural_yes_no'};
+    }
   }
   const metalBrowse = discoveryMetalBrowse(context.buyerTurns);
   if (metalBrowse) {
@@ -287,7 +383,7 @@ export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext)
     }
   }
   const allowSubstitute = buyerAllowsStoneSubstitute(latest, context.previousAssistant);
-  const intent = allowSubstitute ? null : stoneIntentFromConversation(context.buyerTurns);
+  const intent = allowSubstitute ? null : (stoneIntentFromConversation(context.buyerTurns) ?? namedNow);
   const products = intent ? catalogProducts.filter((product) => productMatchesStone(product, intent)) : [];
   const broken = isGarbledBuyerText(text) || isHandoffShell(text) || MASKED_FAILURE.test(text);
   const unconfirmedNote = context.catalogSnapshots.some((snapshot) =>
@@ -322,8 +418,10 @@ export function guardBuyerCatalogReply(text: string, context: BuyerReplyContext)
     return {text, replaced: typoFixed, reason: typoFixed ? 'typo' : undefined};
   }
   if (products.length) {
+    const hints = latestTurnSearchHints(latest);
+    const shown = applyTurnSearchHints(products, hints, originAsk);
     return {
-      text: formatStoneBrowseReply(products, intent),
+      text: formatStoneBrowseReply(shown.length ? shown : products, intent, originAsk),
       replaced: true,
       reason: broken ? 'garbled' : substitutes ? 'substitute' : 'false_empty',
     };
