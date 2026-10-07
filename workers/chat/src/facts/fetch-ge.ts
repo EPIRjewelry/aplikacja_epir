@@ -342,7 +342,7 @@ async function fetchViaPaged(env: Env): Promise<ProductFacts[]> {
           collections(first: 5) { nodes { handle title } }
           options { name values }
           metafield(namespace: "custom", key: "gemstone_origin") { namespace key value }
-          variants(first: ${VARIANT_PAGE}) {
+          variants(first: 25) {
             pageInfo { hasNextPage endCursor }
             nodes { ${ADMIN_VARIANT_FIELDS} }
           }
