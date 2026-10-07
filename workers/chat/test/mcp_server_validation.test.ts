@@ -153,7 +153,7 @@ describe('callMcpToolDirect validation', () => {
       source: 'shopify_metaobject',
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/2024-10/graphql.json');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/2026-10/graphql.json');
     expect(String((fetchMock.mock.calls[0][1] as RequestInit).body)).toContain('tabela_rozmiarow');
   });
 

@@ -80,6 +80,10 @@ binding = "POLICIES_CACHE"
 id = "79b8871d6e664440b648308ee9493d6d"
 preview_id = "6673996135e04c30a90f9f807d42391e"
 
+[[kv_namespaces]]
+binding = "GEMMA_RUNTIME_KV"
+id = "3f85ed3b7684416bae4d294f79e23bb0"
+
 # Brief współtworzenia — załączniki (PNG/JPG). Utwórz: wrangler r2 bucket create epir-cocreate-uploads
 [[r2_buckets]]
 binding = "COCREATE_UPLOADS"

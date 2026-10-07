@@ -137,6 +137,61 @@ describe('catalog snapshot refresh', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('GK: only PRIVATE_STOREFRONT_API_TOKEN_KAZKA → refresh ok', async () => {
+    const {kv, store} = makeKv();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            products: {
+              pageInfo: {hasNextPage: false, endCursor: null},
+              nodes: [
+                {
+                  id: 'gid://shopify/Product/1',
+                  handle: 'priv-only',
+                  title: 'Priv',
+                  collections: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: []},
+                  variants: {
+                    pageInfo: {hasNextPage: false, endCursor: null},
+                    nodes: [
+                      {
+                        id: 'gid://shopify/ProductVariant/1',
+                        price: {amount: '1.00', currencyCode: 'PLN'},
+                        availableForSale: true,
+                        selectedOptions: [],
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        }),
+        {status: 200},
+      ),
+    );
+    const result = await refreshGkSnapshot({
+      GEMMA_RUNTIME_KV: kv,
+      SHOP_DOMAIN: 'example.myshopify.com',
+      PRIVATE_STOREFRONT_API_TOKEN_KAZKA: 'private-kazka',
+    } as Env);
+    expect(result.ok).toBe(true);
+    expect(store.get('catalog:v1:kazka-hydrogen')).toBeTruthy();
+  });
+
+  it('GK: only PUBLIC_STOREFRONT_API_TOKEN_KAZKA → no_token, no fetch', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const {kv} = makeKv();
+    const result = await refreshGkSnapshot({
+      GEMMA_RUNTIME_KV: kv,
+      SHOP_DOMAIN: 'example.myshopify.com',
+      PUBLIC_STOREFRONT_API_TOKEN_KAZKA: 'public-only',
+    } as Env);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe('no_token');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('GK: Storefront URL from storefronts template', async () => {
     const {kv, store} = makeKv();
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
@@ -174,7 +229,7 @@ describe('catalog snapshot refresh', () => {
     const result = await refreshGkSnapshot({
       GEMMA_RUNTIME_KV: kv,
       SHOP_DOMAIN: 'example.myshopify.com',
-      PUBLIC_STOREFRONT_API_TOKEN_KAZKA: 'kazka-token',
+      PRIVATE_STOREFRONT_API_TOKEN_KAZKA: 'kazka-token',
     } as Env);
 
     expect(result.ok).toBe(true);
@@ -257,7 +312,7 @@ describe('catalog snapshot refresh', () => {
     const gk = await refreshGkSnapshot({
       GEMMA_RUNTIME_KV: kvGk,
       SHOP_DOMAIN: 'example.myshopify.com',
-      PUBLIC_STOREFRONT_API_TOKEN_KAZKA: 'kazka-token',
+      PRIVATE_STOREFRONT_API_TOKEN_KAZKA: 'kazka-token',
     } as Env);
     expect(gk.ok).toBe(true);
     const gkSnap = JSON.parse(storeGk.get('catalog:v1:kazka-hydrogen')!);
