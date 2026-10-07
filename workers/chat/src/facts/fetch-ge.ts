@@ -260,6 +260,7 @@ async function fetchViaBulk(env: Env): Promise<ProductFacts[]> {
 }
 
 const VARIANT_PAGE = 100;
+const COLLECTIONS_PAGE = 50;
 const ADMIN_VARIANT_FIELDS = `
   id title sku availableForSale price compareAtPrice
   selectedOptions { name value }
@@ -295,11 +296,13 @@ function wrapAdminVariantPrices(nodes: Array<Record<string, unknown>>): Array<Re
   });
 }
 
+type AdminPageInfo = {hasNextPage?: boolean; endCursor?: string | null};
+
 async function loadAllAdminVariants(
   env: Env,
   productId: string,
   firstPage: {
-    pageInfo?: {hasNextPage?: boolean; endCursor?: string | null};
+    pageInfo?: AdminPageInfo;
     nodes?: Array<Record<string, unknown>>;
   },
 ): Promise<Array<Record<string, unknown>>> {
@@ -319,7 +322,7 @@ async function loadAllAdminVariants(
     const json = await adminGraphqlRetry(env, query, {id: productId, cursor});
     const product = json.data?.product as {
       variants?: {
-        pageInfo?: {hasNextPage?: boolean; endCursor?: string | null};
+        pageInfo?: AdminPageInfo;
         nodes?: Array<Record<string, unknown>>;
       };
     } | null;
@@ -331,6 +334,42 @@ async function loadAllAdminVariants(
   return wrapAdminVariantPrices(nodes);
 }
 
+async function loadAllAdminCollections(
+  env: Env,
+  productId: string,
+  firstPage: {
+    pageInfo?: AdminPageInfo;
+    nodes?: Array<Record<string, unknown>>;
+  },
+): Promise<Array<Record<string, unknown>>> {
+  const nodes = [...(firstPage.nodes ?? [])];
+  let cursor = firstPage.pageInfo?.hasNextPage ? firstPage.pageInfo.endCursor ?? null : null;
+  const query = `
+    query ProductCollectionsGe($id: ID!, $cursor: String) {
+      product(id: $id) {
+        collections(first: ${COLLECTIONS_PAGE}, after: $cursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes { handle title }
+        }
+      }
+    }
+  `;
+  while (cursor) {
+    const json = await adminGraphqlRetry(env, query, {id: productId, cursor});
+    const product = json.data?.product as {
+      collections?: {
+        pageInfo?: AdminPageInfo;
+        nodes?: Array<Record<string, unknown>>;
+      };
+    } | null;
+    const page = product?.collections;
+    nodes.push(...(page?.nodes ?? []));
+    if (!page?.pageInfo?.hasNextPage || !page.pageInfo.endCursor) break;
+    cursor = page.pageInfo.endCursor;
+  }
+  return nodes;
+}
+
 async function fetchViaPaged(env: Env): Promise<ProductFacts[]> {
   const query = `
     query CatalogSnapshotGe($cursor: String) {
@@ -339,7 +378,10 @@ async function fetchViaPaged(env: Env): Promise<ProductFacts[]> {
         nodes {
           id handle title vendor productType descriptionHtml onlineStoreUrl
           featuredMedia { preview { image { url altText } } }
-          collections(first: 5) { nodes { handle title } }
+          collections(first: ${COLLECTIONS_PAGE}) {
+            pageInfo { hasNextPage endCursor }
+            nodes { handle title }
+          }
           options { name values }
           metafield(namespace: "custom", key: "gemstone_origin") { namespace key value }
           variants(first: 25) {
@@ -359,20 +401,31 @@ async function fetchViaPaged(env: Env): Promise<ProductFacts[]> {
     const json = await adminGraphqlRetry(env, query, {cursor});
     pages += 1;
     const products = json.data?.products as {
-      pageInfo?: {hasNextPage?: boolean; endCursor?: string | null};
+      pageInfo?: AdminPageInfo;
       nodes?: unknown[];
     };
     for (const raw of products?.nodes ?? []) {
       if (!isRecord(raw)) continue;
       const productId = typeof raw.id === 'string' ? raw.id : '';
       const variantsConn = raw.variants as {
-        pageInfo?: {hasNextPage?: boolean; endCursor?: string | null};
+        pageInfo?: AdminPageInfo;
+        nodes?: Array<Record<string, unknown>>;
+      } | undefined;
+      const collectionsConn = raw.collections as {
+        pageInfo?: AdminPageInfo;
         nodes?: Array<Record<string, unknown>>;
       } | undefined;
       const allVariants = productId
         ? await loadAllAdminVariants(env, productId, variantsConn ?? {})
         : wrapAdminVariantPrices(variantsConn?.nodes ?? []);
-      const adapted = adaptBulkProduct({...raw, variants: {nodes: allVariants}});
+      const allCollections = productId
+        ? await loadAllAdminCollections(env, productId, collectionsConn ?? {})
+        : (collectionsConn?.nodes ?? []);
+      const adapted = adaptBulkProduct({
+        ...raw,
+        variants: {nodes: allVariants},
+        collections: {nodes: allCollections},
+      });
       if (raw.metafield) adapted.metafields = {nodes: [raw.metafield]};
       const facts = normalizeProduct(adapted, {channel: 'epir-online-store', fetchedAt});
       if (facts) out.push(facts);

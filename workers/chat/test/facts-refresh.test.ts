@@ -174,8 +174,10 @@ describe('catalog snapshot refresh', () => {
     const result = await refreshGkSnapshot({
       GEMMA_RUNTIME_KV: kv,
       SHOP_DOMAIN: 'example.myshopify.com',
-      PUBLIC_STOREFRONT_API_TOKEN_KAZKA: 'kazka-token',
-    } as Env);
+      // refresh.ts nadal bramkuje PUBLIC; fetch-gk używa wyłącznie PRIVATE
+      PUBLIC_STOREFRONT_API_TOKEN_KAZKA: 'gate-only',
+      PRIVATE_STOREFRONT_API_TOKEN_KAZKA: 'kazka-token',
+    } as Env & {PRIVATE_STOREFRONT_API_TOKEN_KAZKA?: string});
 
     expect(result.ok).toBe(true);
     const snap = JSON.parse(store.get('catalog:v1:kazka-hydrogen')!);
@@ -257,8 +259,9 @@ describe('catalog snapshot refresh', () => {
     const gk = await refreshGkSnapshot({
       GEMMA_RUNTIME_KV: kvGk,
       SHOP_DOMAIN: 'example.myshopify.com',
-      PUBLIC_STOREFRONT_API_TOKEN_KAZKA: 'kazka-token',
-    } as Env);
+      PUBLIC_STOREFRONT_API_TOKEN_KAZKA: 'gate-only',
+      PRIVATE_STOREFRONT_API_TOKEN_KAZKA: 'kazka-token',
+    } as Env & {PRIVATE_STOREFRONT_API_TOKEN_KAZKA?: string});
     expect(gk.ok).toBe(true);
     const gkSnap = JSON.parse(storeGk.get('catalog:v1:kazka-hydrogen')!);
     expect(gkSnap.products).toHaveLength(1);
