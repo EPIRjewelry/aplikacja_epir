@@ -13,7 +13,7 @@ import { getR2AnalyticsSql, getQ9ToolUsageFallbackSql, isMissingIcebergNameColum
 import { buildFlowHealthReport } from './edog-flow-health-runner';
 import { buildEdogNarrative } from './edog-reason-narrative';
 import {
-  parseOperatorReportDate,
+  resolveOperatorReportDate,
   runOperatorDailyReport as executeOperatorDailyReport,
 } from './operator-daily-report';
 import { resolveCatchupMaxRuns } from './warehouse-batch-env';
@@ -419,30 +419,29 @@ export class BigQueryBatchS2SRpc extends WorkerEntrypoint<Env, BigQueryS2SProps>
   }
 
   /**
-   * Odtworzenie / ręczne uruchomienie raportu operatora za datę (UTC YYYY-MM-DD).
-   * Ta sama funkcja co cron 09:00 (`runOperatorDailyReport`) — bez catch-up eksportu.
-   * Auth: S2S `bigquery.analytics_query` (bez EPIR_OPERATOR_PANEL_SECRET, bez nowego sekretu).
+   * Ręczne uruchomienie / odtworzenie raportu operatora na dziś UTC.
+   * Ta sama funkcja co cron 09:00 — bez catch-up eksportu.
+   * `date` opcjonalne: puste = dziś; inna niż dziś UTC → 400 (metryki = rolling 24 h).
+   * Auth: S2S `bigquery.analytics_query` (bez nowego sekretu).
    */
   async runOperatorDailyReport(args?: { date?: string }): Promise<
     | { ok: true; reportDate: string; edogVerdict: string }
     | { ok: false; error: string; status: number }
   > {
     requireBigQueryS2SScopes(this.ctx.props, 'bigquery.analytics_query');
-    const rawDate = args?.date;
-    let reportDate: string | undefined;
-    if (rawDate !== undefined && rawDate !== null && String(rawDate).trim() !== '') {
-      const parsed = parseOperatorReportDate(String(rawDate));
-      if (!parsed) {
-        return { ok: false, error: 'date must be YYYY-MM-DD (UTC)', status: 400 };
-      }
-      reportDate = parsed;
+    let reportDate: string;
+    try {
+      reportDate = resolveOperatorReportDate(args?.date);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { ok: false, error: message, status: 400 };
     }
     try {
       const out = await executeOperatorDailyReport(
         this.env,
         probeQ1ForEdog,
         (e) => executeRunAnalyticsQuery(e as Env, { queryId: 'Q8_DAILY_EVENTS' }),
-        reportDate ? { reportDate } : undefined,
+        { reportDate },
       );
       return { ok: true, reportDate: out.reportDate, edogVerdict: out.edogVerdict };
     } catch (error) {
@@ -451,7 +450,7 @@ export class BigQueryBatchS2SRpc extends WorkerEntrypoint<Env, BigQueryS2SProps>
         JSON.stringify({
           tag: 'operator_daily_report_failed',
           step: 'rpc_run_operator_daily_report',
-          reportDate: reportDate ?? null,
+          reportDate,
           error: message,
         }),
       );

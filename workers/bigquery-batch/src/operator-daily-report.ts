@@ -18,6 +18,36 @@ export function parseOperatorReportDate(raw: string | undefined | null): string 
   return s;
 }
 
+export function utcTodayYmd(nowMs: number = Date.now()): string {
+  return new Date(nowMs).toISOString().slice(0, 10);
+}
+
+/**
+ * Raport zapisuje PK `report_date`, ale EDOG/Gemma/Q8 liczą metryki z okna
+ * „ostatnie 24 h od teraz” — nie z historycznego dnia. Dlatego jawne `reportDate`
+ * może być tylko dzisiejszą datą UTC (albo pominięte = dziś). Inna data = błąd.
+ */
+export function resolveOperatorReportDate(
+  raw: string | undefined | null,
+  nowMs: number = Date.now(),
+): string {
+  const today = utcTodayYmd(nowMs);
+  if (raw === undefined || raw === null || String(raw).trim() === '') {
+    return today;
+  }
+  const parsed = parseOperatorReportDate(String(raw));
+  if (!parsed) {
+    throw new Error('reportDate must be YYYY-MM-DD (UTC)');
+  }
+  if (parsed !== today) {
+    throw new Error(
+      `reportDate must be today's UTC date (${today}); got ${parsed}. ` +
+        'Metrics (EDOG/Gemma/Q8) use a rolling last-24h window from now, not a historical calendar day.',
+    );
+  }
+  return parsed;
+}
+
 export type OperatorReportEnv = {
   DB_CHATBOT: D1Database;
   MARKETING_INGEST_RPC?: {
@@ -142,12 +172,14 @@ export async function runOperatorDailyReport(
   >,
   opts?: {
     exportCatchUpNote?: string;
-    /** UTC YYYY-MM-DD; domyślnie dziś (jak cron). */
+    /**
+     * UTC YYYY-MM-DD — tylko dziś (albo pominięte). Metryki = rolling 24 h od teraz;
+     * zob. {@link resolveOperatorReportDate}.
+     */
     reportDate?: string;
   },
 ): Promise<{ reportDate: string; edogVerdict: string }> {
-  const reportDate =
-    parseOperatorReportDate(opts?.reportDate) ?? new Date().toISOString().slice(0, 10);
+  const reportDate = resolveOperatorReportDate(opts?.reportDate);
   const sinceMs = since24hMs(Date.now());
 
   let health: FlowHealthReport;

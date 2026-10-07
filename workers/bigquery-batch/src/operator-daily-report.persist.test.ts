@@ -34,7 +34,9 @@ vi.mock('./d1-retry', async () => {
 import {
   parseOperatorReportDate,
   persistOperatorDailyReport,
+  resolveOperatorReportDate,
   runOperatorDailyReport,
+  utcTodayYmd,
 } from './operator-daily-report';
 
 function mockHealth(verdict: 'PASS' | 'FAIL' = 'FAIL'): FlowHealthReport {
@@ -91,13 +93,28 @@ function mockD1Run(sequence: Array<'fail' | 'ok'>): {
   };
 }
 
-describe('parseOperatorReportDate', () => {
+describe('parseOperatorReportDate / resolveOperatorReportDate', () => {
   it('accepts YYYY-MM-DD', () => {
     expect(parseOperatorReportDate('2026-10-07')).toBe('2026-10-07');
   });
   it('rejects garbage', () => {
     expect(parseOperatorReportDate('07-10-2026')).toBeNull();
     expect(parseOperatorReportDate('')).toBeNull();
+  });
+  it('defaults to today UTC when omitted', () => {
+    const now = Date.parse('2026-10-07T15:00:00.000Z');
+    expect(resolveOperatorReportDate(undefined, now)).toBe('2026-10-07');
+    expect(resolveOperatorReportDate(null, now)).toBe('2026-10-07');
+  });
+  it('accepts only today UTC', () => {
+    const now = Date.parse('2026-10-07T15:00:00.000Z');
+    expect(resolveOperatorReportDate('2026-10-07', now)).toBe('2026-10-07');
+  });
+  it('rejects a non-today date with a clear error', () => {
+    const now = Date.parse('2026-10-07T15:00:00.000Z');
+    expect(() => resolveOperatorReportDate('2026-10-06', now)).toThrow(
+      /must be today's UTC date \(2026-10-07\).*rolling last-24h/i,
+    );
   });
 });
 
@@ -145,34 +162,49 @@ describe('runOperatorDailyReport', () => {
   });
 
   it('persists a single upserted row after transient D1 on persist', async () => {
+    const today = utcTodayYmd();
     const mock = mockD1Run(['fail', 'ok']);
     const out = await runOperatorDailyReport(
       { DB_CHATBOT: mock.db },
       async () => ({ rowCount: null, skipped: true }),
       async () => ({ ok: false as const, error: 'skip' }),
-      { reportDate: '2026-10-07' },
+      { reportDate: today },
     );
-    expect(out).toEqual({ reportDate: '2026-10-07', edogVerdict: 'FAIL' });
+    expect(out).toEqual({ reportDate: today, edogVerdict: 'FAIL' });
     expect(mock.runCount()).toBe(2);
-    expect(mock.bound()[0]).toBe('2026-10-07');
+    expect(mock.bound()[0]).toBe(today);
   });
 
-  it('odtworzenie za datę używa tej samej ścieżki co cron (reportDate + persist)', async () => {
+  it('odtworzenie (dziś UTC) używa tej samej ścieżki co cron', async () => {
+    const today = utcTodayYmd();
     const mock = mockD1Run(['ok']);
     const cronOut = await runOperatorDailyReport(
       { DB_CHATBOT: mock.db },
       async () => ({ rowCount: null, skipped: true }),
       async () => ({ ok: false as const, error: 'skip' }),
-      { reportDate: '2026-10-07' },
     );
     const replayOut = await runOperatorDailyReport(
       { DB_CHATBOT: mock.db },
       async () => ({ rowCount: null, skipped: true }),
       async () => ({ ok: false as const, error: 'skip' }),
-      { reportDate: '2026-10-07' },
+      { reportDate: today },
     );
     expect(cronOut).toEqual(replayOut);
     expect(mock.runCount()).toBe(2);
     expect(buildFlowHealthReport).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects non-today reportDate before any D1 write', async () => {
+    const mock = mockD1Run(['ok']);
+    await expect(
+      runOperatorDailyReport(
+        { DB_CHATBOT: mock.db },
+        async () => ({ rowCount: null, skipped: true }),
+        async () => ({ ok: false as const, error: 'skip' }),
+        { reportDate: '2020-01-01' },
+      ),
+    ).rejects.toThrow(/must be today's UTC date/i);
+    expect(mock.runCount()).toBe(0);
+    expect(buildFlowHealthReport).not.toHaveBeenCalled();
   });
 });

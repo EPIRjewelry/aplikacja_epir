@@ -70,11 +70,6 @@ export type BigQueryBatchRpcStub = {
     } | null;
     catchUp?: { runs: number; lastPending: number; pipelineError?: string };
   }>;
-  /** Odtworzenie raportu operatora (ta sama funkcja co cron 09:00). Scope: bigquery.analytics_query. */
-  runOperatorDailyReport?(args?: { date?: string }): Promise<
-    | { ok: true; reportDate: string; edogVerdict: string }
-    | { ok: false; error: string; status: number }
-  >;
 };
 
 /** Stub `StoreStewardS2SRpc` (`workers/store-steward`). */
