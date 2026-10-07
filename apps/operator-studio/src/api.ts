@@ -156,7 +156,9 @@ export function setOrModel(m: string): void {
 
 export function getModelSource(): ModelSource {
   const v = sessionStorage.getItem(MODEL_SOURCE);
-  return v === 'openrouter' ? 'openrouter' : 'groq';
+  if (v === 'groq') return 'groq';
+  // Domyślnie OpenRouter (operator nie dzieli konfiguracji modelu z kupującym).
+  return 'openrouter';
 }
 
 export function setModelSource(s: ModelSource): void {

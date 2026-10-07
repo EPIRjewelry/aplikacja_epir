@@ -1,15 +1,27 @@
 import type {BuyerChannelId} from '../buyer/channel-switch';
 import type {Env} from '../config/bindings';
-import {resolveStorefrontConfig} from '../config/storefronts';
 import type {CatalogFactsRepository} from './types';
 import {snapshotRepositoryFromKv} from './repository-kv';
 
+function emptyFacets() {
+  return {
+    total: 0,
+    byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0} as Record<
+      string,
+      number
+    >,
+    byStone: {},
+    byMetal: {},
+    byProductType: {},
+  };
+}
+
 /**
  * Repozytorium GK — wyłącznie Storefront API z tokenem KAZKA (bez Admin, bez fallbacku).
+ * URL produktu pochodzi z migawki zbudowanej z `STOREFRONTS.kazka.productUrlTemplate`.
  */
 export async function createKazkaCatalogRepository(env: Env): Promise<CatalogFactsRepository> {
   const channel: BuyerChannelId = 'kazka-hydrogen';
-  const cfg = resolveStorefrontConfig(env, 'kazka');
   const token = env.PUBLIC_STOREFRONT_API_TOKEN_KAZKA?.trim();
   if (!token) {
     return {
@@ -31,17 +43,5 @@ export async function createKazkaCatalogRepository(env: Env): Promise<CatalogFac
       getByHandle: async () => null,
     };
   }
-  void cfg;
-  const repo = await snapshotRepositoryFromKv(env.GEMMA_RUNTIME_KV, channel);
-  return repo;
-}
-
-function emptyFacets() {
-  return {
-    total: 0,
-    byOrigin: {} as Record<string, number>,
-    byStone: {},
-    byMetal: {},
-    byProductType: {},
-  };
+  return snapshotRepositoryFromKv(env.GEMMA_RUNTIME_KV, 'kazka-hydrogen', channel);
 }

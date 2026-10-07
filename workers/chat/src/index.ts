@@ -26,8 +26,6 @@ import { handleShopifyAppOAuth } from './shopify-app-oauth';
 import { parseAuthorizationBearer, verifyShopifySessionTokenJwt } from './shopify-session-token';
 import { RateLimiterDO, checkRateLimit } from './rate-limiter';
 import { TokenVaultDO, TokenVault, getTokenVaultStub } from './token-vault';
-import { guardAssistantPricingAgainstCatalog } from './pricing-guard';
-import { stripForeignBrandLinks } from './brand-reply-host';
 import {
   greetingForBrandLock,
   guardBuyerReply,
@@ -37,6 +35,7 @@ import {
   sideFromRouting,
   type ChatBrandLock,
 } from './brand-lock';
+import {resolveOperatorTurnModel} from './operator/operator-turn';
 import { buildCommerceActionPayload, isLikelyAjaxCartFakeGid } from './utils/commerce-result';
 import {
   analyticsReadUnauthorizedResponse,
@@ -55,11 +54,10 @@ import {
   KimiContentPart,
   shouldUseWorkersAi,
   injectKimiMultimodalUserContent,
-  resolveOperatorModelOverride,
 } from './ai-client';
 import { fetchOpenRouterCatalog } from './openrouter-catalog';
 import {
-  CHAT_MODEL_ID,
+  BUYER_MODEL_ID,
   CHAT_MAX_TOKENS_AFTER_TOOL,
   CHAT_MAX_TOKENS_TOOL_ROUND,
   CHAT_RECOVERY_MAX_TOKENS,
@@ -157,7 +155,6 @@ import {
   searchShopPoliciesAndFaqs,
   searchShopPoliciesAndFaqsWithMCP,
   formatRagContextForPrompt,
-  fetchKazkaDropRagContext,
   type VectorizeIndex,
 } from './rag-client-wrapper';
 
@@ -3798,13 +3795,10 @@ async function streamAssistantResponse(
         if (sfKey === 'kazka') {
           ctxParts.push('Marka Kazka Jewelry – kamienie szlachetne, biżuteria artystyczna.');
         } else if (sfKey === 'zareczyny') {
-          ctxParts.push('Kontekst: pierścionki zaręczynowe EPIR.');
-          ctxParts.push(
-            'Nie przedstawiaj się jako doradca Kazka Jewelry i nie polecaj produktów linii Kazka (w tym Pierścionek Soliter).',
-          );
+          ctxParts.push('Kontekst: pierścionki zaręczynowe EPIR. Ton EPIR Art Jewellery — nie Kazka.');
         } else {
           ctxParts.push(
-            'Marka tej rozmowy: EPIR Art Jewellery. Nie przedstawiaj się jako doradca Kazka Jewelry i nie polecaj produktów linii Kazka (w tym Pierścionek Soliter).',
+            'Marka tej rozmowy: EPIR Art Jewellery. Nie przedstawiaj się jako doradca Kazka Jewelry.',
           );
         }
         dynamicContext.push(`Kontekst storefrontu: ${ctxParts.join(', ')}`);
@@ -3980,12 +3974,10 @@ async function streamAssistantResponse(
         online_store_context_tightening: isOnlineStoreLiquid,
       });
 
-      // Admin A/B przed logami startowymi — żeby pokazać realny model (activeChatModelId).
-      const activeModelVariant: ModelCapabilities | null = await resolveOperatorModelOverride(
-        request.headers,
-        env,
-        { hasImage: Boolean(imageBase64) },
-      );
+      // Model: operator → OPERATOR_DEFAULT_MODEL (+ override tylko tutaj). Kupujący nie wchodzi.
+      const {variant: activeModelVariant, modelId: activeChatModelId} = operatorMode
+        ? await resolveOperatorTurnModel(request.headers, env, {hasImage: Boolean(imageBase64)})
+        : {variant: null as ModelCapabilities | null, modelId: BUYER_MODEL_ID};
       if (activeModelVariant) {
         console.log(
           JSON.stringify({
@@ -3998,7 +3990,6 @@ async function streamAssistantResponse(
           }),
         );
       }
-      const activeChatModelId = activeModelVariant?.id ?? CHAT_MODEL_ID;
       
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log(`[streamAssistant] Rozpoczynam pętlę AI. Sesja: ${sessionId}`);
@@ -4047,9 +4038,7 @@ async function streamAssistantResponse(
       const MAX_TOOL_CALLS = 5;
       /** Wyniki search_catalog w tej turze — walidacja cen po wygenerowaniu odpowiedzi. */
       const catalogSnapshotsForPricing: unknown[] = [...seededCatalogSnapshots];
-      const buyerTurns = recentBuyerTurns(aiHistory, userMessage);
       const previousAssistantText = lastAssistantText(aiHistory);
-      const allowStoneSubstitute = false;
       const replyBrand =
         resolveCatalogToolBrand({
           storefrontId: storefrontContext?.storefrontId,
@@ -4443,8 +4432,6 @@ async function streamAssistantResponse(
                   brand: brandForMcp,
                   sessionCartId: cartId ?? null,
                   commerceContext,
-                  buyerTurns,
-                  allowStoneSubstitute,
                 });
               },
             );

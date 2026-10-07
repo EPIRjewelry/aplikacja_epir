@@ -1,129 +1,46 @@
 /**
- * Pełne stronicowane pobranie katalogu GE (epir-online-store) przez Admin GraphQL.
- * Do faktów trafiają tylko produkty ACTIVE z onlineStoreUrl != null.
+ * Pełny eksport katalogu GE przez Admin Bulk Operations (JSONL).
+ * Fallback: stronicowanie z kontrolą kosztu / THROTTLED.
  */
 import type {Env} from '../config/bindings';
 import {SHOPIFY_ADMIN_API_VERSION} from '../config/shopify-api-version';
-import {STOREFRONT_METAFIELD_IDENTIFIERS} from './field-mapping';
 import {normalizeProduct} from './normalize';
 import type {ProductFacts} from './types';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 10;
+const MAX_COST = 900;
+const BULK_POLL_MS = 2000;
+const BULK_MAX_POLLS = 180;
 
-type AdminPage = {
-  products?: {
-    pageInfo?: {hasNextPage?: boolean; endCursor?: string | null};
-    nodes?: unknown[];
-  };
+export class AdminGraphqlCostError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AdminGraphqlCostError';
+  }
+}
+
+export class AdminGraphqlThrottledError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AdminGraphqlThrottledError';
+  }
+}
+
+type GraphqlJson = {
+  data?: Record<string, unknown>;
+  errors?: Array<{message?: string; extensions?: {code?: string}}>;
+  extensions?: {cost?: {requestedQueryCost?: number; actualQueryCost?: number; throttleStatus?: unknown}};
 };
 
-function adminMetafieldAliases(): string {
-  return STOREFRONT_METAFIELD_IDENTIFIERS.map(
-    (m, i) =>
-      `mf${i}: metafield(namespace: "${m.namespace}", key: "${m.key}") { namespace key value }`,
-  ).join('\n');
+async function sleep(ms: number): Promise<void> {
+  await new Promise((r) => setTimeout(r, ms));
 }
 
-function buildAdminProductsQuery(): string {
-  const mf = adminMetafieldAliases();
-  return `
-    query CatalogSnapshotGe($cursor: String) {
-      products(first: ${PAGE_SIZE}, after: $cursor, query: "status:active") {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          id
-          handle
-          title
-          vendor
-          productType
-          descriptionHtml
-          onlineStoreUrl
-          featuredMedia {
-            preview { image { url altText } }
-          }
-          collections(first: 25) {
-            nodes { handle title }
-          }
-          options { name values }
-          ${mf}
-          metafields(first: 20) {
-            nodes { namespace key value }
-          }
-          variants(first: 100) {
-            nodes {
-              id
-              title
-              sku
-              availableForSale
-              price
-              compareAtPrice
-              selectedOptions { name value }
-              image { url altText }
-              metafields(first: 10) {
-                nodes { namespace key value }
-              }
-            }
-          }
-        }
-      }
-    }
-  `;
-}
-
-function adaptAdminNode(raw: unknown): unknown {
-  if (!raw || typeof raw !== 'object') return raw;
-  const node = {...(raw as Record<string, unknown>)};
-
-  // featuredMedia → featuredImage for normalize
-  const media = node.featuredMedia as {preview?: {image?: unknown}} | undefined;
-  if (!node.featuredImage && media?.preview?.image) {
-    node.featuredImage = media.preview.image;
-  }
-
-  // Collect aliased metafields into metafields.nodes
-  const aliased: Array<{namespace: string; key: string; value: string}> = [];
-  for (const [k, v] of Object.entries(node)) {
-    if (!k.startsWith('mf') || !v || typeof v !== 'object') continue;
-    const mf = v as {namespace?: string; key?: string; value?: string};
-    if (mf.namespace && mf.key && typeof mf.value === 'string') {
-      aliased.push({namespace: mf.namespace, key: mf.key, value: mf.value});
-    }
-    delete node[k];
-  }
-  if (aliased.length) {
-    const existing = node.metafields as {nodes?: unknown[]} | undefined;
-    const nodes = Array.isArray(existing?.nodes) ? [...existing.nodes] : [];
-    for (const a of aliased) {
-      if (!nodes.some((n) => (n as {key?: string}).key === a.key)) nodes.push(a);
-    }
-    node.metafields = {nodes};
-  }
-
-  // Admin variant.price is often a decimal string — wrap for normalize
-  const variants = node.variants as {nodes?: Array<Record<string, unknown>>} | undefined;
-  if (variants?.nodes) {
-    node.variants = {
-      nodes: variants.nodes.map((v) => {
-        const next = {...v};
-        if (typeof next.price === 'string' || typeof next.price === 'number') {
-          next.price = {amount: String(next.price), currencyCode: 'PLN'};
-        }
-        if (typeof next.compareAtPrice === 'string' || typeof next.compareAtPrice === 'number') {
-          next.compareAtPrice = {amount: String(next.compareAtPrice), currencyCode: 'PLN'};
-        }
-        return next;
-      }),
-    };
-  }
-
-  return node;
-}
-
-async function adminGraphql(
+async function adminGraphqlRaw(
   env: Env,
   query: string,
-  variables: Record<string, unknown>,
-): Promise<AdminPage> {
+  variables?: Record<string, unknown>,
+): Promise<GraphqlJson> {
   const shop = env.SHOP_DOMAIN?.trim();
   const token = env.SHOPIFY_ADMIN_TOKEN?.trim();
   if (!shop) throw new Error('SHOP_DOMAIN missing');
@@ -138,46 +55,294 @@ async function adminGraphql(
     },
     body: JSON.stringify({query, variables}),
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Admin GraphQL HTTP ${res.status}: ${text.slice(0, 200)}`);
+  const json = (await res.json().catch(() => ({}))) as GraphqlJson;
+  const codes = (json.errors ?? []).map((e) => e.extensions?.code ?? e.message ?? '');
+  if (codes.some((c) => String(c).includes('THROTTLED') || String(c).includes('Throttled'))) {
+    throw new AdminGraphqlThrottledError(JSON.stringify(json.errors).slice(0, 300));
   }
-  const json = (await res.json()) as {data?: AdminPage; errors?: unknown};
-  if (json.errors) {
+  if (codes.some((c) => String(c).includes('MAX_COST_EXCEEDED') || String(c).includes('MAX_COST'))) {
+    throw new AdminGraphqlCostError(JSON.stringify(json.errors).slice(0, 300));
+  }
+  if (!res.ok) {
+    throw new Error(`Admin GraphQL HTTP ${res.status}`);
+  }
+  if (json.errors?.length) {
     throw new Error(`Admin GraphQL errors: ${JSON.stringify(json.errors).slice(0, 400)}`);
   }
-  return json.data ?? {};
+  const requested = json.extensions?.cost?.requestedQueryCost;
+  if (typeof requested === 'number' && requested > MAX_COST) {
+    throw new AdminGraphqlCostError(`requestedQueryCost ${requested} > ${MAX_COST}`);
+  }
+  return json;
+}
+
+const BULK_QUERY = `
+{
+  products(query: "status:active") {
+    edges {
+      node {
+        id
+        handle
+        title
+        vendor
+        productType
+        descriptionHtml
+        onlineStoreUrl
+        featuredMedia { preview { image { url altText } } }
+        collections { edges { node { handle title } } }
+        options { name values }
+        metafield(namespace: "custom", key: "gemstone_origin") { namespace key value }
+        variants {
+          edges {
+            node {
+              id
+              title
+              sku
+              availableForSale
+              price
+              compareAtPrice
+              selectedOptions { name value }
+              image { url altText }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+`;
+
+function adaptBulkProduct(node: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {...node};
+  if (isRecord(node.featuredMedia)) {
+    const prev = (node.featuredMedia as {preview?: {image?: unknown}}).preview?.image;
+    if (prev) out.featuredImage = prev;
+  }
+  if (node.metafield && isRecord(node.metafield)) {
+    out.metafields = {nodes: [node.metafield]};
+  }
+  // Bulk nested connections arrive as separate JSONL lines — when already nested:
+  if (isRecord(node.variants) && Array.isArray((node.variants as {edges?: unknown[]}).edges)) {
+    out.variants = {
+      nodes: ((node.variants as {edges: Array<{node?: unknown}>}).edges || [])
+        .map((e) => e.node)
+        .filter(isRecord)
+        .map((v) => {
+          const next = {...v};
+          if (typeof next.price === 'string' || typeof next.price === 'number') {
+            next.price = {amount: String(next.price), currencyCode: 'PLN'};
+          }
+          return next;
+        }),
+    };
+  }
+  if (isRecord(node.collections) && Array.isArray((node.collections as {edges?: unknown[]}).edges)) {
+    out.collections = {
+      nodes: ((node.collections as {edges: Array<{node?: unknown}>}).edges || [])
+        .map((e) => e.node)
+        .filter(isRecord),
+    };
+  }
+  return out;
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 }
 
 /**
- * Pobiera i normalizuje wszystkie aktywne produkty Online Store (GE).
+ * Parsuje JSONL z Bulk Operation: linie produktów + powiązane warianty/kolekcje po __parentId.
  */
-export async function fetchGeCatalogProducts(env: Env): Promise<ProductFacts[]> {
-  const query = buildAdminProductsQuery();
-  const out: ProductFacts[] = [];
-  let cursor: string | null = null;
-  let pages = 0;
+export function parseBulkProductsJsonl(text: string): Record<string, unknown>[] {
+  const products = new Map<string, Record<string, unknown>>();
+  const variantsByParent = new Map<string, Record<string, unknown>[]>();
+  const collectionsByParent = new Map<string, Record<string, unknown>[]>();
 
-  for (;;) {
-    const data = await adminGraphql(env, query, {cursor});
-    pages += 1;
-    const nodes = data.products?.nodes ?? [];
-    for (const raw of nodes) {
-      const adapted = adaptAdminNode(raw);
-      const facts = normalizeProduct(adapted, {channel: 'epir'});
-      if (facts) out.push(facts);
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    let row: Record<string, unknown>;
+    try {
+      row = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
     }
-    const pageInfo = data.products?.pageInfo;
-    if (!pageInfo?.hasNextPage || !pageInfo.endCursor) break;
-    cursor = pageInfo.endCursor;
-    if (pages > 500) {
-      console.warn('[facts.fetch-ge] page safety stop at 500');
-      break;
+    const id = typeof row.id === 'string' ? row.id : '';
+    const parentId = typeof row.__parentId === 'string' ? row.__parentId : '';
+    if (id.includes('/Product/') && !parentId) {
+      products.set(id, row);
+      continue;
+    }
+    if (parentId && id.includes('/ProductVariant/')) {
+      const list = variantsByParent.get(parentId) ?? [];
+      list.push(row);
+      variantsByParent.set(parentId, list);
+      continue;
+    }
+    if (parentId && id.includes('/Collection/')) {
+      const list = collectionsByParent.get(parentId) ?? [];
+      list.push(row);
+      collectionsByParent.set(parentId, list);
     }
   }
 
-  console.log(
-    JSON.stringify({tag: 'facts.fetch_ge', products: out.length, pages}),
-  );
+  const out: Record<string, unknown>[] = [];
+  for (const [pid, product] of products) {
+    const merged = {...product};
+    const vars = variantsByParent.get(pid);
+    if (vars) merged.variants = {nodes: vars};
+    const cols = collectionsByParent.get(pid);
+    if (cols) merged.collections = {nodes: cols};
+    out.push(adaptBulkProduct(merged));
+  }
   return out;
+}
+
+async function fetchViaBulk(env: Env): Promise<ProductFacts[]> {
+  const run = await adminGraphqlRaw(
+    env,
+    `mutation { bulkOperationRunQuery(query: """${BULK_QUERY}""") {
+      bulkOperation { id status }
+      userErrors { field message }
+    } }`,
+  );
+  const payload = run.data?.bulkOperationRunQuery as {
+    bulkOperation?: {id?: string; status?: string};
+    userErrors?: Array<{message?: string}>;
+  };
+  if (payload?.userErrors?.length) {
+    throw new Error(`bulkOperationRunQuery: ${payload.userErrors.map((e) => e.message).join('; ')}`);
+  }
+  const opId = payload?.bulkOperation?.id;
+  if (!opId) throw new Error('bulkOperationRunQuery: missing id');
+
+  let url: string | null = null;
+  for (let i = 0; i < BULK_MAX_POLLS; i++) {
+    await sleep(BULK_POLL_MS);
+    const poll = await adminGraphqlRaw(
+      env,
+      `query ($id: ID!) {
+        node(id: $id) {
+          ... on BulkOperation {
+            id status errorCode objectCount url
+          }
+        }
+      }`,
+      {id: opId},
+    );
+    const node = poll.data?.node as {
+      status?: string;
+      errorCode?: string | null;
+      url?: string | null;
+    } | null;
+    if (!node) continue;
+    if (node.status === 'FAILED' || node.status === 'CANCELED') {
+      throw new Error(`bulk failed: ${node.status} ${node.errorCode ?? ''}`);
+    }
+    if (node.status === 'COMPLETED') {
+      url = node.url ?? null;
+      break;
+    }
+  }
+  if (!url) throw new Error('bulk operation timeout');
+
+  const fileRes = await fetch(url);
+  if (!fileRes.ok) throw new Error(`bulk JSONL HTTP ${fileRes.status}`);
+  const text = await fileRes.text();
+  const nodes = parseBulkProductsJsonl(text);
+  const fetchedAt = new Date().toISOString();
+  const out: ProductFacts[] = [];
+  for (const raw of nodes) {
+    const facts = normalizeProduct(raw, {channel: 'epir-online-store', fetchedAt});
+    if (facts) out.push(facts);
+  }
+  console.log(JSON.stringify({tag: 'facts.fetch_ge_bulk', products: out.length, bytes: text.length}));
+  return out;
+}
+
+async function fetchViaPaged(env: Env): Promise<ProductFacts[]> {
+  const query = `
+    query CatalogSnapshotGe($cursor: String) {
+      products(first: ${PAGE_SIZE}, after: $cursor, query: "status:active") {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id handle title vendor productType descriptionHtml onlineStoreUrl
+          featuredMedia { preview { image { url altText } } }
+          collections(first: 5) { nodes { handle title } }
+          options { name values }
+          metafield(namespace: "custom", key: "gemstone_origin") { namespace key value }
+          variants(first: 25) {
+            nodes {
+              id title sku availableForSale price compareAtPrice
+              selectedOptions { name value }
+              image { url altText }
+            }
+          }
+        }
+      }
+    }
+  `;
+  const out: ProductFacts[] = [];
+  let cursor: string | null = null;
+  let pages = 0;
+  const fetchedAt = new Date().toISOString();
+
+  for (;;) {
+    let json: GraphqlJson | null = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        json = await adminGraphqlRaw(env, query, {cursor});
+        break;
+      } catch (err) {
+        if (err instanceof AdminGraphqlThrottledError) {
+          await sleep(1000 * (attempt + 1));
+          continue;
+        }
+        throw err;
+      }
+    }
+    if (!json) throw new AdminGraphqlThrottledError('exhausted throttle retries');
+    pages += 1;
+    const products = json.data?.products as {
+      pageInfo?: {hasNextPage?: boolean; endCursor?: string | null};
+      nodes?: unknown[];
+    };
+    for (const raw of products?.nodes ?? []) {
+      if (!isRecord(raw)) continue;
+      const adapted = adaptBulkProduct(raw);
+      if (raw.metafield) adapted.metafields = {nodes: [raw.metafield]};
+      const variants = adapted.variants as {nodes?: Array<Record<string, unknown>>} | undefined;
+      if (variants?.nodes) {
+        adapted.variants = {
+          nodes: variants.nodes.map((v) => {
+            const next = {...v};
+            if (typeof next.price === 'string' || typeof next.price === 'number') {
+              next.price = {amount: String(next.price), currencyCode: 'PLN'};
+            }
+            return next;
+          }),
+        };
+      }
+      const facts = normalizeProduct(adapted, {channel: 'epir-online-store', fetchedAt});
+      if (facts) out.push(facts);
+    }
+    if (!products?.pageInfo?.hasNextPage || !products.pageInfo.endCursor) break;
+    cursor = products.pageInfo.endCursor;
+    if (pages > 2000) break;
+  }
+  console.log(JSON.stringify({tag: 'facts.fetch_ge_paged', products: out.length, pages}));
+  return out;
+}
+
+export async function fetchGeCatalogProducts(env: Env): Promise<ProductFacts[]> {
+  try {
+    return await fetchViaBulk(env);
+  } catch (err) {
+    console.warn(
+      JSON.stringify({
+        tag: 'facts.fetch_ge_bulk_fallback',
+        reason: err instanceof Error ? err.message : String(err),
+      }),
+    );
+    return fetchViaPaged(env);
+  }
 }

@@ -110,7 +110,9 @@ async function adminGraphql(
 }
 
 export async function ensureEpirWebPixelOnShop(shop: string, accessToken: string) {
-  return reconcileEpirWebPixel((query, variables) => adminGraphql(shop, accessToken, query, variables));
+  return reconcileEpirWebPixel((query: string, variables?: Record<string, unknown>) =>
+    adminGraphql(shop, accessToken, query, variables),
+  );
 }
 
 function htmlResponse(body: string, status = 200): Response {

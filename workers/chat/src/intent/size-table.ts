@@ -48,9 +48,9 @@ export const SIZE_GUIDANCE_REPLY =
   'Rozmiar dobierasz z obwodu palca albo ze średnicy wewnętrznej pierścionka, który już leży dobrze, i porównujesz ten pomiar z tabelą rozmiarów. Nie podaję przy tym ceny ani opisu produktu.';
 
 const MEASUREMENT = /palc|obw[oó]d|średnic|srednic|\bmm\b|tabel/iu;
-const PRODUCT_SPEC_DUMP = /\d[\d\s\u00a0.,]*\s*zł|\bsoliter\b|metale\s+/iu;
+const PRODUCT_SPEC_DUMP = /\d[\d\s\u00a0.,]*\s*zł|metale\s+/iu;
 
-/** Pytanie o rozmiar nie może wyjść jako karta PDP (cena, metal, Soliter). */
+/** Pytanie o rozmiar nie może wyjść jako karta PDP (cena, metal). */
 export function guardSizeQuestionReply(text: string): {text: string; replaced: boolean; reason?: string} {
   if (!PRODUCT_SPEC_DUMP.test(text)) return {text, replaced: false};
   if (MEASUREMENT.test(text) && !/\d[\d\s\u00a0.,]*\s*zł/iu.test(text)) return {text, replaced: false};

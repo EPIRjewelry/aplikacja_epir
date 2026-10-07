@@ -1,13 +1,13 @@
 import type {
-  CatalogFacets,
   CatalogFacetsDto,
   CatalogFilters,
-  GemstoneOrigin,
   MoneyPln,
   ProductFacts,
   ProductMatch,
   VariantFacts,
+  VariantStoneOrigin,
 } from './types';
+import {moneyFromMinor} from './types';
 
 function normalizeText(text: string): string {
   return text
@@ -17,17 +17,43 @@ function normalizeText(text: string): string {
     .trim();
 }
 
+function priceMinor(v: MoneyPln | number | undefined): number | undefined {
+  if (v === undefined) return undefined;
+  if (typeof v === 'number') return v;
+  return v.minor ?? v.amount_minor;
+}
+
 function variantMatchesFilters(v: VariantFacts, filters: CatalogFilters): boolean {
-  if (filters.available !== undefined && v.available !== filters.available) return false;
+  const availableOnly = filters.availableOnly ?? filters.available;
+  if (availableOnly !== undefined && v.available !== availableOnly) return false;
+
   if (filters.origin?.length) {
-    if (!v.origin || !filters.origin.includes(v.origin)) return false;
+    const origin = v.stoneOrigin ?? v.origin;
+    if (!origin || !filters.origin.includes(origin)) return false;
   }
-  if (filters.metal?.length && v.metal) {
+
+  if (filters.metal?.length) {
+    if (!v.metal) return false;
     const vMetal = v.metal.trim().toLowerCase();
     if (!filters.metal.some((m) => vMetal.includes(m.toLowerCase()))) return false;
   }
-  if (filters.priceMin !== undefined && v.price && v.price.amount_minor < filters.priceMin) return false;
-  if (filters.priceMax !== undefined && v.price && v.price.amount_minor > filters.priceMax) return false;
+
+  const min = priceMinor(filters.priceMin);
+  const max = priceMinor(filters.priceMax);
+  const p = v.price?.minor ?? v.price?.amount_minor;
+  if (min !== undefined) {
+    if (p === undefined) return false;
+    if (p < min) return false;
+  }
+  if (max !== undefined) {
+    if (p === undefined) return false;
+    if (p > max) return false;
+  }
+
+  if (filters.size) {
+    if (!v.size || v.size !== filters.size) return false;
+  }
+
   return true;
 }
 
@@ -37,9 +63,10 @@ function productMatchesText(p: ProductFacts, query: string): boolean {
   if (!tokens.length) return true;
 
   const haystack = normalizeText(
-    [p.title, p.vendor, ...(p.variants.map((v) => v.title).filter(Boolean) as string[])].join(' '),
+    [p.title, p.productType, p.vendor, ...p.stones, ...p.variants.map((v) => v.title)]
+      .filter(Boolean)
+      .join(' '),
   );
-
   return tokens.every((token) => haystack.includes(token));
 }
 
@@ -48,28 +75,32 @@ export function filterProducts(products: ProductFacts[], filters: CatalogFilters
 
   for (const product of products) {
     if (filters.text && !productMatchesText(product, filters.text)) continue;
+    if (filters.productType?.length) {
+      if (!product.productType || !filters.productType.includes(product.productType)) continue;
+    }
+    if (filters.stone?.length) {
+      if (!filters.stone.some((s) => product.stones.map((x) => x.toLowerCase()).includes(s.toLowerCase()))) {
+        continue;
+      }
+    }
 
     const matching = product.variants.filter((v) => variantMatchesFilters(v, filters));
     if (!matching.length) continue;
 
-    const prices = matching
-      .map((v) => v.price)
-      .filter((p): p is MoneyPln => p !== undefined);
-
-    let min: MoneyPln | undefined;
-    let max: MoneyPln | undefined;
-    let isFlat = true;
-
-    if (prices.length > 0) {
-      min = prices.reduce((a, b) => (a.amount_minor <= b.amount_minor ? a : b));
-      max = prices.reduce((a, b) => (a.amount_minor >= b.amount_minor ? a : b));
-      isFlat = min.amount_minor === max.amount_minor;
-    }
+    const prices = matching.map((v) => v.price.minor ?? v.price.amount_minor ?? 0);
+    const minM = Math.min(...prices);
+    const maxM = Math.max(...prices);
+    const isFlat = minM === maxM;
 
     matches.push({
       product,
       matchingVariants: matching,
-      matchingPriceRange: min && max ? { min, max } : undefined,
+      matchingVariantIds: matching.map((v) => v.variantId || v.variant_id || ''),
+      matchingPriceRange: {
+        min: moneyFromMinor(minM),
+        max: moneyFromMinor(maxM),
+        isFlat,
+      },
       isFlat,
     });
   }
@@ -77,47 +108,8 @@ export function filterProducts(products: ProductFacts[], filters: CatalogFilters
   return matches;
 }
 
-export function computeFacets(products: ProductFacts[]): CatalogFacets {
-  const origins = new Map<GemstoneOrigin, number>();
-  const metals = new Map<string, number>();
-  let globalMin: number | undefined;
-  let globalMax: number | undefined;
-
-  for (const product of products) {
-    const productOrigins = new Set<GemstoneOrigin>();
-    const productMetals = new Set<string>();
-
-    for (const v of product.variants) {
-      if (v.origin) productOrigins.add(v.origin);
-      if (v.metal) productMetals.add(v.metal.trim().toLowerCase());
-      if (v.price) {
-        if (globalMin === undefined || v.price.amount_minor < globalMin) {
-          globalMin = v.price.amount_minor;
-        }
-        if (globalMax === undefined || v.price.amount_minor > globalMax) {
-          globalMax = v.price.amount_minor;
-        }
-      }
-    }
-
-    for (const o of productOrigins) {
-      origins.set(o, (origins.get(o) ?? 0) + 1);
-    }
-    for (const m of productMetals) {
-      metals.set(m, (metals.get(m) ?? 0) + 1);
-    }
-  }
-
-  return {
-    origins,
-    metals,
-    priceRange: globalMin !== undefined && globalMax !== undefined ? { min: globalMin, max: globalMax } : undefined,
-    totalProducts: products.length,
-  };
-}
-
 export function computeFacetsFromMatches(matches: ProductMatch[]): CatalogFacetsDto {
-  const byOrigin: Record<GemstoneOrigin, number> = {
+  const byOrigin: Record<VariantStoneOrigin, number> = {
     natural: 0,
     lab_grown: 0,
     cultured: 0,
@@ -129,24 +121,37 @@ export function computeFacetsFromMatches(matches: ProductMatch[]): CatalogFacets
   const byProductType: Record<string, number> = {};
 
   for (const match of matches) {
-    const origins = new Set<GemstoneOrigin>();
+    const origins = new Set<VariantStoneOrigin>();
     for (const v of match.matchingVariants) {
-      if (v.origin) origins.add(v.origin);
+      const o = v.stoneOrigin ?? v.origin;
+      if (o) origins.add(o);
       if (v.metal) {
         const key = v.metal.trim().toLowerCase();
         byMetal[key] = (byMetal[key] ?? 0) + 1;
       }
     }
-    for (const o of origins) {
-      byOrigin[o] = (byOrigin[o] ?? 0) + 1;
+    for (const o of origins) byOrigin[o] = (byOrigin[o] ?? 0) + 1;
+    for (const s of match.product.stones) {
+      const key = s.toLowerCase();
+      byStone[key] = (byStone[key] ?? 0) + 1;
+    }
+    if (match.product.productType) {
+      byProductType[match.product.productType] = (byProductType[match.product.productType] ?? 0) + 1;
     }
   }
 
-  return {
-    total: matches.length,
-    byOrigin,
-    byStone,
-    byMetal,
-    byProductType,
-  };
+  return {total: matches.length, byOrigin, byStone, byMetal, byProductType};
+}
+
+/** @deprecated */
+export function computeFacets(products: ProductFacts[]): CatalogFacetsDto {
+  return computeFacetsFromMatches(
+    products.map((p) => ({
+      product: p,
+      matchingVariants: p.variants,
+      matchingVariantIds: p.variants.map((v) => v.variantId),
+      matchingPriceRange: p.priceRange,
+      isFlat: p.priceRange.isFlat,
+    })),
+  );
 }

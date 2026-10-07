@@ -92,7 +92,7 @@ describe('Shop MCP search_shop_policies_and_faqs', () => {
       typeof payload.content?.[0]?.text === 'string' ? JSON.parse(payload.content[0].text) : payload;
     expect(parsed).toMatchObject({
       products: [],
-      system_note: expect.stringContaining('niedostępny'),
+      system_note: expect.stringContaining('unavailable'),
     });
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
   });

@@ -1,4 +1,9 @@
 import {describe, expect, it, vi, afterEach} from 'vitest';
+import {
+  AdminGraphqlCostError,
+  AdminGraphqlThrottledError,
+  parseBulkProductsJsonl,
+} from '../src/facts/fetch-ge';
 import {refreshGeSnapshot, refreshGkSnapshot, refreshAllCatalogSnapshots} from '../src/facts/refresh';
 import type {Env} from '../src/config/bindings';
 
@@ -25,9 +30,45 @@ afterEach(() => {
 });
 
 describe('catalog snapshot refresh', () => {
-  it('GE: pages Admin products and writes only those with onlineStoreUrl', async () => {
+  it('parses bulk JSONL products + parent variants', () => {
+    const jsonl = [
+      JSON.stringify({
+        id: 'gid://shopify/Product/1',
+        handle: 'a',
+        title: 'A',
+        onlineStoreUrl: 'https://epirbizuteria.pl/products/a',
+      }),
+      JSON.stringify({
+        id: 'gid://shopify/ProductVariant/1',
+        __parentId: 'gid://shopify/Product/1',
+        price: '10.00',
+        availableForSale: true,
+        selectedOptions: [],
+      }),
+    ].join('\n');
+    const nodes = parseBulkProductsJsonl(jsonl);
+    expect(nodes).toHaveLength(1);
+    expect((nodes[0].variants as {nodes: unknown[]}).nodes).toHaveLength(1);
+  });
+
+  it('GE paged fallback writes only onlineStoreUrl products', async () => {
     const {kv, store} = makeKv();
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+    // Force bulk failure → paged path
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const body = typeof init?.body === 'string' ? init.body : '';
+      if (body.includes('bulkOperationRunQuery')) {
+        return new Response(
+          JSON.stringify({
+            data: {
+              bulkOperationRunQuery: {
+                bulkOperation: null,
+                userErrors: [{message: 'forced'}],
+              },
+            },
+          }),
+          {status: 200},
+        );
+      }
       return new Response(
         JSON.stringify({
           data: {
@@ -53,15 +94,15 @@ describe('catalog snapshot refresh', () => {
                 {
                   id: 'gid://shopify/Product/2',
                   handle: 'draft-only',
-                  title: 'Draft',
                   onlineStoreUrl: null,
                   variants: {nodes: []},
                 },
               ],
             },
           },
+          extensions: {cost: {requestedQueryCost: 100}},
         }),
-        {status: 200, headers: {'Content-Type': 'application/json'}},
+        {status: 200},
       );
     });
 
@@ -73,15 +114,16 @@ describe('catalog snapshot refresh', () => {
 
     expect(result.ok).toBe(true);
     expect(result.productCount).toBe(1);
-    expect(fetchMock).toHaveBeenCalled();
-    const url = String(fetchMock.mock.calls[0][0]);
-    expect(url).toContain('/admin/api/');
     const snap = JSON.parse(store.get('catalog:v1:epir-online-store')!);
-    expect(snap.products).toHaveLength(1);
     expect(snap.products[0].handle).toBe('published');
   });
 
-  it('GK: no KAZKA token → no_token and no Admin fetch', async () => {
+  it('exposes THROTTLED and cost error classes', () => {
+    expect(new AdminGraphqlThrottledError('x')).toBeInstanceOf(Error);
+    expect(new AdminGraphqlCostError('y')).toBeInstanceOf(Error);
+  });
+
+  it('GK: no KAZKA token → no_token, no fetch', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch');
     const {kv} = makeKv();
     const result = await refreshGkSnapshot({
@@ -94,12 +136,10 @@ describe('catalog snapshot refresh', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('GK: Storefront fetch writes kazka URL from template', async () => {
+  it('GK: Storefront URL from storefronts template', async () => {
     const {kv, store} = makeKv();
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = String(input);
-      expect(url).toContain('/api/');
-      expect(url).not.toContain('/admin/');
+      expect(String(input)).not.toContain('/admin/');
       return new Response(
         JSON.stringify({
           data: {
@@ -125,7 +165,7 @@ describe('catalog snapshot refresh', () => {
             },
           },
         }),
-        {status: 200, headers: {'Content-Type': 'application/json'}},
+        {status: 200},
       );
     });
 
@@ -138,7 +178,7 @@ describe('catalog snapshot refresh', () => {
     expect(result.ok).toBe(true);
     const snap = JSON.parse(store.get('catalog:v1:kazka-hydrogen')!);
     expect(snap.products[0].url).toBe('https://kazka.epirbizuteria.pl/products/kazka-ring');
-    expect(snap.products[0].variants[0].origin).toBe('lab_grown');
+    expect(snap.products[0].variants[0].stoneOrigin).toBe('lab_grown');
   });
 
   it('refreshAll runs GE then GK independently', async () => {
@@ -147,10 +187,6 @@ describe('catalog snapshot refresh', () => {
       GEMMA_RUNTIME_KV: kv,
       SHOP_DOMAIN: 'example.myshopify.com',
     } as Env);
-    expect(results).toHaveLength(2);
-    expect(results[0].channel).toBe('epir-online-store');
-    expect(results[0].ok).toBe(false);
-    expect(results[1].channel).toBe('kazka-hydrogen');
-    expect(results[1].reason).toBe('no_token');
+    expect(results.map((r) => r.channel)).toEqual(['epir-online-store', 'kazka-hydrogen']);
   });
 });

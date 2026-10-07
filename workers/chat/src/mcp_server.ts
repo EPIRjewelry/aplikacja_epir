@@ -84,9 +84,9 @@ const MCP_POLICIES_TIMEOUT_MS = 15000;
 const MCP_POLICIES_MAX_ATTEMPTS = 3;
 const MCP_CATALOG_MAX_ATTEMPTS = 2;
 
-const CATALOG_FALLBACK = {
+const CATALOG_EMPTY = {
   products: [],
-  system_note: 'Sklep jest chwilowo niedostępny (Connection Timeout). Poinformuj klienta o problemie technicznym.'
+  system_note: 'Catalog temporarily unavailable.',
 };
 
 function verifyInternalKey(env: Env, request: Request): { ok: boolean; message?: string } {
@@ -225,14 +225,10 @@ function normalizeSearchCatalogArgs(
     limitNum = Math.trunc(legacyFirst);
   }
   if (limitNum === null) {
-    limitNum = 3;
+    limitNum = 10;
   }
-  /**
-   * EPIR: max 3 wyniki katalogu (prompt + MCP).
-   * Kazka: szersza próbka sklepu, potem twardy filtr asortymentu ucina do 3.
-   * UCP nie przyjmuje filtra vendor/tag/kolekcja — klauzuli nie dopisujemy do query.
-   */
-  pagination.limit = Math.max(1, Math.min(limitNum, 3));
+  /** Proxy przekazuje limit bez sztucznego obcinania do 3. */
+  pagination.limit = Math.max(1, Math.min(limitNum, 250));
   catalog.pagination = pagination;
 
   if (!catalog.filters && source.filters && typeof source.filters === 'object') {
@@ -345,10 +341,6 @@ export type CallShopMcpOptions = {
   /** Cart GID z SessionDO — wstrzykiwany gdy model / klient nie podał poprawnego cart_id. */
   sessionCartId?: string | null;
   commerceContext?: CommerceContext;
-  /** Ostatnie wypowiedzi klienta. Kamień z wcześniejszej tury obowiązuje przy „pokaż kilka”. */
-  buyerTurns?: string[];
-  /** Jawna zgoda na inny kamień. „Słucham” i „ring” jej nie włączają. */
-  allowStoneSubstitute?: boolean;
 };
 
 async function callShopMcp(
@@ -359,8 +351,6 @@ async function callShopMcp(
 ): Promise<{ result?: any; error?: any }> {
   const brand = typeof options === 'string' ? options : options?.brand;
   const sessionCartId = typeof options === 'string' ? undefined : options?.sessionCartId;
-  const buyerTurns = typeof options === 'string' ? undefined : options?.buyerTurns;
-  const allowStoneSubstitute = typeof options === 'string' ? false : options?.allowStoneSubstitute === true;
   const commerceContext =
     typeof options === 'string'
       ? resolveCommerceContext(brand)
@@ -615,7 +605,7 @@ async function callShopMcp(
         (res.status === 522 || res.status === 503 || res.status >= 500)
       ) {
         console.warn(`[mcp] Shop MCP ${res.status} for ${toolName}, returning safe fallback`);
-        return { result: CATALOG_FALLBACK };
+        return { result: CATALOG_EMPTY };
       }
       const body = await res.text().catch(() => '');
       return { error: { code: res.status, message: `Shop MCP HTTP ${res.status}`, details: body.slice(0, 500) } };
@@ -629,7 +619,7 @@ async function callShopMcp(
         toolName === 'catalog_image_search'
       ) {
         console.warn('[mcp] Invalid JSON from shop MCP for search_catalog, returning safe fallback');
-        return { result: CATALOG_FALLBACK };
+        return { result: CATALOG_EMPTY };
       }
       return { error: { code: -32700, message: 'Invalid JSON response from shop MCP' } };
     }
@@ -677,7 +667,7 @@ async function callShopMcp(
       (isAbortError || isNetworkError)
     ) {
       console.warn(`[mcp] Timeout/Network error for ${toolName}, returning safe fallback`, { error: errMsg });
-      return { result: CATALOG_FALLBACK };
+      return { result: CATALOG_EMPTY };
     }
     
     console.error('[mcp] Shop MCP call failed', { tool: toolName, error: errMsg });

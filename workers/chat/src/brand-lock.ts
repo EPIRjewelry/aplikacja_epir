@@ -45,7 +45,6 @@ const EPIR_FOREIGN_PRODUCT_FALLBACK =
   'W ofercie EPIR Art Jewellery dobiorę inny model. Napisz, czy szukasz złota, srebra albo konkretnego kamienia.';
 
 const KAZKA_ADVISOR = /kazka jewelry/i;
-const SOLITER_PRODUCT = /\bsoliter\b/i;
 const EPIR_SELF_ID =
   /doradca z pracowni EPIR Art Jewellery|doradca pierścionków zaręczynowych EPIR|doradczyni[ąa] EPIR Art Jewellery/i;
 
@@ -231,7 +230,7 @@ function isGreetingShell(text: string): boolean {
 }
 
 /**
- * Ostatnia siatka na odpowiedzi modelu: EPIR nie mówi głosem Kazki i nie poleca Solitera.
+ * Ostatnia siatka na odpowiedzi modelu: EPIR nie mówi głosem Kazki.
  * Kazka nie wita się formułką pracowni EPIR.
  */
 export function guardBuyerReply(
@@ -247,20 +246,14 @@ export function guardBuyerReply(
     return {text: KAZKA_GREETING, rewritten: true};
   }
 
-  if (!KAZKA_ADVISOR.test(text) && !SOLITER_PRODUCT.test(text)) return {text, rewritten: false};
+  if (!KAZKA_ADVISOR.test(text)) return {text, rewritten: false};
 
-  let kept = text;
-  if (KAZKA_ADVISOR.test(kept)) {
-    kept = dropSentences(kept, KAZKA_ADVISOR);
-    if (!kept || isGreetingShell(kept)) {
-      return {
-        text: lock.side === 'zareczyny' ? ZARECZYNY_GREETING : EPIR_GREETING,
-        rewritten: true,
-      };
-    }
-  }
-  if (SOLITER_PRODUCT.test(kept)) {
-    kept = dropSentences(kept, SOLITER_PRODUCT);
+  let kept = dropSentences(text, KAZKA_ADVISOR);
+  if (!kept || isGreetingShell(kept)) {
+    return {
+      text: lock.side === 'zareczyny' ? ZARECZYNY_GREETING : EPIR_GREETING,
+      rewritten: true,
+    };
   }
   if (kept) return {text: kept, rewritten: kept !== text};
   if (lock.side === 'zareczyny') return {text: ZARECZYNY_GREETING, rewritten: true};

@@ -3,16 +3,18 @@
  * Zero importów z src/catalog/*. Pochodzenie nigdy z tagów, tytułu ani regexu opisu.
  */
 import type {
+  BuyerChannelId,
   DataIssue,
-  GemstoneOrigin,
   MoneyPln,
   OriginEvidence,
   ProductFacts,
   ProductImageFact,
   VariantFacts,
+  VariantStoneOrigin,
 } from './types';
-import { isSizeOption, isMetalOption, isQualityOption } from './field-mapping';
-import { QUALITY_OPTION_TO_ORIGIN, PRODUCT_METAFIELD_ORIGIN } from './origin-mapping';
+import {moneyFromMinor} from './types';
+import {isSizeOption, isMetalOption, isQualityOption, VARIANT_ORIGIN_METAFIELD_KEYS} from './field-mapping';
+import {QUALITY_OPTION_TO_ORIGIN, PRODUCT_METAFIELD_ORIGIN} from './origin-mapping';
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return Boolean(v) && typeof v === 'object' && !Array.isArray(v);
@@ -23,37 +25,41 @@ function asStr(v: unknown): string | undefined {
 }
 
 function parsePln(node: unknown): MoneyPln | undefined {
+  if (typeof node === 'string' || typeof node === 'number') {
+    const parsed = typeof node === 'number' ? node : parseFloat(String(node).replace(',', '.'));
+    if (!Number.isFinite(parsed)) return undefined;
+    return moneyFromMinor(Math.round(parsed * 100));
+  }
   if (!isRecord(node)) return undefined;
   const amount = node.amount ?? node.price;
-  const code = asStr(node.currencyCode) ?? asStr(node.currency);
-  if (code && code !== 'PLN') return undefined;
+  const code = asStr(node.currencyCode) ?? asStr(node.currency) ?? 'PLN';
+  if (code !== 'PLN') return undefined;
   let minor: number;
-  if (typeof amount === 'number') {
-    minor = Math.round(amount * 100);
-  } else if (typeof amount === 'string') {
+  if (typeof amount === 'number') minor = Math.round(amount * 100);
+  else if (typeof amount === 'string') {
     const parsed = parseFloat(amount.replace(',', '.'));
     if (!Number.isFinite(parsed)) return undefined;
     minor = Math.round(parsed * 100);
-  } else {
-    return undefined;
-  }
-  const display = (minor / 100).toLocaleString('pl-PL', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }) + ' zł';
-  return { amount_minor: minor, display_pl: display };
+  } else return undefined;
+  return moneyFromMinor(minor);
 }
 
-function readImage(node: unknown): ProductImageFact | undefined {
-  if (!isRecord(node)) return undefined;
+function readImage(node: unknown): ProductImageFact | null {
+  if (!isRecord(node)) return null;
   const url = asStr(node.url) ?? asStr(node.src);
-  if (url) return { url, alt: asStr(node.altText) ?? asStr(node.alt) };
-  const img = isRecord(node.image) ? node.image : isRecord(node.featuredImage) ? node.featuredImage : null;
-  if (img) {
+  if (url) return {url, alt: asStr(node.altText) ?? asStr(node.alt) ?? null};
+  const img = isRecord(node.image)
+    ? node.image
+    : isRecord(node.featuredImage)
+      ? node.featuredImage
+      : isRecord(node.featuredMedia) && isRecord((node.featuredMedia as {preview?: unknown}).preview)
+        ? ((node.featuredMedia as {preview: {image?: unknown}}).preview.image ?? null)
+        : null;
+  if (isRecord(img)) {
     const u = asStr(img.url) ?? asStr(img.src);
-    if (u) return { url: u, alt: asStr(img.altText) ?? asStr(img.alt) };
+    if (u) return {url: u, alt: asStr(img.altText) ?? asStr(img.alt) ?? null};
   }
-  return undefined;
+  return null;
 }
 
 function variantNodes(product: Record<string, unknown>): Record<string, unknown>[] {
@@ -66,35 +72,35 @@ function variantNodes(product: Record<string, unknown>): Record<string, unknown>
   return [];
 }
 
-function optionsList(variant: Record<string, unknown>): Array<{ name: string; value: string }> {
+function optionsList(variant: Record<string, unknown>): Array<{name: string; value: string}> {
   const raw = variant.options ?? variant.selectedOptions ?? variant.selected_options;
   if (!Array.isArray(raw)) return [];
-  const out: Array<{ name: string; value: string }> = [];
+  const out: Array<{name: string; value: string}> = [];
   for (const item of raw) {
     if (!isRecord(item)) continue;
     const name = asStr(item.name);
     const value = asStr(item.value) ?? asStr(item.label);
-    if (name && value) out.push({ name, value });
+    if (name && value) out.push({name, value});
   }
   return out;
 }
 
-function collectionHandles(product: Record<string, unknown>): string[] {
+function collectionNodes(product: Record<string, unknown>): {handle: string; title: string}[] {
   const col = product.collections;
-  const handles: string[] = [];
+  const out: {handle: string; title: string}[] = [];
   const push = (node: unknown) => {
     if (!isRecord(node)) return;
     const h = asStr(node.handle);
-    if (h) handles.push(h);
+    if (h) out.push({handle: h, title: asStr(node.title) ?? h});
   };
   if (Array.isArray(col)) col.forEach(push);
   else if (isRecord(col) && Array.isArray(col.nodes)) col.nodes.forEach(push);
-  return handles;
+  return out;
 }
 
-function plainText(html: unknown): string | undefined {
-  if (typeof html !== 'string') return undefined;
-  const stripped = html
+function plainText(html: unknown): string {
+  if (typeof html !== 'string') return '';
+  return html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
@@ -102,56 +108,12 @@ function plainText(html: unknown): string | undefined {
     .replace(/&amp;/gi, '&')
     .replace(/\s+/g, ' ')
     .trim();
-  return stripped || undefined;
 }
 
-function resolveVariantOrigin(
-  variant: Record<string, unknown>,
-  product: Record<string, unknown>,
-  issues: DataIssue[],
-  variantId: string,
-): { origin: GemstoneOrigin; evidence?: OriginEvidence } {
-  const opts = optionsList(variant);
+type MetafieldEntry = {key: string; fullKey: string; value: string; namespace?: string};
 
-  // Step 1: quality option
-  const qualityOpt = opts.find((o) => isQualityOption(o.name));
-  if (qualityOpt) {
-    const normalized = qualityOpt.value.trim().toLowerCase();
-    const mapped = QUALITY_OPTION_TO_ORIGIN.get(normalized);
-    if (mapped) {
-      return { origin: mapped, evidence: { source: 'variant_option', raw_value: qualityOpt.value } };
-    }
-    issues.push({
-      field: 'variant_option_quality',
-      message: `Unknown quality option value: "${qualityOpt.value}"`,
-      variant_id: variantId,
-    });
-    return { origin: 'unknown', evidence: { source: 'variant_option', raw_value: qualityOpt.value } };
-  }
-
-  // Step 2: product metafield custom.gemstone_origin
-  const metafields = readMetafields(product);
-  const gemOrigin = metafields.find(
-    (m) => m.key === 'gemstone_origin' || m.fullKey === 'custom.gemstone_origin',
-  );
-  if (gemOrigin?.value) {
-    const normalized = gemOrigin.value.trim().toLowerCase();
-    const mapped = PRODUCT_METAFIELD_ORIGIN.get(normalized);
-    if (mapped) {
-      if (mapped === 'unknown' || mapped === 'mixed') {
-        return { origin: mapped, evidence: { source: 'product_metafield', raw_value: gemOrigin.value } };
-      }
-      return { origin: mapped, evidence: { source: 'product_metafield', raw_value: gemOrigin.value } };
-    }
-  }
-
-  return { origin: 'unknown' };
-}
-
-type MetafieldEntry = { key: string; fullKey?: string; value: string };
-
-function readMetafields(product: Record<string, unknown>): MetafieldEntry[] {
-  const raw = product.metafields;
+function readMetafields(node: Record<string, unknown>): MetafieldEntry[] {
+  const raw = node.metafields;
   const nodes: Record<string, unknown>[] = [];
   if (Array.isArray(raw)) {
     for (const n of raw) if (isRecord(n)) nodes.push(n);
@@ -164,27 +126,138 @@ function readMetafields(product: Record<string, unknown>): MetafieldEntry[] {
     const ns = asStr(n.namespace);
     const value = asStr(n.value);
     if (!key || !value) continue;
-    out.push({ key, fullKey: ns ? `${ns}.${key}` : key, value });
+    out.push({key, namespace: ns, fullKey: ns ? `${ns}.${key}` : key, value});
   }
   return out;
 }
 
+function productOptions(product: Record<string, unknown>): {name: string; values: string[]}[] {
+  const raw = product.options;
+  if (!Array.isArray(raw)) return [];
+  const out: {name: string; values: string[]}[] = [];
+  for (const o of raw) {
+    if (!isRecord(o)) continue;
+    const name = asStr(o.name);
+    if (!name) continue;
+    const values = Array.isArray(o.values)
+      ? o.values.filter((v): v is string => typeof v === 'string')
+      : [];
+    out.push({name, values});
+  }
+  return out;
+}
+
+function resolveVariantOrigin(
+  variant: Record<string, unknown>,
+  product: Record<string, unknown>,
+  issues: DataIssue[],
+  variantId: string,
+): {origin: VariantStoneOrigin; evidence: OriginEvidence[]; productOriginRaw: string | null} {
+  const evidence: OriginEvidence[] = [];
+  const opts = optionsList(variant);
+  let fromOption: VariantStoneOrigin | null = null;
+  let fromVariantMf: VariantStoneOrigin | null = null;
+  let fromProduct: VariantStoneOrigin | null = null;
+  let productOriginRaw: string | null = null;
+
+  const qualityOpt = opts.find((o) => isQualityOption(o.name));
+  if (qualityOpt) {
+    const normalized = qualityOpt.value.trim().toLowerCase();
+    const mapped = QUALITY_OPTION_TO_ORIGIN.get(normalized);
+    evidence.push({
+      source: 'variant_option',
+      optionName: qualityOpt.name,
+      value: qualityOpt.value,
+    });
+    if (mapped) {
+      fromOption = mapped;
+    } else {
+      issues.push({kind: 'unknown_quality_value', value: qualityOpt.value});
+      fromOption = 'unknown';
+    }
+  }
+
+  const vMfs = readMetafields(variant);
+  for (const allowed of VARIANT_ORIGIN_METAFIELD_KEYS) {
+    const hit = vMfs.find(
+      (m) =>
+        m.key === allowed.key &&
+        (!allowed.namespace || m.namespace === allowed.namespace || m.fullKey === `${allowed.namespace}.${allowed.key}`),
+    );
+    if (!hit) continue;
+    evidence.push({source: 'variant_metafield', key: hit.fullKey, value: hit.value});
+    const mapped = PRODUCT_METAFIELD_ORIGIN.get(hit.value.trim().toLowerCase());
+    if (mapped) fromVariantMf = mapped;
+  }
+
+  const pMfs = readMetafields(product);
+  const gemOrigin = pMfs.find(
+    (m) => m.key === 'gemstone_origin' || m.fullKey === 'custom.gemstone_origin',
+  );
+  if (gemOrigin?.value) {
+    productOriginRaw = gemOrigin.value;
+    evidence.push({
+      source: 'product_metafield',
+      key: gemOrigin.fullKey,
+      value: gemOrigin.value,
+    });
+    const normalized = gemOrigin.value.trim().toLowerCase();
+    const mapped = PRODUCT_METAFIELD_ORIGIN.get(normalized);
+    if (mapped === 'unknown') {
+      // do wyboru — rozstrzygają kroki 1–2
+      if (!fromOption && !fromVariantMf) {
+        issues.push({
+          kind: 'origin_choice_unresolved',
+          detail: 'product metafield do wyboru without variant origin',
+        });
+        fromProduct = 'unknown';
+      }
+    } else if (mapped === 'mixed') {
+      fromProduct = fromOption || fromVariantMf ? null : 'mixed';
+      if (!fromOption && !fromVariantMf) fromProduct = 'mixed';
+    } else if (mapped) {
+      fromProduct = mapped;
+    }
+  }
+
+  const specific = fromOption ?? fromVariantMf;
+  if (specific && fromProduct && specific !== fromProduct && fromProduct !== 'unknown' && fromProduct !== 'mixed') {
+    issues.push({
+      kind: 'origin_conflict',
+      detail: `variant=${specific} vs product=${fromProduct} (${variantId})`,
+    });
+  }
+
+  const origin = specific ?? fromProduct ?? 'unknown';
+  if (origin === 'unknown' && !fromOption && !fromVariantMf && !fromProduct) {
+    issues.push({kind: 'origin_unknown', variantIds: [variantId]});
+  }
+
+  return {origin, evidence, productOriginRaw};
+}
+
 export type NormalizeOptions = {
-  channel: 'epir' | 'kazka';
+  channel: BuyerChannelId | 'epir' | 'kazka';
   urlTemplate?: string;
+  fetchedAt?: string;
 };
 
-export function normalizeProduct(
-  raw: unknown,
-  options: NormalizeOptions,
-): ProductFacts | null {
+function resolveChannel(ch: NormalizeOptions['channel']): BuyerChannelId {
+  if (ch === 'epir') return 'epir-online-store';
+  if (ch === 'kazka') return 'kazka-hydrogen';
+  return ch;
+}
+
+export function normalizeProduct(raw: unknown, options: NormalizeOptions): ProductFacts | null {
   if (!isRecord(raw)) return null;
 
   const productId = asStr(raw.id) ?? asStr(raw.product_id);
   if (!productId) return null;
 
+  const channel = resolveChannel(options.channel);
   const issues: DataIssue[] = [];
   const variants: VariantFacts[] = [];
+  let productOriginRaw: string | null = null;
 
   for (const v of variantNodes(raw)) {
     const vId = asStr(v.id) ?? asStr(v.variant_id);
@@ -192,67 +265,98 @@ export function normalizeProduct(
     const opts = optionsList(v);
     const size = opts.find((o) => isSizeOption(o.name))?.value ?? null;
     const metal = opts.find((o) => isMetalOption(o.name))?.value ?? null;
-    const price = parsePln(v.price ?? v);
-    const available =
-      typeof v.availableForSale === 'boolean'
-        ? v.availableForSale
-        : typeof v.available === 'boolean'
-          ? v.available
-          : true;
-    const { origin, evidence } = resolveVariantOrigin(v, raw, issues, vId);
+    const price = parsePln(v.price ?? v) ?? moneyFromMinor(0);
+    const compareAtPrice = parsePln(v.compareAtPrice) ?? null;
+    let available: boolean;
+    if (typeof v.availableForSale === 'boolean') {
+      available = v.availableForSale;
+    } else if (typeof v.available === 'boolean') {
+      available = v.available;
+    } else {
+      available = false;
+      issues.push({kind: 'missing_availability', variantId: vId});
+    }
+
+    const resolved = resolveVariantOrigin(v, raw, issues, vId);
+    if (resolved.productOriginRaw) productOriginRaw = resolved.productOriginRaw;
 
     variants.push({
+      variantId: vId,
       variant_id: vId,
-      title: asStr(v.title),
-      sku: asStr(v.sku),
+      title: asStr(v.title) ?? '',
+      sku: asStr(v.sku) ?? null,
       available,
       price,
+      compareAtPrice,
       metal,
       size,
-      origin,
-      origin_evidence: evidence,
+      stoneOrigin: resolved.origin,
+      origin: resolved.origin,
+      originEvidence: resolved.evidence,
+      origin_evidence: resolved.evidence[0],
       image: readImage(v),
-      options: opts.length ? opts : undefined,
+      selectedOptions: opts,
     });
   }
 
-  let url: string | null = null;
-  if (options.channel === 'epir') {
+  let url = '';
+  if (channel === 'epir-online-store' || channel === 'epir-zareczyny') {
     const storeUrl = asStr(raw.onlineStoreUrl);
-    url = storeUrl ?? null;
-    if (!storeUrl) {
-      issues.push({
-        field: 'onlineStoreUrl',
-        message: 'Product has no onlineStoreUrl — not published on Online Store.',
-        product_id: productId,
-      });
-    }
-  } else if (options.channel === 'kazka') {
+    if (!storeUrl) return null;
+    url = storeUrl;
+  } else {
     const handle = asStr(raw.handle);
     if (handle && options.urlTemplate) {
       url = options.urlTemplate.replace('{handle}', handle);
     }
   }
 
-  const descriptionText =
-    plainText(raw.descriptionHtml) ??
-    plainText(raw.description) ??
-    plainText(raw.body_html);
+  const productType = asStr(raw.productType) ?? asStr(raw.product_type) ?? null;
+  if (!productType) issues.push({kind: 'missing_product_type'});
 
-  if (options.channel === 'epir' && !url) {
-    return null;
+  const metals = [...new Set(variants.map((v) => v.metal).filter((m): m is string => Boolean(m)))];
+  const sizes = [...new Set(variants.map((v) => v.size).filter((s): s is string => Boolean(s)))];
+  // stones z metapól — dopiero po inwentaryzacji
+  const stones: string[] = [];
+
+  const prices = variants.map((v) => v.price.minor);
+  const minMinor = prices.length ? Math.min(...prices) : 0;
+  const maxMinor = prices.length ? Math.max(...prices) : 0;
+
+  const metafields: Record<string, string | string[]> = {};
+  for (const m of readMetafields(raw)) {
+    if (m.fullKey === 'custom.gemstone_origin' || m.key === 'gemstone_origin') {
+      metafields[m.fullKey] = m.value;
+    }
   }
 
-  return {
+  const facts: ProductFacts = {
+    channel,
+    productId,
     product_id: productId,
-    handle: asStr(raw.handle),
-    title: asStr(raw.title) ?? asStr(raw.name),
-    descriptionText,
+    handle: asStr(raw.handle) ?? '',
+    title: asStr(raw.title) ?? asStr(raw.name) ?? '',
+    vendor: asStr(raw.vendor) ?? '',
+    productType,
     url,
-    vendor: asStr(raw.vendor),
-    collections: collectionHandles(raw),
     image: readImage(raw),
+    collections: collectionNodes(raw),
+    descriptionText: plainText(raw.descriptionHtml) || plainText(raw.description) || plainText(raw.body_html),
+    options: productOptions(raw),
     variants,
+    priceRange: {
+      min: moneyFromMinor(minMinor),
+      max: moneyFromMinor(maxMinor),
+      isFlat: minMinor === maxMinor,
+    },
+    stones,
+    metals,
+    sizes,
+    metafields,
+    productOriginRaw,
+    dataIssues: issues,
     issues,
+    fetchedAt: options.fetchedAt ?? new Date().toISOString(),
   };
+  return facts;
 }

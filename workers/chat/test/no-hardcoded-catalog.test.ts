@@ -7,12 +7,29 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 const FORBIDDEN = [
   'stone-origin.ts',
-  'kazka-assortment',
-  'grounded-turn',
+  'stone-intent.ts',
+  'stone-retrieval.ts',
   'buyer-reply-guard',
-  'pierscionek-soliter',
-  '4500724875369',
+  'buyer-reply-pipeline',
+  'grounded-turn',
+  'turn-seed',
+  'page-product-card',
+  'store-facts',
+  'live-store-product',
+  'kazka-assortment',
+  'catalog-for-model',
+  'kazka-hydrate',
+  'AUDITED_SAPPHIRE_HANDLES',
+  'KNOWN_NATURAL_HANDLES',
+  'KNOWN_LAB_HANDLES',
+  'soliter',
+  'pierscionek-srebrny-fale-wody-z-szafirem',
+  'szeroka-obraczka-kora-drzewa-z-perydotem',
+  'zloty-pierscionek-z-naturalnym-szafirem',
+  'obraczka-z-szafirem-epir-jewellery',
   'obraczki-plecionka',
+  '4500724875369',
+  '15064341578060',
 ];
 
 function walk(dir: string, acc: string[] = []): string[] {
@@ -31,8 +48,9 @@ describe('no hardcoded catalog legacy in src/', () => {
     const hits: string[] = [];
     for (const file of files) {
       const text = readFileSync(file, 'utf8');
+      const lower = text.toLowerCase();
       for (const needle of FORBIDDEN) {
-        if (text.includes(needle)) hits.push(`${file}: ${needle}`);
+        if (lower.includes(needle.toLowerCase())) hits.push(`${file}: ${needle}`);
       }
     }
     expect(hits).toEqual([]);

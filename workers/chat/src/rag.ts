@@ -4,41 +4,16 @@
  * Funkcje RAG (Retrieval-Augmented Generation) używane przez worker/src/index.ts:
  * - searchShopPoliciesAndFaqs: wyszukuje w lokalnej bazie (Vectorize) lub przez MCP
  * - searchShopPoliciesAndFaqsWithMCP: wymusza użycie MCP -> zwraca wynik z narzędzi sklepu
- * - searchProductCatalogWithMCP: prosty wrapper do wyszukiwania katalogu produktów przez MCP
  * - formatRagContextForPrompt: buduje string z wyników RAG do wstrzyknięcia w prompt LLM
  *
  * ZASADA: ŻADNYCH sekretów w kodzie. Wszystkie klucze / tokeny pochodzą z env (wrangler secrets / vars).
  */
 
-import { callMcpToolDirect, getMcpEndpoint } from './mcp_server';
+import { callMcpToolDirect } from './mcp_server';
 import { isString, isRecord, safeJsonParse, asStringField } from './utils/json';
 
 /** Kanoniczny endpoint MCP sklepu EPIR (zgodny z EPIR_AI_BIBLE / SHOP_DOMAIN). */
 const CANONICAL_MCP_URL = 'https://epir-art-silver-jewellery.myshopify.com/api/mcp';
-
-const MCP_TIMEOUT_MS = 5000;
-const CATALOG_FALLBACK = {
-  products: [],
-  system_note: 'Sklep jest chwilowo niedostępny (Connection Timeout). Poinformuj klienta o problemie technicznym.'
-};
-
-function mcpEndpointFromEnvOrDomain(envOrShopDomain: { MCP_ENDPOINT?: string; SHOP_DOMAIN?: string } | string | undefined): string {
-  if (!envOrShopDomain) return '';
-  if (typeof envOrShopDomain === 'object') return getMcpEndpoint(envOrShopDomain);
-  return `https://${String(envOrShopDomain).replace(/\/$/, '')}/api/mcp`;
-}
-
-function safeArgsSummary(args: any) {
-  if (!args || typeof args !== 'object') return {};
-  const summary: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(args)) {
-    if (typeof value === 'string') summary[key] = `[len:${value.length}]`;
-    else if (Array.isArray(value)) summary[key] = `array(len=${value.length})`;
-    else if (value && typeof value === 'object') summary[key] = 'object';
-    else summary[key] = value;
-  }
-  return summary;
-}
 
 export type VectorizeIndex = {
   // Abstrakcja: implementacja zależy od bindingu Vectorize w Cloudflare (typu API).
@@ -180,27 +155,6 @@ export function formatRagForPrompt(ctx: RagContext): string {
 }
 
 /**
- * Extract keywords from user query for Shopify search
- * Removes filler words and extracts product-related terms
- */
-function extractKeywords(query: string): string {
-  const lowerQuery = query.toLowerCase();
-  
-  // Remove common Polish filler words
-  const fillerWords = ['wymien', 'pokaż', 'pokaz', 'mi', 'masz', 'czy', 'jest', 'jakies', 'jakie', 'szukam', 'poszukuje', 'poszukuję', 'chce', 'chcę'];
-  
-  let keywords = lowerQuery;
-  fillerWords.forEach(word => {
-    keywords = keywords.replace(new RegExp(`\\b${word}\\b`, 'gi'), '');
-  });
-  
-  // Clean up extra spaces
-  keywords = keywords.replace(/\s+/g, ' ').trim();
-  
-  return keywords || lowerQuery; // fallback to original if empty
-}
-
-/**
  * Direct MCP tool call without HTTP - calls internal functions directly.
  * This replaces the HTTP fetch to avoid WORKER_ORIGIN configuration issues.
  * 
@@ -315,138 +269,26 @@ async function callMcpToolWithFallback(toolName: string, args: any, env: any): P
   }
 }
 
-/**
- * searchProductCatalogWithMCP
- * - używa MCP jako PRIMARY source dla katalogu produktów
- */
+/** Legacy catalog MCP removed (etap 1) — buyer catalog uses UCP, not /api/mcp. */
 export async function searchProductCatalogWithMCP(
-  query: string,
-  envOrShopDomain: { MCP_ENDPOINT?: string; SHOP_DOMAIN?: string } | string | undefined,
-  context?: string
-): Promise<any> {
-  // Test shim: some tests call searchProductCatalogWithMCP('query', {}) expecting a simple object
-  if (envOrShopDomain && typeof envOrShopDomain === 'object') {
-    const e = envOrShopDomain as { MCP_ENDPOINT?: string; SHOP_DOMAIN?: string };
-    if (!e.MCP_ENDPOINT && !e.SHOP_DOMAIN) {
-      if (query === 'error') return { error: 'Tool search_catalog failed: Mocked MCP error' };
-      return { result: `Products for query: ${query}` };
-    }
-  }
-  const endpoint = mcpEndpointFromEnvOrDomain(envOrShopDomain);
-  if (!endpoint) return JSON.stringify(CATALOG_FALLBACK);
-  if (!endpoint) return JSON.stringify(CATALOG_FALLBACK);
-
-  const contextValue = context && context.trim().length ? context.trim() : 'biżuteria';
-  const payload = {
-    jsonrpc: '2.0',
-    method: 'tools/call',
-    params: {
-      name: 'search_catalog',
-      arguments: {
-        catalog: {
-          query,
-          context: { intent: contextValue },
-          pagination: { limit: 3 },
-        },
-      }
-    },
-    id: Date.now()
-  };
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), MCP_TIMEOUT_MS);
-
-  try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    });
-
-    console.log('[mcp] call', { tool: 'search_catalog', status: res.status, args: safeArgsSummary(payload.params?.arguments) });
-
-    if (!res.ok) {
-      if (res.status === 522) return JSON.stringify(CATALOG_FALLBACK);
-      const txt = await res.text().catch(() => '<no body>');
-      throw new Error(`MCP search_catalog error ${res.status}: ${txt}`);
-    }
-
-    let j: unknown = await res.json().catch(() => null);
-    if (isString(j)) {
-      const parsed = safeJsonParse(j);
-      if (parsed) j = parsed as unknown;
-    }
-
-    if (isRecord(j) && 'error' in j && j.error) {
-      const errStr = JSON.stringify((j as Record<string, unknown>).error);
-      throw new Error(`MCP tool call failed: ${errStr}`);
-    }
-
-    if (isRecord(j) && 'result' in j && isRecord(j.result) && Array.isArray((j.result as McpResult).content)) {
-      const textContent = (j.result as McpResult).content!.find((c: McpContentItem) => c.type === 'text');
-      if (textContent?.text) {
-        const maybeParsed = safeJsonParse(textContent.text);
-        if (typeof maybeParsed === 'string') return maybeParsed;
-        if (maybeParsed && typeof maybeParsed === 'object') return JSON.stringify(maybeParsed);
-        return String(textContent.text);
-      }
-      return '';
-    }
-
-    return JSON.stringify(j ?? {});
-  } catch (e: any) {
-    const isAbortError = e instanceof Error && e.name === 'AbortError';
-    const isNetworkError = e instanceof TypeError;
-    if (isAbortError || isNetworkError) return JSON.stringify(CATALOG_FALLBACK);
-    console.error('[RAG] ❌ searchProductCatalogWithMCP MCP failure:', e);
-    return JSON.stringify(CATALOG_FALLBACK);
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  _query: string,
+  _envOrShopDomain?: { MCP_ENDPOINT?: string; SHOP_DOMAIN?: string } | string,
+  _context?: string,
+): Promise<string> {
+  return '';
 }
 
-/**
- * searchProductsAndCartWithMCP
- * - PRIMARY: MCP tools dla produktów i koszyka (search_catalog, update_cart, get_cart)
- * - FALLBACK: Vectorize dla offline product search
- * - Zwraca sformatowany kontekst dla promptu AI
- */
+/** Legacy product/cart MCP context removed (etap 1). */
 export async function searchProductsAndCartWithMCP(
-  query: string,
-  shopDomain: string | undefined,
-  env: any,
-  cartId?: string | null,
-  intent?: 'search' | 'cart' | 'order',
-  vectorIndex?: VectorizeIndex,
-  aiBinding?: any
+  _query: string,
+  _shopDomain?: string,
+  _env?: unknown,
+  _cartId?: string | null,
+  _intent?: 'search' | 'cart' | 'order',
+  _vectorIndex?: VectorizeIndex,
+  _aiBinding?: unknown,
 ): Promise<string> {
-  let output: string = '';
-
-  try {
-    // Legacy /api/mcp cart + order tools removed (etap 1). Buyer path uses UCP + channel gate.
-
-    // PRODUCT SEARCH (zawsze dla intent = 'search')
-    if (intent === 'search' || !intent) {
-      console.log('[RAG] 🔍 Searching products via MCP...');
-      const productContext = await searchProductCatalogWithMCP(
-        query,
-        env,
-        'biżuteria'
-      );
-      if (productContext) {
-        output += `\n${productContext}\n`;
-      }
-    }
-
-  // Always return a string, never false/undefined
-  // If output is empty, return empty string
-  const result = typeof output === 'string' ? output.trim() : '';
-  return result || '';
-  } catch (e) {
-    console.error('[RAG] ❌ searchProductsAndCartWithMCP error:', e);
-    return '';
-  }
+  return '';
 }
 
 /**

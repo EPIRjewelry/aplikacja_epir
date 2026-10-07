@@ -1,16 +1,15 @@
 /**
- * Pełne stronicowane pobranie katalogu GK (kazka-hydrogen) przez Storefront GraphQL.
- * Wyłącznie PUBLIC_STOREFRONT_API_TOKEN_KAZKA — bez fallbacku do Admin / innego tokenu.
+ * Stronicowane pobranie katalogu GK (Storefront) — mała strona, kontrola błędów złożoności.
+ * Wyłącznie PUBLIC_STOREFRONT_API_TOKEN_KAZKA.
  */
 import type {Env} from '../config/bindings';
 import {SHOPIFY_STOREFRONT_API_VERSION} from '../config/shopify-api-version';
+import {STOREFRONTS} from '../config/storefronts';
 import {STOREFRONT_METAFIELD_IDENTIFIERS} from './field-mapping';
 import {normalizeProduct} from './normalize';
 import type {ProductFacts} from './types';
 
-export const KAZKA_PRODUCT_URL_TEMPLATE = 'https://kazka.epirbizuteria.pl/products/{handle}';
-
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 10;
 
 type SfPage = {
   products?: {
@@ -26,45 +25,11 @@ function metafieldIdentifiersGql(): string {
   return `[${parts.join(', ')}]`;
 }
 
-function buildStorefrontProductsQuery(): string {
-  const ids = metafieldIdentifiersGql();
-  return `
-    query CatalogSnapshotGk($cursor: String) {
-      products(first: ${PAGE_SIZE}, after: $cursor) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          id
-          handle
-          title
-          vendor
-          productType
-          descriptionHtml
-          featuredImage { url altText }
-          collections(first: 25) {
-            nodes { handle title }
-          }
-          options { name values }
-          metafields(identifiers: ${ids}) {
-            namespace
-            key
-            value
-          }
-          variants(first: 100) {
-            nodes {
-              id
-              title
-              sku
-              availableForSale
-              price { amount currencyCode }
-              compareAtPrice { amount currencyCode }
-              selectedOptions { name value }
-              image { url altText }
-            }
-          }
-        }
-      }
-    }
-  `;
+function kazkaUrlTemplate(): string {
+  return (
+    STOREFRONTS.kazka.productUrlTemplate ??
+    'https://kazka.epirbizuteria.pl/products/{handle}'
+  );
 }
 
 async function storefrontGraphql(
@@ -75,7 +40,7 @@ async function storefrontGraphql(
   const shop = env.SHOP_DOMAIN?.trim();
   const token = env.PUBLIC_STOREFRONT_API_TOKEN_KAZKA?.trim();
   if (!shop) throw new Error('SHOP_DOMAIN missing');
-  if (!token) throw new Error('PUBLIC_STOREFRONT_API_TOKEN_KAZKA missing');
+  if (!token) throw new Error('no_token');
 
   const endpoint = `https://${shop}/api/${SHOPIFY_STOREFRONT_API_VERSION}/graphql.json`;
   const res = await fetch(endpoint, {
@@ -86,53 +51,91 @@ async function storefrontGraphql(
     },
     body: JSON.stringify({query, variables}),
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Storefront GraphQL HTTP ${res.status}: ${text.slice(0, 200)}`);
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: SfPage;
+    errors?: Array<{message?: string}>;
+  };
+  const msg = JSON.stringify(json.errors ?? []);
+  if (msg.includes('THROTTLED') || msg.toLowerCase().includes('throttl')) {
+    throw new Error('THROTTLED');
   }
-  const json = (await res.json()) as {data?: SfPage; errors?: unknown};
-  if (json.errors) {
-    throw new Error(`Storefront GraphQL errors: ${JSON.stringify(json.errors).slice(0, 400)}`);
+  if (msg.toLowerCase().includes('max query cost') || msg.includes('MAX_COST')) {
+    throw new Error('MAX_COST_EXCEEDED');
+  }
+  if (!res.ok) throw new Error(`Storefront GraphQL HTTP ${res.status}`);
+  if (json.errors?.length) {
+    throw new Error(`Storefront GraphQL errors: ${msg.slice(0, 400)}`);
   }
   return json.data ?? {};
 }
 
-/**
- * Pobiera i normalizuje produkty widoczne w kanale Storefront KAZKA.
- * URL tylko dla produktów zwróconych przez ten kanał (szablon handle).
- */
 export async function fetchGkCatalogProducts(env: Env): Promise<ProductFacts[]> {
   if (!env.PUBLIC_STOREFRONT_API_TOKEN_KAZKA?.trim()) {
     throw new Error('no_token');
   }
 
-  const query = buildStorefrontProductsQuery();
+  const ids = metafieldIdentifiersGql();
+  const query = `
+    query CatalogSnapshotGk($cursor: String) {
+      products(first: ${PAGE_SIZE}, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id handle title vendor productType descriptionHtml
+          featuredImage { url altText }
+          collections(first: 5) { nodes { handle title } }
+          options { name values }
+          metafields(identifiers: ${ids}) { namespace key value }
+          variants(first: 25) {
+            nodes {
+              id title sku availableForSale
+              price { amount currencyCode }
+              compareAtPrice { amount currencyCode }
+              selectedOptions { name value }
+              image { url altText }
+            }
+          }
+        }
+      }
+    }
+  `;
+
   const out: ProductFacts[] = [];
   let cursor: string | null = null;
   let pages = 0;
+  const fetchedAt = new Date().toISOString();
+  const urlTemplate = kazkaUrlTemplate();
 
   for (;;) {
-    const data = await storefrontGraphql(env, query, {cursor});
+    let data: SfPage | null = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        data = await storefrontGraphql(env, query, {cursor});
+        break;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('THROTTLED') || msg.includes('MAX_COST')) {
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+          continue;
+        }
+        throw err;
+      }
+    }
+    if (!data) throw new Error('Storefront throttle exhausted');
     pages += 1;
-    const nodes = data.products?.nodes ?? [];
-    for (const raw of nodes) {
+    for (const raw of data.products?.nodes ?? []) {
       const facts = normalizeProduct(raw, {
-        channel: 'kazka',
-        urlTemplate: KAZKA_PRODUCT_URL_TEMPLATE,
+        channel: 'kazka-hydrogen',
+        urlTemplate,
+        fetchedAt,
       });
       if (facts) out.push(facts);
     }
     const pageInfo = data.products?.pageInfo;
     if (!pageInfo?.hasNextPage || !pageInfo.endCursor) break;
     cursor = pageInfo.endCursor;
-    if (pages > 500) {
-      console.warn('[facts.fetch-gk] page safety stop at 500');
-      break;
-    }
+    if (pages > 2000) break;
   }
 
-  console.log(
-    JSON.stringify({tag: 'facts.fetch_gk', products: out.length, pages}),
-  );
+  console.log(JSON.stringify({tag: 'facts.fetch_gk', products: out.length, pages}));
   return out;
 }

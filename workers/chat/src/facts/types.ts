@@ -1,89 +1,121 @@
 /** Cena w PLN — grosze (minor units). */
 export type MoneyPln = {
-  amount_minor: number;
-  display_pl: string;
+  minor: number;
+  currency: 'PLN';
+  /** Prefiks display — opcjonalny dla UI. */
+  display_pl?: string;
+  /** Alias kompatybilności ze starszymi testami. */
+  amount_minor?: number;
 };
 
-export type GemstoneOrigin = 'natural' | 'lab_grown' | 'cultured' | 'mixed' | 'unknown';
+export type VariantStoneOrigin = 'natural' | 'lab_grown' | 'cultured' | 'mixed' | 'unknown';
+/** @deprecated alias */
+export type GemstoneOrigin = VariantStoneOrigin;
 
-export type OriginEvidence = {
-  source: 'variant_option' | 'variant_metafield' | 'product_metafield';
-  raw_value: string;
-};
+export type OriginEvidence =
+  | {source: 'variant_option'; optionName: string; value: string}
+  | {source: 'variant_metafield'; key: string; value: string}
+  | {source: 'product_metafield'; key: string; value: string};
 
-export type DataIssue = {
-  field: string;
-  message: string;
-  product_id?: string;
-  variant_id?: string;
-};
-
-export type VariantFacts = {
-  variant_id: string;
-  title?: string;
-  sku?: string;
-  available: boolean;
-  price?: MoneyPln;
-  metal?: string | null;
-  size?: string | null;
-  origin?: GemstoneOrigin;
-  origin_evidence?: OriginEvidence;
-  image?: ProductImageFact;
-  options?: Array<{ name: string; value: string }>;
-};
+export type DataIssue =
+  | {kind: 'origin_unknown'; variantIds: string[]}
+  | {kind: 'origin_conflict'; detail: string}
+  | {kind: 'unknown_quality_value'; value: string}
+  | {kind: 'missing_product_type'}
+  | {kind: 'vendor_channel_mismatch'; vendor: string}
+  | {kind: 'missing_storefront_metafield_access'; key: string}
+  | {kind: 'missing_availability'; variantId: string}
+  | {kind: 'origin_choice_unresolved'; detail: string}
+  /** Kompatybilność: starsze testy używały field/message */
+  | {field: string; message: string; product_id?: string; variant_id?: string};
 
 export type ProductImageFact = {
   url: string;
-  alt?: string;
+  alt: string | null;
+};
+
+export type VariantFacts = {
+  variantId: string;
+  title: string;
+  image: ProductImageFact | null;
+  sku: string | null;
+  price: MoneyPln;
+  compareAtPrice: MoneyPln | null;
+  available: boolean;
+  selectedOptions: {name: string; value: string}[];
+  metal: string | null;
+  size: string | null;
+  stoneOrigin: VariantStoneOrigin;
+  originEvidence: OriginEvidence[];
+  /** Alias snake_case dla kompatybilności testów */
+  variant_id?: string;
+  origin?: VariantStoneOrigin;
+  origin_evidence?: OriginEvidence;
 };
 
 export type ProductFacts = {
-  product_id: string;
-  handle?: string;
-  title?: string;
-  descriptionText?: string;
-  url?: string | null;
-  vendor?: string;
-  collections: string[];
-  image?: ProductImageFact;
+  channel: BuyerChannelId;
+  productId: string;
+  handle: string;
+  title: string;
+  vendor: string;
+  productType: string | null;
+  url: string;
+  image: ProductImageFact | null;
+  collections: {handle: string; title: string}[];
+  descriptionText: string;
+  options: {name: string; values: string[]}[];
   variants: VariantFacts[];
-  issues: DataIssue[];
-};
-
-export type ProductMatch = {
-  product: ProductFacts;
-  matchingVariants: VariantFacts[];
-  matchingPriceRange?: { min: MoneyPln; max: MoneyPln };
-  isFlat: boolean;
+  priceRange: {min: MoneyPln; max: MoneyPln; isFlat: boolean};
+  stones: string[];
+  metals: string[];
+  sizes: string[];
+  metafields: Record<string, string | string[]>;
+  productOriginRaw: string | null;
+  dataIssues: DataIssue[];
+  fetchedAt: string;
+  /** Aliasy kompatybilności */
+  product_id?: string;
+  issues?: DataIssue[];
 };
 
 export type CatalogFilters = {
   text?: string;
-  origin?: GemstoneOrigin[];
+  productType?: string[];
+  stone?: string[];
+  origin?: VariantStoneOrigin[];
   metal?: string[];
-  priceMin?: number;
-  priceMax?: number;
-  sizeMin?: string;
-  sizeMax?: string;
+  priceMin?: MoneyPln | number;
+  priceMax?: MoneyPln | number;
+  size?: string;
+  availableOnly?: boolean;
   available?: boolean;
 };
 
-export type CatalogFacets = {
-  origins: Map<GemstoneOrigin, number>;
-  metals: Map<string, number>;
-  priceRange?: { min: number; max: number };
-  totalProducts: number;
+export type ProductMatch = {
+  product: ProductFacts;
+  matchingVariantIds: string[];
+  matchingVariants: VariantFacts[];
+  matchingPriceRange: {min: MoneyPln; max: MoneyPln; isFlat: boolean};
+  isFlat: boolean;
 };
 
 export type CatalogFacetsDto = {
   total: number;
-  byOrigin: Record<GemstoneOrigin, number>;
+  byOrigin: Record<VariantStoneOrigin, number>;
   byStone: Record<string, number>;
   byMetal: Record<string, number>;
   byProductType: Record<string, number>;
 };
 
-export type BuyerChannelId = 'epir-online-store' | 'kazka-hydrogen';
+/** @deprecated — używaj CatalogFacetsDto */
+export type CatalogFacets = CatalogFacetsDto & {
+  origins?: Map<VariantStoneOrigin, number>;
+  metals?: Map<string, number>;
+  totalProducts?: number;
+};
+
+export type BuyerChannelId = 'epir-online-store' | 'kazka-hydrogen' | 'epir-zareczyny';
 
 export interface CatalogFactsRepository {
   readonly channel: BuyerChannelId;
@@ -100,3 +132,14 @@ export interface CatalogFactsRepository {
   getById(productId: string): Promise<ProductFacts | null>;
   getByHandle(handle: string): Promise<ProductFacts | null>;
 }
+
+function moneyFromMinor(minor: number): MoneyPln {
+  const display =
+    (minor / 100).toLocaleString('pl-PL', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }) + ' zł';
+  return {minor, currency: 'PLN', display_pl: display, amount_minor: minor};
+}
+
+export {moneyFromMinor};

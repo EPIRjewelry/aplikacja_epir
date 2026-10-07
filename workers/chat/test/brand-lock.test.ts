@@ -103,14 +103,11 @@ describe('guardBuyerReply', () => {
     expect(guarded.text).toContain('EPIR Art Jewellery');
   });
 
-  it('drops a Soliter recommendation on EPIR and keeps the rest of the reply', () => {
-    const guarded = guardBuyerReply(
-      'Mogę zostać przy złocie z tej kolekcji. Polecam Pierścionek Soliter.',
-      {side: 'epir'},
-    );
-    expect(guarded.rewritten).toBe(true);
-    expect(guarded.text).not.toMatch(/soliter/i);
-    expect(guarded.text).toContain('złocie');
+  it('leaves product recommendations without Kazka advisor copy unchanged on EPIR', () => {
+    const text = 'Mogę zostać przy złocie z tej kolekcji. Oto trzy pierścionki z oferty.';
+    const guarded = guardBuyerReply(text, {side: 'epir'});
+    expect(guarded.rewritten).toBe(false);
+    expect(guarded.text).toBe(text);
   });
 
   it('leaves a Kazka reply unchanged on the Kazka side', () => {
@@ -130,16 +127,16 @@ describe('projectHistoryForBrand', () => {
           role: 'assistant',
           content: 'Witaj! Jestem Gemma, doradca marki Kazka Jewelry. Jak mogę Ci dzisiaj pomóc? ✨',
         },
-        {role: 'assistant', content: 'Polecam Pierścionek Soliter.'},
-        {role: 'tool', content: 'Pierścionek Soliter'},
+        {role: 'assistant', content: 'Oto trzy pierścionki z oferty EPIR.'},
+        {role: 'tool', content: 'catalog ok'},
       ],
       'epir',
     );
     expect(projected[0]).toEqual({role: 'user', content: 'Hej'});
     expect(projected[1]?.content).not.toContain('Kazka Jewelry');
     expect(String(projected[1]?.content)).toContain('EPIR Art Jewellery');
-    expect(projected[2]?.content).not.toMatch(/soliter/i);
-    expect(projected[3]?.content).toBe('Pierścionek Soliter');
+    expect(projected[2]?.content).toContain('pierścionki');
+    expect(projected[3]?.content).toBe('catalog ok');
   });
 
   it('keeps the Kazka greeting when the reader is Kazka', () => {

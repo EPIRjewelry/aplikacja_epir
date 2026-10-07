@@ -49,11 +49,6 @@ async function policiesCacheKey(query: string): Promise<string> {
 
 type PoliciesCacheEntry = { payload: unknown; cached_at: number };
 
-const CATALOG_FALLBACK = {
-  products: [],
-  system_note: 'Sklep jest chwilowo niedostępny (Connection Timeout). Poinformuj klienta o problemie technicznym.'
-};
-
 function safeArgsSummary(args: any) {
   if (!args || typeof args !== 'object') return {};
   const summary: Record<string, unknown> = {};
@@ -326,9 +321,6 @@ export async function callShopifyMcpTool(
     console.log('[Shopify MCP] call', { tool: toolName, status: response.status, args: safeArgsSummary(normalizedArgs) });
 
     if (!response.ok) {
-      if (toolName === 'search_catalog' && response.status === 522) {
-        return CATALOG_FALLBACK;
-      }
       const text = await response.text().catch(() => '<no body>');
       throw new Error(`Shopify MCP HTTP ${response.status}: ${text}`);
     }
@@ -365,13 +357,6 @@ export async function callShopifyMcpTool(
     }
 
     return result;
-  } catch (err: any) {
-    const isAbortError = err instanceof Error && err.name === 'AbortError';
-    const isNetworkError = err instanceof TypeError;
-    if (toolName === 'search_catalog' && (isAbortError || isNetworkError)) {
-      return CATALOG_FALLBACK;
-    }
-    throw err;
   } finally {
     clearTimeout(timeoutId);
   }

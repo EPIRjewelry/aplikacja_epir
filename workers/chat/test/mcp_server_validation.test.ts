@@ -23,7 +23,7 @@ describe('callMcpToolDirect validation', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('clamps search_catalog catalog.pagination.limit to 3 on outbound MCP call', async () => {
+  it('passes search_catalog catalog.pagination.limit through (no hard clamp to 3)', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -50,7 +50,7 @@ describe('callMcpToolDirect validation', () => {
     const url = String(fetchMock.mock.calls[0][0]);
     expect(url).toContain('/api/ucp/mcp');
     const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
-    expect(body.params.arguments.catalog.pagination.limit).toBe(3);
+    expect(body.params.arguments.catalog.pagination.limit).toBe(50);
     expect(body.params.arguments.meta).toEqual({
       'ucp-agent': {
         profile: 'https://asystent.epirbizuteria.pl/.well-known/ucp-agent-profile.json',

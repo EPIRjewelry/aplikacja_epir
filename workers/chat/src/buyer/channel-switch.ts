@@ -1,22 +1,29 @@
-import type {BrandLockResult} from '../brand-lock';
+import type {ChatBrandLock} from '../brand-lock';
 
 /** Kanały kupującego objęte przebudową Gemma (etap 1). */
-export type BuyerChannelId = 'epir-online-store' | 'kazka-hydrogen';
+export type BuyerChannelId = 'epir-online-store' | 'kazka-hydrogen' | 'epir-zareczyny';
 
-export type BuyerChannelMode = 'off' | 'internal' | 'on';
+export type ChannelMode = 'off' | 'internal' | 'on';
 
-const VALID_MODES: ReadonlySet<BuyerChannelMode> = new Set(['off', 'internal', 'on']);
+/** @deprecated alias — używaj ChannelMode */
+export type BuyerChannelMode = ChannelMode;
+
+const VALID_MODES: ReadonlySet<ChannelMode> = new Set(['off', 'internal', 'on']);
 
 export function channelKvKey(channelId: BuyerChannelId): string {
   return `gemma:channel:${channelId}`;
 }
 
 /**
- * Mapuje brand-lock (serwer) na kanał faktów. Zaręczyny i nieznane → brak kanału kupującego.
+ * Mapuje brand-lock (serwer) na kanał kupującego.
+ * Zaręczyny → `epir-zareczyny` (ta sama migawka GE, ton EPIR).
  */
-export function channelIdFromBrandLock(lock: Pick<BrandLockResult, 'brandKey' | 'channel'>): BuyerChannelId | null {
+export function channelIdFromBrandLock(
+  lock: Pick<ChatBrandLock, 'brandKey' | 'channel'>,
+): BuyerChannelId | null {
   const key = (lock.brandKey ?? '').trim().toLowerCase();
   if (key === 'kazka' || lock.channel === 'hydrogen-kazka') return 'kazka-hydrogen';
+  if (key === 'zareczyny' || lock.channel === 'hydrogen-zareczyny') return 'epir-zareczyny';
   if (
     key === 'epir' ||
     key === 'online-store' ||
@@ -28,27 +35,31 @@ export function channelIdFromBrandLock(lock: Pick<BrandLockResult, 'brandKey' | 
   return null;
 }
 
-function parseMode(raw: string | null | undefined): BuyerChannelMode | null {
+/**
+ * Migawka katalogu używana przez kanał (zaręczyny dzielą GE).
+ */
+export function catalogSnapshotChannel(channel: BuyerChannelId): 'epir-online-store' | 'kazka-hydrogen' {
+  if (channel === 'kazka-hydrogen') return 'kazka-hydrogen';
+  return 'epir-online-store';
+}
+
+function parseMode(raw: string | null | undefined): ChannelMode | null {
   if (!raw) return null;
-  const v = raw.trim().toLowerCase() as BuyerChannelMode;
+  const v = raw.trim().toLowerCase() as ChannelMode;
   return VALID_MODES.has(v) ? v : null;
 }
 
 /**
  * Fail-closed: brak bindingu, błąd KV lub nieznana wartość → `off`.
- * Jedyny binding: `GEMMA_RUNTIME_KV` (operator tworzy namespace lokalnie).
  */
 export async function readChannelMode(
   env: {GEMMA_RUNTIME_KV?: KVNamespace},
   channelId: BuyerChannelId,
-): Promise<BuyerChannelMode> {
+): Promise<ChannelMode> {
   if (!env.GEMMA_RUNTIME_KV) return 'off';
   try {
     const raw = await env.GEMMA_RUNTIME_KV.get(channelKvKey(channelId));
-    const mode = parseMode(raw);
-    if (mode) return mode;
-    if (raw) return 'off';
-    return 'off';
+    return parseMode(raw) ?? 'off';
   } catch (err) {
     console.warn('[buyer.channel_switch] KV read failed — fail-closed', err);
     return 'off';

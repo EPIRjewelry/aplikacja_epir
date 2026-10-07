@@ -1,5 +1,5 @@
 import type {Env} from '../config/bindings';
-import type {BrandLockResult} from '../brand-lock';
+import type {ChatBrandLock} from '../brand-lock';
 import {channelIdFromBrandLock, readChannelMode} from './channel-switch';
 
 function buyerResponseHeaders(env: Env, request: Request): Record<string, string> {
@@ -36,7 +36,7 @@ export const BUYER_UNAVAILABLE_JSON = {
 export async function handleBuyerTurn(
   request: Request,
   env: Env,
-  brandLock: BrandLockResult,
+  brandLock: ChatBrandLock,
 ): Promise<Response> {
   const channelId = channelIdFromBrandLock(brandLock);
   const mode = channelId ? await readChannelMode(env, channelId) : 'off';

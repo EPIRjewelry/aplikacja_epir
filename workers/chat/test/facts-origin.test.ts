@@ -1,13 +1,19 @@
 import {describe, expect, it} from 'vitest';
 import {normalizeProduct} from '../src/facts/normalize';
 
+const base = {
+  id: 'gid://shopify/Product/1',
+  handle: 'ring-a',
+  onlineStoreUrl: 'https://epirbizuteria.pl/products/ring-a',
+  title: 'Pierścionek z kamieniem naturalnym',
+  tags: ['kamienie naturalne w srebrze', 'pierścionek z kamieniem naturalnym'],
+};
+
 describe('facts origin resolution', () => {
-  it('LAB option → lab_grown', () => {
+  it('LAB → lab_grown; tags/title with naturalny do not change origin', () => {
     const p = normalizeProduct(
       {
-        id: 'gid://shopify/Product/1',
-        handle: 'ring-a',
-        onlineStoreUrl: 'https://epirbizuteria.pl/products/ring-a',
+        ...base,
         variants: {
           nodes: [
             {
@@ -18,20 +24,17 @@ describe('facts origin resolution', () => {
             },
           ],
         },
-        tags: ['kamień naturalny'],
-        title: 'Pierścionek naturalny',
       },
       {channel: 'epir'},
     );
-    expect(p?.variants[0].origin).toBe('lab_grown');
+    expect(p?.variants[0].stoneOrigin).toBe('lab_grown');
   });
 
   it('D/VVS2 → natural', () => {
     const p = normalizeProduct(
       {
+        ...base,
         id: 'gid://shopify/Product/2',
-        handle: 'ring-b',
-        onlineStoreUrl: 'https://epirbizuteria.pl/products/ring-b',
         variants: {
           nodes: [
             {
@@ -45,15 +48,14 @@ describe('facts origin resolution', () => {
       },
       {channel: 'epir'},
     );
-    expect(p?.variants[0].origin).toBe('natural');
+    expect(p?.variants[0].stoneOrigin).toBe('natural');
   });
 
-  it('unknown quality adds DataIssue', () => {
+  it('unknown quality → unknown + DataIssue', () => {
     const p = normalizeProduct(
       {
+        ...base,
         id: 'gid://shopify/Product/3',
-        handle: 'ring-c',
-        onlineStoreUrl: 'https://epirbizuteria.pl/products/ring-c',
         variants: {
           nodes: [
             {
@@ -67,7 +69,56 @@ describe('facts origin resolution', () => {
       },
       {channel: 'epir'},
     );
-    expect(p?.variants[0].origin).toBe('unknown');
-    expect(p?.issues.some((i) => i.field === 'variant_option_quality')).toBe(true);
+    expect(p?.variants[0].stoneOrigin).toBe('unknown');
+    expect(p?.dataIssues.some((i) => 'kind' in i && i.kind === 'unknown_quality_value')).toBe(true);
+  });
+
+  it('do wyboru without variant data → DataIssue', () => {
+    const p = normalizeProduct(
+      {
+        ...base,
+        id: 'gid://shopify/Product/4',
+        metafields: {
+          nodes: [{namespace: 'custom', key: 'gemstone_origin', value: 'do wyboru'}],
+        },
+        variants: {
+          nodes: [
+            {
+              id: 'gid://shopify/ProductVariant/4',
+              selectedOptions: [],
+              price: {amount: '10.00', currencyCode: 'PLN'},
+              availableForSale: true,
+            },
+          ],
+        },
+      },
+      {channel: 'epir'},
+    );
+    expect(p?.dataIssues.some((i) => 'kind' in i && i.kind === 'origin_choice_unresolved')).toBe(true);
+  });
+
+  it('conflict option vs product metafield → DataIssue', () => {
+    const p = normalizeProduct(
+      {
+        ...base,
+        id: 'gid://shopify/Product/5',
+        metafields: {
+          nodes: [{namespace: 'custom', key: 'gemstone_origin', value: 'naturalny'}],
+        },
+        variants: {
+          nodes: [
+            {
+              id: 'gid://shopify/ProductVariant/5',
+              selectedOptions: [{name: 'Jakość', value: 'LAB'}],
+              price: {amount: '10.00', currencyCode: 'PLN'},
+              availableForSale: true,
+            },
+          ],
+        },
+      },
+      {channel: 'epir'},
+    );
+    expect(p?.variants[0].stoneOrigin).toBe('lab_grown');
+    expect(p?.dataIssues.some((i) => 'kind' in i && i.kind === 'origin_conflict')).toBe(true);
   });
 });

@@ -50,16 +50,17 @@ describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('nie podawaj zmyślonych danych kontaktowych');
   });
 
-  it('locks page-card quotes, first stone hits, and store facts', () => {
+  it('locks page-card quotes, first stone hits, and store facts via KB', () => {
     expect(LUXURY_SYSTEM_PROMPT).toContain('[KARTA PRODUKTU NA TEJ STRONIE]');
     expect(LUXURY_SYSTEM_PROMPT).toContain('price_min_display_pl');
     expect(LUXURY_SYSTEM_PROMPT).toContain('[TRAFENIA KAMIENIA]');
-    expect(LUXURY_SYSTEM_PROMPT).toContain('dotyczy wyłącznie srebra');
+    expect(LUXURY_SYSTEM_PROMPT).not.toContain('dotyczy wyłącznie srebra');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('search_shop_policies_and_faqs');
     expect(LUXURY_SYSTEM_PROMPT).toContain('mniej podatne na zarysowania');
     expect(LUXURY_SYSTEM_PROMPT).toContain('Nie wymyślaj srebrnego asortymentu Kazka');
     expect(LUXURY_SYSTEM_PROMPT).toContain('tylko krótka odmowa');
-    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('darmowa dla zamówień powyżej 500 zł');
-    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('odstąpienie w 14 dni od otrzymania');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).not.toContain('nie podlega standardowemu zwrotowi');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('search_shop_policies_and_faqs');
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('Nie obiecuj darmowej zmiany rozmiaru');
     expect(KAZKA_HEADLESS_PERSONA_ADDON).not.toContain('jedna darmowa zmiana rozmiaru');
   });

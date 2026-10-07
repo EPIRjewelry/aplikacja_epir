@@ -1,4 +1,7 @@
-import type {BuyerChannelId} from '../buyer/channel-switch';
+import {
+  catalogSnapshotChannel,
+  type BuyerChannelId,
+} from '../buyer/channel-switch';
 import type {Env} from '../config/bindings';
 import {createKazkaCatalogRepository} from './gk-repository';
 import {snapshotRepositoryFromKv} from './repository-kv';
@@ -32,20 +35,22 @@ export async function getCatalogRepository(
   if (channel === 'kazka-hydrogen') {
     return createKazkaCatalogRepository(env);
   }
+  // epir-online-store i epir-zareczyny → ta sama migawka GE
   if (!env.GEMMA_RUNTIME_KV) {
-    return unavailableRepo('epir-online-store', 'no_snapshot');
+    return unavailableRepo(channel, 'no_snapshot');
   }
-  const repo = await snapshotRepositoryFromKv(env.GEMMA_RUNTIME_KV, 'epir-online-store');
+  const snapChannel = catalogSnapshotChannel(channel);
+  const repo = await snapshotRepositoryFromKv(env.GEMMA_RUNTIME_KV, snapChannel, channel);
   const status = await repo.status();
   if (!status.available) {
-    return unavailableRepo('epir-online-store', status.reason ?? 'no_snapshot');
+    return unavailableRepo(channel, status.reason ?? 'no_snapshot');
   }
   return repo;
 }
 
 export {normalizeProduct} from './normalize';
 export {refreshAllCatalogSnapshots, refreshGeSnapshot, refreshGkSnapshot} from './refresh';
-export {KAZKA_PRODUCT_URL_TEMPLATE} from './fetch-gk';
+export {AdminGraphqlCostError, AdminGraphqlThrottledError, parseBulkProductsJsonl} from './fetch-ge';
 export type {
   ProductFacts,
   VariantFacts,
@@ -53,4 +58,5 @@ export type {
   ProductMatch,
   DataIssue,
   CatalogFactsRepository,
+  BuyerChannelId,
 } from './types';
