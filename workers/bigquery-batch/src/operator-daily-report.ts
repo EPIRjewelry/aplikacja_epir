@@ -4,9 +4,19 @@
 import type { FlowHealthReport } from './edog-flow-health-runner';
 import { buildFlowHealthReport } from './edog-flow-health-runner';
 import { buildEdogNarrative } from './edog-reason-narrative';
+import { withD1Retry } from './d1-retry';
 import { buildGemmaDigestMarkdown, fetchGemmaConversations24h } from './operator-gemma-digest';
 import { sanitizeReportForWorkspaceExport } from './report-pii-mask';
 import { since24hMs } from './edog-flow-health';
+
+/** YYYY-MM-DD (UTC date used as PK in operator_daily_reports). */
+export function parseOperatorReportDate(raw: string | undefined | null): string | null {
+  const s = (raw ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const t = Date.parse(`${s}T00:00:00.000Z`);
+  if (!Number.isFinite(t)) return null;
+  return s;
+}
 
 export type OperatorReportEnv = {
   DB_CHATBOT: D1Database;
@@ -77,16 +87,21 @@ export async function persistOperatorDailyReport(
   edogVerdict: string,
 ): Promise<void> {
   const now = Date.now();
-  await env.DB_CHATBOT.prepare(
-    `INSERT INTO operator_daily_reports (report_date, markdown_body, edog_verdict, created_at)
-     VALUES (?1, ?2, ?3, ?4)
-     ON CONFLICT(report_date) DO UPDATE SET
-       markdown_body = excluded.markdown_body,
-       edog_verdict = excluded.edog_verdict,
-       created_at = excluded.created_at`,
-  )
-    .bind(reportDate, markdown, edogVerdict, now)
-    .run();
+  // Idempotent upsert po report_date (PK) — ponowienie / odtworzenie nie dubluje wiersza.
+  await withD1Retry(
+    () =>
+      env.DB_CHATBOT.prepare(
+        `INSERT INTO operator_daily_reports (report_date, markdown_body, edog_verdict, created_at)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(report_date) DO UPDATE SET
+           markdown_body = excluded.markdown_body,
+           edog_verdict = excluded.edog_verdict,
+           created_at = excluded.created_at`,
+      )
+        .bind(reportDate, markdown, edogVerdict, now)
+        .run(),
+    { step: 'persist_operator_daily_report' },
+  );
 }
 
 export type WorkspaceReportWebhookPayload = {
@@ -127,11 +142,32 @@ export async function runOperatorDailyReport(
   >,
   opts?: {
     exportCatchUpNote?: string;
+    /** UTC YYYY-MM-DD; domyślnie dziś (jak cron). */
+    reportDate?: string;
   },
-): Promise<void> {
-  const reportDate = new Date().toISOString().slice(0, 10);
+): Promise<{ reportDate: string; edogVerdict: string }> {
+  const reportDate =
+    parseOperatorReportDate(opts?.reportDate) ?? new Date().toISOString().slice(0, 10);
   const sinceMs = since24hMs(Date.now());
-  const health = await buildFlowHealthReport(env as AnalyticsEnv, probeQ1 as AnalyticsProbe);
+
+  let health: FlowHealthReport;
+  try {
+    // countPixelNullSessions24h / computeChatPixelSessionMatch rzucają przy D1_ERROR (nie swallow).
+    health = await withD1Retry(
+      () => buildFlowHealthReport(env as AnalyticsEnv, probeQ1 as AnalyticsProbe),
+      { step: 'build_flow_health' },
+    );
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        tag: 'operator_daily_report_failed',
+        step: 'build_flow_health',
+        reportDate,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    throw error;
+  }
 
   const gemmaRows = await fetchGemmaConversations24h(env, sinceMs, 20);
   const gemmaSection = buildGemmaDigestMarkdown(gemmaRows, reportDate);
@@ -157,8 +193,21 @@ export async function runOperatorDailyReport(
     exportCatchUpNote: opts?.exportCatchUpNote,
   });
 
-  await persistOperatorDailyReport(env, reportDate, markdown, health.edog_verdict);
+  try {
+    await persistOperatorDailyReport(env, reportDate, markdown, health.edog_verdict);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        tag: 'operator_daily_report_failed',
+        step: 'persist_operator_daily_report',
+        reportDate,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    throw error;
+  }
 
   await postReportToWorkspaceWebhook(env, markdown);
   console.log('[operator-report] saved', reportDate, health.edog_verdict);
+  return { reportDate, edogVerdict: health.edog_verdict };
 }
