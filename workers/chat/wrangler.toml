@@ -12,6 +12,11 @@ workers_dev = false
 [build]
 command = ""
 
+# Migawki katalogu Gemma (etap 1): GE Admin + GK Storefront → GEMMA_RUNTIME_KV.
+# Binding KV dodaje właściciel (bez ID w tym PR). Cron nie wymaga sekretów.
+[triggers]
+crons = ["0 */6 * * *"]
+
 [env.staging]
 workers_dev = true
 # Staging profile inherits top-level bindings/secrets.

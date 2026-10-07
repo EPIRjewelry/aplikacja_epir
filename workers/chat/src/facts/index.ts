@@ -44,6 +44,8 @@ export async function getCatalogRepository(
 }
 
 export {normalizeProduct} from './normalize';
+export {refreshAllCatalogSnapshots, refreshGeSnapshot, refreshGkSnapshot} from './refresh';
+export {KAZKA_PRODUCT_URL_TEMPLATE} from './fetch-gk';
 export type {
   ProductFacts,
   VariantFacts,

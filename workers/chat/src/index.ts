@@ -5590,6 +5590,25 @@ export default {
     }
     console.warn('[queue] unknown queue', { queue: batch.queue, messages: batch.messages?.length ?? 0 });
   },
+
+  /**
+   * Cron: odświeżenie migawek katalogu GE (Admin) i GK (Storefront) do GEMMA_RUNTIME_KV.
+   * Wyrażenie: wrangler.toml [triggers].crons — bez sekretów w configu.
+   */
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    const {refreshAllCatalogSnapshots} = await import('./facts/refresh');
+    ctx.waitUntil(
+      refreshAllCatalogSnapshots(env).then((results) => {
+        console.log(
+          JSON.stringify({
+            tag: 'facts.scheduled_refresh',
+            cron: controller.cron,
+            results,
+          }),
+        );
+      }),
+    );
+  },
 };
 
 // Eksportujemy klasy DO, aby Cloudflare mógł je rozpoznać

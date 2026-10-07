@@ -24,6 +24,9 @@ export const QUALITY_OPTION_TO_ORIGIN: ReadonlyMap<string, GemstoneOrigin> = new
   ['naturalny', 'natural'],
   ['natural', 'natural'],
   ['kamień naturalny', 'natural'],
+  // KAZKA quality table (zatwierdzone przez właściciela 2026-10-07)
+  ['black', 'natural'],
+  ['g/si', 'natural'],
   // Lab-grown
   ['lab', 'lab_grown'],
   ['lab grown', 'lab_grown'],
