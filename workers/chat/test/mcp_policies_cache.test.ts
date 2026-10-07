@@ -99,15 +99,11 @@ describe('callShopifyMcpTool policies KV cache', () => {
     expect(result).toMatchObject({ answer: expect.stringContaining('14 dni') });
   });
 
-  it('does NOT cache non-policies tools', async () => {
-    fetchMock.mockImplementationOnce(async () =>
-      makeMcpResponse({ products: [] }),
-    );
-    await callShopifyMcpTool(
-      'search_catalog',
-      { catalog: { query: 'obrączki' } },
-      env as any,
-    );
+  it('rejects legacy catalog tools on /api/mcp', async () => {
+    await expect(
+      callShopifyMcpTool('search_catalog', {catalog: {query: 'obrączki'}}, env as any),
+    ).rejects.toThrow(/Legacy \/api\/mcp tool/);
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(kv.put).not.toHaveBeenCalled();
     expect(kv.get).not.toHaveBeenCalled();
   });

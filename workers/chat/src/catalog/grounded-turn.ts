@@ -10,10 +10,10 @@ import {CERTIFICATE_UNKNOWN, isCertificateQuestion} from './stone-origin';
 import {EPIR_SHIPPING_FACT, KAZKA_RETURNS_FACT, KAZKA_SHIPPING_FACT} from './store-facts';
 
 export const INCOMPLETE_TURN_REPLY =
-  'Przepraszam, chwilowo nie mogę dokończyć odpowiedzi. Napisz proszę jeszcze raz za moment.';
+  'Przepraszam, chwilowo nie mogę dokończyć odpowiedzi. Proszę napisać jeszcze raz za moment.';
 
 export const EMPTY_TURN_REPLY =
-  'Przepraszam, chwilowo nie mogę przygotować pełnej odpowiedzi. Spróbuj proszę ponownie za moment.';
+  'Przepraszam, chwilowo nie mogę przygotować pełnej odpowiedzi. Proszę spróbować ponownie za moment.';
 
 const RETURNS_ASK = /zwrot|reklamac|odst[aą]p/iu;
 const SHIPPING_ASK = /wysy[lł]|dostaw/iu;

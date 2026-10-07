@@ -18,7 +18,9 @@ export default defineConfig({
       SHOPIFY_ACCESS_TOKEN: 'mock-admin-token-12345',
       SHOPIFY_ADMIN_TOKEN: 'mock-admin-token-12345',
       SHOPIFY_APP_SECRET: 'mock-app-secret-12345',
-      WORKER_ORIGIN: 'https://test-worker.workers.dev'
+      WORKER_ORIGIN: 'https://test-worker.workers.dev',
+      /** Testy integracyjne czatu — gate otwarty; produkcja: `GEMMA_CHANNEL_DEFAULT=off` w wrangler.toml */
+      GEMMA_CHANNEL_DEFAULT: 'on',
     }
   },
 });

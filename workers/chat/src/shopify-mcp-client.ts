@@ -1,9 +1,7 @@
 /**
- * Shopify MCP Client - wywołuje oficjalny endpoint MCP Shopify
- * https://{shop_domain}/api/mcp
- * 
- * Używa Storefront API (publiczne, nie wymaga Admin Token)
- * Wymaga tylko SHOPIFY_STOREFRONT_TOKEN jako secret
+ * Legacy Shopify Storefront MCP (`https://{shop_domain}/api/mcp`).
+ * Od migracji Shopify (2025+) katalog i koszyk są na UCP (`/api/ucp/mcp` — `mcp_server.ts`).
+ * Ten klient obsługuje wyłącznie `search_shop_policies_and_faqs`.
  */
 
 import { type McpRequest, type McpResponse } from './utils/jsonrpc';
@@ -20,6 +18,8 @@ export interface Env {
 }
 
 const MCP_TIMEOUT_MS = 5000;
+
+const LEGACY_MCP_ALLOWED_TOOLS = new Set(['search_shop_policies_and_faqs']);
 
 /** TTL KV cache dla policies/FAQ — polityki zmieniają się rzadko; 6h to bezpieczny kompromis świeżość/hit-rate. */
 const POLICIES_CACHE_TTL_S = 6 * 3600;
@@ -240,6 +240,11 @@ export async function callShopifyMcpTool(
   args: Record<string, any>,
   env: Env
 ): Promise<any> {
+  if (!LEGACY_MCP_ALLOWED_TOOLS.has(toolName)) {
+    throw new Error(
+      `Legacy /api/mcp tool "${toolName}" is removed; use UCP catalog/cart in mcp_server or policies via search_shop_policies_and_faqs`,
+    );
+  }
   const mcpEndpoint = env.MCP_ENDPOINT?.trim()
     || (env.SHOP_DOMAIN ? `https://${String(env.SHOP_DOMAIN).replace(/\/$/, '')}/api/mcp` : null)
     || (process.env.SHOP_DOMAIN ? `https://${String(process.env.SHOP_DOMAIN).replace(/\/$/, '')}/api/mcp` : null);
@@ -373,102 +378,6 @@ export async function callShopifyMcpTool(
 }
 
 export const __test = { normalizePolicyQuery, policiesCacheKey, sha256Hex };
-
-/**
- * Wyszukuje produkty w katalogu Shopify przez MCP endpoint
- */
-export async function searchShopCatalogMcp(
-  query: string,
-  env: Env,
-  context?: string
-): Promise<string> {
-  return callShopifyMcpTool(
-    'search_catalog',
-    {
-      catalog: {
-        query,
-        context: { intent: context ?? 'biżuteria' },
-      },
-    },
-    env,
-  );
-}
-
-/**
- * Pobiera polityki sklepu przez MCP endpoint
- */
-export async function getShopPoliciesMcp(
-  policyTypes: string[],
-  env: Env
-): Promise<string> {
-  return callShopifyMcpTool('get_shop_policies', { policy_types: policyTypes }, env);
-}
-
-/**
- * Aktualizuje koszyk - dodaje, usuwa lub zmienia ilość produktów
- * @param env Env z SHOP_DOMAIN i SHOPIFY_STOREFRONT_TOKEN
- * @param cartId ID istniejącego koszyka (null dla nowego koszyka)
- * @param lines Tablica linii koszyka z merchandiseId i quantity
- * @returns Zaktualizowany koszyk jako JSON string
- */
-export async function updateCart(
-  env: Env,
-  cartId: string | null,
-  lines: Array<{ merchandiseId: string; quantity: number }>
-): Promise<string> {
-  const { callMcpToolDirect } = await import('./mcp_server');
-  const add_items = lines.map((line) => ({
-    product_variant_id: line.merchandiseId,
-    quantity: line.quantity,
-  }));
-  const result = await callMcpToolDirect(
-    env,
-    'update_cart',
-    cartId ? { cart_id: cartId, add_items } : { add_items },
-  );
-  return JSON.stringify(result ?? {});
-}
-
-/**
- * Pobiera aktualny koszyk
- * @param env Env z SHOP_DOMAIN i SHOPIFY_STOREFRONT_TOKEN
- * @param cartId ID koszyka do pobrania
- * @returns Koszyk jako JSON string z produktami i cenami
- */
-export async function getCart(
-  env: Env,
-  cartId: string
-): Promise<string> {
-  const { callMcpToolDirect } = await import('./mcp_server');
-  const result = await callMcpToolDirect(env, 'get_cart', { cart_id: cartId });
-  return JSON.stringify(result ?? {});
-}
-
-/**
- * Pobiera status konkretnego zamówienia
- * @param env Env z SHOP_DOMAIN i SHOPIFY_STOREFRONT_TOKEN
- * @param orderId ID zamówienia
- * @returns Status zamówienia jako JSON string
- */
-export async function getOrderStatus(
-  env: Env,
-  orderId: string
-): Promise<string> {
-  const result = await callShopifyMcpTool('get_order_status', { order_id: orderId }, env);
-  return JSON.stringify(result ?? {});
-}
-
-/**
- * Pobiera status ostatniego zamówienia klienta
- * @param env Env z SHOP_DOMAIN i SHOPIFY_STOREFRONT_TOKEN
- * @returns Ostatnie zamówienie jako JSON string
- */
-export async function getMostRecentOrderStatus(
-  env: Env
-): Promise<string> {
-  const result = await callShopifyMcpTool('get_most_recent_order_status', {}, env);
-  return JSON.stringify(result ?? {});
-}
 
 /**
  * Fetch basic customer details from Admin API (firstName, lastName, email)

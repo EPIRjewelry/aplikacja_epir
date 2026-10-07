@@ -206,17 +206,6 @@ export const TOOL_SCHEMAS = {
     },
   },
 
-  get_most_recent_order_status: {
-    name: 'get_most_recent_order_status',
-    description:
-      'Get the status of the logged-in customer\'s most recent order. Use when the buyer asks about their last order or delivery. Requires customer to be logged in.',
-    parameters: {
-      type: 'object',
-      properties: {},
-      required: [],
-    },
-  },
-
   get_size_table: {
     name: 'get_size_table',
     description:
@@ -606,12 +595,6 @@ export const TOOL_SCHEMAS_SLIM = {
       },
       required: ['catalog'],
     },
-  },
-
-  get_most_recent_order_status: {
-    name: 'get_most_recent_order_status',
-    description: 'Status ostatniego zamówienia zalogowanego klienta.',
-    parameters: { type: 'object', properties: {}, required: [] },
   },
 
   get_size_table: {

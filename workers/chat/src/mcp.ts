@@ -34,26 +34,12 @@ interface PolicyResult {
  */
 export async function searchProductCatalog(
   params: SearchProductParams,
-  env: Env,
+  _env: Env,
 ): Promise<{ products: ProductResult[] }> {
-  try {
-    const result = await callShopifyMcpTool(
-      'search_catalog',
-      {
-        catalog: {
-          query: params.query,
-          context: { intent: params.context ?? 'biżuteria' },
-          pagination: { limit: params.first ?? 3 },
-        },
-      },
-      env as any,
-    );
-    if (result && typeof result === 'object' && 'products' in (result as any)) {
-      return result as any;
-    }
-  } catch (e) {
-    console.warn('searchProductCatalog via MCP failed:', e);
-  }
+  console.warn(
+    '[mcp] searchProductCatalog: legacy /api/mcp catalog removed; use UCP via mcp_server (buyer path)',
+    {query: params.query?.slice(0, 80)},
+  );
   return { products: [] };
 }
 
@@ -63,11 +49,19 @@ export async function searchProductCatalog(
  * @param env Zmienne ┼Ťrodowiskowe.
  * @returns Structured JSON z tre┼Ťci─ů polityk.
  */
-export async function getShopPolicies(params: PolicyParams, env: Env): Promise<{ policies: PolicyResult[] }> {
+export async function getShopPolicies(
+  params: PolicyParams,
+  env: Env,
+): Promise<{ policies: PolicyResult[] }> {
   try {
-    const result = await callShopifyMcpTool('get_shop_policies', { policy_types: params.policy_types }, env as any);
-    if (result && typeof result === 'object' && 'policies' in (result as any)) {
-      return result as any;
+    const query = params.policy_types.join(' ');
+    const result = await callShopifyMcpTool(
+      'search_shop_policies_and_faqs',
+      {query},
+      env as any,
+    );
+    if (result && typeof result === 'object') {
+      return {policies: [{type: 'faq', body: JSON.stringify(result)}]};
     }
   } catch (e) {
     console.warn('getShopPolicies via MCP failed:', e);

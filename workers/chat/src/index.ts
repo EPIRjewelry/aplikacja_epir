@@ -175,7 +175,7 @@ import {
 } from './rag-client-wrapper';
 
 // Importy Klienta Shopify (używane przez mcp_server, ale nie tutaj)
-import { getCart, getMostRecentOrderStatus } from './shopify-mcp-client';
+import {GEMMA_UNAVAILABLE_BODY, resolveGemmaChannelMode} from './gemma/channel-gate';
 
 // Typy sesji i żądań
 type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
@@ -2785,6 +2785,21 @@ async function handleChat(
       brand_key: brandLock.brandKey,
     }),
   );
+
+  const gemmaMode = await resolveGemmaChannelMode(env, payload.channel ?? 'unknown', request);
+  if (gemmaMode === 'off') {
+    console.log(
+      JSON.stringify({
+        tag: 'chat.gemma_gate',
+        channel: payload.channel,
+        mode: gemmaMode,
+      }),
+    );
+    return new Response(GEMMA_UNAVAILABLE_BODY, {
+      status: 503,
+      headers: {...cors(env, request), 'Content-Type': 'application/json'},
+    });
+  }
 
   // [TOKEN VAULT] Bez zmian
   const url = new URL(request.url);

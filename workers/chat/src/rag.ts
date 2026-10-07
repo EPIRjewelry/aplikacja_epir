@@ -424,54 +424,7 @@ export async function searchProductsAndCartWithMCP(
   let output: string = '';
 
   try {
-    // CART OPERATIONS (jeśli intent = 'cart')
-    if (intent === 'cart' && cartId) {
-      console.log('[RAG] 🛒 Aktualizacja koszyka przez MCP...');
-      // Przykład: params do update_cart (można rozbudować o przekazywanie produktów)
-      // const updateParams = { cart_id: cartId, items: [{ product_id, quantity }] };
-      // Jeśli chcesz zaktualizować koszyk, wywołaj update_cart:
-      // await callMcpTool(env, 'update_cart', updateParams);
-
-      // Pobierz aktualny stan koszyka
-      const cartRaw = await callMcpTool(env, 'get_cart', { cart_id: cartId });
-      const cartResult = safeJsonParse(cartRaw) as unknown;
-
-      let cartText = '';
-      if (isRecord(cartResult) && Array.isArray((cartResult as { content?: McpContentItem[] }).content)) {
-        cartText = (cartResult as { content?: McpContentItem[] }).content!
-          .filter((c: McpContentItem) => c.type === 'text' && typeof c.text === 'string')
-          .map((c: McpContentItem) => c.text as string)
-          .join('\n');
-      }
-      if (cartText) {
-        output += `\n[KOSZYK (MCP)]\n${cartText}\n`;
-      }
-    }
-
-    // ORDER OPERATIONS (jeśli intent = 'order')
-    if (intent === 'order') {
-      console.log('[RAG] 📦 Pobieranie statusu zamówienia przez MCP...');
-      // Przykład: pobierz status konkretnego zamówienia jeśli podano order_id
-      // const orderStatus = await callMcpTool(env, 'get_order_status', { order_id });
-      // if (orderStatus && Array.isArray(orderStatus.content)) {
-      //   ...obsługa konkretnego zamówienia...
-      // }
-
-      // Pobierz status ostatniego zamówienia
-      const orderRaw = await callMcpTool(env, 'get_most_recent_order_status', {});
-      const orderResult = safeJsonParse(orderRaw) as unknown;
-
-      let orderText = '';
-       if (isRecord(orderResult) && Array.isArray((orderResult as { content?: McpContentItem[] }).content)) {
-        orderText = (orderResult as { content?: McpContentItem[] }).content!
-          .filter((c: McpContentItem) => c.type === 'text' && typeof c.text === 'string')
-          .map((c: McpContentItem) => c.text as string)
-          .join('\n');
-      }
-      if (orderText) {
-        output += `\n[OSTATNIE ZAMÓWIENIE (MCP)]\n${orderText}\n`;
-      }
-    }
+    // Legacy /api/mcp cart + order tools removed (etap 1). Buyer path uses UCP + channel gate.
 
     // PRODUCT SEARCH (zawsze dla intent = 'search')
     if (intent === 'search' || !intent) {
