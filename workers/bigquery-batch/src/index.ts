@@ -12,7 +12,10 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 import { getR2AnalyticsSql, getQ9ToolUsageFallbackSql, isMissingIcebergNameColumnError, VALID_QUERY_IDS } from './analytics-queries';
 import { buildFlowHealthReport } from './edog-flow-health-runner';
 import { buildEdogNarrative } from './edog-reason-narrative';
-import { runOperatorDailyReport } from './operator-daily-report';
+import {
+  resolveOperatorReportDate,
+  runOperatorDailyReport as executeOperatorDailyReport,
+} from './operator-daily-report';
 import { resolveCatchupMaxRuns } from './warehouse-batch-env';
 import { runWarehouseExportCatchUp } from './warehouse-export-catchup';
 import {
@@ -126,7 +129,7 @@ async function runOperatorReportCron(env: Env): Promise<void> {
   if (catchUp.runs > 0) {
     console.log('[operator-report] warehouse catch-up', catchUp, triage ?? null);
   }
-  await runOperatorDailyReport(
+  await executeOperatorDailyReport(
     env,
     probeQ1ForEdog,
     (e) => executeRunAnalyticsQuery(e as Env, { queryId: 'Q8_DAILY_EVENTS' }),
@@ -414,6 +417,46 @@ export class BigQueryBatchS2SRpc extends WorkerEntrypoint<Env, BigQueryS2SProps>
     const report = await buildFlowHealthReport(this.env, probeQ1ForEdog);
     return { ...report, narrative_markdown: buildEdogNarrative(report).markdown };
   }
+
+  /**
+   * Ręczne uruchomienie / odtworzenie raportu operatora na dziś UTC.
+   * Ta sama funkcja co cron 09:00 — bez catch-up eksportu.
+   * `date` opcjonalne: puste = dziś; inna niż dziś UTC → 400 (metryki = rolling 24 h).
+   * Auth: S2S `bigquery.analytics_query` (bez nowego sekretu).
+   */
+  async runOperatorDailyReport(args?: { date?: string }): Promise<
+    | { ok: true; reportDate: string; edogVerdict: string }
+    | { ok: false; error: string; status: number }
+  > {
+    requireBigQueryS2SScopes(this.ctx.props, 'bigquery.analytics_query');
+    let reportDate: string;
+    try {
+      reportDate = resolveOperatorReportDate(args?.date);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { ok: false, error: message, status: 400 };
+    }
+    try {
+      const out = await executeOperatorDailyReport(
+        this.env,
+        probeQ1ForEdog,
+        (e) => executeRunAnalyticsQuery(e as Env, { queryId: 'Q8_DAILY_EVENTS' }),
+        { reportDate },
+      );
+      return { ok: true, reportDate: out.reportDate, edogVerdict: out.edogVerdict };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(
+        JSON.stringify({
+          tag: 'operator_daily_report_failed',
+          step: 'rpc_run_operator_daily_report',
+          reportDate,
+          error: message,
+        }),
+      );
+      return { ok: false, error: message, status: 500 };
+    }
+  }
 }
 
 export default {
@@ -460,7 +503,20 @@ export default {
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     const cron = event.cron ?? '';
     if (cron === CRON_OPERATOR_REPORT) {
-      ctx.waitUntil(runOperatorReportCron(env));
+      // Await (nie waitUntil): błąd D1 po wyczerpaniu retry kończy crona jawnym fail.
+      try {
+        await runOperatorReportCron(env);
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            tag: 'operator_daily_report_failed',
+            step: 'cron_operator_report',
+            cron: CRON_OPERATOR_REPORT,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+        throw error;
+      }
       return;
     }
     if (cron === CRON_EDOG_08 || cron === CRON_EDOG_20) {
