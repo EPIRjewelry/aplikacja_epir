@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import worker, { SessionDO } from '../src/index';
 import type { Env } from '../src/config/bindings';
 import { makeDurableStateStub } from './helpers/session-do-sql-stub';
+import { expectBuyerUnavailableJson } from './helpers/buyer-unavailable';
 
 const noopCtx = { waitUntil() {} } as unknown as ExecutionContext;
 
@@ -98,7 +99,7 @@ function messageSessionIds(writes: Array<{ sql: string; args: unknown[] }>): unk
 }
 
 describe('browser session_id persisted on chat messages', () => {
-  it('stores payload session_id on messages even when the Durable Object id is hex', async () => {
+  it('etap 1: buyer chat does not persist messages (unavailable gate)', async () => {
     const { db, writes } = makeD1Capture();
     const { namespace } = makeSessionNamespace(db);
     const env = {
@@ -134,12 +135,9 @@ describe('browser session_id persisted on chat messages', () => {
     );
 
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as { session_id?: string; reply?: string };
-    expect(payload.session_id).toBe(COOKIE_SESSION_ID);
-
-    const stored = messageSessionIds(writes);
-    expect(stored.length).toBeGreaterThan(0);
-    expect(stored.every((sessionId) => sessionId === COOKIE_SESSION_ID)).toBe(true);
+    const payload = (await response.json()) as Record<string, unknown>;
+    expectBuyerUnavailableJson(payload);
+    expect(messageSessionIds(writes)).toHaveLength(0);
   });
 
   it('does not replace a stored browser session id with the Durable Object hex id', async () => {

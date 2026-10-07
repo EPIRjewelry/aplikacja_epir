@@ -12,6 +12,11 @@ workers_dev = false
 [build]
 command = ""
 
+# Migawki katalogu Gemma (etap 1): GE Admin + GK Storefront → GEMMA_RUNTIME_KV.
+# Binding KV dodaje właściciel (bez ID w tym PR). Cron nie wymaga sekretów.
+[triggers]
+crons = ["0 */6 * * *"]
+
 [env.staging]
 workers_dev = true
 # Staging profile inherits top-level bindings/secrets.
@@ -190,6 +195,9 @@ COCREATE_FROM_EMAIL = "brief@epirbizuteria.pl"
 # SHOPIFY_CLIENT_ID = ""
 # MCP endpoint - zmienna konfiguracyjna (CHAT_SPEC: shopify-admin-mcp = {shop_domain}/api/mcp)
 MCP_ENDPOINT = "https://epir-art-silver-jewellery.myshopify.com/api/mcp"
+
+# Gemma buyer gate (etap 1): fail-closed. KV binding GEMMA_RUNTIME_KV — operator tworzy namespace.
+# Brak bindingu = buyer zawsze "niedostępny" (fail-closed).
 # Storefront Catalog MCP (UCP discovery) — Spring '26 parity
 # UCP_CATALOG_ENDPOINT = "https://epir-art-silver-jewellery.myshopify.com/api/ucp/mcp"
 # UCP_AGENT_PROFILE_URL = "https://asystent.epirbizuteria.pl/.well-known/ucp-agent-profile.json"

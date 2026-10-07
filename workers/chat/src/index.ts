@@ -26,9 +26,6 @@ import { handleShopifyAppOAuth } from './shopify-app-oauth';
 import { parseAuthorizationBearer, verifyShopifySessionTokenJwt } from './shopify-session-token';
 import { RateLimiterDO, checkRateLimit } from './rate-limiter';
 import { TokenVaultDO, TokenVault, getTokenVaultStub } from './token-vault';
-import { guardAssistantPricingAgainstCatalog } from './pricing-guard';
-import { stripForeignBrandLinks } from './brand-reply-host';
-import { guardLiveCatalogProductLinks } from './catalog/live-store-product';
 import {
   greetingForBrandLock,
   guardBuyerReply,
@@ -66,22 +63,16 @@ import {
   CHAT_RECOVERY_MAX_TOKENS,
   type ModelCapabilities,
 } from './config/model-params';
+
+const STREAM_EMPTY_REPLY =
+  'Przepraszam, chwilowo nie mogę przygotować pełnej odpowiedzi. Spróbuj proszę ponownie za moment.';
+const STREAM_ERROR_REPLY =
+  'Przepraszam, chwilowo nie mogę dokończyć odpowiedzi. Napisz proszę jeszcze raz za moment.';
 import { LUXURY_SYSTEM_PROMPT, KAZKA_HEADLESS_PERSONA_ADDON } from './prompts/luxury-system-prompt'; // 🟢 Używa nowego promptu v2
 import { parseStorefrontPathContext } from './storefront/path-context';
-import { buildKazkaHeadlessStorefrontContext, isKazkaHeadlessChannel } from './storefront/kazka-hydrate';
-import { isKazkaFilteredCatalogTool, resolveCatalogToolBrand } from './catalog/kazka-assortment';
-import { guardBuyerCatalogReply, productsFromCatalogSnapshots } from './catalog/buyer-reply-guard';
-import { finalizeBuyerFacingReply } from './catalog/buyer-reply-pipeline';
-import type { StoneLookup } from './catalog/buyer-reply-guard';
-import { buyerAllowsStoneSubstitute } from './catalog/stone-intent';
-import { guardDiscoveryFromPrice, guardForeignCatalogPrices, guardPageProductReply } from './catalog/page-product-card';
 import { BuyerTurnGate } from './catalog/buyer-turn-gate';
-import { groundedTurnReply, replyOrStall } from './catalog/grounded-turn';
 import { planBuyerReplyFrames } from './catalog/reply-commit';
-import { guardStoreFacts, promotionRulesForBrand } from './catalog/store-facts';
-import { seedBuyerTurnContext } from './catalog/turn-seed';
-import { CATALOG_MODEL_WIRE_BUDGET } from './mcp/catalog-for-model';
-import { TOOL_SCHEMAS, resolveToolSchemas, shouldUseSlimToolSchemas } from './mcp_tools'; // 🔵 Używa poprawionych schematów v2 (+ slim wariant za flagą)
+import { TOOL_SCHEMAS, resolveToolSchemas, shouldUseSlimToolSchemas } from './mcp_tools';
 import { sanitizeHarmonyHistory } from './utils/sanitizeHarmonyHistory';
 import { detectPolicyInformationIntent } from './intent/policy-information';
 import { detectSizeTableIntent, guardSizeQuestionReply } from './intent/size-table';
@@ -168,14 +159,12 @@ import { emitMemoryMetric } from './memory/metrics';
 import {
   searchShopPoliciesAndFaqs,
   searchShopPoliciesAndFaqsWithMCP,
-  searchProductCatalogWithMCP,
   formatRagContextForPrompt,
-  fetchKazkaDropRagContext,
   type VectorizeIndex,
 } from './rag-client-wrapper';
 
 // Importy Klienta Shopify (używane przez mcp_server, ale nie tutaj)
-import { getCart, getMostRecentOrderStatus } from './shopify-mcp-client';
+import {handleBuyerTurn} from './buyer/handle-buyer-turn';
 
 // Typy sesji i żądań
 type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
@@ -320,6 +309,38 @@ async function fetchSessionDO(
   }
   return response;
 }
+
+const KAZKA_HEADLESS_CHANNELS = new Set(['hydrogen-kazka', 'kazka']);
+
+function isKazkaHeadlessChannel(channel?: string, storefrontId?: string): boolean {
+  if (storefrontId === 'kazka') return true;
+  if (!channel) return false;
+  return KAZKA_HEADLESS_CHANNELS.has(channel);
+}
+
+function resolveCatalogToolBrand(input: {
+  storefrontId?: string;
+  channel?: string;
+  brand?: string;
+}): string | undefined {
+  if (input.storefrontId === 'kazka') return 'kazka';
+  if (input.storefrontId === 'zareczyny') return 'zareczyny';
+  if (isKazkaHeadlessChannel(input.channel, input.storefrontId)) return 'kazka';
+  return input.brand;
+}
+
+function isCatalogTool(toolName: string): boolean {
+  return (
+    toolName === 'search_catalog' ||
+    toolName === 'catalog_search' ||
+    toolName === 'catalog_image_search' ||
+    toolName === 'catalog_lookup' ||
+    toolName === 'lookup_catalog' ||
+    toolName === 'get_product'
+  );
+}
+
+const CATALOG_TOOL_OUTPUT_LIMIT = 24000;
 
 function getSystemPromptForChannel(
   channel?: string,
@@ -2786,6 +2807,10 @@ async function handleChat(
     }),
   );
 
+  if (!isOperatorChannel(payload.channel)) {
+    return handleBuyerTurn(request, env, brandLock);
+  }
+
   // [TOKEN VAULT] Bez zmian
   const url = new URL(request.url);
   const customerIdFromUrl = normalizeOptionalString(url.searchParams.get('logged_in_customer_id'));
@@ -3377,13 +3402,7 @@ async function streamAssistantResponse(
       console.log(`[streamAssistant] Inicjalizacja strumienia dla sesji: ${sessionId}`);
       await sendSSE('session', { session_id: sessionId });
 
-      if (!operatorMode) {
-        const grounded = groundedTurnReply(userMessage, turnBrand);
-        if (grounded) {
-          await emitBuyerReply(grounded);
-          return;
-        }
-      }
+      /* Etap 1: ścieżka kupującego kończy się w handleBuyerTurn — ten blok nie jest osiągalny dla buyer. */
 
       // 🔴 KROK 2: POBIERZ HISTORIĘ I KONTEKST
       const historyResp = await stub.fetch('https://session/history');
@@ -3715,7 +3734,7 @@ async function streamAssistantResponse(
           : fetchedAiProfile
             ? {
                 ...fetchedAiProfile,
-                promotion_rules: promotionRulesForBrand(fetchedAiProfile.promotion_rules, 'kazka'),
+                promotion_rules: fetchedAiProfile.promotion_rules,
               }
             : fetchedAiProfile;
       const aiProfilePrompt =
@@ -3742,9 +3761,6 @@ async function streamAssistantResponse(
 
       // Zbudowanie dynamicznych linii (koszyk, sklep, cross-session); trafią do ostatniego usera, nie do systemu.
       const dynamicContext: string[] = [];
-      let seededStoneLookup: StoneLookup = 'none';
-      let seededPageCard: Record<string, unknown> | null = null;
-      let seededAboutPage = false;
       const seededCatalogSnapshots: unknown[] = [];
 
       if (!operatorMode && cartId) {
@@ -3784,61 +3800,16 @@ async function streamAssistantResponse(
         if (sfKey === 'kazka') {
           ctxParts.push('Marka Kazka Jewelry – kamienie szlachetne, biżuteria artystyczna.');
         } else if (sfKey === 'zareczyny') {
-          ctxParts.push('Kontekst: pierścionki zaręczynowe EPIR.');
-          ctxParts.push(
-            'Nie przedstawiaj się jako doradca Kazka Jewelry i nie polecaj produktów linii Kazka (w tym Pierścionek Soliter).',
-          );
+          ctxParts.push('Kontekst: pierścionki zaręczynowe EPIR. Ton EPIR Art Jewellery — nie Kazka.');
         } else {
           ctxParts.push(
-            'Marka tej rozmowy: EPIR Art Jewellery. Nie przedstawiaj się jako doradca Kazka Jewelry i nie polecaj produktów linii Kazka (w tym Pierścionek Soliter).',
+            'Marka tej rozmowy: EPIR Art Jewellery. Nie przedstawiaj się jako doradca Kazka Jewelry.',
           );
         }
         dynamicContext.push(`Kontekst storefrontu: ${ctxParts.join(', ')}`);
       }
 
-      if (!operatorMode) {
-        const catalogBrandForSeed =
-          resolveCatalogToolBrand({
-            storefrontId: storefrontContext?.storefrontId,
-            channel: storefrontContext?.channel,
-            brand,
-          }) ?? (storefrontContext?.channel === 'online-store' ? 'epir' : brand);
-        const seeded = await seedBuyerTurnContext({
-          env,
-          brand: catalogBrandForSeed,
-          productHandle: storefrontContext?.productHandle,
-          buyerTurns: recentBuyerTurns(aiHistory, userMessage),
-          previousAssistant: lastAssistantText(aiHistory),
-        });
-        seededStoneLookup = seeded.stoneLookup;
-        seededPageCard = seeded.pageCard;
-        seededAboutPage = seeded.aboutPageProduct;
-        seededCatalogSnapshots.push(...seeded.snapshots);
-        for (const line of seeded.lines) dynamicContext.push(line);
-      }
-
-      if (
-        !operatorMode &&
-        isKazkaHeadlessChannel(storefrontContext?.channel, storefrontContext?.storefrontId)
-      ) {
-        if (!seededPageCard && (storefrontContext?.productHandle || storefrontContext?.collectionHandle)) {
-          const kazkaHydrated = await buildKazkaHeadlessStorefrontContext(env, {
-            productHandle: storefrontContext?.productHandle,
-            collectionHandle: storefrontContext?.collectionHandle,
-          });
-          if (kazkaHydrated) {
-            dynamicContext.push(kazkaHydrated);
-          }
-        }
-
-        const kazkaRag = await fetchKazkaDropRagContext(userMessage, env, {
-          collectionHandle: storefrontContext?.collectionHandle,
-          topK: 5,
-        });
-        if (kazkaRag) {
-          dynamicContext.push(kazkaRag);
-        }
-      }
+      /* Buyer seed/hydrate removed: buyers never reach streamAssistant (etap 1). */
 
       if (!operatorMode && env.DB && sessionId) {
         const pixelPlace = await loadSessionPixelPlace(env.DB, sessionId);
@@ -4075,33 +4046,14 @@ async function streamAssistantResponse(
       const MAX_TOOL_CALLS = 5;
       /** Wyniki search_catalog w tej turze — walidacja cen po wygenerowaniu odpowiedzi. */
       const catalogSnapshotsForPricing: unknown[] = [...seededCatalogSnapshots];
-      const buyerTurns = recentBuyerTurns(aiHistory, userMessage);
       const previousAssistantText = lastAssistantText(aiHistory);
-      const allowStoneSubstitute = buyerAllowsStoneSubstitute(
-        buyerTurns[buyerTurns.length - 1] ?? userMessage,
-        previousAssistantText,
-      );
       const replyBrand =
         resolveCatalogToolBrand({
           storefrontId: storefrontContext?.storefrontId,
           channel: storefrontContext?.channel,
           brand,
         }) ?? (storefrontContext?.channel === 'online-store' ? 'epir' : undefined);
-      const applyPricingSanitizer = (txt: string): string =>
-        finalizeBuyerFacingReply({
-          text: txt,
-          userMessage,
-          buyerTurns,
-          previousAssistant: previousAssistantText,
-          catalogSnapshots: catalogSnapshotsForPricing,
-          stoneLookup: seededStoneLookup,
-          brand: replyBrand,
-          storefrontId: storefrontContext?.storefrontId,
-          channel: storefrontContext?.channel,
-          pageCard: seededPageCard,
-          aboutPageProduct: seededAboutPage,
-          sessionId,
-        });
+      const applyPricingSanitizer = (txt: string): string => txt;
       // Harmony zużywa część budżetu na kanał `analysis` (reasoning) — bierzemy limity
       // bezpośrednio z `model-params.ts` zamiast trzymać tu lokalne magic numbers,
       // żeby A/B model wariantów nie ucinał finalnej odpowiedzi w połowie.
@@ -4488,8 +4440,6 @@ async function streamAssistantResponse(
                   brand: brandForMcp,
                   sessionCartId: cartId ?? null,
                   commerceContext,
-                  buyerTurns,
-                  allowStoneSubstitute,
                 });
               },
             );
@@ -4643,8 +4593,8 @@ async function streamAssistantResponse(
               : JSON.stringify(toolResult.result);
 
             // Katalog musi dojść w całości (opis, warianty, rozmiary). Inne narzędzia zostają krótkie.
-            const MAX_TOOL_OUTPUT_LENGTH = isKazkaFilteredCatalogTool(call.name)
-              ? CATALOG_MODEL_WIRE_BUDGET
+            const MAX_TOOL_OUTPUT_LENGTH = isCatalogTool(call.name)
+              ? CATALOG_TOOL_OUTPUT_LIMIT
               : 3000;
             if (toolResultString.length > MAX_TOOL_OUTPUT_LENGTH) {
               toolResultString =
@@ -4718,7 +4668,7 @@ async function streamAssistantResponse(
 
       // Ostateczny fallback UX — jeśli dalej pusty (np. błąd modelu / sieci):
       if (!finalTextResponse.trim() && streamedGeneratedImages.length === 0) {
-        finalTextResponse = replyOrStall(userMessage, turnBrand, 'empty');
+        finalTextResponse = STREAM_EMPTY_REPLY;
       }
 
       if (streamedGeneratedImages.length > 0) {
@@ -4749,7 +4699,7 @@ async function streamAssistantResponse(
       try {
         await sendSSE('error', { message: 'stream_failed' });
         if (!buyerDeltaSent) {
-          await emitBuyerReply(replyOrStall(userMessage, turnBrand, 'error'));
+          await emitBuyerReply(STREAM_ERROR_REPLY);
         }
       } catch (writeErr) {
         console.error('Failed to write error to stream:', writeErr);
@@ -5634,6 +5584,25 @@ export default {
       return;
     }
     console.warn('[queue] unknown queue', { queue: batch.queue, messages: batch.messages?.length ?? 0 });
+  },
+
+  /**
+   * Cron: odświeżenie migawek katalogu GE (Admin) i GK (Storefront) do GEMMA_RUNTIME_KV.
+   * Wyrażenie: wrangler.toml [triggers].crons — bez sekretów w configu.
+   */
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    const {refreshAllCatalogSnapshots} = await import('./facts/refresh');
+    ctx.waitUntil(
+      refreshAllCatalogSnapshots(env).then((results) => {
+        console.log(
+          JSON.stringify({
+            tag: 'facts.scheduled_refresh',
+            cron: controller.cron,
+            results,
+          }),
+        );
+      }),
+    );
   },
 };
 

@@ -1,6 +1,5 @@
 import type {CommerceContext} from '../config/commerce-context';
 import {mergeCatalogCommerceContext} from '../config/commerce-context';
-import {isKazkaCatalogBrand, KAZKA_CATALOG_SEARCH_CANDIDATES} from './kazka-assortment';
 import {buildUcpAgentMeta} from './ucp-agent-meta';
 
 function isNonEmptyString(value: unknown): value is string {
@@ -59,9 +58,7 @@ export function normalizeCatalogSearchArgs(
       : {};
   const limitRaw = pagination.limit ?? source.limit ?? source.first ?? 3;
   const limitNum = typeof limitRaw === 'number' ? Math.trunc(limitRaw) : 3;
-  pagination.limit = isKazkaCatalogBrand(brand)
-    ? KAZKA_CATALOG_SEARCH_CANDIDATES
-    : Math.max(1, Math.min(limitNum, 10));
+  pagination.limit = Math.max(1, Math.min(limitNum, 250));
   catalog.pagination = pagination;
 
   return {

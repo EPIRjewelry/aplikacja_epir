@@ -1,0 +1,30 @@
+name: chat-worker-ci
+
+on:
+  pull_request:
+    paths:
+      - 'workers/chat/**'
+      - '.github/workflows/chat-worker-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'workers/chat/**'
+      - '.github/workflows/chat-worker-ci.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Typecheck workers/chat
+        run: npx tsc --noEmit -p workers/chat/tsconfig.src.json
+      - name: Vitest workers/chat
+        working-directory: workers/chat
+        run: npx vitest run

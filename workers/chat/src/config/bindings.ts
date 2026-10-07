@@ -141,6 +141,12 @@ export interface Env {
    */
   POLICIES_CACHE?: KVNamespace;
 
+  /**
+   * KV namespace Gemma runtime (kanał gate, migawki katalogu).
+   * Brak bindingu = fail-closed (buyer dostaje "niedostępny").
+   */
+  GEMMA_RUNTIME_KV?: KVNamespace;
+
   /** R2: załączniki briefów współtworzenia (`/apps/assistant/cocreate`). */
   COCREATE_UPLOADS?: R2Bucket;
   /** Adres e-mail pracowni (var, nie secret). */

@@ -10,6 +10,8 @@ export type StaticStorefrontConfig = {
   aiProfileGid?: string;
   apiTokenEnvKey?: StorefrontTokenEnvKey;
   privateTokenEnvKey?: PrivateStorefrontTokenEnvKey;
+  /** Szablon URL produktu dla kanału Hydrogen (GK). Używany tylko dla produktów z Storefront. */
+  productUrlTemplate?: string;
 };
 
 export type ResolvedStorefrontConfig = StaticStorefrontConfig & {
@@ -49,6 +51,7 @@ export const STOREFRONTS: Record<string, StaticStorefrontConfig> = {
     channel: 'hydrogen-kazka',
     aiProfileGid: 'gid://shopify/Metaobject/2057969205580',
     apiTokenEnvKey: 'PUBLIC_STOREFRONT_API_TOKEN_KAZKA',
+    productUrlTemplate: 'https://kazka.epirbizuteria.pl/products/{handle}',
   },
   zareczyny: {
     storefrontId: 'gid://shopify/Storefront/1000013955',
@@ -67,10 +70,10 @@ export function resolveStorefrontConfig(env: Env, storefrontKey?: string): Resol
   return {
     ...config,
     apiToken: config.apiTokenEnvKey
-      ? env[config.apiTokenEnvKey] ?? env.SHOPIFY_STOREFRONT_TOKEN
+      ? env[config.apiTokenEnvKey]?.trim() || undefined
       : env.SHOPIFY_STOREFRONT_TOKEN,
     privateToken: config.privateTokenEnvKey
-      ? env[config.privateTokenEnvKey] ?? env.PRIVATE_STOREFRONT_API_TOKEN
+      ? env[config.privateTokenEnvKey]
       : env.PRIVATE_STOREFRONT_API_TOKEN,
   };
 }
