@@ -35,7 +35,6 @@ import {
   sideFromRouting,
   type ChatBrandLock,
 } from './brand-lock';
-import {resolveOperatorTurnModel} from './operator/operator-turn';
 import { buildCommerceActionPayload, isLikelyAjaxCartFakeGid } from './utils/commerce-result';
 import {
   analyticsReadUnauthorizedResponse,
@@ -54,15 +53,21 @@ import {
   KimiContentPart,
   shouldUseWorkersAi,
   injectKimiMultimodalUserContent,
+  resolveOperatorModelOverride,
 } from './ai-client';
 import { fetchOpenRouterCatalog } from './openrouter-catalog';
 import {
-  BUYER_MODEL_ID,
+  CHAT_MODEL_ID,
   CHAT_MAX_TOKENS_AFTER_TOOL,
   CHAT_MAX_TOKENS_TOOL_ROUND,
   CHAT_RECOVERY_MAX_TOKENS,
   type ModelCapabilities,
 } from './config/model-params';
+
+const STREAM_EMPTY_REPLY =
+  'Przepraszam, chwilowo nie mogę przygotować pełnej odpowiedzi. Spróbuj proszę ponownie za moment.';
+const STREAM_ERROR_REPLY =
+  'Przepraszam, chwilowo nie mogę dokończyć odpowiedzi. Napisz proszę jeszcze raz za moment.';
 import { LUXURY_SYSTEM_PROMPT, KAZKA_HEADLESS_PERSONA_ADDON } from './prompts/luxury-system-prompt'; // 🟢 Używa nowego promptu v2
 import { parseStorefrontPathContext } from './storefront/path-context';
 import { BuyerTurnGate } from './catalog/buyer-turn-gate';
@@ -3974,10 +3979,12 @@ async function streamAssistantResponse(
         online_store_context_tightening: isOnlineStoreLiquid,
       });
 
-      // Model: operator → OPERATOR_DEFAULT_MODEL (+ override tylko tutaj). Kupujący nie wchodzi.
-      const {variant: activeModelVariant, modelId: activeChatModelId} = operatorMode
-        ? await resolveOperatorTurnModel(request.headers, env, {hasImage: Boolean(imageBase64)})
-        : {variant: null as ModelCapabilities | null, modelId: BUYER_MODEL_ID};
+      // Admin A/B przed logami startowymi — żeby pokazać realny model (activeChatModelId).
+      const activeModelVariant: ModelCapabilities | null = await resolveOperatorModelOverride(
+        request.headers,
+        env,
+        { hasImage: Boolean(imageBase64) },
+      );
       if (activeModelVariant) {
         console.log(
           JSON.stringify({
@@ -3990,6 +3997,7 @@ async function streamAssistantResponse(
           }),
         );
       }
+      const activeChatModelId = activeModelVariant?.id ?? CHAT_MODEL_ID;
       
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log(`[streamAssistant] Rozpoczynam pętlę AI. Sesja: ${sessionId}`);
@@ -4660,7 +4668,7 @@ async function streamAssistantResponse(
 
       // Ostateczny fallback UX — jeśli dalej pusty (np. błąd modelu / sieci):
       if (!finalTextResponse.trim() && streamedGeneratedImages.length === 0) {
-        finalTextResponse = 'Przepraszam, nie udało się przetworzyć odpowiedzi. Spróbuj ponownie.';
+        finalTextResponse = STREAM_EMPTY_REPLY;
       }
 
       if (streamedGeneratedImages.length > 0) {
@@ -4691,7 +4699,7 @@ async function streamAssistantResponse(
       try {
         await sendSSE('error', { message: 'stream_failed' });
         if (!buyerDeltaSent) {
-          await emitBuyerReply('Przepraszam, wystąpił błąd. Spróbuj ponownie.');
+          await emitBuyerReply(STREAM_ERROR_REPLY);
         }
       } catch (writeErr) {
         console.error('Failed to write error to stream:', writeErr);

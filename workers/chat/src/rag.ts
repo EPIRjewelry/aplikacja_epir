@@ -269,28 +269,6 @@ async function callMcpToolWithFallback(toolName: string, args: any, env: any): P
   }
 }
 
-/** Legacy catalog MCP removed (etap 1) — buyer catalog uses UCP, not /api/mcp. */
-export async function searchProductCatalogWithMCP(
-  _query: string,
-  _envOrShopDomain?: { MCP_ENDPOINT?: string; SHOP_DOMAIN?: string } | string,
-  _context?: string,
-): Promise<string> {
-  return '';
-}
-
-/** Legacy product/cart MCP context removed (etap 1). */
-export async function searchProductsAndCartWithMCP(
-  _query: string,
-  _shopDomain?: string,
-  _env?: unknown,
-  _cartId?: string | null,
-  _intent?: 'search' | 'cart' | 'order',
-  _vectorIndex?: VectorizeIndex,
-  _aiBinding?: unknown,
-): Promise<string> {
-  return '';
-}
-
 /**
  * searchShopPoliciesAndFaqsWithMCP
  * - MCP primary; Vectorize only for non-binding informational queries (KB-clamp).

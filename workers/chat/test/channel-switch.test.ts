@@ -5,8 +5,6 @@ import {
   readChannelMode,
 } from '../src/buyer/channel-switch';
 import type {ChatBrandLock} from '../src/brand-lock';
-import {BUYER_MODEL_ID} from '../src/config/model-params';
-import {OPERATOR_DEFAULT_MODEL} from '../src/operator/operator-model';
 
 function lock(partial: Partial<ChatBrandLock>): ChatBrandLock {
   return {
@@ -76,11 +74,5 @@ describe('buyer turn (PR1 always unavailable)', () => {
     }
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
-  });
-
-  it('buyer and operator model constants stay separate', () => {
-    expect(BUYER_MODEL_ID).toContain('groq/');
-    expect(OPERATOR_DEFAULT_MODEL).toContain('openrouter/');
-    expect(BUYER_MODEL_ID).not.toBe(OPERATOR_DEFAULT_MODEL);
   });
 });

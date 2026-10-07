@@ -1,6 +1,6 @@
 /**
  * Stronicowane pobranie katalogu GK (Storefront) — mała strona, kontrola błędów złożoności.
- * Wyłącznie PUBLIC_STOREFRONT_API_TOKEN_KAZKA.
+ * Wyłącznie PUBLIC_STOREFRONT_API_TOKEN_KAZKA. Wszystkie warianty produktu (paginacja).
  */
 import type {Env} from '../config/bindings';
 import {SHOPIFY_STOREFRONT_API_VERSION} from '../config/shopify-api-version';
@@ -10,13 +10,17 @@ import {normalizeProduct} from './normalize';
 import type {ProductFacts} from './types';
 
 const PAGE_SIZE = 10;
+const VARIANT_PAGE = 100;
 
-type SfPage = {
-  products?: {
-    pageInfo?: {hasNextPage?: boolean; endCursor?: string | null};
-    nodes?: unknown[];
-  };
-};
+const VARIANT_FIELDS = `
+  id title sku availableForSale
+  price { amount currencyCode }
+  compareAtPrice { amount currencyCode }
+  selectedOptions { name value }
+  image { url altText }
+`;
+
+type PageInfo = {hasNextPage?: boolean; endCursor?: string | null};
 
 function metafieldIdentifiersGql(): string {
   const parts = STOREFRONT_METAFIELD_IDENTIFIERS.map(
@@ -36,7 +40,7 @@ async function storefrontGraphql(
   env: Env,
   query: string,
   variables: Record<string, unknown>,
-): Promise<SfPage> {
+): Promise<Record<string, unknown>> {
   const shop = env.SHOP_DOMAIN?.trim();
   const token = env.PUBLIC_STOREFRONT_API_TOKEN_KAZKA?.trim();
   if (!shop) throw new Error('SHOP_DOMAIN missing');
@@ -52,7 +56,7 @@ async function storefrontGraphql(
     body: JSON.stringify({query, variables}),
   });
   const json = (await res.json().catch(() => ({}))) as {
-    data?: SfPage;
+    data?: Record<string, unknown>;
     errors?: Array<{message?: string}>;
   };
   const msg = JSON.stringify(json.errors ?? []);
@@ -67,6 +71,54 @@ async function storefrontGraphql(
     throw new Error(`Storefront GraphQL errors: ${msg.slice(0, 400)}`);
   }
   return json.data ?? {};
+}
+
+async function storefrontGraphqlRetry(
+  env: Env,
+  query: string,
+  variables: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return await storefrontGraphql(env, query, variables);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('THROTTLED') || msg.includes('MAX_COST')) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('Storefront throttle exhausted');
+}
+
+async function loadAllVariants(
+  env: Env,
+  productId: string,
+  firstPage: {pageInfo?: PageInfo; nodes?: unknown[]},
+): Promise<unknown[]> {
+  const nodes = [...(firstPage.nodes ?? [])];
+  let cursor = firstPage.pageInfo?.hasNextPage ? firstPage.pageInfo.endCursor ?? null : null;
+  const query = `
+    query ProductVariantsGk($id: ID!, $cursor: String) {
+      product(id: $id) {
+        variants(first: ${VARIANT_PAGE}, after: $cursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes { ${VARIANT_FIELDS} }
+        }
+      }
+    }
+  `;
+  while (cursor) {
+    const data = await storefrontGraphqlRetry(env, query, {id: productId, cursor});
+    const product = data.product as {variants?: {pageInfo?: PageInfo; nodes?: unknown[]}} | null;
+    const page = product?.variants;
+    nodes.push(...(page?.nodes ?? []));
+    if (!page?.pageInfo?.hasNextPage || !page.pageInfo.endCursor) break;
+    cursor = page.pageInfo.endCursor;
+  }
+  return nodes;
 }
 
 export async function fetchGkCatalogProducts(env: Env): Promise<ProductFacts[]> {
@@ -85,14 +137,9 @@ export async function fetchGkCatalogProducts(env: Env): Promise<ProductFacts[]> 
           collections(first: 5) { nodes { handle title } }
           options { name values }
           metafields(identifiers: ${ids}) { namespace key value }
-          variants(first: 25) {
-            nodes {
-              id title sku availableForSale
-              price { amount currencyCode }
-              compareAtPrice { amount currencyCode }
-              selectedOptions { name value }
-              image { url altText }
-            }
+          variants(first: ${VARIANT_PAGE}) {
+            pageInfo { hasNextPage endCursor }
+            nodes { ${VARIANT_FIELDS} }
           }
         }
       }
@@ -106,31 +153,27 @@ export async function fetchGkCatalogProducts(env: Env): Promise<ProductFacts[]> 
   const urlTemplate = kazkaUrlTemplate();
 
   for (;;) {
-    let data: SfPage | null = null;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        data = await storefrontGraphql(env, query, {cursor});
-        break;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('THROTTLED') || msg.includes('MAX_COST')) {
-          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
-          continue;
-        }
-        throw err;
-      }
-    }
-    if (!data) throw new Error('Storefront throttle exhausted');
+    const data = await storefrontGraphqlRetry(env, query, {cursor});
     pages += 1;
-    for (const raw of data.products?.nodes ?? []) {
-      const facts = normalizeProduct(raw, {
+    const products = data.products as {
+      pageInfo?: PageInfo;
+      nodes?: Array<Record<string, unknown>>;
+    };
+    for (const raw of products?.nodes ?? []) {
+      const productId = typeof raw.id === 'string' ? raw.id : '';
+      const variantsConn = raw.variants as {pageInfo?: PageInfo; nodes?: unknown[]} | undefined;
+      const allVariants = productId
+        ? await loadAllVariants(env, productId, variantsConn ?? {})
+        : (variantsConn?.nodes ?? []);
+      const merged = {...raw, variants: {nodes: allVariants}};
+      const facts = normalizeProduct(merged, {
         channel: 'kazka-hydrogen',
         urlTemplate,
         fetchedAt,
       });
       if (facts) out.push(facts);
     }
-    const pageInfo = data.products?.pageInfo;
+    const pageInfo = products?.pageInfo;
     if (!pageInfo?.hasNextPage || !pageInfo.endCursor) break;
     cursor = pageInfo.endCursor;
     if (pages > 2000) break;

@@ -239,16 +239,11 @@ export const RECRAFT_MODEL_VARIANT_KEYS: readonly ModelVariantKey[] = [
 ];
 
 /**
- * Model ścieżki kupującego (Groq via AI Gateway). Osobny od operatora
- * (`src/operator/operator-model.ts` → OPERATOR_DEFAULT_MODEL).
+ * Kanoniczny model inference dla czatu (Harmony — `groq/openai/gpt-oss-120b`).
+ * Domyślnie używany dla ruchu storefront i internal dashboard.
+ * Warianty ALT dostępne tylko za adminskim nagłówkiem; patrz `resolveModelVariant`.
  */
-export const BUYER_MODEL_ID = MODEL_VARIANTS.default.id;
-
-/**
- * @deprecated Nie używać jako wspólnej domyślnej — alias historyczny = BUYER_MODEL_ID.
- * Operator: `OPERATOR_DEFAULT_MODEL`. Kupujący: `BUYER_MODEL_ID`.
- */
-export const CHAT_MODEL_ID = BUYER_MODEL_ID;
+export const CHAT_MODEL_ID = MODEL_VARIANTS.default.id;
 
 /** getGroqResponse po nieudanej pętli narzędzi — bardzo krótki tekst (np. 1–2 zdania), minimalne opóźnienie. */
 export const CHAT_RECOVERY_MAX_TOKENS = 256;

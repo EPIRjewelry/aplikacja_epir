@@ -19,6 +19,8 @@ const FORBIDDEN = [
   'kazka-assortment',
   'catalog-for-model',
   'kazka-hydrate',
+  'searchProductCatalogWithMCP',
+  'searchProductsAndCartWithMCP',
   'AUDITED_SAPPHIRE_HANDLES',
   'KNOWN_NATURAL_HANDLES',
   'KNOWN_LAB_HANDLES',

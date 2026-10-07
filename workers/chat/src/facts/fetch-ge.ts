@@ -259,6 +259,78 @@ async function fetchViaBulk(env: Env): Promise<ProductFacts[]> {
   return out;
 }
 
+const VARIANT_PAGE = 100;
+const ADMIN_VARIANT_FIELDS = `
+  id title sku availableForSale price compareAtPrice
+  selectedOptions { name value }
+  image { url altText }
+`;
+
+async function adminGraphqlRetry(
+  env: Env,
+  query: string,
+  variables?: Record<string, unknown>,
+): Promise<GraphqlJson> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return await adminGraphqlRaw(env, query, variables);
+    } catch (err) {
+      if (err instanceof AdminGraphqlThrottledError || err instanceof AdminGraphqlCostError) {
+        await sleep(1000 * (attempt + 1));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new AdminGraphqlThrottledError('exhausted throttle retries');
+}
+
+function wrapAdminVariantPrices(nodes: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  return nodes.map((v) => {
+    const next = {...v};
+    if (typeof next.price === 'string' || typeof next.price === 'number') {
+      next.price = {amount: String(next.price), currencyCode: 'PLN'};
+    }
+    return next;
+  });
+}
+
+async function loadAllAdminVariants(
+  env: Env,
+  productId: string,
+  firstPage: {
+    pageInfo?: {hasNextPage?: boolean; endCursor?: string | null};
+    nodes?: Array<Record<string, unknown>>;
+  },
+): Promise<Array<Record<string, unknown>>> {
+  const nodes = [...(firstPage.nodes ?? [])];
+  let cursor = firstPage.pageInfo?.hasNextPage ? firstPage.pageInfo.endCursor ?? null : null;
+  const query = `
+    query ProductVariantsGe($id: ID!, $cursor: String) {
+      product(id: $id) {
+        variants(first: ${VARIANT_PAGE}, after: $cursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes { ${ADMIN_VARIANT_FIELDS} }
+        }
+      }
+    }
+  `;
+  while (cursor) {
+    const json = await adminGraphqlRetry(env, query, {id: productId, cursor});
+    const product = json.data?.product as {
+      variants?: {
+        pageInfo?: {hasNextPage?: boolean; endCursor?: string | null};
+        nodes?: Array<Record<string, unknown>>;
+      };
+    } | null;
+    const page = product?.variants;
+    nodes.push(...(page?.nodes ?? []));
+    if (!page?.pageInfo?.hasNextPage || !page.pageInfo.endCursor) break;
+    cursor = page.pageInfo.endCursor;
+  }
+  return wrapAdminVariantPrices(nodes);
+}
+
 async function fetchViaPaged(env: Env): Promise<ProductFacts[]> {
   const query = `
     query CatalogSnapshotGe($cursor: String) {
@@ -270,12 +342,9 @@ async function fetchViaPaged(env: Env): Promise<ProductFacts[]> {
           collections(first: 5) { nodes { handle title } }
           options { name values }
           metafield(namespace: "custom", key: "gemstone_origin") { namespace key value }
-          variants(first: 25) {
-            nodes {
-              id title sku availableForSale price compareAtPrice
-              selectedOptions { name value }
-              image { url altText }
-            }
+          variants(first: ${VARIANT_PAGE}) {
+            pageInfo { hasNextPage endCursor }
+            nodes { ${ADMIN_VARIANT_FIELDS} }
           }
         }
       }
@@ -287,20 +356,7 @@ async function fetchViaPaged(env: Env): Promise<ProductFacts[]> {
   const fetchedAt = new Date().toISOString();
 
   for (;;) {
-    let json: GraphqlJson | null = null;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        json = await adminGraphqlRaw(env, query, {cursor});
-        break;
-      } catch (err) {
-        if (err instanceof AdminGraphqlThrottledError) {
-          await sleep(1000 * (attempt + 1));
-          continue;
-        }
-        throw err;
-      }
-    }
-    if (!json) throw new AdminGraphqlThrottledError('exhausted throttle retries');
+    const json = await adminGraphqlRetry(env, query, {cursor});
     pages += 1;
     const products = json.data?.products as {
       pageInfo?: {hasNextPage?: boolean; endCursor?: string | null};
@@ -308,20 +364,16 @@ async function fetchViaPaged(env: Env): Promise<ProductFacts[]> {
     };
     for (const raw of products?.nodes ?? []) {
       if (!isRecord(raw)) continue;
-      const adapted = adaptBulkProduct(raw);
+      const productId = typeof raw.id === 'string' ? raw.id : '';
+      const variantsConn = raw.variants as {
+        pageInfo?: {hasNextPage?: boolean; endCursor?: string | null};
+        nodes?: Array<Record<string, unknown>>;
+      } | undefined;
+      const allVariants = productId
+        ? await loadAllAdminVariants(env, productId, variantsConn ?? {})
+        : wrapAdminVariantPrices(variantsConn?.nodes ?? []);
+      const adapted = adaptBulkProduct({...raw, variants: {nodes: allVariants}});
       if (raw.metafield) adapted.metafields = {nodes: [raw.metafield]};
-      const variants = adapted.variants as {nodes?: Array<Record<string, unknown>>} | undefined;
-      if (variants?.nodes) {
-        adapted.variants = {
-          nodes: variants.nodes.map((v) => {
-            const next = {...v};
-            if (typeof next.price === 'string' || typeof next.price === 'number') {
-              next.price = {amount: String(next.price), currencyCode: 'PLN'};
-            }
-            return next;
-          }),
-        };
-      }
       const facts = normalizeProduct(adapted, {channel: 'epir-online-store', fetchedAt});
       if (facts) out.push(facts);
     }
