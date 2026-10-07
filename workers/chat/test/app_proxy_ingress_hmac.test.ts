@@ -4,6 +4,7 @@ import { shopifyAppProxyCanonicalString } from '../src/hmac';
 import worker, { SessionDO } from '../src/index';
 import type { Env } from '../src/config/bindings';
 import { makeDurableStateStub } from './helpers/session-do-sql-stub';
+import { expectBuyerUnavailableJson } from './helpers/buyer-unavailable';
 
 const noopCtx = { waitUntil() {} } as unknown as ExecutionContext;
 
@@ -184,9 +185,8 @@ describe('App Proxy ingress HMAC (/apps/assistant/chat)', () => {
     );
 
     expect(response.status).toBe(200);
-    const data = (await response.json()) as { reply?: string; session_id?: string };
-    expect(data.reply).toContain('Witaj');
-    expect(data.session_id).toBeTruthy();
+    const data = (await response.json()) as Record<string, unknown>;
+    expectBuyerUnavailableJson(data);
   });
 
   it('returns 200 when signature is in query (Shopify App Proxy), body ignored for HMAC', async () => {
@@ -207,9 +207,8 @@ describe('App Proxy ingress HMAC (/apps/assistant/chat)', () => {
     );
 
     expect(response.status).toBe(200);
-    const data = (await response.json()) as {reply?: string; session_id?: string};
-    expect(data.reply).toContain('Witaj');
-    expect(data.session_id).toBeTruthy();
+    const data = (await response.json()) as Record<string, unknown>;
+    expectBuyerUnavailableJson(data);
   });
 
   it('allows consecutive App Proxy requests with same query signature when body differs', async () => {

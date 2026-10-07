@@ -142,11 +142,10 @@ export interface Env {
   POLICIES_CACHE?: KVNamespace;
 
   /**
-   * Wyłącznik Gemma per kanał (`gemma:channel:<id>` → off|internal|on).
-   * Brak bindingu: tryb z `GEMMA_CHANNEL_<channel>` / `GEMMA_CHANNEL_DEFAULT` (domyślnie off).
+   * KV namespace Gemma runtime (kanał gate, migawki katalogu).
+   * Brak bindingu = fail-closed (buyer dostaje "niedostępny").
    */
-  GEMMA_CHANNEL_GATE?: KVNamespace;
-  GEMMA_CHANNEL_DEFAULT?: string;
+  GEMMA_RUNTIME_KV?: KVNamespace;
 
   /** R2: załączniki briefów współtworzenia (`/apps/assistant/cocreate`). */
   COCREATE_UPLOADS?: R2Bucket;

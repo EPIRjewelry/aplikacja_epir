@@ -3,7 +3,15 @@
  * Filtr jest na tekście odpowiedzi, więc zły host nie przechodzi nawet gdy model go wymyśli.
  */
 
-import {isEpirCatalogBrand, isKazkaCatalogBrand} from './catalog/kazka-assortment';
+function isKazkaCatalogBrand(brand?: string): boolean {
+  const b = brand?.trim().toLowerCase();
+  return b === 'kazka' || b === 'kazka jewelry';
+}
+
+function isEpirCatalogBrand(brand?: string): boolean {
+  const b = brand?.trim().toLowerCase();
+  return b === 'epir' || b === 'epir art jewellery' || b === 'online-store';
+}
 
 export const EPIR_STORE_HOST = 'epirbizuteria.pl';
 export const KAZKA_STORE_HOST = 'kazka.epirbizuteria.pl';

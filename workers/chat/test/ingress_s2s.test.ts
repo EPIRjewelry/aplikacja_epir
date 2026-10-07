@@ -3,6 +3,7 @@ import worker, { SessionDO, buildSessionDOShardName, parseChatRequestBody } from
 import type { Env } from '../src/config/bindings';
 import { computeHmac, shopifyAppProxyCanonicalString } from '../src/hmac';
 import { makeDurableStateStub } from './helpers/session-do-sql-stub';
+import { expectBuyerUnavailableJson } from './helpers/buyer-unavailable';
 
 const noopCtx = { waitUntil() {} } as unknown as ExecutionContext;
 
@@ -235,13 +236,9 @@ describe('S2S ingress for /chat', () => {
     );
 
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as { reply?: string; session_id?: string };
-    expect(payload.reply).toContain('Witaj');
-    expect(payload.session_id).toBeTruthy();
-
-    const session = sessions.get(String(payload.session_id));
-    expect(session?.storage.get('storefront_id')).toBe('zareczyny');
-    expect(session?.storage.get('channel')).toBe('hydrogen-zareczyny');
+    const payload = (await response.json()) as Record<string, unknown>;
+    expectBuyerUnavailableJson(payload);
+    expect(sessions.size).toBe(0);
   });
 
   it('uses operator greeting for operator channel', async () => {
@@ -288,14 +285,9 @@ describe('S2S ingress for /chat', () => {
     const response = await worker.fetch(request, env, noopCtx);
 
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as { reply?: string; session_id?: string };
-    expect(payload.reply).toContain('Jestem Gemma');
-    expect(payload.reply).not.toContain('Dev-asystent');
-    expect(payload.reply).not.toContain('Kazka Jewelry');
-
-    const session = sessions.get(String(payload.session_id));
-    expect(session?.storage.get('storefront_id')).toBe('online-store');
-    expect(session?.storage.get('channel')).toBe('online-store');
+    const payload = (await response.json()) as Record<string, unknown>;
+    expectBuyerUnavailableJson(payload);
+    expect(sessions.size).toBe(0);
   });
 
   it('accepts signed App Proxy MCP tools/list with the same canonical verifier', async () => {
@@ -433,14 +425,13 @@ describe('App Proxy customer_id_hint in body', () => {
     const response = await worker.fetch(request, env, noopCtx);
 
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as { reply?: string; session_id?: string };
-    expect(payload.session_id).toBeTruthy();
-    expect(payload.reply).toBeTruthy();
+    const payload = (await response.json()) as Record<string, unknown>;
+    expectBuyerUnavailableJson(payload);
   });
 });
 
-describe('brand-locked greeting', () => {
-  it('answers cześć on the EPIR shop in the EPIR voice even when the body says Kazka and stream is on', async () => {
+describe('etap1 buyer gate (ingress)', () => {
+  it('App Proxy on epirbizuteria.pl returns unavailable even when body says Kazka', async () => {
     const {env, sessions} = makeEnv();
     const nowTs = Math.floor(Date.now() / 1000);
     const request = await makeSignedAppProxyRequest(
@@ -453,82 +444,35 @@ describe('brand-locked greeting', () => {
         channel: 'hydrogen-kazka',
         session_id: 'phone-session',
         page_host: 'epirbizuteria.pl',
-        path: '/collections/zlota-bizuteria',
       },
     );
     request.headers.set('Referer', 'https://epirbizuteria.pl/collections/zlota-bizuteria');
 
     const response = await worker.fetch(request, env, noopCtx);
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as {reply?: string; session_id?: string};
-    expect(payload.session_id).toBe('phone-session');
-    expect(payload.reply).toContain('EPIR Art Jewellery');
-    expect(payload.reply).not.toContain('Kazka Jewelry');
-    expect(buildSessionDOShardName('phone-session')).toBe('phone-session');
-    expect(sessions.get('phone-session')).toBeTruthy();
-    expect(sessions.get('epir:phone-session')).toBeUndefined();
-    expect(sessions.get('kazka:phone-session')).toBeUndefined();
+    expectBuyerUnavailableJson((await response.json()) as Record<string, unknown>);
+    expect(sessions.size).toBe(0);
   });
 
-  it('does not continue a Kazka greeting when the same session id later hits EPIR', async () => {
+  it('S2S Kazka channel returns unavailable without SessionDO', async () => {
     const {env, sessions} = makeEnv();
-    const shared = 'shared-across-brands';
-    const kazkaResponse = await worker.fetch(
+    const response = await worker.fetch(
       makeChatRequest(
         {
           'X-EPIR-SHARED-SECRET': 'shared-secret',
           'X-EPIR-STOREFRONT-ID': 'kazka',
           'X-EPIR-CHANNEL': 'hydrogen-kazka',
         },
-        {message: 'hej', stream: false, session_id: shared, brand: 'kazka'},
+        {message: 'hej', stream: false, session_id: 'shared-across-brands', brand: 'kazka'},
       ),
       env,
       noopCtx,
     );
-    const kazkaPayload = (await kazkaResponse.json()) as {reply?: string};
-    expect(kazkaPayload.reply).toContain('Kazka Jewelry');
-
-    const nowTs = Math.floor(Date.now() / 1000);
-    const epirResponse = await worker.fetch(
-      await makeSignedAppProxyRequest(
-        `https://asystent.epirbizuteria.pl/chat?shop=epir-art-silver-jewellery.myshopify.com&timestamp=${nowTs}`,
-        {message: 'hej', stream: false, session_id: shared, brand: 'kazka', page_host: 'epirbizuteria.pl'},
-      ),
-      env,
-      noopCtx,
-    );
-    const epirPayload = (await epirResponse.json()) as {reply?: string};
-    expect(epirPayload.reply).toContain('EPIR Art Jewellery');
-    expect(epirPayload.reply).not.toContain('Kazka Jewelry');
-
-    const history = await worker.fetch(
-      await makeSignedAppProxyHistoryRequest(shared),
-      env,
-      noopCtx,
-    );
-    const historyPayload = (await history.json()) as {history: Array<{content: string}>};
-    expect(historyPayload.history.map((entry) => entry.content).join('\n')).not.toContain('Kazka Jewelry');
-    expect(historyPayload.history.map((entry) => entry.content).join('\n')).toContain('EPIR Art Jewellery');
-    expect(sessions.get(shared)).toBeTruthy();
-    expect(sessions.get(`epir:${shared}`)).toBeUndefined();
-    expect(sessions.get(`kazka:${shared}`)).toBeUndefined();
+    expect(response.status).toBe(200);
+    expectBuyerUnavailableJson((await response.json()) as Record<string, unknown>);
+    expect(sessions.size).toBe(0);
   });
 });
-
-async function makeSignedAppProxyHistoryRequest(sessionId: string) {
-  const nowTs = Math.floor(Date.now() / 1000);
-  const url = new URL(
-    `https://asystent.epirbizuteria.pl/apps/assistant/history?shop=epir-art-silver-jewellery.myshopify.com&timestamp=${nowTs}`,
-  );
-  const canonical = shopifyAppProxyCanonicalString(url.searchParams);
-  const signature = await computeHmac('shopify-app-secret', canonical);
-  url.searchParams.set('signature', signature);
-  return new Request(url.toString(), {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({session_id: sessionId, page_host: 'epirbizuteria.pl', brand: 'kazka'}),
-  });
-}
 
 describe('SessionDO lifecycle after the auxiliary rate window', () => {
   const shopifyY = '8f3c1a20-6b14-4e2a-9c77-0a1b2c3d4e5f';
@@ -564,21 +508,10 @@ describe('SessionDO lifecycle after the auxiliary rate window', () => {
     );
 
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as {reply?: string; session_id?: string; error?: string};
-    expect(payload.error).toBeUndefined();
-    expect(payload.session_id).toBe(shopifyY);
-    expect(payload.reply).toContain('EPIR Art Jewellery');
-    expect(payload.reply).not.toContain('Kazka');
-    expect(sessions.has(shopifyY)).toBe(true);
-
-    const historyResponse = await stub.fetch('https://session/history');
-    const history = (await historyResponse.json()) as Array<{role: string; content: string}>;
-    expect(history.some((entry) => entry.role === 'assistant' && entry.content.includes('EPIR Art Jewellery'))).toBe(
-      true,
-    );
+    expectBuyerUnavailableJson((await response.json()) as Record<string, unknown>);
   });
 
-  it('returns an explicit client reply when SessionDO append fails', async () => {
+  it('returns unavailable when SessionDO would have failed (buyer gate short-circuits)', async () => {
     const {env} = makeEnv({
       SESSION_DO: {
         idFromName(name: string) {
@@ -620,9 +553,6 @@ describe('SessionDO lifecycle after the auxiliary rate window', () => {
     );
 
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as {reply?: string; session_id?: string; error?: string};
-    expect(payload.error).toBeUndefined();
-    expect(payload.session_id).toBe(shopifyY);
-    expect(payload.reply).toBe('Nie udało się zapisać tej wiadomości. Napisz proszę jeszcze raz za chwilę.');
+    expectBuyerUnavailableJson((await response.json()) as Record<string, unknown>);
   });
 });

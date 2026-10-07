@@ -67,10 +67,10 @@ export function resolveStorefrontConfig(env: Env, storefrontKey?: string): Resol
   return {
     ...config,
     apiToken: config.apiTokenEnvKey
-      ? env[config.apiTokenEnvKey] ?? env.SHOPIFY_STOREFRONT_TOKEN
+      ? env[config.apiTokenEnvKey]?.trim() || undefined
       : env.SHOPIFY_STOREFRONT_TOKEN,
     privateToken: config.privateTokenEnvKey
-      ? env[config.privateTokenEnvKey] ?? env.PRIVATE_STOREFRONT_API_TOKEN
+      ? env[config.privateTokenEnvKey]
       : env.PRIVATE_STOREFRONT_API_TOKEN,
   };
 }

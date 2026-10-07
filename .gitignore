@@ -30,6 +30,7 @@ chat-secrets.txt
 **/cf-secrets.local.*
 **/r2-sql-token*.txt
 workers/**/.dev.vars
+workers/chat/tmp/
 !**/.dev.vars.example
 
 # Cache buildów

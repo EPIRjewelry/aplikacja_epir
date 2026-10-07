@@ -20,17 +20,17 @@ describe('normalizeCatalogSearchArgs', () => {
     expect((catalog.pagination as Record<string, unknown>).limit).toBe(3);
   });
 
-  it('caps pagination limit at 10', () => {
-    const out = normalizeCatalogSearchArgs({catalog: {query: 'x', pagination: {limit: 99}}}, env);
-    expect((out.catalog as Record<string, unknown>).pagination).toEqual({limit: 10});
+  it('caps pagination limit at 250', () => {
+    const out = normalizeCatalogSearchArgs({catalog: {query: 'x', pagination: {limit: 999}}}, env);
+    expect((out.catalog as Record<string, unknown>).pagination).toEqual({limit: 250});
   });
 
-  it('keeps the buyer query unchanged for Kazka and asks for a wider candidate page', () => {
+  it('keeps the buyer query unchanged for Kazka without rewriting tags', () => {
     const out = normalizeCatalogSearchArgs({query: 'pierścionek'}, env, undefined, 'kazka');
     const catalog = out.catalog as Record<string, unknown>;
     expect(catalog.query).toBe('pierścionek');
     expect(catalog.query).not.toMatch(/tag:|vendor:/);
-    expect(catalog.pagination).toEqual({limit: 10});
+    expect((catalog.pagination as Record<string, unknown>).limit).toBe(3);
   });
 
   it('merges commerce context for PLN', () => {
