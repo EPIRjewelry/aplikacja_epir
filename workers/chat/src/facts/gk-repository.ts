@@ -22,7 +22,7 @@ function emptyFacets() {
  */
 export async function createKazkaCatalogRepository(env: Env): Promise<CatalogFactsRepository> {
   const channel: BuyerChannelId = 'kazka-hydrogen';
-  const token = env.PUBLIC_STOREFRONT_API_TOKEN_KAZKA?.trim();
+  const token = env.PRIVATE_STOREFRONT_API_TOKEN_KAZKA?.trim();
   if (!token) {
     return {
       channel,

@@ -72,7 +72,7 @@ export async function refreshGkSnapshot(env: Env): Promise<RefreshResult> {
   const channel: BuyerChannelId = 'kazka-hydrogen';
   try {
     if (!env.GEMMA_RUNTIME_KV) return {channel, ok: false, reason: 'no_kv_binding'};
-    if (!env.PUBLIC_STOREFRONT_API_TOKEN_KAZKA?.trim()) {
+    if (!env.PRIVATE_STOREFRONT_API_TOKEN_KAZKA?.trim()) {
       return {channel, ok: false, reason: 'no_token'};
     }
     const products = await fetchGkCatalogProducts(env);

@@ -29,10 +29,8 @@ export type FetchGkOptions = {
   clientRequest?: Request;
 };
 
-type GkEnv = Env & {PRIVATE_STOREFRONT_API_TOKEN_KAZKA?: string};
-
 function privateKazkaToken(env: Env): string | undefined {
-  return (env as GkEnv).PRIVATE_STOREFRONT_API_TOKEN_KAZKA?.trim();
+  return env.PRIVATE_STOREFRONT_API_TOKEN_KAZKA?.trim();
 }
 
 function buyerIpFrom(options?: FetchGkOptions): string | undefined {

@@ -378,7 +378,7 @@ async function fetchViaPaged(env: Env): Promise<ProductFacts[]> {
         nodes {
           id handle title vendor productType descriptionHtml onlineStoreUrl
           featuredMedia { preview { image { url altText } } }
-          collections(first: ${COLLECTIONS_PAGE}) {
+          collections(first: 5) {
             pageInfo { hasNextPage endCursor }
             nodes { handle title }
           }
