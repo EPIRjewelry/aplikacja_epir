@@ -97,21 +97,33 @@ function kazkaUrlTemplate(): string {
   );
 }
 
-function metaobjectDisplayText(node: unknown): string | null {
+/** Nazwa kategorii (shopify.gemstone-type / jewelry-material): tylko name/title/label. */
+function metaobjectCategoryName(node: unknown): string | null {
   if (!isRecord(node)) return null;
   const fields = (node.fields as unknown[]) ?? [];
-  const texts: string[] = [];
   for (const f of fields) {
     if (!isRecord(f)) continue;
     const key = typeof f.key === 'string' ? f.key : '';
     const value = typeof f.value === 'string' ? f.value.trim() : '';
     if (!value || value.includes('gid://')) continue;
-    if (key === 'name' || key === 'title' || key === 'label') {
-      return value;
-    }
-    texts.push(value);
+    if (key === 'name' || key === 'title' || key === 'label') return value;
   }
-  return texts.length ? texts.join(', ') : null;
+  return null;
+}
+
+/** stone_profile / stone_education: wszystkie niepuste pola tekstowe jako `klucz: wartość`. */
+function metaobjectStoneEducationText(node: unknown): string | null {
+  if (!isRecord(node)) return null;
+  const fields = (node.fields as unknown[]) ?? [];
+  const parts: string[] = [];
+  for (const f of fields) {
+    if (!isRecord(f)) continue;
+    const key = typeof f.key === 'string' ? f.key.trim() : '';
+    const value = typeof f.value === 'string' ? f.value.trim() : '';
+    if (!key || !value || value.includes('gid://')) continue;
+    parts.push(`${key}: ${value}`);
+  }
+  return parts.length ? parts.join('; ') : null;
 }
 
 function flattenMetaobjectReferences(
@@ -120,10 +132,23 @@ function flattenMetaobjectReferences(
   if (!isRecord(references) || !Array.isArray(references.nodes)) return [];
   const out: string[] = [];
   for (const n of references.nodes) {
-    const text = metaobjectDisplayText(n);
+    const text = metaobjectCategoryName(n);
     if (text) out.push(text);
   }
   return out;
+}
+
+type MetafieldEntry = {namespace?: string; key?: string; value?: string};
+
+/** Storefront 2026-10: `metafields(identifiers:)` → `[Metafield]!` (tablica z null); legacy `{nodes}` jako druga gałąź. */
+function iterateMetafieldEntries(raw: unknown): MetafieldEntry[] {
+  if (Array.isArray(raw)) {
+    return raw.filter((m): m is MetafieldEntry => m != null && isRecord(m));
+  }
+  if (isRecord(raw) && Array.isArray(raw.nodes)) {
+    return raw.nodes.filter((m): m is MetafieldEntry => m != null && isRecord(m));
+  }
+  return [];
 }
 
 function adaptProductMetafields(raw: Record<string, unknown>): {nodes: Array<{namespace: string; key: string; value: string}>} {
@@ -140,9 +165,8 @@ function adaptProductMetafields(raw: Record<string, unknown>): {nodes: Array<{na
     nodes.push({namespace, key, value: s});
   };
 
-  const mfs = raw.metafields as {nodes?: Array<{namespace?: string; key?: string; value?: string}>} | undefined;
-  for (const m of mfs?.nodes ?? []) {
-    if (!m?.namespace || !m?.key) continue;
+  for (const m of iterateMetafieldEntries(raw.metafields)) {
+    if (!m.namespace || !m.key) continue;
     push(m.namespace, m.key, m.value);
   }
 
@@ -155,8 +179,7 @@ function adaptProductMetafields(raw: Record<string, unknown>): {nodes: Array<{na
   if (matTexts.length) push('shopify', 'jewelry-material', matTexts);
 
   const stoneEd = raw._stoneEducationMeta as {reference?: unknown} | undefined;
-  const ref = stoneEd?.reference;
-  const edText = metaobjectDisplayText(ref);
+  const edText = metaobjectStoneEducationText(stoneEd?.reference);
   if (edText) push('custom', 'stone_education', edText);
 
   return {nodes};
@@ -164,9 +187,8 @@ function adaptProductMetafields(raw: Record<string, unknown>): {nodes: Array<{na
 
 function readVariantMetafieldMap(variant: Record<string, unknown>): Record<string, string> {
   const out: Record<string, string> = {};
-  const raw = variant.metafields as {nodes?: Array<{namespace?: string; key?: string; value?: string}>};
-  for (const m of raw?.nodes ?? []) {
-    if (!m?.namespace || !m?.key) continue;
+  for (const m of iterateMetafieldEntries(variant.metafields)) {
+    if (!m.namespace || !m.key) continue;
     const value = typeof m.value === 'string' ? m.value.trim() : '';
     if (!value || value.includes('gid://')) continue;
     out[`${m.namespace}.${m.key}`] = value;

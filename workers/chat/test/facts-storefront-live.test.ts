@@ -10,14 +10,15 @@ afterEach(() => {
 function mkVariantNode(
   id: string,
   price: string,
-  metafields?: Array<{namespace: string; key: string; value: string}>,
+  metafields?: Array<{namespace: string; key: string; value: string} | null>,
 ) {
   return {
     id,
     price: {amount: price, currencyCode: 'PLN'},
     availableForSale: true,
     selectedOptions: [],
-    metafields: metafields ? {nodes: metafields} : {nodes: []},
+    // Storefront 2026-10: metafields(identifiers:) → [Metafield]!
+    metafields: metafields ?? [],
   };
 }
 
@@ -65,7 +66,7 @@ describe('fetchProductFactsLive', () => {
             pageInfo: {hasNextPage: false, endCursor: null},
             nodes: [mkVariantNode('gid://shopify/ProductVariant/1', '10.00')],
           },
-          metafields: {nodes: []},
+          metafields: [],
         },
       ]);
     });
@@ -150,7 +151,7 @@ describe('fetchProductFactsLive', () => {
             pageInfo: {hasNextPage: false, endCursor: null},
             nodes: [mkVariantNode('gid://shopify/ProductVariant/7', '1.00')],
           },
-          metafields: {nodes: []},
+          metafields: [],
         },
       ]);
     });
@@ -181,7 +182,7 @@ describe('fetchProductFactsLive', () => {
             pageInfo: {hasNextPage: false, endCursor: null},
             nodes: [mkVariantNode('gid://shopify/ProductVariant/2', '2.00')],
           },
-          metafields: {nodes: []},
+          metafields: [],
         },
       ]),
     );
@@ -211,7 +212,7 @@ describe('fetchProductFactsLive', () => {
             pageInfo: {hasNextPage: false, endCursor: null},
             nodes: [mkVariantNode('gid://shopify/ProductVariant/3', '3.00')],
           },
-          metafields: {nodes: []},
+          metafields: [],
         },
       ]),
     );
@@ -228,7 +229,7 @@ describe('fetchProductFactsLive', () => {
 
   it('epir-online-store with SHOPIFY_STOREFRONT_TOKEN uses public header, no Buyer-IP', async () => {
     const seen: Array<Headers> = [];
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
       seen.push(new Headers(init?.headers));
       return nodesResponse([
         {
@@ -242,7 +243,7 @@ describe('fetchProductFactsLive', () => {
             pageInfo: {hasNextPage: false, endCursor: null},
             nodes: [mkVariantNode('gid://shopify/ProductVariant/4', '4.00')],
           },
-          metafields: {nodes: []},
+          metafields: [],
         },
       ]);
     });
@@ -260,6 +261,51 @@ describe('fetchProductFactsLive', () => {
     expect(seen[0].get('Shopify-Storefront-Buyer-IP')).toBeNull();
   });
 
+  it('reads product metafields array: main_stone, metal, gemstone_origin → facts', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      nodesResponse([
+        {
+          id: 'gid://shopify/Product/10',
+          handle: 'facts-mf',
+          title: 'Facts',
+          productType: 'Ring',
+          collections: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: []},
+          metafields: [
+            {namespace: 'custom', key: 'main_stone', value: 'Szafir'},
+            null,
+            {namespace: 'custom', key: 'metal', value: 'Złoto 585'},
+            {namespace: 'custom', key: 'gemstone_origin', value: 'naturalny'},
+          ],
+          variants: {
+            pageInfo: {hasNextPage: false, endCursor: null},
+            nodes: [
+              mkVariantNode('gid://shopify/ProductVariant/10', '10.00', [
+                {namespace: 'custom', key: 'gemstone_carat_weight', value: '0.42'},
+                null,
+                {namespace: 'custom', key: 'gemstone_type', value: 'szafir'},
+              ]),
+            ],
+          },
+        },
+      ]),
+    );
+    const products = await fetchProductFactsLive(
+      {
+        SHOP_DOMAIN: 'example.myshopify.com',
+        PRIVATE_STOREFRONT_API_TOKEN_KAZKA: 'priv',
+      } as Env,
+      'kazka-hydrogen',
+      ['gid://shopify/Product/10'],
+    );
+    expect(products[0].metafields['custom.main_stone']).toBe('Szafir');
+    expect(products[0].metafields['custom.metal']).toBe('Złoto 585');
+    expect(products[0].metafields['custom.gemstone_origin']).toBe('naturalny');
+    expect(products[0].stones).toContain('Szafir');
+    expect(products[0].metals).toContain('Złoto 585');
+    expect(products[0].variants[0].variantMetafields?.['custom.gemstone_carat_weight']).toBe('0.42');
+    expect(products[0].variants[0].variantMetafields?.['custom.gemstone_type']).toBe('szafir');
+  });
+
   it('variant metafield origin overrides product metafield origin', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       nodesResponse([
@@ -269,9 +315,7 @@ describe('fetchProductFactsLive', () => {
           title: 'Origin',
           productType: 'Ring',
           collections: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: []},
-          metafields: {
-            nodes: [{namespace: 'custom', key: 'gemstone_origin', value: 'naturalny'}],
-          },
+          metafields: [{namespace: 'custom', key: 'gemstone_origin', value: 'naturalny'}],
           variants: {
             pageInfo: {hasNextPage: false, endCursor: null},
             nodes: [
@@ -292,6 +336,7 @@ describe('fetchProductFactsLive', () => {
       ['gid://shopify/Product/5'],
     );
     expect(products[0].variants[0].stoneOrigin).toBe('lab_grown');
+    expect(products[0].metafields['custom.gemstone_origin']).toBe('naturalny');
   });
 
   it('metaobject reference yields descriptive text, not GID', async () => {
@@ -303,7 +348,7 @@ describe('fetchProductFactsLive', () => {
           title: 'Meta',
           productType: 'Ring',
           collections: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: []},
-          metafields: {nodes: []},
+          metafields: [],
           gemstoneTypeMeta: {
             references: {
               nodes: [
@@ -337,6 +382,49 @@ describe('fetchProductFactsLive', () => {
     expect(String(val)).not.toContain('gid://');
   });
 
+  it('stone_education includes all text fields, no GID', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      nodesResponse([
+        {
+          id: 'gid://shopify/Product/11',
+          handle: 'edu',
+          title: 'Edu',
+          productType: 'Ring',
+          collections: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: []},
+          metafields: [],
+          stoneEducationMeta: {
+            reference: {
+              type: 'stone_profile',
+              fields: [
+                {key: 'name', value: 'Szafir Cejlon'},
+                {key: 'description', value: 'Korund naturalny'},
+                {key: 'ref', value: 'gid://shopify/Metaobject/1'},
+              ],
+            },
+          },
+          variants: {
+            pageInfo: {hasNextPage: false, endCursor: null},
+            nodes: [mkVariantNode('gid://shopify/ProductVariant/11', '11.00')],
+          },
+        },
+      ]),
+    );
+    const products = await fetchProductFactsLive(
+      {
+        SHOP_DOMAIN: 'example.myshopify.com',
+        PRIVATE_STOREFRONT_API_TOKEN_KAZKA: 'priv',
+      } as Env,
+      'kazka-hydrogen',
+      ['gid://shopify/Product/11'],
+    );
+    const edu = String(products[0].metafields['custom.stone_education']);
+    expect(edu).toContain('name');
+    expect(edu).toContain('Szafir Cejlon');
+    expect(edu).toContain('description');
+    expect(edu).toContain('Korund naturalny');
+    expect(edu).not.toContain('gid://');
+  });
+
   it('empty metafield value is not stored as fact', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       nodesResponse([
@@ -346,9 +434,7 @@ describe('fetchProductFactsLive', () => {
           title: 'Empty',
           productType: 'Ring',
           collections: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: []},
-          metafields: {
-            nodes: [{namespace: 'custom', key: 'main_stone', value: ''}],
-          },
+          metafields: [{namespace: 'custom', key: 'main_stone', value: ''}, null],
           variants: {
             pageInfo: {hasNextPage: false, endCursor: null},
             nodes: [mkVariantNode('gid://shopify/ProductVariant/8', '8.00')],

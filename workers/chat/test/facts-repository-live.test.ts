@@ -36,7 +36,7 @@ describe('getCatalogRepository live search', () => {
                 title: 'One',
                 productType: 'Ring',
                 collections: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: []},
-                metafields: {nodes: []},
+                metafields: [],
                 variants: {
                   pageInfo: {hasNextPage: false, endCursor: null},
                   nodes: [
@@ -45,7 +45,7 @@ describe('getCatalogRepository live search', () => {
                       price: {amount: '10.00', currencyCode: 'PLN'},
                       availableForSale: true,
                       selectedOptions: [],
-                      metafields: {nodes: []},
+                      metafields: [],
                     },
                   ],
                 },
