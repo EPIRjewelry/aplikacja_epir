@@ -1,4 +1,5 @@
 import { PIXEL_CREATED_AT_MS_SQL } from './d1-timestamps';
+import { gemmaCustomerMessagesSql } from './gemma-channel-filter';
 
 export type ChatPixelMatchStats = {
   chat_sessions_24h: number;
@@ -12,10 +13,10 @@ export async function computeChatPixelSessionMatch(
 ): Promise<ChatPixelMatchStats> {
   const sessionsRes = await chatDb
     .prepare(
-      `SELECT DISTINCT session_id AS session_id FROM messages
-       WHERE CAST(timestamp AS INTEGER) >= ?1
-         AND role = 'user'
-         AND (channel IS NULL OR channel != 'operator')
+      `SELECT DISTINCT m.session_id AS session_id FROM messages m
+       WHERE CAST(m.timestamp AS INTEGER) >= ?1
+         AND m.role = 'user'
+         AND ${gemmaCustomerMessagesSql('m')}
        LIMIT 500`,
     )
     .bind(sinceMs)

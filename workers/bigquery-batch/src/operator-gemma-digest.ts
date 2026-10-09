@@ -2,6 +2,8 @@
  * Skrót rozmów kupujących z Gemmą (kanał ≠ operator) z ostatnich 24 h.
  */
 
+import { gemmaCustomerMessagesSql } from './gemma-channel-filter';
+
 export type GemmaDigestRow = {
   session_id: string;
   customer_id: string | null;
@@ -43,13 +45,13 @@ export async function fetchGemmaConversations24h(
   const cap = Math.min(Math.max(limit, 1), 40);
   try {
     const sessions = await env.DB_CHATBOT.prepare(
-      `SELECT session_id
-       FROM messages
-       WHERE timestamp >= ?1
-         AND role = 'user'
-         AND (channel IS NULL OR channel != 'operator')
-       GROUP BY session_id
-       ORDER BY MAX(timestamp) DESC
+      `SELECT m.session_id
+       FROM messages m
+       WHERE m.timestamp >= ?1
+         AND m.role = 'user'
+         AND ${gemmaCustomerMessagesSql('m')}
+       GROUP BY m.session_id
+       ORDER BY MAX(m.timestamp) DESC
        LIMIT ?2`,
     )
       .bind(sinceMs, cap * 2)
@@ -73,10 +75,10 @@ export async function fetchGemmaConversations24h(
         }>();
 
       const userMsg = await env.DB_CHATBOT.prepare(
-        `SELECT content, timestamp FROM messages
-         WHERE session_id = ?1 AND role = 'user' AND timestamp >= ?2
-           AND (channel IS NULL OR channel != 'operator')
-         ORDER BY timestamp ASC LIMIT 1`,
+        `SELECT m.content, m.timestamp FROM messages m
+         WHERE m.session_id = ?1 AND m.role = 'user' AND m.timestamp >= ?2
+           AND ${gemmaCustomerMessagesSql('m')}
+         ORDER BY m.timestamp ASC LIMIT 1`,
       )
         .bind(sessionId, sinceMs)
         .first<{ content: string; timestamp: number }>();
@@ -84,10 +86,10 @@ export async function fetchGemmaConversations24h(
       if (!userMsg) continue;
 
       const assistantMsg = await env.DB_CHATBOT.prepare(
-        `SELECT content FROM messages
-         WHERE session_id = ?1 AND role = 'assistant' AND timestamp >= ?2
-           AND (channel IS NULL OR channel != 'operator')
-         ORDER BY timestamp ASC LIMIT 1`,
+        `SELECT m.content FROM messages m
+         WHERE m.session_id = ?1 AND m.role = 'assistant' AND m.timestamp >= ?2
+           AND ${gemmaCustomerMessagesSql('m')}
+         ORDER BY m.timestamp ASC LIMIT 1`,
       )
         .bind(sessionId, sinceMs)
         .first<{ content: string }>();

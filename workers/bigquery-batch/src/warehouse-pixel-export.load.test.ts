@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { loadExportWatermarkResult } from './warehouse-pixel-export';
+import { gemmaCustomerMessagesSql } from './gemma-channel-filter';
+import { DEFAULT_WATERMARK, exportMessages, loadExportWatermarkResult } from './warehouse-pixel-export';
 
 function mockDb(firstImpl: () => Promise<unknown>): D1Database {
   const prepare = vi.fn(() => ({
@@ -42,5 +43,39 @@ describe('loadExportWatermarkResult', () => {
     const r = await loadExportWatermarkResult(db);
     expect(r.status).toBe('read_error');
     expect(r.watermark.last_pixel_export_at).toBe(0);
+  });
+});
+
+describe('exportMessages', () => {
+  it('applies gemmaCustomerMessagesSql and parenthesizes cursor OR', async () => {
+    const sqls: string[] = [];
+    const prepare = vi.fn((sql: string) => {
+      sqls.push(sql);
+      return {
+        bind: vi.fn().mockReturnThis(),
+        all: vi.fn().mockResolvedValue({ results: [] }),
+        first: vi.fn(),
+      };
+    });
+    const chatDb = { prepare } as unknown as D1Database;
+    const pixelDb = mockDb(async () => null);
+
+    await exportMessages(
+      {
+        DB: pixelDb,
+        DB_CHATBOT: chatDb,
+        PIPELINE_MESSAGES_INGEST_URL: 'https://example.invalid/messages',
+      },
+      { ...DEFAULT_WATERMARK },
+      10,
+    );
+
+    const messagesSqls = sqls.filter((s) => /\bFROM\s+messages\b/i.test(s));
+    expect(messagesSqls.length).toBe(1);
+    const sql = messagesSqls[0]!;
+    expect(sql).toContain(gemmaCustomerMessagesSql('m'));
+    expect(sql).toMatch(
+      /\(m\.timestamp\s*>\s*\?1\s+OR\s+\(m\.timestamp\s*=\s*\?1\s+AND\s+CAST\(m\.id\s+AS\s+INTEGER\)\s*>\s*\?2\)\)/,
+    );
   });
 });

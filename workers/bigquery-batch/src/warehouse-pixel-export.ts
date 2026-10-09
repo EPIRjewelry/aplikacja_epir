@@ -3,6 +3,7 @@ import {
   pixelExportOrderBySql,
   rowExportCursorMsId,
 } from './d1-timestamps';
+import { gemmaCustomerMessagesSql } from './gemma-channel-filter';
 import { isPipelineExportExtendedFields } from './pipeline-export-config';
 import { mapOrderAttributionToPipelineRecord } from './order-pipeline-record';
 import { mapPixelRowToPipelineRecord } from './pixel-pipeline-record';
@@ -262,9 +263,7 @@ export async function exportMessages(
     while (totalInserted < maxRows) {
       const limit = Math.min(BATCH_SIZE, maxRows - totalInserted);
       const stmt = env.DB_CHATBOT.prepare(
-        `SELECT * FROM messages
-         WHERE timestamp > ?1 OR (timestamp = ?1 AND CAST(id AS INTEGER) > ?2)
-         ORDER BY timestamp ASC, id ASC LIMIT ?3`,
+        `SELECT m.* FROM messages m WHERE (m.timestamp > ?1 OR (m.timestamp = ?1 AND CAST(m.id AS INTEGER) > ?2)) AND ${gemmaCustomerMessagesSql('m')} ORDER BY m.timestamp ASC, m.id ASC LIMIT ?3`,
       ).bind(cursorTs, cursorId, limit);
       const result = await stmt.all<Record<string, unknown>>();
       const rows = result.results ?? [];
