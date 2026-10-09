@@ -47,6 +47,8 @@ export type VariantFacts = {
   size: string | null;
   stoneOrigin: VariantStoneOrigin;
   originEvidence: OriginEvidence[];
+  /** Metapola wariantu (poziom wariantu — osobno od produktu). */
+  variantMetafields?: Record<string, string>;
   /** Alias snake_case dla kompatybilności testów */
   variant_id?: string;
   origin?: VariantStoneOrigin;
@@ -121,16 +123,14 @@ export interface CatalogFactsRepository {
   readonly channel: BuyerChannelId;
   status(): Promise<{
     available: boolean;
-    reason?: 'no_token' | 'no_snapshot' | 'fetch_error';
+    reason?: 'no_token' | 'fetch_error';
     fetchedAt?: string;
   }>;
   search(
     filters: CatalogFilters,
     limit: number,
   ): Promise<{matches: ProductMatch[]; total: number; facets: CatalogFacetsDto}>;
-  facets(filters?: CatalogFilters): Promise<CatalogFacetsDto>;
   getById(productId: string): Promise<ProductFacts | null>;
-  getByHandle(handle: string): Promise<ProductFacts | null>;
 }
 
 function moneyFromMinor(minor: number): MoneyPln {

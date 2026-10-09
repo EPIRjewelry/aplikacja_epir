@@ -142,7 +142,7 @@ export interface Env {
   POLICIES_CACHE?: KVNamespace;
 
   /**
-   * KV namespace Gemma runtime (kanał gate, migawki katalogu).
+   * KV namespace Gemma runtime (przełączniki kanałów `gemma:channel:*`).
    * Brak bindingu = fail-closed (buyer dostaje "niedostępny").
    */
   GEMMA_RUNTIME_KV?: KVNamespace;
