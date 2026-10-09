@@ -10,6 +10,7 @@ export interface EdogFlowHealthEnv {
 }
 import { PIXEL_CREATED_AT_MS_SQL } from './d1-timestamps';
 import { computeChatPixelSessionMatch, countPixelNullSessions24h } from './edog-chat-pixel-match';
+import { gemmaCustomerMessagesSql } from './gemma-channel-filter';
 import { loadExportWatermark, countPendingPixel } from './warehouse-pixel-export';
 import {
   computeEdogVerdict,
@@ -46,7 +47,7 @@ async function countPixel24h(env: EdogFlowHealthEnv, sinceMs: number): Promise<n
 async function countMessages24h(env: EdogFlowHealthEnv, sinceMs: number): Promise<number> {
   try {
     const row = await env.DB_CHATBOT.prepare(
-      'SELECT COUNT(*) AS cnt FROM messages WHERE CAST(timestamp AS INTEGER) >= ?1',
+      `SELECT COUNT(*) AS cnt FROM messages m WHERE CAST(m.timestamp AS INTEGER) >= ?1 AND ${gemmaCustomerMessagesSql('m')}`,
     )
       .bind(sinceMs)
       .first<{ cnt: number }>();
