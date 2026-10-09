@@ -36,15 +36,26 @@ export function isQualityOption(name: string): boolean {
 }
 
 /**
- * Biała lista metapól Storefront/Admin.
- * Tylko `custom.gemstone_origin` jest potwierdzone; reszta po inwentaryzacji.
+ * Biała lista metapól produktu (Storefront) — potwierdzone przez właściciela.
+ * Referencje metaobiektów (`shopify.*`, `stone_education`) mają osobną selekcję GraphQL w storefront-live.
  */
 export const STOREFRONT_METAFIELD_IDENTIFIERS = [
+  {namespace: 'custom', key: 'main_stone'},
+  {namespace: 'custom', key: 'metal'},
   {namespace: 'custom', key: 'gemstone_origin'},
-  // do uzupełnienia po inwentaryzacji
+  {namespace: 'shopify', key: 'gemstone-type'},
+  {namespace: 'shopify', key: 'jewelry-material'},
+  {namespace: 'custom', key: 'stone_education'},
 ] as const;
 
-/** Namespace/key metapola pochodzenia na wariancie — do uzupełnienia po inwentaryzacji. */
+/** Metapola wariantu (poziom wariantu — pierwszeństwo nad produktem dla pochodzenia). */
 export const VARIANT_ORIGIN_METAFIELD_KEYS: ReadonlyArray<{namespace: string; key: string}> = [
-  // do uzupełnienia po inwentaryzacji
+  {namespace: 'custom', key: 'gemstone_origin'},
 ];
+
+/** Dodatkowe metapola wariantu (nie pochodzenie). */
+export const VARIANT_METAFIELD_IDENTIFIERS = [
+  {namespace: 'custom', key: 'gemstone_type'},
+  {namespace: 'custom', key: 'gemstone_origin'},
+  {namespace: 'custom', key: 'gemstone_carat_weight'},
+] as const;
