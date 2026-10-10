@@ -3,6 +3,7 @@ import type {ChatBrandLock} from '../brand-lock';
 import {
   composeBuyerAssistantReply,
   extractLastUserMessage,
+  extractProductHandleFromBody,
   extractSessionIdFromBody,
 } from './compose-buyer-turn';
 import {channelIdFromBrandLock, readChannelMode} from './channel-switch';
@@ -95,10 +96,12 @@ export async function handleBuyerTurn(
     );
   }
   const sessionId = extractSessionIdFromBody(body);
+  const productHandle = extractProductHandleFromBody(body);
 
   try {
     const reply = await composeBuyerAssistantReply(env, channelId, userText, request, {
       sessionId,
+      productHandle,
     });
     const okPayload: Record<string, unknown> = {
       type: 'message',

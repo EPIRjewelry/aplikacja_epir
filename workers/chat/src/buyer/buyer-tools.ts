@@ -1,12 +1,38 @@
 import type { GroqToolCallDefinition } from '../ai-client';
 import type { BuyerToolId } from './tool-readiness';
 
+const SEARCH_CATALOG: GroqToolCallDefinition = {
+  type: 'function',
+  function: {
+    name: 'search_catalog',
+    description:
+      'Wyszukuje produkty po opisie klienta (naturalny język). Podaj sam rdzeń zapytania; opcjonalnie budżet w zł (price_min_pln / price_max_pln). Nie podawaj waluty, limitu ani filtrów spoza schematu.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Rdzeń zapytania, 2–120 znaków, np. pierścionek zaręczynowy brylant',
+        },
+        price_max_pln: {type: 'integer', minimum: 1, maximum: 1_000_000},
+        price_min_pln: {type: 'integer', minimum: 1, maximum: 1_000_000},
+        intent: {
+          type: 'string',
+          description: 'Opcjonalny kontekst intencji zakupowej, do 200 znaków',
+        },
+      },
+      required: ['query'],
+    },
+  },
+};
+
 const CREATE_CART: GroqToolCallDefinition = {
   type: 'function',
   function: {
     name: 'create_cart',
     description:
-      'Tworzy koszyk z wybranymi wariantami (gid://shopify/ProductVariant/...). Tylko po wyraźnej zgodzie klienta. Gdy produkt ma wiele wariantów — najpierw zapytaj o wariant.',
+      'Tworzy koszyk z wybranymi wariantami (id wariantu z sekcji DANE TECHNICZNE). Tylko po wyraźnej zgodzie klienta. Gdy produkt ma wiele wariantów — najpierw zapytaj o wariant.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -24,7 +50,7 @@ const CREATE_CART: GroqToolCallDefinition = {
                 properties: {
                   id: {
                     type: 'string',
-                    description: 'Product variant GID from catalog facts of this turn.',
+                    description: 'Id wariantu z sekcji DANE TECHNICZNE wyniku search_catalog lub produktu na stronie.',
                   },
                 },
                 required: ['id'],
@@ -138,11 +164,9 @@ const GET_SIZE_TABLE: GroqToolCallDefinition = {
   },
 };
 
-/**
- * Tools that have Groq function definitions in the buyer tool loop.
- * search_catalog / customer_account_profile stay readiness-only (facts path / stage F).
- */
+/** Tools exposed to Groq when readiness allows (intersected per turn). */
 export const MODEL_WIRED_BUYER_TOOLS: BuyerToolId[] = [
+  'search_catalog',
   'ucp_cart',
   'search_shop_policies_and_faqs',
   'get_size_table',
@@ -158,6 +182,9 @@ export function buildBuyerToolDefinitions(ready: BuyerToolId[]): GroqToolCallDef
   const out: GroqToolCallDefinition[] = [];
   const set = new Set(filterModelWiredBuyerTools(ready));
 
+  if (set.has('search_catalog')) {
+    out.push(SEARCH_CATALOG);
+  }
   if (set.has('ucp_cart')) {
     out.push(CREATE_CART, GET_CART, UPDATE_CART, CANCEL_CART);
   }
@@ -181,5 +208,6 @@ export function buyerToolIdForName(name: string): BuyerToolId | null {
   }
   if (name === 'search_shop_policies_and_faqs') return 'search_shop_policies_and_faqs';
   if (name === 'get_size_table') return 'get_size_table';
+  if (name === 'search_catalog') return 'search_catalog';
   return null;
 }

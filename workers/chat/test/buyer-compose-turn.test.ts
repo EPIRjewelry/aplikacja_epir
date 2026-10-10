@@ -6,13 +6,16 @@ import {
   composeBuyerAssistantReply,
   factsContextBlock,
   filterToolsForSession,
+  scrubGidFromClientReply,
 } from '../src/buyer/compose-buyer-turn';
 import { buildBuyerToolDefinitions, filterModelWiredBuyerTools } from '../src/buyer/buyer-tools';
+import { LUXURY_SYSTEM_PROMPT } from '../src/prompts/luxury-system-prompt';
 import * as toolReadiness from '../src/buyer/tool-readiness';
 import * as executeBuyerToolMod from '../src/buyer/execute-buyer-tool';
 import * as aiProfile from '../src/ai-profile';
 import * as aiClient from '../src/ai-client';
 import * as facts from '../src/facts';
+import * as sessionHistory from '../src/buyer/session-history';
 
 function toolCallOnlyStream(name: string, id: string): ReadableStream<aiClient.GroqStreamEvent> {
   return new ReadableStream({
@@ -33,20 +36,46 @@ describe('factsContextBlock variant lines', () => {
     {
       title: 'Pierścionek',
       priceDisplay: '1 200 zł',
-      variants: [{ variantId: SAMPLE_VARIANT_GID, title: 'rozmiar 14' }],
+      url: 'https://shop.example/products/pierscionek',
+      metals: ['srebro'],
+      stones: ['topaz'],
+      variants: [
+        {
+          variantId: SAMPLE_VARIANT_GID,
+          title: 'rozmiar 14',
+          weight: 5,
+          weightUnit: 'GRAMS',
+        },
+      ],
     },
   ];
 
-  it('includes variant gid when ucp_cart is available in the turn', () => {
-    const block = factsContextBlock(products, { includeVariants: true });
+  it('puts variant gid only in DANE TECHNICZNE section', () => {
+    const block = factsContextBlock(products);
+    const [descriptive] = block.split('[DANE TECHNICZNE');
+    expect(descriptive).not.toContain(SAMPLE_VARIANT_GID);
     expect(block).toContain(SAMPLE_VARIANT_GID);
-    expect(block).toContain('wariant: rozmiar 14 — id:');
+    expect(block).toContain('metal: srebro');
+    expect(block).toMatch(/waga:\s*5 g/);
+    expect(block).toContain('https://shop.example/products/pierscionek');
+  });
+});
+
+describe('scrubGidFromClientReply', () => {
+  it('removes gid patterns and logs scrub', () => {
+    const warn = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const out = scrubGidFromClientReply(`Produkt ${SAMPLE_VARIANT_GID} gotowy.`);
+    expect(out).not.toContain('gid://shopify');
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 
-  it('omits variant gid when ucp_cart is not available', () => {
-    const block = factsContextBlock(products, { includeVariants: false });
-    expect(block).not.toContain(SAMPLE_VARIANT_GID);
-    expect(block).not.toContain('wariant:');
+  it('preserves paragraph breaks when scrubbing gid', () => {
+    const out = scrubGidFromClientReply(
+      `Akapit pierwszy ${SAMPLE_VARIANT_GID} .\n\nAkapit drugi bez gid.`,
+    );
+    expect(out).toContain('\n\n');
+    expect(out).toBe('Akapit pierwszy .\n\nAkapit drugi bez gid.');
   });
 });
 
@@ -71,7 +100,7 @@ describe('buyer compose turn — tools in system prompt', () => {
     expect(system).not.toContain('get_size_table');
   });
 
-  it('(a) availableTools with search_catalog → prompt/defs omit search_catalog aliases', () => {
+  it('(e) search_catalog in prompt and defs when in modelTools (readiness passed)', () => {
     const modelTools = filterModelWiredBuyerTools([
       'search_catalog',
       'ucp_cart',
@@ -80,17 +109,28 @@ describe('buyer compose turn — tools in system prompt', () => {
     ]);
     const system = buildBuyerTurnSystemPrompt({
       modelTools,
-      profilePrompt: '',
-      factsBlock: '[FAKTY Z KATALOGU — tylko to możesz twierdzić]\n- Pierścionek',
+      profilePrompt: 'Profil marki test',
+      factsBlock: '',
     });
-    expect(system).not.toContain('search_catalog');
+    expect(system).toContain('search_catalog');
     expect(system).not.toContain('catalog_search');
-    expect(system).not.toContain('lookup_catalog');
-    expect(system).toContain('[FAKTY Z KATALOGU');
-    const names = buildBuyerToolDefinitions(['search_catalog', ...modelTools]).map(
-      (d) => d.function.name,
-    );
-    expect(names).not.toContain('search_catalog');
+    expect(system).not.toContain('price_display_pl');
+    expect(system).not.toContain('karta tego nie podaje');
+    expect(system).toContain('search_shop_policies_and_faqs');
+    expect(system).toContain('get_size_table');
+    expect(system).toContain('Pan/Pani');
+    expect(system).toContain('Reguły twarde mają pierwszeństwo');
+    const profileIdx = system.indexOf('Profil marki test');
+    const hardIdx = system.indexOf('Reguły twarde mają pierwszeństwo');
+    expect(profileIdx).toBeGreaterThan(-1);
+    expect(hardIdx).toBeGreaterThan(profileIdx);
+    const names = buildBuyerToolDefinitions(modelTools).map((d) => d.function.name);
+    expect(names).toContain('search_catalog');
+  });
+
+  it('(h) luxury base prompt has no delivery threshold amounts', () => {
+    expect(LUXURY_SYSTEM_PROMPT).not.toMatch(/wysyłka\s+\d+\s*zł/i);
+    expect(LUXURY_SYSTEM_PROMPT).not.toContain('price_display_pl');
   });
 
   it('(b) customer_account_profile omitted from prompt and Groq defs', () => {
@@ -154,7 +194,7 @@ describe('buyer compose turn — tools in system prompt', () => {
   it('composeBuyerAssistantReply system message follows listAvailableBuyerTools', async () => {
     vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([]);
     vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
-    vi.spyOn(facts, 'getCatalogRepository').mockRejectedValue(new Error('skip'));
+    vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockResolvedValue([]);
 
     let systemContent = '';
     vi.spyOn(aiClient, 'getGroqResponse').mockImplementation(async (messages) => {
@@ -168,20 +208,19 @@ describe('buyer compose turn — tools in system prompt', () => {
     await composeBuyerAssistantReply(env, 'epir-online-store', 'Cześć', req);
 
     expect(toolReadiness.listAvailableBuyerTools).toHaveBeenCalled();
-    expect(systemContent).not.toContain('search_catalog');
+    expect(systemContent).not.toContain('Narzędzia dostępne w tej turze');
     expect(systemContent).not.toContain('get_size_table');
   });
 
   it('tools=[] path uses getGroqResponse (no stream tool loop)', async () => {
     vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue(['ucp_cart']);
     vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
-    vi.spyOn(facts, 'getCatalogRepository').mockRejectedValue(new Error('skip'));
+    vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockResolvedValue([]);
     const streamSpy = vi.spyOn(aiClient, 'streamGroqEvents');
     const groqSpy = vi.spyOn(aiClient, 'getGroqResponse').mockResolvedValue('bez narzędzi');
 
     const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
     const req = new Request('https://example.com/chat', { method: 'POST' });
-    // no sessionId → ucp_cart filtered → empty definitions → getGroqResponse
     const reply = await composeBuyerAssistantReply(env, 'epir-online-store', 'Cześć', req);
 
     expect(reply).toBe('bez narzędzi');
@@ -189,7 +228,7 @@ describe('buyer compose turn — tools in system prompt', () => {
     expect(streamSpy).not.toHaveBeenCalled();
   });
 
-  it('(c) tool_use_failed in round 0 → getGroqResponse without tools, same system facts', async () => {
+  it('(c) tool_use_failed in round 0 → getGroqResponse without tools', async () => {
     vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([
       'ucp_cart',
       'search_catalog',
@@ -197,26 +236,13 @@ describe('buyer compose turn — tools in system prompt', () => {
       'search_shop_policies_and_faqs',
     ]);
     vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
-    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
-      search: async () => ({
-        matches: [
-          {
-            product: {
-              title: 'Pierścionek test',
-              priceRange: { min: { display_pl: '900 zł' }, max: { display_pl: '900 zł' } },
-              variants: [{ variantId: SAMPLE_VARIANT_GID, title: '14' }],
-            },
-            matchingPriceRange: { min: { display_pl: '900 zł' }, max: { display_pl: '900 zł' } },
-            matchingVariants: [{ variantId: SAMPLE_VARIANT_GID, title: '14' }],
-          },
-        ],
-      }),
-    } as never);
+    vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockResolvedValue([]);
+    vi.spyOn(sessionHistory, 'appendBuyerSessionMessage').mockResolvedValue();
 
     vi.spyOn(aiClient, 'streamGroqEvents').mockRejectedValue(
       new Error('AI Gateway stream error event from Groq'),
     );
-    const groqSpy = vi.spyOn(aiClient, 'getGroqResponse').mockResolvedValue('odpowiedź z faktów');
+    const groqSpy = vi.spyOn(aiClient, 'getGroqResponse').mockResolvedValue('odpowiedź');
 
     const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
     const req = new Request('https://example.com/chat', { method: 'POST' });
@@ -224,16 +250,130 @@ describe('buyer compose turn — tools in system prompt', () => {
       sessionId: 'sess-fallback-test',
     });
 
-    expect(reply).toBe('odpowiedź z faktów');
+    expect(reply).toBe('odpowiedź');
     expect(groqSpy).toHaveBeenCalledTimes(1);
     const messages = groqSpy.mock.calls[0]?.[0] as aiClient.GroqMessage[];
     const system = messages.find((m) => m.role === 'system');
     const systemContent = typeof system?.content === 'string' ? system.content : '';
-    expect(systemContent).toContain('[FAKTY Z KATALOGU');
-    expect(systemContent).toContain('Pierścionek test');
-    expect(systemContent).not.toContain('search_catalog');
-    // getGroqResponse has no tools arg — only messages + env + options
+    expect(systemContent).toContain('search_catalog');
     expect(groqSpy.mock.calls[0]?.length).toBeLessThanOrEqual(3);
+  });
+
+  it('(g) session history in messages and append after turn', async () => {
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([]);
+    vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
+    vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockResolvedValue([
+      { role: 'user', content: 'wcześniej' },
+      { role: 'assistant', content: 'tak' },
+    ]);
+    const appendSpy = vi.spyOn(sessionHistory, 'appendBuyerSessionMessage').mockResolvedValue();
+
+    vi.spyOn(aiClient, 'getGroqResponse').mockResolvedValue('nowa');
+
+    const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
+    const req = new Request('https://example.com/chat', { method: 'POST' });
+    await composeBuyerAssistantReply(env, 'kazka-hydrogen', 'pytanie', req, {
+      sessionId: 'sess-hist',
+    });
+
+    const messages = (vi.mocked(aiClient.getGroqResponse).mock.calls[0]?.[0] ??
+      []) as aiClient.GroqMessage[];
+    expect(messages.some((m) => m.role === 'user' && m.content === 'wcześniej')).toBe(true);
+    expect(appendSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('append failure still returns assistant reply', async () => {
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([]);
+    vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
+    vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockResolvedValue([]);
+    vi.spyOn(sessionHistory, 'appendBuyerSessionMessage').mockRejectedValue(new Error('do down'));
+
+    vi.spyOn(aiClient, 'getGroqResponse').mockResolvedValue('mimo błędu zapisu');
+
+    const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
+    const req = new Request('https://example.com/chat', { method: 'POST' });
+    const reply = await composeBuyerAssistantReply(env, 'epir-online-store', 'hej', req, {
+      sessionId: 'sess-append-fail',
+    });
+    expect(reply).toBe('mimo błędu zapisu');
+  });
+
+  it('without sessionId does not read session history', async () => {
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([]);
+    vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
+    const readSpy = vi.spyOn(sessionHistory, 'readBuyerSessionHistory');
+    vi.spyOn(aiClient, 'getGroqResponse').mockResolvedValue('ok');
+
+    const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
+    const req = new Request('https://example.com/chat', { method: 'POST' });
+    await composeBuyerAssistantReply(env, 'epir-online-store', 'hej', req);
+    expect(readSpy).not.toHaveBeenCalled();
+  });
+
+  it('(b) productHandle injects PRODUKT NA STRONIE with metal and weight', async () => {
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([]);
+    vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
+    vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockResolvedValue([]);
+    vi.spyOn(facts, 'fetchProductFactsByHandle').mockResolvedValue({
+      channel: 'epir-zareczyny',
+      productId: 'gid://shopify/Product/1',
+      handle: 'test-ring',
+      title: 'Pierścionek',
+      vendor: '',
+      productType: 'Ring',
+      url: 'https://shop/p',
+      image: null,
+      collections: [],
+      descriptionText: '',
+      options: [],
+      variants: [
+        {
+          variantId: SAMPLE_VARIANT_GID,
+          title: '14',
+          image: null,
+          sku: null,
+          weight: 3,
+          weightUnit: 'GRAMS',
+          price: { minor: 10000, currency: 'PLN', display_pl: '100 zł' },
+          compareAtPrice: null,
+          available: true,
+          selectedOptions: [],
+          metal: 'złoto',
+          size: '14',
+          stoneOrigin: 'natural',
+          originEvidence: [],
+        },
+      ],
+      priceRange: {
+        min: { minor: 10000, currency: 'PLN', display_pl: '100 zł' },
+        max: { minor: 10000, currency: 'PLN', display_pl: '100 zł' },
+        isFlat: true,
+      },
+      stones: ['diament'],
+      metals: ['złoto'],
+      sizes: ['14'],
+      metafields: {},
+      productOriginRaw: null,
+      dataIssues: [],
+      fetchedAt: new Date().toISOString(),
+    });
+
+    let systemContent = '';
+    vi.spyOn(aiClient, 'getGroqResponse').mockImplementation(async (messages) => {
+      const system = messages.find((m) => m.role === 'system');
+      systemContent = typeof system?.content === 'string' ? system.content : '';
+      return 'ok';
+    });
+
+    const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
+    const req = new Request('https://example.com/chat', { method: 'POST' });
+    await composeBuyerAssistantReply(env, 'epir-zareczyny', 'jaka cena', req, {
+      productHandle: 'test-ring',
+    });
+
+    expect(systemContent).toContain('[PRODUKT NA STRONIE]');
+    expect(systemContent).toContain('metal: złoto');
+    expect(systemContent).toMatch(/waga:\s*3 g/);
   });
 
   it('buyer_tool_loop_final stream error → getGroqResponse fallback with round final', async () => {
@@ -242,7 +382,8 @@ describe('buyer compose turn — tools in system prompt', () => {
       'search_shop_policies_and_faqs',
     ]);
     vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
-    vi.spyOn(facts, 'getCatalogRepository').mockRejectedValue(new Error('skip'));
+    vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockResolvedValue([]);
+    vi.spyOn(sessionHistory, 'appendBuyerSessionMessage').mockResolvedValue();
     vi.spyOn(executeBuyerToolMod, 'executeBuyerTool').mockResolvedValue({
       content: '{"ok":true}',
     });

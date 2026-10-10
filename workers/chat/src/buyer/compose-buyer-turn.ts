@@ -6,15 +6,26 @@ import {
 } from '../ai-client';
 import type { Env } from '../config/bindings';
 import { resolveCommerceContext } from '../config/commerce-context';
-import { getCatalogRepository } from '../facts';
+import { fetchProductFactsByHandle } from '../facts';
+import {
+  formatProductsBlock,
+  PAGE_PRODUCT_HEADER,
+} from '../facts/format-product-block';
+import type { ProductFacts, VariantFacts } from '../facts/types';
 import { buildAIProfilePrompt, fetchAIProfileByHandle } from '../ai-profile';
 import { callMcpToolDirect } from '../mcp_server';
 import { LUXURY_SYSTEM_PROMPT } from '../prompts/luxury-system-prompt';
 import { buildBuyerToolDefinitions, filterModelWiredBuyerTools } from './buyer-tools';
 import type { BuyerChannelId } from './channel-switch';
 import { catalogSnapshotChannel } from './channel-switch';
+import { cartSummaryBlock } from './cart-summary-block';
 import { executeBuyerTool, variantIdsFromCartPayload } from './execute-buyer-tool';
 import { readSessionCartId } from './session-cart';
+import {
+  appendBuyerSessionMessage,
+  lastBuyerHistoryEntries,
+  readBuyerSessionHistory,
+} from './session-history';
 import {
   brandKeyForChannel,
   listAvailableBuyerTools,
@@ -23,16 +34,41 @@ import {
 
 const MAX_TOOL_ROUNDS = 3;
 
-/** Catalog is facts-path only; never advertise search_catalog as a callable tool. */
-const CATALOG_FACTS_GUIDANCE = [
-  'Produkty i ceny: wyłącznie z bloku [FAKTY Z KATALOGU] w tej turze (jeśli jest obecny).',
-  'Gdy bloku brak: dopytaj klienta o preferencje albo zaproponuj kolekcję z profilu marki; nie wymyślaj produktów, cen ani linków.',
+const HARD_RULES_PAN_PANI = [
+  'Zawsze forma grzecznościowa Pan/Pani, nigdy 2. os. l.poj. (ty, możesz, znajdziesz, szukasz).',
+  'Gdy płeć nieznana: formy bezosobowe, konsekwentnie w całej rozmowie.',
 ].join('\n');
 
-/**
- * ai-client wraps Groq SSE errors as "AI Gateway stream error event from Groq"
- * (underlying tool_use_failed is only in console); match both forms.
- */
+const HARD_RULES_PRECEDENCE =
+  'Reguły twarde mają pierwszeństwo przed głosem marki.';
+
+function catalogFactsGuidance(modelTools: BuyerToolId[]): string {
+  const catalogLine = modelTools.includes('search_catalog')
+    ? 'Produkty, ceny, dostępność i linki: wyłącznie z wyniku search_catalog tej tury lub bloku [PRODUKT NA STRONIE].'
+    : 'Produkty, ceny, dostępność i linki: wyłącznie z bloku [PRODUKT NA STRONIE] w tej turze (narzędzie katalogu niedostępne).';
+  return [
+    catalogLine,
+    'Nigdy nie pokazuj klientowi id/gid i nie proś go o id wariantu; pytaj o rozmiar, metal lub kamień.',
+    'Nie potwierdzaj istnienia produktu, kolekcji, kodu rabatowego ani promocji, których nie ma w wyniku narzędzia, w odpowiedzi bazy wiedzy ani w totals koszyka.',
+    'Na nieznaną nazwę lub kod: «nie znajduję takiej pozycji / takiego kodu w ofercie», potem propozycja z wyniku wyszukiwania. Nigdy nie obiecuj naliczenia rabatu.',
+  ].join('\n');
+}
+
+const GID_PATTERN = /gid:\/\/shopify\/\S+/g;
+
+export function scrubGidFromClientReply(reply: string): string {
+  const matches = reply.match(GID_PATTERN);
+  if (!matches?.length) return reply.trim();
+  console.log(JSON.stringify({ tag: 'buyer.gid_scrubbed', count: matches.length }));
+  return reply
+    .replace(GID_PATTERN, '')
+    .split('\n')
+    .map((line) => line.replace(/\s{2,}/g, ' ').trimEnd())
+    .join('\n')
+    .replace(/\[\s*\]\(\s*\)/g, '')
+    .trim();
+}
+
 function shouldFallbackToolLoop(err: unknown, round: number): boolean {
   if (round > 0) return true;
   const msg = err instanceof Error ? err.message : String(err);
@@ -94,66 +130,111 @@ export function extractSessionIdFromBody(body: unknown): string | undefined {
   return trimmed || undefined;
 }
 
+export function extractProductHandleFromBody(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const raw = (body as { productHandle?: unknown }).productHandle;
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  return trimmed || undefined;
+}
+
 type FactsProductInput = {
   title?: string;
   priceDisplay?: string;
-  variants?: Array<{ variantId?: string; title?: string }>;
+  url?: string;
+  metals?: string[];
+  stones?: string[];
+  variants?: Array<{
+    variantId?: string;
+    title?: string;
+    weight?: number | null;
+    weightUnit?: string | null;
+    available?: boolean;
+  }>;
 };
+
+function legacyInputToFacts(p: FactsProductInput): ProductFacts {
+  const variants: VariantFacts[] = (p.variants ?? []).map((v) => ({
+    variantId: v.variantId ?? '',
+    title: v.title ?? '',
+    image: null,
+    sku: null,
+    weight: v.weight ?? null,
+    weightUnit: v.weightUnit ?? null,
+    price: { minor: 0, currency: 'PLN', display_pl: p.priceDisplay },
+    compareAtPrice: null,
+    available: v.available ?? true,
+    selectedOptions: [],
+    metal: null,
+    size: null,
+    stoneOrigin: 'unknown',
+    originEvidence: [],
+  }));
+  const display = p.priceDisplay?.trim();
+  return {
+    channel: 'epir-online-store',
+    productId: 'legacy',
+    handle: '',
+    title: p.title ?? 'Produkt',
+    vendor: '',
+    productType: null,
+    url: p.url ?? '',
+    image: null,
+    collections: [],
+    descriptionText: '',
+    options: [],
+    variants,
+    priceRange: {
+      min: { minor: 0, currency: 'PLN', display_pl: display },
+      max: { minor: 0, currency: 'PLN', display_pl: display },
+      isFlat: true,
+    },
+    stones: p.stones ?? [],
+    metals: p.metals ?? [],
+    sizes: [],
+    metafields: {},
+    productOriginRaw: null,
+    dataIssues: [],
+    fetchedAt: new Date().toISOString(),
+  };
+}
 
 export function factsContextBlock(
   products: FactsProductInput[],
-  opts?: { includeVariants?: boolean },
+  opts?: { header?: string },
 ): string {
   if (!products.length) return '';
-  const includeVariants = opts?.includeVariants === true;
-  const productLines: string[] = [];
-
-  for (const p of products.slice(0, 4)) {
-    const title = p.title?.trim() || 'Produkt';
-    const price = p.priceDisplay?.trim();
-    const variants = Array.isArray(p.variants) ? p.variants : [];
-    const variantCount = variants.length;
-    const variantHint =
-      !includeVariants && variantCount > 1
-        ? ' (wiele wariantów — zapytaj o wariant, nie podawaj „od …”)'
-        : '';
-    const pricePart = price ? `, cena karty: ${price}` : '';
-    productLines.push(`- ${title}${pricePart}${variantHint}`);
-
-    if (includeVariants && variantCount > 0) {
-      for (const v of variants.slice(0, 6)) {
-        const vTitle = v.title?.trim() || 'wariant';
-        const vId = v.variantId?.trim();
-        if (vId) productLines.push(`  wariant: ${vTitle} — id: ${vId}`);
-      }
-    }
-  }
-
-  return ['[FAKTY Z KATALOGU — tylko to możesz twierdzić]', ...productLines].join('\n');
+  const header = opts?.header ?? '[FAKTY Z KATALOGU — tylko to możesz twierdzić]';
+  const items = products.map((p) => ({
+    product: legacyInputToFacts(p),
+    variants: legacyInputToFacts(p).variants,
+  }));
+  const { descriptive, technical } = formatProductsBlock(header, items, 6);
+  return [descriptive, technical].filter(Boolean).join('\n\n');
 }
 
-/** Blurbs only for tools wired to Groq (MODEL_WIRED_BUYER_TOOLS). */
 const BUYER_TOOL_BLURBS: Partial<Record<BuyerToolId, string>> = {
+  search_catalog: [
+    '• search_catalog — gdy klient pyta o produkt, materiał, kamień, styl, kolekcję lub dostępność.',
+    '  Podaj query (rdzeń 2–120 znaków); opcjonalnie price_min_pln / price_max_pln w całych złotych.',
+    '  Ceny i linki cytuj wyłącznie z wyniku narzędzia (pole products).',
+  ].join('\n'),
   ucp_cart: [
     '• create_cart / get_cart / update_cart / cancel_cart — koszyk sesji klienta.',
-    '  Koszyk dodawaj tylko po wyraźnej zgodzie. Wariant = gid://shopify/ProductVariant/... z faktów katalogu tej tury (nie wymyślaj).',
+    '  Koszyk dodawaj tylko po wyraźnej zgodzie. Wariant = id z sekcji DANE TECHNICZNE wyniku search_catalog lub [PRODUKT NA STRONIE] (nie wymyślaj).',
     '  Gdy produkt ma więcej niż jeden wariant — zapytaj o wariant (rozmiar/kamień/metal) przed create_cart; nigdy „od [min]”.',
     '  update_cart: tylko łatka (add_items / update_items / remove_line_ids). Nie podawaj id koszyka ani pełnej listy line_items.',
     '  Link do klienta wyłącznie continue_url z wyniku narzędzia.',
   ].join('\n'),
   search_shop_policies_and_faqs: [
     '• search_shop_policies_and_faqs — zwroty, wysyłka, regulamin, kontakt, FAQ.',
-    '  Cytuj pole answer tak, jak zwróciła baza wiedzy, i podaj źródło. Nie dopowiadaj.',
+    '  Cytuj pole answer ze structuredContent wraz ze sources. Nie dopowiadaj kwot ani terminów.',
   ].join('\n'),
   get_size_table: '• get_size_table — rozmiar pierścionka, pomiar palca, PL/US/UK.',
 };
 
-const BUYER_PROMPT_ADDON = [
-  'Forma grzecznościowa: Pan/Pani.',
-  'Nie używaj frazy „od [cena]” przy cenach wariantów.',
-].join('\n');
+const BUYER_PROMPT_ADDON = 'Nie używaj frazy „od [cena]” przy cenach wariantów.';
 
-/** Lists only model-wired tools for this turn. Empty → no tool identifiers. */
 export function buildBuyerToolsPrompt(tools: BuyerToolId[]): string {
   const blurbs = tools.map((t) => BUYER_TOOL_BLURBS[t]).filter((b): b is string => Boolean(b));
   if (blurbs.length === 0) {
@@ -169,10 +250,6 @@ export function buildBuyerToolsPrompt(tools: BuyerToolId[]): string {
   ].join('\n');
 }
 
-/**
- * Scrub tool identifiers that readiness did not grant for this turn.
- * Stock "Narzędzia (krótko…)" inventory is removed; the dynamic block is appended separately.
- */
 export function scrubBuyerPromptForAvailableTools(
   prompt: string,
   availableTools: BuyerToolId[],
@@ -209,19 +286,22 @@ export function scrubBuyerPromptForAvailableTools(
 }
 
 export function buildBuyerTurnSystemPrompt(parts: {
-  /** Tools exposed to the model (MODEL_WIRED ∩ readiness), not full readiness list. */
   modelTools: BuyerToolId[];
   profilePrompt: string;
   factsBlock: string;
 }): string {
   const base = scrubBuyerPromptForAvailableTools(LUXURY_SYSTEM_PROMPT, parts.modelTools);
   const toolsBlock = buildBuyerToolsPrompt(parts.modelTools);
-  return [base, toolsBlock, CATALOG_FACTS_GUIDANCE, parts.profilePrompt, parts.factsBlock]
+  const hardRules = [
+    HARD_RULES_PAN_PANI,
+    HARD_RULES_PRECEDENCE,
+    catalogFactsGuidance(parts.modelTools),
+  ].join('\n');
+  return [base, parts.profilePrompt, hardRules, toolsBlock, parts.factsBlock]
     .filter(Boolean)
     .join('\n\n');
 }
 
-/** Drop cart tools when session cannot persist cart across turns. */
 export function filterToolsForSession(
   tools: BuyerToolId[],
   sessionId: string | undefined,
@@ -246,24 +326,28 @@ async function collectStreamRound(
   return { text, toolCalls: [...toolCalls.values()] };
 }
 
-function collectVariantIdsFromMatches(
-  matches: Array<{ product: { variants: Array<{ variantId: string }> }; matchingVariants: Array<{ variantId: string }> }>,
-): Set<string> {
-  const ids = new Set<string>();
-  for (const m of matches) {
-    for (const v of m.matchingVariants) {
-      if (v.variantId) ids.add(v.variantId);
-    }
-    for (const v of m.product.variants) {
-      if (v.variantId) ids.add(v.variantId);
-    }
-  }
-  return ids;
-}
-
 export type ComposeBuyerTurnOptions = {
   sessionId?: string;
+  productHandle?: string;
 };
+
+async function finalizeBuyerReply(
+  env: Env,
+  sessionId: string | undefined,
+  userText: string,
+  reply: string,
+): Promise<string> {
+  const scrubbed = scrubGidFromClientReply(reply);
+  if (sessionId?.trim()) {
+    try {
+      await appendBuyerSessionMessage(env, sessionId, 'user', userText);
+      await appendBuyerSessionMessage(env, sessionId, 'assistant', scrubbed);
+    } catch (e) {
+      console.warn('[buyer.compose_turn] session history append failed', e);
+    }
+  }
+  return scrubbed;
+}
 
 export async function composeBuyerAssistantReply(
   env: Env,
@@ -273,32 +357,31 @@ export async function composeBuyerAssistantReply(
   opts?: ComposeBuyerTurnOptions,
 ): Promise<string> {
   const sessionId = opts?.sessionId?.trim() || undefined;
+  const productHandle = opts?.productHandle?.trim() || undefined;
   const catalogChannel = catalogSnapshotChannel(channelId);
   const profile = await fetchAIProfileByHandle(env, channelId, buyerIp(request));
   const profilePrompt = profile ? buildAIProfilePrompt(profile) : '';
   const readyAll = await listAvailableBuyerTools(env, channelId);
   const availableTools = filterToolsForSession(readyAll, sessionId);
 
-  let factsBlock = '';
+  const contextBlocks: string[] = [];
   const allowedVariantIds = new Set<string>();
-  try {
-    const repo = await getCatalogRepository(env, catalogChannel, { clientRequest: request });
-    const { matches } = await repo.search({ text: userText }, 4);
-    for (const id of collectVariantIdsFromMatches(matches)) {
-      allowedVariantIds.add(id);
+
+  if (productHandle) {
+    try {
+      const product = await fetchProductFactsByHandle(env, catalogChannel, productHandle, {
+        clientRequest: request,
+      });
+      if (product) {
+        const formatted = formatProductsBlock(PAGE_PRODUCT_HEADER, [{ product }], 1);
+        contextBlocks.push(
+          [formatted.descriptive, formatted.technical].filter(Boolean).join('\n\n'),
+        );
+        for (const id of formatted.variantIds) allowedVariantIds.add(id);
+      }
+    } catch (e) {
+      console.warn('[buyer.compose_turn] page product skipped', e);
     }
-    factsBlock = factsContextBlock(
-      matches.map((m) => ({
-        title: m.product.title,
-        priceDisplay:
-          m.matchingPriceRange.min.display_pl ??
-          m.product.priceRange.min.display_pl,
-        variants: m.matchingVariants.length ? m.matchingVariants : m.product.variants,
-      })),
-      { includeVariants: availableTools.includes('ucp_cart') },
-    );
-  } catch (e) {
-    console.warn('[buyer.compose_turn] catalog facts skipped', e);
   }
 
   let sessionCartId: string | null = null;
@@ -318,7 +401,10 @@ export async function composeBuyerAssistantReply(
           },
         );
         if (!cartOut?.error) {
-          for (const vid of variantIdsFromCartPayload(cartOut.result ?? cartOut)) {
+          const payload = cartOut.result ?? cartOut;
+          const summary = cartSummaryBlock(payload);
+          if (summary) contextBlocks.push(summary);
+          for (const vid of variantIdsFromCartPayload(payload)) {
             allowedVariantIds.add(vid);
           }
         }
@@ -332,11 +418,15 @@ export async function composeBuyerAssistantReply(
   const systemParts = buildBuyerTurnSystemPrompt({
     modelTools,
     profilePrompt,
-    factsBlock,
+    factsBlock: contextBlocks.join('\n\n'),
   });
+
+  const history =
+    sessionId ? lastBuyerHistoryEntries(await readBuyerSessionHistory(env, sessionId)) : [];
 
   const messages: GroqMessage[] = [
     { role: 'system', content: systemParts },
+    ...history.map((h) => ({ role: h.role, content: h.content })),
     { role: 'user', content: userText },
   ];
 
@@ -346,7 +436,7 @@ export async function composeBuyerAssistantReply(
       timingLabel: 'buyer_turn',
       sessionId,
     });
-    return reply.trim();
+    return finalizeBuyerReply(env, sessionId, userText, reply);
   }
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -362,20 +452,19 @@ export async function composeBuyerAssistantReply(
       );
       ({ text, toolCalls } = await collectStreamRound(stream));
     } catch (err) {
-      // Same messages (system + [FAKTY Z KATALOGU]) — reply still grounded in catalog facts.
       if (shouldFallbackToolLoop(err, round)) {
         console.warn(JSON.stringify({ tag: 'buyer.tool_loop_fallback', round }));
         const reply = await getGroqResponse(messages, env, {
           timingLabel: `buyer_tool_loop_fallback_${round}`,
           sessionId,
         });
-        return reply.trim();
+        return finalizeBuyerReply(env, sessionId, userText, reply);
       }
       throw err;
     }
 
     if (toolCalls.length === 0) {
-      return text.trim();
+      return finalizeBuyerReply(env, sessionId, userText, text);
     }
 
     messages.push({
@@ -399,9 +488,13 @@ export async function composeBuyerAssistantReply(
         sessionCartId,
         allowedVariantIds,
         shopifyCustomerId: null,
+        request,
       });
       if (executed.sessionCartId !== undefined) {
         sessionCartId = executed.sessionCartId;
+      }
+      if (executed.newVariantIds?.length) {
+        for (const id of executed.newVariantIds) allowedVariantIds.add(id);
       }
       messages.push({
         role: 'tool',
@@ -422,14 +515,13 @@ export async function composeBuyerAssistantReply(
       { toolChoice: 'none' },
     );
     const { text: finalText } = await collectStreamRound(finalStream);
-    return finalText.trim();
+    return finalizeBuyerReply(env, sessionId, userText, finalText);
   } catch {
-    // Same messages (system + [FAKTY Z KATALOGU]) — reply still grounded in catalog facts.
     console.warn(JSON.stringify({ tag: 'buyer.tool_loop_fallback', round: 'final' }));
     const reply = await getGroqResponse(messages, env, {
       timingLabel: 'buyer_tool_loop_final_fallback',
       sessionId,
     });
-    return reply.trim();
+    return finalizeBuyerReply(env, sessionId, userText, reply);
   }
 }

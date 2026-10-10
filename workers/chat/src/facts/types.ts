@@ -39,6 +39,9 @@ export type VariantFacts = {
   title: string;
   image: ProductImageFact | null;
   sku: string | null;
+  /** Storefront ProductVariant.weight */
+  weight?: number | null;
+  weightUnit?: string | null;
   price: MoneyPln;
   compareAtPrice: MoneyPln | null;
   available: boolean;
@@ -89,9 +92,22 @@ export type CatalogFilters = {
   metal?: string[];
   priceMin?: MoneyPln | number;
   priceMax?: MoneyPln | number;
+  /** Przekazywane do UCP catalog.context.intent (nie od modelu jako osobne pole API poza search). */
+  ucpIntent?: string;
   size?: string;
   availableOnly?: boolean;
   available?: boolean;
+};
+
+export type CatalogSearchMeta = {
+  filterIgnored?: string[];
+};
+
+export type CatalogSearchResult = {
+  matches: ProductMatch[];
+  total: number;
+  facets: CatalogFacetsDto;
+  meta?: CatalogSearchMeta;
 };
 
 export type ProductMatch = {
@@ -129,7 +145,7 @@ export interface CatalogFactsRepository {
   search(
     filters: CatalogFilters,
     limit: number,
-  ): Promise<{matches: ProductMatch[]; total: number; facets: CatalogFacetsDto}>;
+  ): Promise<CatalogSearchResult>;
   getById(productId: string): Promise<ProductFacts | null>;
 }
 

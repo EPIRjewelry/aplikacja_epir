@@ -34,7 +34,7 @@ function variantMetafieldIdentifiersGql(): string {
 }
 
 const VARIANT_FIELDS = `
-  id title sku availableForSale
+  id title sku availableForSale weight weightUnit
   price { amount currencyCode }
   compareAtPrice { amount currencyCode }
   selectedOptions { name value }
@@ -471,4 +471,95 @@ export async function fetchProductFactsLive(
     if (f) out.push(f);
   }
   return out;
+}
+
+async function productNodeToFacts(
+  env: Env,
+  channel: BuyerChannelId,
+  raw: Record<string, unknown>,
+  options?: FetchStorefrontLiveOptions,
+): Promise<ProductFacts | null> {
+  const fetchedAt = new Date().toISOString();
+  const urlTemplate = channel === 'kazka-hydrogen' ? kazkaUrlTemplate() : undefined;
+  const productId = typeof raw.id === 'string' ? raw.id : '';
+  if (!productId) return null;
+
+  const adaptedRaw = {
+    ...raw,
+    _gemstoneTypeMeta: raw.gemstoneTypeMeta,
+    _jewelryMaterialMeta: raw.jewelryMaterialMeta,
+    _stoneEducationMeta: raw.stoneEducationMeta,
+  };
+  const productMeta = adaptProductMetafields(adaptedRaw);
+
+  const variantsConn = raw.variants as {pageInfo?: PageInfo; nodes?: unknown[]} | undefined;
+  const collectionsConn = raw.collections as {pageInfo?: PageInfo; nodes?: unknown[]} | undefined;
+  const allVariants = await loadAllVariants(env, channel, productId, variantsConn ?? {}, options);
+  const allCollections = await loadAllCollections(
+    env,
+    channel,
+    productId,
+    collectionsConn ?? {},
+    options,
+  );
+
+  const merged = {
+    ...raw,
+    metafields: productMeta,
+    variants: {nodes: allVariants},
+    collections: {nodes: allCollections},
+  };
+  delete (merged as Record<string, unknown>).gemstoneTypeMeta;
+  delete (merged as Record<string, unknown>).jewelryMaterialMeta;
+  delete (merged as Record<string, unknown>).stoneEducationMeta;
+
+  const facts = normalizeProduct(merged, {
+    channel,
+    urlTemplate,
+    fetchedAt,
+  });
+  if (!facts) return null;
+  enrichFactsFromMetafields(facts, productMeta.nodes, allVariants);
+  return facts;
+}
+
+export async function fetchProductFactsByHandle(
+  env: Env,
+  channel: BuyerChannelId,
+  handle: string,
+  options?: FetchStorefrontLiveOptions,
+): Promise<ProductFacts | null> {
+  const h = handle.trim();
+  if (!h || !hasStorefrontCatalogToken(env, channel)) return null;
+  const query = `
+    query ProductByHandleLive($handle: String!) @inContext(country: PL, language: PL) {
+      product(handle: $handle) {
+        ${PRODUCT_NODE_FIELDS}
+      }
+    }
+  `;
+  try {
+    const data = await storefrontGraphqlRetry(env, channel, query, {handle: h}, options);
+    const raw = data.product as Record<string, unknown> | null;
+    if (!raw || !isRecord(raw)) {
+      console.log(
+        JSON.stringify({
+          tag: 'facts.product_by_handle',
+          channel,
+          byHandle: false,
+        }),
+      );
+      return null;
+    }
+    return await productNodeToFacts(env, channel, raw, options);
+  } catch (err) {
+    console.warn(
+      JSON.stringify({
+        tag: 'facts.product_by_handle_error',
+        channel,
+        reason: err instanceof Error ? err.message : String(err),
+      }),
+    );
+    return null;
+  }
 }

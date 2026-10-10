@@ -12,8 +12,17 @@ describe('MCP system prompt tool names', () => {
     const keys = Object.keys(TOOL_SCHEMAS) as (keyof typeof TOOL_SCHEMAS)[];
     const missing: string[] = [];
 
+    const buyerPromptOmits = new Set([
+      'catalog_search',
+      'catalog_lookup',
+      'catalog_image_search',
+      'lookup_catalog',
+      'get_product',
+    ]);
+
     for (const key of keys) {
       if (OPERATOR_INTERNAL_TOOL_NAMES.has(TOOL_SCHEMAS[key].name)) continue;
+      if (buyerPromptOmits.has(key)) continue;
       // TOOL_SCHEMAS keys are the canonical tool identifiers
       if (!prompt.includes(key) && !prompt.includes(TOOL_SCHEMAS[key].name)) {
         missing.push(key);
