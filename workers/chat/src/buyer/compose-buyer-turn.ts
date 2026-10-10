@@ -1,11 +1,11 @@
 import { getGroqResponse } from '../ai-client';
 import type { Env } from '../config/bindings';
 import { getCatalogRepository } from '../facts';
-import type { ProductFacts } from '../facts/types';
 import { buildAIProfilePrompt, fetchAIProfileByHandle } from '../ai-profile';
 import { LUXURY_SYSTEM_PROMPT } from '../prompts/luxury-system-prompt';
 import type { BuyerChannelId } from './channel-switch';
 import { catalogSnapshotChannel } from './channel-switch';
+import { listAvailableBuyerTools, type BuyerToolId } from './tool-readiness';
 
 function buyerIp(request: Request): string | undefined {
   return request.headers.get('CF-Connecting-IP')?.trim() || undefined;
@@ -40,6 +40,79 @@ function factsContextBlock(products: Array<{ title?: string; priceDisplay?: stri
   return ['[FAKTY Z KATALOGU — tylko to możesz twierdzić]', ...lines].join('\n');
 }
 
+const BUYER_TOOL_BLURBS: Record<BuyerToolId, string> = {
+  search_catalog: '• search_catalog — produkty, materiały, kamienie, kolekcje, dostępność.',
+  ucp_cart: '• ucp_cart (create_cart / get_cart / update_cart / cancel_cart) — koszyk; continue_url z wyniku.',
+  search_shop_policies_and_faqs:
+    '• search_shop_policies_and_faqs — zwroty, wysyłka, regulamin, kontakt, FAQ.',
+  get_size_table: '• get_size_table — rozmiar pierścionka, pomiar palca, PL/US/UK.',
+  customer_account_profile:
+    '• customer_account_profile — profil zalogowanego klienta (gość: nie zgaduj danych konta).',
+};
+
+/** Lists only tools readiness passed for this turn. Empty → no tool identifiers. */
+export function buildBuyerToolsPrompt(tools: BuyerToolId[]): string {
+  if (tools.length === 0) {
+    return [
+      'Narzędzia w tej turze:',
+      'Brak dostępnych narzędzi backendu. Nie twierdź, że możesz wywołać narzędzia; odpowiadaj tylko na podstawie profilu i faktów w kontekście.',
+    ].join('\n');
+  }
+  return [
+    'Narzędzia dostępne w tej turze (używaj wyłącznie tych — nie wymieniaj innych):',
+    ...tools.map((t) => BUYER_TOOL_BLURBS[t]),
+  ].join('\n');
+}
+
+/**
+ * Scrub tool identifiers that readiness did not grant for this turn.
+ * Stock "Narzędzia (krótko…)" inventory is removed; the dynamic block is appended separately.
+ */
+export function scrubBuyerPromptForAvailableTools(
+  prompt: string,
+  availableTools: BuyerToolId[],
+): string {
+  const allowed = new Set(availableTools);
+  let out = prompt.replace(
+    /\nNarzędzia \(krótko — szczegóły schematów dostarcza API\):[\s\S]*?(?=\nTwarde reguły tool-use:)/,
+    '\n',
+  );
+
+  if (!allowed.has('search_catalog')) {
+    out = out.replace(/search_catalog/g, 'wyszukiwanie oferty');
+    out = out.replace(/catalog_search/g, 'wyszukiwanie oferty');
+    out = out.replace(/catalog_lookup/g, 'podgląd produktu');
+    out = out.replace(/catalog_image_search/g, 'wyszukiwanie wizualne');
+    out = out.replace(/lookup_catalog/g, 'podgląd produktu');
+    out = out.replace(/\bget_product\b/g, 'podgląd produktu');
+  }
+  if (!allowed.has('get_size_table')) {
+    out = out.replace(/get_size_table/g, 'pomiar rozmiaru');
+  }
+  if (!allowed.has('search_shop_policies_and_faqs')) {
+    out = out.replace(/search_shop_policies_and_faqs/g, 'baza polityk sklepu');
+  }
+  if (!allowed.has('ucp_cart')) {
+    out = out.replace(/\b(create_cart|get_cart|update_cart|cancel_cart)\b/g, 'operacja koszyka');
+  }
+  if (!allowed.has('customer_account_profile')) {
+    out = out.replace(/customer_account_profile/g, 'profil konta klienta');
+    out = out.replace(/get_most_recent_order_status/g, 'status zamówienia');
+  }
+
+  return out;
+}
+
+export function buildBuyerTurnSystemPrompt(parts: {
+  availableTools: BuyerToolId[];
+  profilePrompt: string;
+  factsBlock: string;
+}): string {
+  const base = scrubBuyerPromptForAvailableTools(LUXURY_SYSTEM_PROMPT, parts.availableTools);
+  const toolsBlock = buildBuyerToolsPrompt(parts.availableTools);
+  return [base, toolsBlock, parts.profilePrompt, parts.factsBlock].filter(Boolean).join('\n\n');
+}
+
 export async function composeBuyerAssistantReply(
   env: Env,
   channelId: BuyerChannelId,
@@ -49,6 +122,7 @@ export async function composeBuyerAssistantReply(
   const catalogChannel = catalogSnapshotChannel(channelId);
   const profile = await fetchAIProfileByHandle(env, channelId, buyerIp(request));
   const profilePrompt = profile ? buildAIProfilePrompt(profile) : '';
+  const availableTools = await listAvailableBuyerTools(env, channelId);
 
   let factsBlock = '';
   try {
@@ -56,16 +130,22 @@ export async function composeBuyerAssistantReply(
     const { matches } = await repo.search({ text: userText }, 4);
     factsBlock = factsContextBlock(
       matches.map((m) => ({
-        title: m.title,
-        priceDisplay: m.priceDisplay,
-        variants: m.variants,
+        title: m.product.title,
+        priceDisplay:
+          m.matchingPriceRange.min.display_pl ??
+          m.product.priceRange.min.display_pl,
+        variants: m.matchingVariants.length ? m.matchingVariants : m.product.variants,
       })),
     );
   } catch (e) {
     console.warn('[buyer.compose_turn] catalog facts skipped', e);
   }
 
-  const systemParts = [LUXURY_SYSTEM_PROMPT, profilePrompt, factsBlock].filter(Boolean).join('\n\n');
+  const systemParts = buildBuyerTurnSystemPrompt({
+    availableTools,
+    profilePrompt,
+    factsBlock,
+  });
 
   const reply = await getGroqResponse(
     [
