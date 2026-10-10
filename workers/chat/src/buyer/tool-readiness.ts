@@ -56,7 +56,13 @@ async function mcpToolsListOk(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    return { ok: res.ok || res.status === 401, status: res.status };
+    // UCP catalog/cart and shop policies: 401/403 mean the tool is unavailable
+    // (not “guest”). Guest semantics apply only to Customer Accounts via
+    // interpretCustomerAccountHttpStatus.
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, status: res.status };
+    }
+    return { ok: res.ok, status: res.status };
   } catch {
     return { ok: false, status: 0 };
   }
@@ -76,10 +82,16 @@ function ucpToolsListBody(env: Env): Record<string, unknown> {
   };
 }
 
+export type AssessToolReadinessOptions = {
+  /** When set, Customer Accounts readiness uses interpretCustomerAccountHttpStatus (401/403 = guest). */
+  customerAccountHttpStatus?: number;
+};
+
 export async function assessToolReadiness(
   env: Env,
   channelId: BuyerChannelId,
   tool: BuyerToolId,
+  opts?: AssessToolReadinessOptions,
 ): Promise<ToolReadiness> {
   const shop = env.SHOP_DOMAIN?.trim();
   if (!shop) {
@@ -155,6 +167,9 @@ export async function assessToolReadiness(
     const clientId = env.PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID?.trim();
     if (!clientId) {
       return { tool, available: false, reason: 'missing_customer_account_client_id' };
+    }
+    if (opts?.customerAccountHttpStatus != null) {
+      return interpretCustomerAccountHttpStatus(opts.customerAccountHttpStatus);
     }
     return { tool, available: true, reason: 'ok_configured' };
   }

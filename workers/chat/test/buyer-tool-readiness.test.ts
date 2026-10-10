@@ -25,6 +25,62 @@ describe('buyer tool-readiness', () => {
     expect(r.reason).toBe('customer_not_logged_in');
   });
 
+  it('routes customer account probe 401 through interpretCustomerAccountHttpStatus', async () => {
+    const env = {
+      SHOP_DOMAIN: 'shop.myshopify.com',
+      PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID: 'caa-client',
+    } as import('../src/config/bindings').Env;
+
+    const r = await assessToolReadiness(env, 'epir-online-store', 'customer_account_profile', {
+      customerAccountHttpStatus: 401,
+    });
+    expect(r.guestNotLoggedIn).toBe(true);
+    expect(r.available).toBe(false);
+    expect(r.reason).toBe('customer_not_logged_in');
+  });
+
+  it('marks UCP catalog unavailable on 401 (not guest)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({}),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const env = {
+      SHOP_DOMAIN: 'shop.myshopify.com',
+      PRIVATE_STOREFRONT_API_TOKEN: 'priv',
+      UCP_AGENT_PROFILE_URL: 'https://example.com/profile.json',
+    } as import('../src/config/bindings').Env;
+
+    const r = await assessToolReadiness(env, 'epir-online-store', 'search_catalog');
+    expect(r.available).toBe(false);
+    expect(r.guestNotLoggedIn).toBeUndefined();
+    expect(r.reason).toBe('catalog_mcp_unhealthy_401');
+  });
+
+  it('marks policies MCP unavailable on 403 (not guest)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({}),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const env = {
+      SHOP_DOMAIN: 'shop.myshopify.com',
+    } as import('../src/config/bindings').Env;
+
+    const r = await assessToolReadiness(
+      env,
+      'epir-online-store',
+      'search_shop_policies_and_faqs',
+    );
+    expect(r.available).toBe(false);
+    expect(r.guestNotLoggedIn).toBeUndefined();
+    expect(r.reason).toBe('policies_mcp_unhealthy_403');
+  });
+
   it('ucp cart requires same agent profile envelope', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
