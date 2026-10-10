@@ -5531,6 +5531,11 @@ export default {
       }
     }
 
+    if (request.method === 'POST' && url.pathname === '/webhooks/metaobjects/ai_profile') {
+      const { handleAiProfileMetaobjectWebhook } = await import('./webhooks/ai-profile-metaobject');
+      return handleAiProfileMetaobjectWebhook(request, env);
+    }
+
     // --- Shopify webhook: customers/redact (GDPR) ---
     // Dokumentacja: https://shopify.dev/docs/apps/webhooks/configuration/mandatory-webhooks
     // Kontrakt: POST z body { customer: { id }, shop_id, shop_domain } + nagłówek X-Shopify-Hmac-Sha256.
