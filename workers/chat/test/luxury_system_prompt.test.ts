@@ -31,6 +31,19 @@ describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
   it('alternative stone only with reason from search_catalog results', () => {
     expect(LUXURY_SYSTEM_PROMPT).toContain('logiczny powód (kolor, forma, szlif)');
     expect(LUXURY_SYSTEM_PROMPT).toContain('wyłącznie produkty z wyniku search_catalog tej tury');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('Gdy brak trafień dla pytanego kamienia');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('podobny kolor, kształt, szlif');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('nazywając powód');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('bez SKU i ceny');
+    expect(LUXURY_SYSTEM_PROMPT).not.toContain('dopóki klient nie wyrazi zgody');
+    expect(LUXURY_SYSTEM_PROMPT).not.toContain('Przy braku trafień powiedz to wprost');
+  });
+
+  it('includes product presentation example with catalog-backed price placeholder', () => {
+    expect(LUXURY_SYSTEM_PROMPT).toContain('Przykład poprawnej odpowiedzi');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('Pierścionek z Topazem');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('topaz London Blue');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('[cena z wyniku]');
   });
 
   it('includes EPIR brand language principles as default', () => {
