@@ -30,7 +30,6 @@ import {
   type CommerceAction,
   createRevalidateScheduler,
   applyStorefrontCommerceAction,
-  mountShopSignInButton,
 } from '@epir/ui';
 import type {PersonaUi} from '@epir/ui';
 import {ShopifyProvider} from '@shopify/hydrogen-react';
@@ -180,7 +179,6 @@ export async function loader({context, request}: LoaderFunctionArgs) {
     shopDomain: new URL(request.url).host,
     shopifyStoreDomain: context.env.PUBLIC_STORE_DOMAIN,
     storefrontApiVersion: context.env.PUBLIC_STOREFRONT_API_VERSION || '2025-10',
-    shopifyClientId: (context.env.PUBLIC_SHOPIFY_CLIENT_ID as string | undefined)?.trim() || undefined,
     shopAnalytics,
     analyticsConsent,
   });
@@ -224,7 +222,6 @@ function ZareczynyConsentAndChat({
   shopDomain,
   analyticsConsent,
   privacyPolicyUrl,
-  shopifyClientId,
 }: {
   chatApiUrl: string;
   cartId?: string | null;
@@ -235,7 +232,6 @@ function ZareczynyConsentAndChat({
   route?: string;
   shopDomain: string;
   privacyPolicyUrl?: string;
-  shopifyClientId?: string;
   analyticsConsent: {
     checkoutDomain: string;
     storefrontAccessToken: string;
@@ -272,21 +268,6 @@ function ZareczynyConsentAndChat({
     },
     [cartFetcher],
   );
-
-  useEffect(() => {
-    if (!shopifyClientId?.trim() || !consentGranted) return;
-    let cleanup: (() => void) | undefined;
-    void mountShopSignInButton({
-      apiKey: shopifyClientId.trim(),
-      locale: analyticsConsent.language ?? 'pl',
-      mountSelector: '#epir-shop-sign-in-mount-zareczyny',
-    }).then((fn) => {
-      cleanup = fn;
-    });
-    return () => {
-      cleanup?.();
-    };
-  }, [shopifyClientId, consentGranted, analyticsConsent.language]);
 
   useEffect(() => {
     if (getStoredConsent(ZARECZYNY_CONSENT_STORAGE_KEY) === true) {
@@ -402,11 +383,6 @@ function ZareczynyConsentAndChat({
           consentGranted={consentGranted}
         />
       ) : null}
-      <div
-        id="epir-shop-sign-in-mount-zareczyny"
-        className="fixed bottom-24 right-4 z-40"
-        aria-label="Sign in with Shop"
-      />
       <ChatWidget
         chatApiUrl={chatApiUrl}
         cartId={cartId}
@@ -470,7 +446,6 @@ export default function App() {
         route={data.route}
         shopDomain={data.shopDomain}
         privacyPolicyUrl={data.privacyPolicyUrl}
-        shopifyClientId={data.shopifyClientId}
         analyticsConsent={data.analyticsConsent}
       />
     </>

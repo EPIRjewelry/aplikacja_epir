@@ -138,10 +138,25 @@ const GET_SIZE_TABLE: GroqToolCallDefinition = {
   },
 };
 
-/** Maps readiness ids to model-facing tool definitions. */
+/**
+ * Tools that have Groq function definitions in the buyer tool loop.
+ * search_catalog / customer_account_profile stay readiness-only (facts path / stage F).
+ */
+export const MODEL_WIRED_BUYER_TOOLS: BuyerToolId[] = [
+  'ucp_cart',
+  'search_shop_policies_and_faqs',
+  'get_size_table',
+];
+
+export function filterModelWiredBuyerTools(tools: BuyerToolId[]): BuyerToolId[] {
+  const wired = new Set<BuyerToolId>(MODEL_WIRED_BUYER_TOOLS);
+  return tools.filter((t) => wired.has(t));
+}
+
+/** Maps readiness ids to model-facing tool definitions (only MODEL_WIRED_BUYER_TOOLS). */
 export function buildBuyerToolDefinitions(ready: BuyerToolId[]): GroqToolCallDefinition[] {
   const out: GroqToolCallDefinition[] = [];
-  const set = new Set(ready);
+  const set = new Set(filterModelWiredBuyerTools(ready));
 
   if (set.has('ucp_cart')) {
     out.push(CREATE_CART, GET_CART, UPDATE_CART, CANCEL_CART);
@@ -152,7 +167,6 @@ export function buildBuyerToolDefinitions(ready: BuyerToolId[]): GroqToolCallDef
   if (set.has('get_size_table')) {
     out.push(GET_SIZE_TABLE);
   }
-  // search_catalog / customer_account_profile: not wired in D2 tool loop (facts path / stage F).
   return out;
 }
 

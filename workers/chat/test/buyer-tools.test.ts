@@ -1,8 +1,24 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildBuyerToolDefinitions, buyerToolIdForName } from '../src/buyer/buyer-tools';
+import {
+  MODEL_WIRED_BUYER_TOOLS,
+  buildBuyerToolDefinitions,
+  buyerToolIdForName,
+  filterModelWiredBuyerTools,
+} from '../src/buyer/buyer-tools';
 
 describe('buyer-tools definitions', () => {
+  it('MODEL_WIRED_BUYER_TOOLS excludes search_catalog and customer_account_profile', () => {
+    expect(MODEL_WIRED_BUYER_TOOLS).toEqual([
+      'ucp_cart',
+      'search_shop_policies_and_faqs',
+      'get_size_table',
+    ]);
+    expect(filterModelWiredBuyerTools(['search_catalog', 'ucp_cart', 'customer_account_profile'])).toEqual([
+      'ucp_cart',
+    ]);
+  });
+
   it('omits cart tools when ucp_cart not in readiness', () => {
     const defs = buildBuyerToolDefinitions(['get_size_table']);
     const names = defs.map((d) => d.function.name);

@@ -10,7 +10,7 @@ import { getCatalogRepository } from '../facts';
 import { buildAIProfilePrompt, fetchAIProfileByHandle } from '../ai-profile';
 import { callMcpToolDirect } from '../mcp_server';
 import { LUXURY_SYSTEM_PROMPT } from '../prompts/luxury-system-prompt';
-import { buildBuyerToolDefinitions } from './buyer-tools';
+import { buildBuyerToolDefinitions, filterModelWiredBuyerTools } from './buyer-tools';
 import type { BuyerChannelId } from './channel-switch';
 import { catalogSnapshotChannel } from './channel-switch';
 import { executeBuyerTool, variantIdsFromCartPayload } from './execute-buyer-tool';
@@ -22,6 +22,25 @@ import {
 } from './tool-readiness';
 
 const MAX_TOOL_ROUNDS = 3;
+
+/** Catalog is facts-path only; never advertise search_catalog as a callable tool. */
+const CATALOG_FACTS_GUIDANCE = [
+  'Produkty i ceny: wyłącznie z bloku [FAKTY Z KATALOGU] w tej turze (jeśli jest obecny).',
+  'Gdy bloku brak: dopytaj klienta o preferencje albo zaproponuj kolekcję z profilu marki; nie wymyślaj produktów, cen ani linków.',
+].join('\n');
+
+/**
+ * ai-client wraps Groq SSE errors as "AI Gateway stream error event from Groq"
+ * (underlying tool_use_failed is only in console); match both forms.
+ */
+function shouldFallbackToolLoop(err: unknown, round: number): boolean {
+  if (round > 0) return true;
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    /tool_use_failed|not in request\.tools|Tool call validation failed/i.test(msg) ||
+    /AI Gateway stream error event from Groq/i.test(msg)
+  );
+}
 
 function buyerIp(request: Request): string | undefined {
   return request.headers.get('CF-Connecting-IP')?.trim() || undefined;
@@ -113,8 +132,8 @@ export function factsContextBlock(
   return ['[FAKTY Z KATALOGU — tylko to możesz twierdzić]', ...productLines].join('\n');
 }
 
-const BUYER_TOOL_BLURBS: Record<BuyerToolId, string> = {
-  search_catalog: '• search_catalog — produkty, materiały, kamienie, kolekcje, dostępność.',
+/** Blurbs only for tools wired to Groq (MODEL_WIRED_BUYER_TOOLS). */
+const BUYER_TOOL_BLURBS: Partial<Record<BuyerToolId, string>> = {
   ucp_cart: [
     '• create_cart / get_cart / update_cart / cancel_cart — koszyk sesji klienta.',
     '  Koszyk dodawaj tylko po wyraźnej zgodzie. Wariant = gid://shopify/ProductVariant/... z faktów katalogu tej tury (nie wymyślaj).',
@@ -127,8 +146,6 @@ const BUYER_TOOL_BLURBS: Record<BuyerToolId, string> = {
     '  Cytuj pole answer tak, jak zwróciła baza wiedzy, i podaj źródło. Nie dopowiadaj.',
   ].join('\n'),
   get_size_table: '• get_size_table — rozmiar pierścionka, pomiar palca, PL/US/UK.',
-  customer_account_profile:
-    '• customer_account_profile — profil zalogowanego klienta (gość: nie zgaduj danych konta).',
 };
 
 const BUYER_PROMPT_ADDON = [
@@ -136,9 +153,10 @@ const BUYER_PROMPT_ADDON = [
   'Nie używaj frazy „od [cena]” przy cenach wariantów.',
 ].join('\n');
 
-/** Lists only tools readiness passed for this turn. Empty → no tool identifiers. */
+/** Lists only model-wired tools for this turn. Empty → no tool identifiers. */
 export function buildBuyerToolsPrompt(tools: BuyerToolId[]): string {
-  if (tools.length === 0) {
+  const blurbs = tools.map((t) => BUYER_TOOL_BLURBS[t]).filter((b): b is string => Boolean(b));
+  if (blurbs.length === 0) {
     return [
       'Narzędzia w tej turze:',
       'Brak dostępnych narzędzi backendu. Nie twierdź, że możesz wywołać narzędzia; odpowiadaj tylko na podstawie profilu i faktów w kontekście.',
@@ -146,7 +164,7 @@ export function buildBuyerToolsPrompt(tools: BuyerToolId[]): string {
   }
   return [
     'Narzędzia dostępne w tej turze (używaj wyłącznie tych — nie wymieniaj innych):',
-    ...tools.map((t) => BUYER_TOOL_BLURBS[t]),
+    ...blurbs,
     BUYER_PROMPT_ADDON,
   ].join('\n');
 }
@@ -191,13 +209,16 @@ export function scrubBuyerPromptForAvailableTools(
 }
 
 export function buildBuyerTurnSystemPrompt(parts: {
-  availableTools: BuyerToolId[];
+  /** Tools exposed to the model (MODEL_WIRED ∩ readiness), not full readiness list. */
+  modelTools: BuyerToolId[];
   profilePrompt: string;
   factsBlock: string;
 }): string {
-  const base = scrubBuyerPromptForAvailableTools(LUXURY_SYSTEM_PROMPT, parts.availableTools);
-  const toolsBlock = buildBuyerToolsPrompt(parts.availableTools);
-  return [base, toolsBlock, parts.profilePrompt, parts.factsBlock].filter(Boolean).join('\n\n');
+  const base = scrubBuyerPromptForAvailableTools(LUXURY_SYSTEM_PROMPT, parts.modelTools);
+  const toolsBlock = buildBuyerToolsPrompt(parts.modelTools);
+  return [base, toolsBlock, CATALOG_FACTS_GUIDANCE, parts.profilePrompt, parts.factsBlock]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 /** Drop cart tools when session cannot persist cart across turns. */
@@ -307,8 +328,9 @@ export async function composeBuyerAssistantReply(
     }
   }
 
+  const modelTools = filterModelWiredBuyerTools(availableTools);
   const systemParts = buildBuyerTurnSystemPrompt({
-    availableTools,
+    modelTools,
     profilePrompt,
     factsBlock,
   });
@@ -318,21 +340,39 @@ export async function composeBuyerAssistantReply(
     { role: 'user', content: userText },
   ];
 
-  const toolDefinitions = buildBuyerToolDefinitions(availableTools);
+  const toolDefinitions = buildBuyerToolDefinitions(modelTools);
   if (toolDefinitions.length === 0) {
-    const reply = await getGroqResponse(messages, env, { timingLabel: 'buyer_turn' });
+    const reply = await getGroqResponse(messages, env, {
+      timingLabel: 'buyer_turn',
+      sessionId,
+    });
     return reply.trim();
   }
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const stream = await streamGroqEvents(
-      messages,
-      env,
-      toolDefinitions,
-      sessionId,
-      `buyer_tool_loop_${round}`,
-    );
-    const { text, toolCalls } = await collectStreamRound(stream);
+    let text: string;
+    let toolCalls: GroqToolCall[];
+    try {
+      const stream = await streamGroqEvents(
+        messages,
+        env,
+        toolDefinitions,
+        sessionId,
+        `buyer_tool_loop_${round}`,
+      );
+      ({ text, toolCalls } = await collectStreamRound(stream));
+    } catch (err) {
+      // Same messages (system + [FAKTY Z KATALOGU]) — reply still grounded in catalog facts.
+      if (shouldFallbackToolLoop(err, round)) {
+        console.warn(JSON.stringify({ tag: 'buyer.tool_loop_fallback', round }));
+        const reply = await getGroqResponse(messages, env, {
+          timingLabel: `buyer_tool_loop_fallback_${round}`,
+          sessionId,
+        });
+        return reply.trim();
+      }
+      throw err;
+    }
 
     if (toolCalls.length === 0) {
       return text.trim();
@@ -372,14 +412,24 @@ export async function composeBuyerAssistantReply(
     }
   }
 
-  const finalStream = await streamGroqEvents(
-    messages,
-    env,
-    toolDefinitions,
-    sessionId,
-    'buyer_tool_loop_final',
-    { toolChoice: 'none' },
-  );
-  const { text: finalText } = await collectStreamRound(finalStream);
-  return finalText.trim();
+  try {
+    const finalStream = await streamGroqEvents(
+      messages,
+      env,
+      toolDefinitions,
+      sessionId,
+      'buyer_tool_loop_final',
+      { toolChoice: 'none' },
+    );
+    const { text: finalText } = await collectStreamRound(finalStream);
+    return finalText.trim();
+  } catch {
+    // Same messages (system + [FAKTY Z KATALOGU]) — reply still grounded in catalog facts.
+    console.warn(JSON.stringify({ tag: 'buyer.tool_loop_fallback', round: 'final' }));
+    const reply = await getGroqResponse(messages, env, {
+      timingLabel: 'buyer_tool_loop_final_fallback',
+      sessionId,
+    });
+    return reply.trim();
+  }
 }
