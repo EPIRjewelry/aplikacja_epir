@@ -16,7 +16,7 @@ extension_directories = [
 ]
 
 [webhooks]
-api_version = "2026-04"
+api_version = "2026-10"
 
 [access_scopes]
 # read_reports: ShopifyQL / shopifyqlQuery (natywna analityka Admin) — wymaga ponownej instalacji aplikacji po zmianie scope.

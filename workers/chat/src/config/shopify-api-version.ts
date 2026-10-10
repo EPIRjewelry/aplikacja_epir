@@ -16,6 +16,6 @@
  * z tokenami Storefront / Hydrogen (`apps/kazka`, `apps/zareczyny`). Zmiana wersji Storefront
  * wymaga retestu metaobjectów, tabeli rozmiarów i AI profile.
  */
-export const SHOPIFY_ADMIN_API_VERSION = '2026-04';
+export const SHOPIFY_ADMIN_API_VERSION = '2026-10';
 
 export const SHOPIFY_STOREFRONT_API_VERSION = '2026-10';
