@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { handleBuyerTurn, BUYER_UNAVAILABLE_JSON } from '../src/buyer/handle-buyer-turn';
+import {
+  handleBuyerTurn,
+  BUYER_CLIENT_ERROR_MESSAGE,
+  BUYER_UNAVAILABLE_JSON,
+} from '../src/buyer/handle-buyer-turn';
 import * as channelSwitch from '../src/buyer/channel-switch';
 import * as compose from '../src/buyer/compose-buyer-turn';
 import { extractLastUserMessage } from '../src/buyer/compose-buyer-turn';
@@ -121,7 +125,7 @@ describe('handleBuyerTurn', () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.reason).toBe('missing_user_message');
-    expect(json.error).toBe('Nie udało się odczytać wiadomości.');
+    expect(json.error).toBe(BUYER_CLIENT_ERROR_MESSAGE);
   });
 
   it('handleChat passes parsed body once — widget payload is not 400', async () => {

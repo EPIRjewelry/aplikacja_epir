@@ -34,6 +34,10 @@ export const BUYER_UNAVAILABLE_JSON = {
     'Czat jest chwilowo niedostępny. Zapraszamy do kontaktu przez formularz na stronie.',
 };
 
+/** Tekst dla widżetu przy 400/500 (bez surowego HTTP). */
+export const BUYER_CLIENT_ERROR_MESSAGE =
+  'Przepraszam, nie udało się wysłać wiadomości. Proszę spróbować ponownie.';
+
 /**
  * Kupujący: fail-closed gdy `gemma:channel:*` = off (domyślnie).
  * Tura z modelem tylko przy `internal` lub `on` (KV ustawia operator).
@@ -82,7 +86,7 @@ export async function handleBuyerTurn(
       JSON.stringify({
         type: 'error',
         reason: 'missing_user_message',
-        error: 'Nie udało się odczytać wiadomości.',
+        error: BUYER_CLIENT_ERROR_MESSAGE,
       }),
       {
         status: 400,
@@ -113,7 +117,7 @@ export async function handleBuyerTurn(
       JSON.stringify({
         type: 'error',
         reason: 'assistant_failed',
-        error: 'Asystent chwilowo nie odpowiada.',
+        error: BUYER_CLIENT_ERROR_MESSAGE,
       }),
       {
         status: 500,
