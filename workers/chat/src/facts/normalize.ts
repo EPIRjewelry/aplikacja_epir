@@ -280,11 +280,22 @@ export function normalizeProduct(raw: unknown, options: NormalizeOptions): Produ
     const resolved = resolveVariantOrigin(v, raw, issues, vId);
     if (resolved.productOriginRaw) productOriginRaw = resolved.productOriginRaw;
 
+    const weightRaw = v.weight;
+    const weight =
+      typeof weightRaw === 'number' && Number.isFinite(weightRaw)
+        ? weightRaw
+        : typeof weightRaw === 'string' && weightRaw.trim() && Number.isFinite(Number(weightRaw))
+          ? Number(weightRaw)
+          : null;
+    const weightUnit = asStr(v.weightUnit) ?? null;
+
     variants.push({
       variantId: vId,
       variant_id: vId,
       title: asStr(v.title) ?? '',
       sku: asStr(v.sku) ?? null,
+      weight,
+      weightUnit,
       available,
       price,
       compareAtPrice,

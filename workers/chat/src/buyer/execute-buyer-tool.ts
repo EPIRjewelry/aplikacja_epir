@@ -11,7 +11,13 @@ import {
 } from './kb-policies';
 import { recordPolicyTouchIfIdentified } from './policy-audit';
 import { writeSessionCartId } from './session-cart';
+import { catalogSnapshotChannel } from './channel-switch';
+import { validateSearchCatalogArgs } from './search-catalog-args';
 import { brandKeyForChannel, type BuyerToolId } from './tool-readiness';
+import { CATALOG_SEARCH_SERVER_LIMIT } from '../facts/catalog-ucp-args';
+import { formatMatchBlock, CATALOG_SEARCH_HEADER } from '../facts/format-product-block';
+import { getCatalogRepository } from '../facts';
+import type { CatalogFilters } from '../facts/types';
 
 const CART_UNAVAILABLE =
   'Koszyk jest chwilowo niedostępny. Spróbuj ponownie za chwilę lub skorzystaj z koszyka na stronie sklepu.';
@@ -26,11 +32,13 @@ export type ExecuteBuyerToolInput = {
   sessionCartId: string | null;
   allowedVariantIds: Set<string>;
   shopifyCustomerId?: string | null;
+  request?: Request;
 };
 
 export type ExecuteBuyerToolResult = {
   content: string;
   sessionCartId?: string | null;
+  newVariantIds?: string[];
 };
 
 function deny(reason: string, extra?: Record<string, unknown>): ExecuteBuyerToolResult {
@@ -185,10 +193,55 @@ export async function executeBuyerTool(
 
   const brand = brandKeyForChannel(input.channelId);
   const commerceContext = resolveCommerceContext(brand);
+  const clientRequest = input.request ?? new Request('https://session/buyer');
 
   if (toolId === 'get_size_table') {
     const table = await getSizeTable(input.env, brand);
     return { content: table.content };
+  }
+
+  if (toolId === 'search_catalog') {
+    const args = parseArgs(input.argsJson);
+    const validated = validateSearchCatalogArgs(args);
+    if (!validated.ok) {
+      return deny(validated.reason, {
+        tool: input.name,
+        dropped: validated.droppedKeys,
+      });
+    }
+    const catalogChannel = catalogSnapshotChannel(input.channelId);
+    const repo = await getCatalogRepository(input.env, catalogChannel, {
+      clientRequest,
+    });
+    const filters: CatalogFilters = {
+      text: validated.query,
+      ucpIntent: validated.intent,
+    };
+    if (validated.priceMinMinor !== undefined) filters.priceMin = validated.priceMinMinor;
+    if (validated.priceMaxMinor !== undefined) filters.priceMax = validated.priceMaxMinor;
+
+    const { matches, meta } = await repo.search(filters, CATALOG_SEARCH_SERVER_LIMIT);
+    const formatted = formatMatchBlock(CATALOG_SEARCH_HEADER, matches, 6);
+    console.log(
+      JSON.stringify({
+        tag: 'buyer.catalog_search',
+        channel: input.channelId,
+        hasQuery: true,
+        priceMin: validated.priceMinMinor ?? null,
+        priceMax: validated.priceMaxMinor ?? null,
+        ucpIds: matches.map((m) => m.product.productId),
+        facts: matches.length,
+        filterIgnored: meta?.filterIgnored ?? [],
+      }),
+    );
+    return {
+      content: JSON.stringify({
+        products: formatted.descriptive,
+        technical: formatted.technical || undefined,
+        filter_ignored: meta?.filterIgnored,
+      }),
+      newVariantIds: formatted.variantIds,
+    };
   }
 
   if (toolId === 'search_shop_policies_and_faqs') {

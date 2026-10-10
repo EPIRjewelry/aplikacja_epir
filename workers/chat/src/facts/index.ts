@@ -1,9 +1,21 @@
 import type {BuyerChannelId} from '../buyer/channel-switch';
 import type {Env} from '../config/bindings';
 import {callMcpToolDirect} from '../mcp_server';
+import {buildUcpSearchCatalogArgs, parseUcpFilterIgnoredMessages} from './catalog-ucp-args';
 import {computeFacetsFromMatches, filterProducts} from './filter';
-import {fetchProductFactsLive, hasStorefrontCatalogToken, type FetchStorefrontLiveOptions} from './storefront-live';
-import type {CatalogFactsRepository, CatalogFacetsDto, CatalogFilters, ProductFacts} from './types';
+import {
+  fetchProductFactsByHandle,
+  fetchProductFactsLive,
+  hasStorefrontCatalogToken,
+  type FetchStorefrontLiveOptions,
+} from './storefront-live';
+import type {
+  CatalogFactsRepository,
+  CatalogFacetsDto,
+  CatalogFilters,
+  CatalogSearchResult,
+  ProductFacts,
+} from './types';
 
 function emptyFacets(): CatalogFacetsDto {
   return {
@@ -69,29 +81,28 @@ export async function getCatalogRepository(
           return {matches: [], total: 0, facets: facetsEmpty};
         }
         const brand = brandForChannel(channel);
-        const query = filters.text?.trim() || '';
-        const mcpOut = await callMcpToolDirect(
-          env,
-          'search_catalog',
-          {
-            catalog: {
-              query,
-              pagination: {limit},
-            },
-          },
-          brand,
-        );
+        const mcpArgs = buildUcpSearchCatalogArgs(filters, limit);
+        const mcpOut = await callMcpToolDirect(env, 'search_catalog', mcpArgs, brand);
+        const filterIgnored = parseUcpFilterIgnoredMessages(mcpOut);
         const ids = parseUcpSearchProductIds(mcpOut);
         if (!ids.length) {
-          return {matches: [], total: 0, facets: facetsEmpty};
+          return {
+            matches: [],
+            total: 0,
+            facets: facetsEmpty,
+            meta: filterIgnored.length ? {filterIgnored} : undefined,
+          };
         }
         const facts = await fetchProductFactsLive(env, channel, ids, options);
-        const matches = filterProducts(facts, {...filters, text: undefined});
-        return {
+        const postUcpFilters = {...filters, text: undefined, priceMin: undefined, priceMax: undefined};
+        const matches = filterProducts(facts, postUcpFilters);
+        const result: CatalogSearchResult = {
           matches,
           total: matches.length,
           facets: computeFacetsFromMatches(matches),
         };
+        if (filterIgnored.length) result.meta = {filterIgnored};
+        return result;
       } catch (err) {
         console.warn(
           JSON.stringify({
@@ -122,7 +133,10 @@ export async function getCatalogRepository(
   };
 }
 
+export {buildUcpSearchCatalogArgs, CATALOG_SEARCH_SERVER_LIMIT, parseUcpFilterIgnoredMessages} from './catalog-ucp-args';
+export {formatMatchBlock, formatProductsBlock, PAGE_PRODUCT_HEADER} from './format-product-block';
 export {normalizeProduct} from './normalize';
+export {fetchProductFactsByHandle} from './storefront-live';
 export type {
   ProductFacts,
   VariantFacts,

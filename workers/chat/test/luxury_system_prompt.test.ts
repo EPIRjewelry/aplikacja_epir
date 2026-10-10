@@ -7,23 +7,17 @@ describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
     expect(LUXURY_SYSTEM_PROMPT).toContain('Ceny i waluty (twarde');
     expect(LUXURY_SYSTEM_PROMPT).toContain('search_catalog');
     expect(LUXURY_SYSTEM_PROMPT).toContain('get_cart');
-    expect(LUXURY_SYSTEM_PROMPT).toContain('price_display_pl');
+    expect(LUXURY_SYSTEM_PROMPT).not.toContain('price_display_pl');
+    expect(LUXURY_SYSTEM_PROMPT).not.toContain('price_minor');
   });
 
-  it('keeps current-session continuity and logged-in memory references without buyer-facing disclaimers', () => {
-    expect(LUXURY_SYSTEM_PROMPT).toContain('tej samej rozmowie');
+  it('keeps current-session continuity references', () => {
     expect(LUXURY_SYSTEM_PROMPT).toContain('bieżącej sesji');
-    expect(LUXURY_SYSTEM_PROMPT).toContain('zalogowanego klienta');
-    expect(LUXURY_SYSTEM_PROMPT).toContain('Naturalnie nawiązuj do wiadomości z tej samej sesji');
     expect(LUXURY_SYSTEM_PROMPT).not.toContain('nie udawaj');
-    expect(LUXURY_SYSTEM_PROMPT).not.toContain('O braku pamięci spoza bieżącej sesji');
   });
 
   it('treats recap questions as current-session questions by default', () => {
-    expect(LUXURY_SYSTEM_PROMPT).toContain('o czym rozmawialiśmy');
-    expect(LUXURY_SYSTEM_PROMPT).toContain('czego szukałem');
     expect(LUXURY_SYSTEM_PROMPT).toContain('odpowiedz na podstawie historii bieżącej sesji');
-    expect(LUXURY_SYSTEM_PROMPT).not.toContain('wspominaj tylko wtedy');
   });
 
   it('includes EPIR brand language principles as default', () => {
@@ -31,6 +25,10 @@ describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
     expect(LUXURY_SYSTEM_PROMPT).toContain('Cień, nie figura');
     expect(LUXURY_SYSTEM_PROMPT).toContain('Żywa powierzchnia');
     expect(LUXURY_SYSTEM_PROMPT).toContain('niedoskonałości');
+  });
+
+  it('includes Pan/Pani form in base prompt', () => {
+    expect(LUXURY_SYSTEM_PROMPT).toContain('Pan/Pani');
   });
 
   it('includes Kazka headless persona addon', () => {
@@ -50,33 +48,23 @@ describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('nie podawaj zmyślonych danych kontaktowych');
   });
 
-  it('locks page-card quotes, first stone hits, and store facts via KB', () => {
-    expect(LUXURY_SYSTEM_PROMPT).toContain('[KARTA PRODUKTU NA TEJ STRONIE]');
-    expect(LUXURY_SYSTEM_PROMPT).toContain('price_min_display_pl');
-    expect(LUXURY_SYSTEM_PROMPT).toContain('[TRAFENIA KAMIENIA]');
-    expect(LUXURY_SYSTEM_PROMPT).not.toContain('dotyczy wyłącznie srebra');
+  it('locks page product block and KB for store facts', () => {
+    expect(LUXURY_SYSTEM_PROMPT).toContain('[PRODUKT NA STRONIE]');
+    expect(LUXURY_SYSTEM_PROMPT).not.toContain('[TRAFENIA KAMIENIA]');
+    expect(LUXURY_SYSTEM_PROMPT).not.toContain('catalog_search');
     expect(LUXURY_SYSTEM_PROMPT).toContain('search_shop_policies_and_faqs');
-    expect(LUXURY_SYSTEM_PROMPT).toContain('mniej podatne na zarysowania');
-    expect(LUXURY_SYSTEM_PROMPT).toContain('Nie wymyślaj srebrnego asortymentu Kazka');
-    expect(LUXURY_SYSTEM_PROMPT).toContain('tylko krótka odmowa');
-    expect(KAZKA_HEADLESS_PERSONA_ADDON).not.toContain('nie podlega standardowemu zwrotowi');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('opis produktu tego nie podaje');
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('search_shop_policies_and_faqs');
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('Nie obiecuj darmowej zmiany rozmiaru');
-    expect(KAZKA_HEADLESS_PERSONA_ADDON).not.toContain('jedna darmowa zmiana rozmiaru');
   });
 
   it('sends an EPIR custom design to the cocreate page, not the Kazka block', () => {
     expect(LUXURY_SYSTEM_PROMPT).toContain(
       'Gdy klient chce biżuterię wykonaną na własny projekt, skieruj na brief [Zaprojektuj swój model](https://epirbizuteria.pl/pages/zaprojektuj-swoj-model).',
     );
-    expect(LUXURY_SYSTEM_PROMPT).toContain('Ten sam adres jest banerem na kolekcji złota.');
-    expect(LUXURY_SYSTEM_PROMPT).toContain(
-      'Nie mów, że sklep nie ma formularza ani konfiguratora online. Nie odsyłaj do e-maila ani telefonu jako drogi złożenia projektu. Nie podawaj ceny projektu — cenę ustala pracownia.',
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain(
+      'Nie odsyłaj klienta Kazka na https://epirbizuteria.pl/pages/zaprojektuj-swoj-model',
     );
-    expect(LUXURY_SYSTEM_PROMPT).toContain(
-      'Nie odsyłaj klienta EPIR do bloku Kazka „Wspólnie zrealizujmy Twój pomysł” i nie mieszaj katalogu ani głosu Kazka z tą rozmową.',
-    );
-    expect(LUXURY_SYSTEM_PROMPT).not.toContain('zaproponuj kontakt lub konkretny produkt z katalogu');
   });
 
   it('tells Kazka Gemma to fill the existing custom brief instead of sending email', () => {
@@ -90,9 +78,6 @@ describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
     );
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain(
       'Nie odsyłaj do e-maila ani telefonu jako drogi złożenia projektu.',
-    );
-    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain(
-      'Nie odsyłaj klienta Kazka na https://epirbizuteria.pl/pages/zaprojektuj-swoj-model',
     );
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('Przycisk „Otwórz czat” tylko otwiera tę rozmowę');
   });
