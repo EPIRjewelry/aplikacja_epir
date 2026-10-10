@@ -11,6 +11,7 @@ import {
   pickFirstAllowedCollectionHandle,
 } from '~/lib/collection-filters';
 import {canonicalUrlFromRequest} from '~/lib/canonical-url.server';
+import {enhancedDataForCollectionHero} from '~/lib/collection-enhanced-display';
 
 type CollectionsQueryData = {
   collections: {nodes: {handle: string}[]};
@@ -427,6 +428,11 @@ export default function Collection() {
     routeHandle,
   } = useLoaderData<typeof loader>();
 
+  const heroEnhancedData = enhancedDataForCollectionHero(
+    routeHandle,
+    enhancedData,
+  );
+
   return (
     <section className="w-full gap-8">
       {breadcrumb ? (
@@ -451,7 +457,7 @@ export default function Collection() {
       <CollectionEnhancedHero
         collectionTitle={collection.title}
         collectionDescription={collection.description ?? undefined}
-        enhancedData={enhancedData}
+        enhancedData={heroEnhancedData}
       />
 
       {hubMode && subcollectionLinks?.length ? (
