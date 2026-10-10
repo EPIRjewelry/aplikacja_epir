@@ -18,6 +18,11 @@ extension_directories = [
 [webhooks]
 api_version = "2026-10"
 
+[[webhooks.subscriptions]]
+topics = ["metaobjects/create", "metaobjects/update", "metaobjects/delete"]
+filter = "type:ai_profile"
+uri = "https://asystent.epirbizuteria.pl/webhooks/metaobjects/ai_profile"
+
 [access_scopes]
 # read_reports: ShopifyQL / shopifyqlQuery (natywna analityka Admin) — wymaga ponownej instalacji aplikacji po zmianie scope.
 # read_metaobjects, write_metaobjects: campaign landing ($app:campaign_landing) + shop.metafields.app.campaign_mapping
