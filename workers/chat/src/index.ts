@@ -2808,7 +2808,7 @@ async function handleChat(
   );
 
   if (!isOperatorChannel(payload.channel)) {
-    return handleBuyerTurn(request, env, brandLock);
+    return handleBuyerTurn(request, env, brandLock, raw);
   }
 
   // [TOKEN VAULT] Bez zmian
