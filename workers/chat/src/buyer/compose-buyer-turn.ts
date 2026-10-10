@@ -412,14 +412,24 @@ export async function composeBuyerAssistantReply(
     }
   }
 
-  const finalStream = await streamGroqEvents(
-    messages,
-    env,
-    toolDefinitions,
-    sessionId,
-    'buyer_tool_loop_final',
-    { toolChoice: 'none' },
-  );
-  const { text: finalText } = await collectStreamRound(finalStream);
-  return finalText.trim();
+  try {
+    const finalStream = await streamGroqEvents(
+      messages,
+      env,
+      toolDefinitions,
+      sessionId,
+      'buyer_tool_loop_final',
+      { toolChoice: 'none' },
+    );
+    const { text: finalText } = await collectStreamRound(finalStream);
+    return finalText.trim();
+  } catch {
+    // Same messages (system + [FAKTY Z KATALOGU]) — reply still grounded in catalog facts.
+    console.warn(JSON.stringify({ tag: 'buyer.tool_loop_fallback', round: 'final' }));
+    const reply = await getGroqResponse(messages, env, {
+      timingLabel: 'buyer_tool_loop_final_fallback',
+      sessionId,
+    });
+    return reply.trim();
+  }
 }

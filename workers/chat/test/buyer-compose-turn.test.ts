@@ -9,9 +9,22 @@ import {
 } from '../src/buyer/compose-buyer-turn';
 import { buildBuyerToolDefinitions, filterModelWiredBuyerTools } from '../src/buyer/buyer-tools';
 import * as toolReadiness from '../src/buyer/tool-readiness';
+import * as executeBuyerToolMod from '../src/buyer/execute-buyer-tool';
 import * as aiProfile from '../src/ai-profile';
 import * as aiClient from '../src/ai-client';
 import * as facts from '../src/facts';
+
+function toolCallOnlyStream(name: string, id: string): ReadableStream<aiClient.GroqStreamEvent> {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue({
+        type: 'tool_call',
+        call: { id, name, arguments: '{}' },
+      });
+      controller.close();
+    },
+  });
+}
 
 const SAMPLE_VARIANT_GID = 'gid://shopify/ProductVariant/ALLOWED_IN_FACTS';
 
@@ -221,5 +234,47 @@ describe('buyer compose turn — tools in system prompt', () => {
     expect(systemContent).not.toContain('search_catalog');
     // getGroqResponse has no tools arg — only messages + env + options
     expect(groqSpy.mock.calls[0]?.length).toBeLessThanOrEqual(3);
+  });
+
+  it('buyer_tool_loop_final stream error → getGroqResponse fallback with round final', async () => {
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([
+      'get_size_table',
+      'search_shop_policies_and_faqs',
+    ]);
+    vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
+    vi.spyOn(facts, 'getCatalogRepository').mockRejectedValue(new Error('skip'));
+    vi.spyOn(executeBuyerToolMod, 'executeBuyerTool').mockResolvedValue({
+      content: '{"ok":true}',
+    });
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(aiClient, 'streamGroqEvents').mockImplementation(
+      async (_messages, _env, _tools, _sessionId, timingLabel) => {
+        if (timingLabel === 'buyer_tool_loop_final') {
+          throw new Error('AI Gateway stream error event from Groq');
+        }
+        const round = String(timingLabel ?? '').replace('buyer_tool_loop_', '');
+        return toolCallOnlyStream('get_size_table', `call-${round}`);
+      },
+    );
+    const groqSpy = vi
+      .spyOn(aiClient, 'getGroqResponse')
+      .mockResolvedValue('final fallback reply');
+
+    const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
+    const req = new Request('https://example.com/chat', { method: 'POST' });
+    const reply = await composeBuyerAssistantReply(env, 'epir-online-store', 'rozmiar', req, {
+      sessionId: 'sess-final-fallback',
+    });
+
+    expect(reply).toBe('final fallback reply');
+    expect(groqSpy).toHaveBeenCalledTimes(1);
+    expect(groqSpy.mock.calls[0]?.[2]).toMatchObject({
+      timingLabel: 'buyer_tool_loop_final_fallback',
+      sessionId: 'sess-final-fallback',
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      JSON.stringify({ tag: 'buyer.tool_loop_fallback', round: 'final' }),
+    );
   });
 });
