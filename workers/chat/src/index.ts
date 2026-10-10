@@ -3728,7 +3728,7 @@ async function streamAssistantResponse(
           ? {
               brand_voice: scrubKazkaAdvisorCopy(fetchedAiProfile.brand_voice),
               core_values: scrubKazkaAdvisorCopy(fetchedAiProfile.core_values),
-              faq_theme: scrubKazkaAdvisorCopy(fetchedAiProfile.faq_theme),
+              faq_theme: scrubKazkaAdvisorCopy(fetchedAiProfile.faq_theme ?? ''),
               promotion_rules: scrubKazkaAdvisorCopy(fetchedAiProfile.promotion_rules),
             }
           : fetchedAiProfile

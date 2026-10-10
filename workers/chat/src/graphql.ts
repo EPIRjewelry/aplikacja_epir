@@ -128,6 +128,35 @@ export async function executeGraphQL<T>(
   throw lastError || new Error('GraphQL request failed after retries');
 }
 
+/** https://shopify.dev/docs/api/usage/authentication */
+export type StorefrontTokenKind = 'public' | 'private';
+
+export type CallStorefrontAPIOptions = {
+  tokenKind?: StorefrontTokenKind;
+  /** Required for private Storefront tokens on buyer-facing requests when available. */
+  buyerIp?: string;
+};
+
+export function buildStorefrontAuthHeaders(
+  storefrontToken: string,
+  options?: CallStorefrontAPIOptions,
+): Record<string, string> {
+  const kind = options?.tokenKind ?? 'public';
+  if (kind === 'private') {
+    const headers: Record<string, string> = {
+      'Shopify-Storefront-Private-Token': storefrontToken,
+    };
+    const ip = options?.buyerIp?.trim();
+    if (ip) {
+      headers['Shopify-Storefront-Buyer-IP'] = ip;
+    }
+    return headers;
+  }
+  return {
+    'X-Shopify-Storefront-Access-Token': storefrontToken,
+  };
+}
+
 /**
  * Call Shopify Storefront API
  * @param shopDomain - Shop domain (e.g., example.myshopify.com)
@@ -140,13 +169,12 @@ export async function callStorefrontAPI<T>(
   shopDomain: string,
   storefrontToken: string,
   query: string,
-  variables?: Record<string, unknown>
+  variables?: Record<string, unknown>,
+  options?: CallStorefrontAPIOptions,
 ): Promise<T> {
   const url = `https://${shopDomain}/api/${SHOPIFY_STOREFRONT_API_VERSION}/graphql.json`;
-  const headers = {
-    'X-Shopify-Storefront-Access-Token': storefrontToken,
-  };
-  
+  const headers = buildStorefrontAuthHeaders(storefrontToken, options);
+
   return executeGraphQL<T>(url, headers, query, variables);
 }
 
