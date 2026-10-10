@@ -1,5 +1,5 @@
 import type { Env } from './config/bindings';
-import { callStorefrontAPI } from './graphql';
+import { callStorefrontAPI, type CallStorefrontAPIOptions } from './graphql';
 import { resolveStorefrontConfig } from './config/storefronts';
 
 interface MetaobjectFieldNode {
@@ -84,13 +84,24 @@ function getLegacyStorefrontTokenChain(env: Env): string | undefined {
  * Ten sam priorytet co przy odczycie `ai_profile`: private → public kanału.
  * Bez tego przy ustawionym SHOPIFY_STOREFRONT_TOKEN mogliśmy brać zły token względem kanału Hydrogen.
  */
-function resolveStorefrontTokenForSizeTable(env: Env, brand?: string): string | undefined {
+function resolveStorefrontAuthForSizeTable(
+  env: Env,
+  brand?: string,
+): { token: string; options: CallStorefrontAPIOptions } | null {
   const cfg = brand ? resolveStorefrontConfig(env, brand) : null;
-  if (cfg) {
-    const channelToken = cfg.privateToken ?? cfg.apiToken;
-    if (channelToken?.trim()) return channelToken.trim();
+  if (cfg?.privateToken?.trim()) {
+    return { token: cfg.privateToken.trim(), options: { tokenKind: 'private' } };
   }
-  return getLegacyStorefrontTokenChain(env);
+  if (cfg?.apiToken?.trim()) {
+    return { token: cfg.apiToken.trim(), options: { tokenKind: 'public' } };
+  }
+  const legacy = getLegacyStorefrontTokenChain(env);
+  if (!legacy) return null;
+  const privateLegacy = env.PRIVATE_STOREFRONT_API_TOKEN?.trim();
+  if (privateLegacy && legacy === privateLegacy) {
+    return { token: legacy, options: { tokenKind: 'private' } };
+  }
+  return { token: legacy, options: { tokenKind: 'public' } };
 }
 
 /** Wyciąga tekst z ewentualnego JSON rich text (Shopify). */
@@ -141,12 +152,12 @@ function extractSizeTableContent(fields: MetaobjectFieldNode[] | null | undefine
 
 export async function getSizeTable(env: Env, brand?: string): Promise<{ content: string; source: 'shopify_metaobject' | 'fallback' }> {
   const shopDomain = env.SHOP_DOMAIN;
-  const storefrontToken = resolveStorefrontTokenForSizeTable(env, brand);
+  const auth = resolveStorefrontAuthForSizeTable(env, brand);
 
-  if (!shopDomain || !storefrontToken) {
+  if (!shopDomain || !auth) {
     console.warn('[size-table] missing Storefront API configuration', {
       hasShopDomain: Boolean(shopDomain),
-      hasStorefrontToken: Boolean(storefrontToken),
+      hasStorefrontToken: Boolean(auth),
       brand: brand ?? null,
     });
     return {
@@ -161,9 +172,10 @@ export async function getSizeTable(env: Env, brand?: string): Promise<{ content:
     if (gidOverride) {
       const byId = await callStorefrontAPI<SizeTableByIdResponse>(
         shopDomain,
-        storefrontToken,
+        auth.token,
         SIZE_TABLE_BY_ID,
         { id: gidOverride },
+        auth.options,
       );
       const content = extractSizeTableContent(byId.metaobject?.fields);
       if (content) {
@@ -172,14 +184,26 @@ export async function getSizeTable(env: Env, brand?: string): Promise<{ content:
       console.warn('[size-table] GID override set but metaobject empty or unreadable', { gid: gidOverride });
     }
 
-    const byHandle = await callStorefrontAPI<SizeTableByHandleResponse>(shopDomain, storefrontToken, SIZE_TABLE_BY_HANDLE);
+    const byHandle = await callStorefrontAPI<SizeTableByHandleResponse>(
+      shopDomain,
+      auth.token,
+      SIZE_TABLE_BY_HANDLE,
+      undefined,
+      auth.options,
+    );
     let content = extractSizeTableContent(byHandle.metaobject?.fields);
     if (content) {
       return { content, source: 'shopify_metaobject' };
     }
 
     try {
-      const listed = await callStorefrontAPI<SizeTableListResponse>(shopDomain, storefrontToken, SIZE_TABLE_LIST);
+      const listed = await callStorefrontAPI<SizeTableListResponse>(
+        shopDomain,
+        auth.token,
+        SIZE_TABLE_LIST,
+        undefined,
+        auth.options,
+      );
       const nodes = listed.metaobjects?.nodes ?? [];
       for (const node of nodes) {
         if (!node) continue;
