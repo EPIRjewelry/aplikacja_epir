@@ -20,7 +20,7 @@ export type ToolReadiness = {
   guestNotLoggedIn?: boolean;
 };
 
-function brandKeyForChannel(channelId: BuyerChannelId): string {
+export function brandKeyForChannel(channelId: BuyerChannelId): string {
   if (channelId === 'kazka-hydrogen') return 'kazka';
   if (channelId === 'epir-zareczyny') return 'zareczyny';
   return 'online-store';
@@ -46,25 +46,73 @@ function shopPoliciesMcpEndpoint(shopDomain: string): string {
   return `https://${shopDomain.replace(/\/$/, '')}/api/mcp`;
 }
 
-async function mcpToolsListOk(
+const READINESS_TTL_MS = 5 * 60_000;
+
+type ToolsListCacheEntry = {
+  expiresAt: number;
+  ok: boolean;
+  status: number;
+  toolNames: string[];
+};
+
+/** In-memory tools/list cache (plan §3) — no KV / Cache API. */
+const toolsListCache = new Map<string, ToolsListCacheEntry>();
+
+/** @internal tests */
+export function _clearBuyerToolReadinessCache(): void {
+  toolsListCache.clear();
+}
+
+function parseToolNames(payload: unknown): string[] {
+  if (!payload || typeof payload !== 'object') return [];
+  const result = (payload as { result?: { tools?: unknown } }).result;
+  const tools = result?.tools;
+  if (!Array.isArray(tools)) return [];
+  return tools
+    .map((t) =>
+      t && typeof t === 'object' && typeof (t as { name?: unknown }).name === 'string'
+        ? (t as { name: string }).name.trim()
+        : '',
+    )
+    .filter(Boolean);
+}
+
+async function mcpToolsList(
+  cacheKey: string,
   url: string,
   body: Record<string, unknown>,
-): Promise<{ ok: boolean; status: number }> {
+): Promise<{ ok: boolean; status: number; toolNames: string[] }> {
+  const cached = toolsListCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { ok: cached.ok, status: cached.status, toolNames: cached.toolNames };
+  }
+
   try {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    // UCP catalog/cart and shop policies: 401/403 mean the tool is unavailable
-    // (not “guest”). Guest semantics apply only to Customer Accounts via
-    // interpretCustomerAccountHttpStatus.
     if (res.status === 401 || res.status === 403) {
-      return { ok: false, status: res.status };
+      const entry = { expiresAt: Date.now() + READINESS_TTL_MS, ok: false, status: res.status, toolNames: [] as string[] };
+      toolsListCache.set(cacheKey, entry);
+      return entry;
     }
-    return { ok: res.ok, status: res.status };
+    let toolNames: string[] = [];
+    if (res.ok) {
+      const json = await res.json().catch(() => null);
+      toolNames = parseToolNames(json);
+    }
+    const entry = {
+      expiresAt: Date.now() + READINESS_TTL_MS,
+      ok: res.ok,
+      status: res.status,
+      toolNames,
+    };
+    toolsListCache.set(cacheKey, entry);
+    return entry;
   } catch {
-    return { ok: false, status: 0 };
+    return { ok: false, status: 0, toolNames: [] };
   }
 }
 
@@ -80,6 +128,11 @@ function ucpToolsListBody(env: Env): Record<string, unknown> {
       },
     },
   };
+}
+
+function hasAllTools(names: string[], required: string[]): boolean {
+  const set = new Set(names);
+  return required.every((n) => set.has(n));
 }
 
 export type AssessToolReadinessOptions = {
@@ -106,7 +159,8 @@ export async function assessToolReadiness(
     if (!hasUcpAgentProfile(env)) {
       return { tool, available: false, reason: 'missing_ucp_agent_profile' };
     }
-    const ping = await mcpToolsListOk(
+    const ping = await mcpToolsList(
+      `ucp:${shop}:${channelId}`,
       ucpCatalogEndpoint(env, shop),
       ucpToolsListBody(env),
     );
@@ -126,7 +180,8 @@ export async function assessToolReadiness(
     if (!profileUrl?.trim() || profileUrl !== envelopeProfile) {
       return { tool, available: false, reason: 'ucp_agent_profile_mismatch' };
     }
-    const ping = await mcpToolsListOk(
+    const ping = await mcpToolsList(
+      `ucp:${shop}:${channelId}`,
       ucpCatalogEndpoint(env, shop),
       ucpToolsListBody(env),
     );
@@ -134,11 +189,14 @@ export async function assessToolReadiness(
       console.warn('[buyer.tool_readiness] cart mcp health failed', { status: ping.status });
       return { tool, available: false, reason: `cart_mcp_unhealthy_${ping.status}` };
     }
+    if (!hasAllTools(ping.toolNames, ['create_cart', 'get_cart', 'update_cart'])) {
+      return { tool, available: false, reason: 'cart_tools_missing_from_list' };
+    }
     return { tool, available: true, reason: 'ok' };
   }
 
   if (tool === 'search_shop_policies_and_faqs') {
-    const ping = await mcpToolsListOk(shopPoliciesMcpEndpoint(shop), {
+    const ping = await mcpToolsList(`policies:${shop}`, shopPoliciesMcpEndpoint(shop), {
       jsonrpc: '2.0',
       method: 'tools/list',
       id: 'buyer-readiness',
@@ -146,6 +204,9 @@ export async function assessToolReadiness(
     if (!ping.ok) {
       console.warn('[buyer.tool_readiness] policies mcp health failed', { status: ping.status });
       return { tool, available: false, reason: `policies_mcp_unhealthy_${ping.status}` };
+    }
+    if (!hasAllTools(ping.toolNames, ['search_shop_policies_and_faqs'])) {
+      return { tool, available: false, reason: 'policies_tool_missing_from_list' };
     }
     return { tool, available: true, reason: 'ok' };
   }

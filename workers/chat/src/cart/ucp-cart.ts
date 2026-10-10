@@ -51,7 +51,7 @@ export function readCartId(source: Record<string, unknown>): string | null {
   return null;
 }
 
-function variantIdOf(item: Record<string, unknown>): string {
+export function variantIdOf(item: Record<string, unknown>): string {
   if (nonEmpty(item.product_variant_id)) return item.product_variant_id.trim();
   if (nonEmpty(item.merchandise_id)) return item.merchandise_id.trim();
   if (nonEmpty(item.variant_id)) return item.variant_id.trim();

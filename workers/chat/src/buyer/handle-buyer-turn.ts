@@ -1,6 +1,10 @@
 import type {Env} from '../config/bindings';
 import type {ChatBrandLock} from '../brand-lock';
-import {composeBuyerAssistantReply, extractLastUserMessage} from './compose-buyer-turn';
+import {
+  composeBuyerAssistantReply,
+  extractLastUserMessage,
+  extractSessionIdFromBody,
+} from './compose-buyer-turn';
 import {channelIdFromBrandLock, readChannelMode} from './channel-switch';
 
 function buyerResponseHeaders(env: Env, request: Request): Record<string, string> {
@@ -73,9 +77,12 @@ export async function handleBuyerTurn(
       headers: buyerResponseHeaders(env, request),
     });
   }
+  const sessionId = extractSessionIdFromBody(body);
 
   try {
-    const reply = await composeBuyerAssistantReply(env, channelId, userText, request);
+    const reply = await composeBuyerAssistantReply(env, channelId, userText, request, {
+      sessionId,
+    });
     return new Response(JSON.stringify({ type: 'message', reply, channel_id: channelId, mode }), {
       status: 200,
       headers: buyerResponseHeaders(env, request),
