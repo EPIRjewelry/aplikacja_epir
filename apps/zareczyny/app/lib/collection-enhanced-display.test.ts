@@ -24,6 +24,9 @@ describe('enhancedDataForCollectionHero', () => {
       sampleEnhanced(),
     );
     expect(result?.lookbookImages).toEqual([]);
+    expect(result?.heroVideoUrl).toBeNull();
+    expect(result?.textureOverlayUrl).toBeNull();
+    expect(result?.accentColor).toBeNull();
     expect(result?.name).toBe('Srebrne');
   });
 

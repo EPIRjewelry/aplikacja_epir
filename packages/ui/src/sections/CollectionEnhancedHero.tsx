@@ -98,31 +98,33 @@ export function CollectionEnhancedHero({
         ) : null}
       </div>
 
-      <div
-        className="relative w-full overflow-hidden aspect-video"
-        style={{backgroundColor: accentColor}}
-      >
-        {videoUrl ? (
-          <div className="absolute inset-0 z-[1]">
-            <video
-              autoPlay
-              muted
-              loop
-              playsInline
-              className="h-full w-full object-cover opacity-60"
-              src={videoUrl}
-            />
-          </div>
-        ) : null}
+      {videoUrl || textureUrl ? (
+        <div
+          className="relative w-full overflow-hidden aspect-video"
+          style={{backgroundColor: accentColor}}
+        >
+          {videoUrl ? (
+            <div className="absolute inset-0 z-[1]">
+              <video
+                autoPlay
+                muted
+                loop
+                playsInline
+                className="h-full w-full object-cover opacity-60"
+                src={videoUrl}
+              />
+            </div>
+          ) : null}
 
-        {textureUrl ? (
-          <div
-            className="absolute inset-0 z-[2] bg-cover bg-center opacity-30 mix-blend-overlay pointer-events-none"
-            style={{backgroundImage: `url(${textureUrl})`}}
-            role="presentation"
-          />
-        ) : null}
-      </div>
+          {textureUrl ? (
+            <div
+              className="absolute inset-0 z-[2] bg-cover bg-center opacity-30 mix-blend-overlay pointer-events-none"
+              style={{backgroundImage: `url(${textureUrl})`}}
+              role="presentation"
+            />
+          ) : null}
+        </div>
+      ) : null}
 
       {enhancedData && enhancedData.lookbookImages.length > 0 ? (
         <ul className="mx-auto mt-10 grid max-w-5xl grid-cols-2 gap-3 px-5 sm:grid-cols-3 md:gap-4">
