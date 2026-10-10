@@ -52,17 +52,42 @@ export function extractSessionIdFromBody(body: unknown): string | undefined {
   return trimmed || undefined;
 }
 
-function factsContextBlock(products: Array<{ title?: string; priceDisplay?: string; variants?: unknown[] }>): string {
+type FactsProductInput = {
+  title?: string;
+  priceDisplay?: string;
+  variants?: Array<{ variantId?: string; title?: string }>;
+};
+
+export function factsContextBlock(
+  products: FactsProductInput[],
+  opts?: { includeVariants?: boolean },
+): string {
   if (!products.length) return '';
-  const lines = products.slice(0, 4).map((p) => {
+  const includeVariants = opts?.includeVariants === true;
+  const productLines: string[] = [];
+
+  for (const p of products.slice(0, 4)) {
     const title = p.title?.trim() || 'Produkt';
     const price = p.priceDisplay?.trim();
-    const variantCount = Array.isArray(p.variants) ? p.variants.length : 0;
-    const variantHint = variantCount > 1 ? ' (wiele wariantów — zapytaj o wariant, nie podawaj „od …”)' : '';
+    const variants = Array.isArray(p.variants) ? p.variants : [];
+    const variantCount = variants.length;
+    const variantHint =
+      !includeVariants && variantCount > 1
+        ? ' (wiele wariantów — zapytaj o wariant, nie podawaj „od …”)'
+        : '';
     const pricePart = price ? `, cena karty: ${price}` : '';
-    return `- ${title}${pricePart}${variantHint}`;
-  });
-  return ['[FAKTY Z KATALOGU — tylko to możesz twierdzić]', ...lines].join('\n');
+    productLines.push(`- ${title}${pricePart}${variantHint}`);
+
+    if (includeVariants && variantCount > 0) {
+      for (const v of variants.slice(0, 6)) {
+        const vTitle = v.title?.trim() || 'wariant';
+        const vId = v.variantId?.trim();
+        if (vId) productLines.push(`  wariant: ${vTitle} — id: ${vId}`);
+      }
+    }
+  }
+
+  return ['[FAKTY Z KATALOGU — tylko to możesz twierdzić]', ...productLines].join('\n');
 }
 
 const BUYER_TOOL_BLURBS: Record<BuyerToolId, string> = {
@@ -226,6 +251,7 @@ export async function composeBuyerAssistantReply(
           m.product.priceRange.min.display_pl,
         variants: m.matchingVariants.length ? m.matchingVariants : m.product.variants,
       })),
+      { includeVariants: availableTools.includes('ucp_cart') },
     );
   } catch (e) {
     console.warn('[buyer.compose_turn] catalog facts skipped', e);

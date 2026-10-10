@@ -4,6 +4,7 @@ import {
   buildBuyerToolsPrompt,
   buildBuyerTurnSystemPrompt,
   composeBuyerAssistantReply,
+  factsContextBlock,
   filterToolsForSession,
 } from '../src/buyer/compose-buyer-turn';
 import { buildBuyerToolDefinitions } from '../src/buyer/buyer-tools';
@@ -11,6 +12,30 @@ import * as toolReadiness from '../src/buyer/tool-readiness';
 import * as aiProfile from '../src/ai-profile';
 import * as aiClient from '../src/ai-client';
 import * as facts from '../src/facts';
+
+const SAMPLE_VARIANT_GID = 'gid://shopify/ProductVariant/ALLOWED_IN_FACTS';
+
+describe('factsContextBlock variant lines', () => {
+  const products = [
+    {
+      title: 'Pierścionek',
+      priceDisplay: '1 200 zł',
+      variants: [{ variantId: SAMPLE_VARIANT_GID, title: 'rozmiar 14' }],
+    },
+  ];
+
+  it('includes variant gid when ucp_cart is available in the turn', () => {
+    const block = factsContextBlock(products, { includeVariants: true });
+    expect(block).toContain(SAMPLE_VARIANT_GID);
+    expect(block).toContain('wariant: rozmiar 14 — id:');
+  });
+
+  it('omits variant gid when ucp_cart is not available', () => {
+    const block = factsContextBlock(products, { includeVariants: false });
+    expect(block).not.toContain(SAMPLE_VARIANT_GID);
+    expect(block).not.toContain('wariant:');
+  });
+});
 
 describe('buyer compose turn — tools in system prompt', () => {
   beforeEach(() => {

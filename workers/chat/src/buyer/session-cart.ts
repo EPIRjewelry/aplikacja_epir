@@ -36,8 +36,8 @@ export async function writeSessionCartId(
   cartId: string,
 ): Promise<void> {
   const sid = sessionId.trim();
+  if (!sid || !env.SESSION_DO) return;
   const id = cartId.trim();
-  if (!sid || !id || !env.SESSION_DO) return;
   try {
     const stub = sessionStub(env, sid);
     await stub.fetch('https://session/set-cart-id', {

@@ -1,7 +1,7 @@
 import type { Env } from '../config/bindings';
 import { resolveCommerceContext } from '../config/commerce-context';
 import { callMcpToolDirect } from '../mcp_server';
-import { extractCartObject, lineItemsFromCartPayload } from '../cart/ucp-cart';
+import { extractCartObject, lineItemsFromCartPayload, variantIdOf } from '../cart/ucp-cart';
 import { getSizeTable } from '../size-table';
 import type { BuyerChannelId } from './channel-switch';
 import { buyerToolIdForName } from './buyer-tools';
@@ -75,33 +75,28 @@ export function stripModelCartIds(args: Record<string, unknown>): Record<string,
   return next;
 }
 
-function collectVariantIdsFromArgs(args: Record<string, unknown>): string[] {
+type CollectVariantIdsResult =
+  | { ok: true; ids: string[] }
+  | { ok: false; reason: 'variant_unreadable' };
+
+function collectVariantIdsFromArgs(args: Record<string, unknown>): CollectVariantIdsResult {
+  const entries: unknown[] = [];
+
+  if (Array.isArray(args.line_items)) entries.push(...args.line_items);
+  if (args.cart && typeof args.cart === 'object' && !Array.isArray(args.cart)) {
+    const cartLineItems = (args.cart as { line_items?: unknown }).line_items;
+    if (Array.isArray(cartLineItems)) entries.push(...cartLineItems);
+  }
+  if (Array.isArray(args.add_items)) entries.push(...args.add_items);
+
   const ids: string[] = [];
-  const push = (raw: unknown) => {
-    if (typeof raw === 'string' && raw.trim()) ids.push(raw.trim());
-  };
-
-  const lineItems = Array.isArray(args.line_items)
-    ? args.line_items
-    : args.cart && typeof args.cart === 'object' && Array.isArray((args.cart as { line_items?: unknown }).line_items)
-      ? ((args.cart as { line_items: unknown[] }).line_items)
-      : [];
-  for (const line of lineItems) {
-    if (!line || typeof line !== 'object') continue;
-    const item = (line as { item?: { id?: string }; product_variant_id?: string }).item;
-    push(item?.id);
-    push((line as { product_variant_id?: string }).product_variant_id);
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') continue;
+    const vid = variantIdOf(entry as Record<string, unknown>);
+    if (!vid) return { ok: false, reason: 'variant_unreadable' };
+    ids.push(vid);
   }
-
-  if (Array.isArray(args.add_items)) {
-    for (const row of args.add_items) {
-      if (!row || typeof row !== 'object') continue;
-      push((row as { product_variant_id?: string }).product_variant_id);
-      const item = (row as { item?: { id?: string } }).item;
-      push(item?.id);
-    }
-  }
-  return ids;
+  return { ok: true, ids };
 }
 
 function extractRetryAfterFromDetails(details: unknown): string | undefined {
@@ -186,8 +181,11 @@ export async function executeBuyerTool(
   }
 
   if (input.name === 'create_cart' || input.name === 'update_cart') {
-    const variantIds = collectVariantIdsFromArgs(args);
-    for (const vid of variantIds) {
+    const collected = collectVariantIdsFromArgs(args);
+    if (!collected.ok) {
+      return deny(collected.reason, { tool: input.name });
+    }
+    for (const vid of collected.ids) {
       if (!input.allowedVariantIds.has(vid)) {
         return deny('variant_not_in_channel', { tool: input.name, variant_id: vid });
       }
@@ -216,7 +214,7 @@ export async function executeBuyerTool(
     }
     return {
       content: JSON.stringify({
-        error: mcpOut.error,
+        error: { code: mcpOut.error.code },
         notice: CART_UNAVAILABLE,
       }),
     };
@@ -225,12 +223,17 @@ export async function executeBuyerTool(
   const result = mcpOut.result;
   let nextSessionCartId = input.sessionCartId;
 
-  if (input.name === 'create_cart' && !mcpOut.error) {
+  if (input.name === 'create_cart') {
     const newId = cartIdFromMcpResult(result);
     if (newId && input.sessionId?.trim()) {
       await writeSessionCartId(input.env, input.sessionId, newId);
       nextSessionCartId = newId;
     }
+  }
+
+  if (input.name === 'cancel_cart' && input.sessionId?.trim()) {
+    await writeSessionCartId(input.env, input.sessionId, '');
+    nextSessionCartId = null;
   }
 
   return {

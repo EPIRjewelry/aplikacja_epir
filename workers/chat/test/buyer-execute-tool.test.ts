@@ -166,6 +166,62 @@ describe('executeBuyerTool', () => {
     expect(writeSpy).not.toHaveBeenCalled();
   });
 
+  it('denies variant_not_in_channel for merchandise_id outside allowlist', async () => {
+    const spy = vi.spyOn(mcp, 'callMcpToolDirect');
+    const foreign = 'gid://shopify/ProductVariant/MERCH';
+    const r = await executeBuyerTool({
+      env: {} as import('../src/config/bindings').Env,
+      channelId: 'kazka-hydrogen',
+      readyTools: ['ucp_cart'],
+      name: 'create_cart',
+      argsJson: JSON.stringify({
+        line_items: [{ quantity: 1, merchandise_id: foreign }],
+      }),
+      sessionId: 'sess-k',
+      sessionCartId: null,
+      allowedVariantIds: new Set(['gid://shopify/ProductVariant/KAZKA']),
+    });
+    expect(JSON.parse(r.content).reason).toBe('variant_not_in_channel');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('denies variant_not_in_channel for variant_id outside allowlist', async () => {
+    const spy = vi.spyOn(mcp, 'callMcpToolDirect');
+    const foreign = 'gid://shopify/ProductVariant/FOREIGN';
+    const r = await executeBuyerTool({
+      env: {} as import('../src/config/bindings').Env,
+      channelId: 'kazka-hydrogen',
+      readyTools: ['ucp_cart'],
+      name: 'update_cart',
+      argsJson: JSON.stringify({
+        add_items: [{ quantity: 1, variant_id: foreign }],
+      }),
+      sessionId: 'sess-k',
+      sessionCartId: 'gid://shopify/Cart/SESSION',
+      allowedVariantIds: new Set(['gid://shopify/ProductVariant/KAZKA']),
+    });
+    expect(JSON.parse(r.content).reason).toBe('variant_not_in_channel');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('denies variant_unreadable when line item has no variant id', async () => {
+    const spy = vi.spyOn(mcp, 'callMcpToolDirect');
+    const r = await executeBuyerTool({
+      env: {} as import('../src/config/bindings').Env,
+      channelId: 'epir-online-store',
+      readyTools: ['ucp_cart'],
+      name: 'create_cart',
+      argsJson: JSON.stringify({
+        line_items: [{ quantity: 1 }],
+      }),
+      sessionId: 'sess-1',
+      sessionCartId: null,
+      allowedVariantIds: new Set(['gid://shopify/ProductVariant/1']),
+    });
+    expect(JSON.parse(r.content).reason).toBe('variant_unreadable');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it('denies variant_not_in_channel for foreign variant', async () => {
     const spy = vi.spyOn(mcp, 'callMcpToolDirect');
     const r = await executeBuyerTool({
@@ -238,6 +294,45 @@ describe('executeBuyerTool', () => {
     });
     expect(spy).toHaveBeenCalledWith(expect.anything(), 'zareczyny');
     expect(r.content).toBe('Tabela niedostępna — nie zgaduj.');
+  });
+
+  it('non-429 MCP error exposes only code and CART_UNAVAILABLE notice', async () => {
+    vi.spyOn(mcp, 'callMcpToolDirect').mockResolvedValue({
+      error: { code: 500, message: 'internal', details: 'sekret' },
+    });
+    const r = await executeBuyerTool({
+      env: {} as import('../src/config/bindings').Env,
+      channelId: 'epir-online-store',
+      readyTools: ['ucp_cart'],
+      name: 'get_cart',
+      argsJson: '{}',
+      sessionCartId: 'gid://shopify/Cart/SESSION',
+      allowedVariantIds: new Set(),
+    });
+    const body = JSON.parse(r.content);
+    expect(body.error).toEqual({ code: 500 });
+    expect(body.notice).toContain('niedostępny');
+    expect(r.content).not.toContain('sekret');
+    expect(r.content).not.toContain('internal');
+  });
+
+  it('cancel_cart clears SessionDO cart id on success', async () => {
+    const writeSpy = vi.spyOn(sessionCart, 'writeSessionCartId').mockResolvedValue();
+    vi.spyOn(mcp, 'callMcpToolDirect').mockResolvedValue({
+      result: { cancelled: true },
+    });
+    const r = await executeBuyerTool({
+      env: { SESSION_DO: {} } as import('../src/config/bindings').Env,
+      channelId: 'epir-online-store',
+      readyTools: ['ucp_cart'],
+      name: 'cancel_cart',
+      argsJson: '{}',
+      sessionId: 'sess-cancel',
+      sessionCartId: 'gid://shopify/Cart/SESSION',
+      allowedVariantIds: new Set(),
+    });
+    expect(writeSpy).toHaveBeenCalledWith(expect.anything(), 'sess-cancel', '');
+    expect(r.sessionCartId).toBeNull();
   });
 
   it('429 does not retry; returns unavailable copy', async () => {
