@@ -164,6 +164,11 @@ export interface Env {
   SHOPIFY_CLIENT_ID?: string;
   /** Admin: Settings → Customer accounts — `classic` | `new` (diagnostyka App Proxy / logged_in_customer_id). */
   SHOPIFY_CUSTOMER_ACCOUNTS_MODE?: string;
+  /**
+   * Public Customer Account API client id — buyer tool-readiness for `customer_account_profile`.
+   * Same public id Hydrogen apps expose as PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID (not a secret).
+   */
+  PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID?: string;
   ALLOWED_ORIGIN?: string;
   ALLOWED_ORIGINS?: string;
 
@@ -270,6 +275,7 @@ export const OPTIONAL_VARS = [
   'WORKER_ORIGIN',
   'DEV_BYPASS',
   'SHOPIFY_CUSTOMER_ACCOUNTS_MODE',
+  'PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID',
   'MARKETING_INGEST_ORIGIN',
   'COCREATE_NOTIFY_EMAIL',
   'COCREATE_FROM_EMAIL',
