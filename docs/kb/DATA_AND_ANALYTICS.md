@@ -82,7 +82,7 @@ CI: `python scripts/ci/validate-data-contract.py`
 4. Test: `cd agents/data_guardian && npm run audit` lub MCP `flow_health_summary`.
 5. `EDOG: PASS` + świeży test → `EDOG: END`. Max 5 iteracji.
 
-**MCP `epir-data-ops`:** `flow_health_summary`, `d1_metadata`, `d1_sample_rows`, `warehouse_probe` (Q1), `flow_map_excerpt`.
+**MCP `epir-data-ops`:** `flow_health_summary`, `d1_metadata`, `d1_sample_rows`, `warehouse_probe` (Q1), `warehouse_query` (Q1–Q10 bez Q3), `marketing_preview`, `gmc_diagnostics`, `ads_account_change_audit`, `flow_map_excerpt`. Auth: `EPIR_READONLY_ANALYTICS_KEY` na Operator Studio (`GET /internal/operator-studio/api/analytics/query` i trasy marketing-preview). Q3_TOP_CHAT_QUESTIONS nie jest na tym kluczu.
 
 Spór schema/SQL w PR → **EDCG**, nie EDOG.
 

@@ -37,13 +37,16 @@ import {
 } from './brand-lock';
 import { buildCommerceActionPayload, isLikelyAjaxCartFakeGid } from './utils/commerce-result';
 import {
+  analyticsQueryDeniedPayload,
   analyticsReadUnauthorizedResponse,
   isReadonlyAnalyticsCredential,
   isReadonlySafeAnalyticsQueryId,
   isWhitelistedAnalyticsQueryId,
+  resolveAnalyticsQueryId,
   verifyAnalyticsReadAccess,
   verifyOperatorPanelKey,
 } from './operator/operator-auth';
+import { handleOperatorMarketingRead } from './operator/operator-marketing-read';
 
 // Importy AI i Narzędzi (BEZPOŚREDNIO z ai-client.ts)
 import {
@@ -4809,7 +4812,7 @@ async function handleOperatorStudioIngress(
       JSON.stringify({
         ok: true,
         gates,
-        note: 'Operator Studio: EPIR_OPERATOR_PANEL_SECRET (pełny). EPIR_READONLY_ANALYTICS_KEY — ready / flow-health / steward/insights / raporty / analytics/query (bez Q3). EPIR_CHAT_SHARED_SECRET tylko dla BFF Hydrogen.',
+        note: 'Operator Studio: EPIR_OPERATOR_PANEL_SECRET (pełny). EPIR_READONLY_ANALYTICS_KEY — ready / flow-health / steward/insights / raporty / analytics/query (Q1–Q10 bez Q3) / marketing-preview / gmc-diagnostics / ads-account-change-audit. EPIR_CHAT_SHARED_SECRET tylko dla BFF Hydrogen.',
       }),
       { status: 200, headers: { 'Content-Type': 'application/json', ...cors(env, request) } },
     );
@@ -4855,23 +4858,17 @@ async function handleOperatorStudioIngress(
       }
     }
     if (!queryId) {
-      return new Response(JSON.stringify({ ok: false, error: 'queryId_required' }), {
+      return new Response(JSON.stringify(analyticsQueryDeniedPayload(request, env, 'queryId_required')), {
         status: 400,
         headers: { 'Content-Type': 'application/json', ...cors(env, request) },
       });
     }
+    queryId = resolveAnalyticsQueryId(queryId);
     if (!isWhitelistedAnalyticsQueryId(queryId)) {
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error: 'queryId_not_whitelisted',
-          hint: 'Tylko Q1–Q10 z whitelisty; brak własnego SQL.',
-        }),
-        {
-          status: 400,
-          headers: { 'Content-Type': 'application/json', ...cors(env, request) },
-        },
-      );
+      return new Response(JSON.stringify(analyticsQueryDeniedPayload(request, env, 'queryId_not_whitelisted')), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
+      });
     }
     if (isReadonlyAnalyticsCredential(request, env) && !isReadonlySafeAnalyticsQueryId(queryId)) {
       return new Response(
@@ -4898,6 +4895,9 @@ async function handleOperatorStudioIngress(
       headers: { 'Content-Type': 'application/json', ...cors(env, request) },
     });
   }
+
+  const marketingRead = await handleOperatorMarketingRead(request, env, url, method, cors(env, request));
+  if (marketingRead) return marketingRead;
 
   if (path === '/internal/operator-studio/api/steward/aggregate' && method === 'POST') {
     if (!verifyOperatorPanelKey(request, env)) {
