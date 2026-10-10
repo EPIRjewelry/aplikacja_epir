@@ -14,7 +14,7 @@ import type {Shop, CountryCode, LanguageCode} from '@shopify/hydrogen/storefront
 import './styles/root.css';
 import styles from './styles/app.css';
 import tailwind from './styles/tailwind-build.css';
-import favicon from '../public/favicon.svg';
+import favicon from '../public/favicon.png';
 import {
   Layout,
   CartHeader,
@@ -75,7 +75,7 @@ export const links: LinksFunction = () => {
       rel: 'preconnect',
       href: 'https://shop.app',
     },
-    {rel: 'icon', type: 'image/svg+xml', href: favicon},
+    {rel: 'icon', type: 'image/png', href: favicon},
   ];
 };
 
