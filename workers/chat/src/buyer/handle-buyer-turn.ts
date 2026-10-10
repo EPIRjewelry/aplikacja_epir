@@ -1,5 +1,6 @@
 import type {Env} from '../config/bindings';
 import type {ChatBrandLock} from '../brand-lock';
+import {composeBuyerAssistantReply, extractLastUserMessage} from './compose-buyer-turn';
 import {channelIdFromBrandLock, readChannelMode} from './channel-switch';
 
 function buyerResponseHeaders(env: Env, request: Request): Record<string, string> {
@@ -30,8 +31,8 @@ export const BUYER_UNAVAILABLE_JSON = {
 };
 
 /**
- * Etap 1: kupujący zawsze dostaje komunikat o niedostępności (fail-closed).
- * Bez modelu, bez SessionDO / D1 / pamięci sesji.
+ * Kupujący: fail-closed gdy `gemma:channel:*` = off (domyślnie).
+ * Tura z modelem tylko przy `internal` lub `on` (KV ustawia operator).
  */
 export async function handleBuyerTurn(
   request: Request,
@@ -49,8 +50,41 @@ export async function handleBuyerTurn(
       server_channel: brandLock.channel,
     }),
   );
-  return new Response(JSON.stringify(BUYER_UNAVAILABLE_JSON), {
-    status: 200,
-    headers: buyerResponseHeaders(env, request),
-  });
+
+  if (!channelId || mode === 'off') {
+    return new Response(JSON.stringify(BUYER_UNAVAILABLE_JSON), {
+      status: 200,
+      headers: buyerResponseHeaders(env, request),
+    });
+  }
+
+  if (mode !== 'internal' && mode !== 'on') {
+    return new Response(JSON.stringify(BUYER_UNAVAILABLE_JSON), {
+      status: 200,
+      headers: buyerResponseHeaders(env, request),
+    });
+  }
+
+  const body = await request.json().catch(() => null);
+  const userText = extractLastUserMessage(body);
+  if (!userText) {
+    return new Response(JSON.stringify({ type: 'error', reason: 'missing_user_message' }), {
+      status: 400,
+      headers: buyerResponseHeaders(env, request),
+    });
+  }
+
+  try {
+    const reply = await composeBuyerAssistantReply(env, channelId, userText, request);
+    return new Response(JSON.stringify({ type: 'message', reply, channel_id: channelId, mode }), {
+      status: 200,
+      headers: buyerResponseHeaders(env, request),
+    });
+  } catch (e) {
+    console.error('[buyer.handle_turn] failed', e);
+    return new Response(JSON.stringify({ type: 'error', reason: 'assistant_failed' }), {
+      status: 500,
+      headers: buyerResponseHeaders(env, request),
+    });
+  }
 }
