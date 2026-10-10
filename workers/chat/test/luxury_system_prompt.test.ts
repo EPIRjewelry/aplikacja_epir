@@ -18,6 +18,19 @@ describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
 
   it('treats recap questions as current-session questions by default', () => {
     expect(LUXURY_SYSTEM_PROMPT).toContain('odpowiedz na podstawie historii bieżącej sesji');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('o czym rozmawialiśmy');
+  });
+
+  it('restores memory and T1/T2 without cart_id leakage', () => {
+    expect(LUXURY_SYSTEM_PROMPT).toContain('firstName: Krzysztof');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('Nie proś klienta o imię');
+    expect(LUXURY_SYSTEM_PROMPT).not.toContain('cart_id');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('currentPath zawiera /products/');
+  });
+
+  it('alternative stone only with reason from search_catalog results', () => {
+    expect(LUXURY_SYSTEM_PROMPT).toContain('logiczny powód (kolor, forma, szlif)');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('wyłącznie produkty z wyniku search_catalog tej tury');
   });
 
   it('includes EPIR brand language principles as default', () => {

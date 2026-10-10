@@ -36,6 +36,25 @@ function dimensionLine(product: ProductFacts): string | null {
   return parts.length ? parts.join('; ') : null;
 }
 
+function formatWeightAmount(weight: number, unit: string): string {
+  const u = unit.toUpperCase();
+  let suffix: string;
+  let value = weight;
+  if (u === 'GRAMS' || u === 'G') {
+    suffix = 'g';
+  } else if (u === 'KILOGRAMS' || u === 'KG') {
+    suffix = 'kg';
+  } else if (u === 'OUNCES' || u === 'OZ') {
+    suffix = 'oz';
+  } else if (u === 'POUNDS' || u === 'LB' || u === 'LBS') {
+    suffix = 'lb';
+  } else {
+    suffix = unit.toLowerCase();
+  }
+  const text = Number.isInteger(value) ? String(value) : String(value).replace('.', ',');
+  return `${text} ${suffix}`;
+}
+
 function formatWeight(variants: VariantFacts[]): string | null {
   const withWeight = variants.filter(
     (v) => v.weight != null && Number.isFinite(v.weight) && v.weightUnit,
@@ -46,10 +65,13 @@ function formatWeight(variants: VariantFacts[]): string | null {
     (v) => v.weight === first.weight && v.weightUnit === first.weightUnit,
   );
   if (allSame && first.weight != null && first.weightUnit) {
-    return `${first.weight} ${first.weightUnit}`;
+    return formatWeightAmount(first.weight, first.weightUnit);
   }
   return withWeight
-    .map((v) => `${v.title || 'wariant'}: ${v.weight} ${v.weightUnit}`)
+    .map((v) => {
+      const label = v.title?.trim() || 'wariant';
+      return `${label}: ${formatWeightAmount(v.weight!, v.weightUnit!)}`;
+    })
     .join('; ');
 }
 

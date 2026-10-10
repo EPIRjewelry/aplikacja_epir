@@ -18,6 +18,17 @@ describe('search_catalog buyer tool', () => {
     );
   });
 
+  it('validateSearchCatalogArgs rejects limit, currency and filters from model', () => {
+    const base = { query: 'pierścionek' };
+    for (const key of ['limit', 'currency', 'filters'] as const) {
+      const r = validateSearchCatalogArgs({ ...base, [key]: key === 'limit' ? 5 : key === 'currency' ? 'EUR' : {} });
+      expect(r.ok).toBe(false);
+      if (!r.ok && r.reason === 'extra_fields') {
+        expect(r.droppedKeys).toContain(key);
+      }
+    }
+  });
+
   it('execute search_catalog passes price_max_pln as minor units to repository search', async () => {
     const searchSpy = vi.fn().mockResolvedValue({
       matches: [],

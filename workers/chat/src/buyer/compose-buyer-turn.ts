@@ -60,7 +60,13 @@ export function scrubGidFromClientReply(reply: string): string {
   const matches = reply.match(GID_PATTERN);
   if (!matches?.length) return reply.trim();
   console.log(JSON.stringify({ tag: 'buyer.gid_scrubbed', count: matches.length }));
-  return reply.replace(GID_PATTERN, '').replace(/\s{2,}/g, ' ').trim();
+  return reply
+    .replace(GID_PATTERN, '')
+    .split('\n')
+    .map((line) => line.replace(/\s{2,}/g, ' ').trimEnd())
+    .join('\n')
+    .replace(/\[\s*\]\(\s*\)/g, '')
+    .trim();
 }
 
 function shouldFallbackToolLoop(err: unknown, round: number): boolean {
@@ -333,8 +339,12 @@ async function finalizeBuyerReply(
 ): Promise<string> {
   const scrubbed = scrubGidFromClientReply(reply);
   if (sessionId?.trim()) {
-    await appendBuyerSessionMessage(env, sessionId, 'user', userText);
-    await appendBuyerSessionMessage(env, sessionId, 'assistant', scrubbed);
+    try {
+      await appendBuyerSessionMessage(env, sessionId, 'user', userText);
+      await appendBuyerSessionMessage(env, sessionId, 'assistant', scrubbed);
+    } catch (e) {
+      console.warn('[buyer.compose_turn] session history append failed', e);
+    }
   }
   return scrubbed;
 }

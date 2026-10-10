@@ -10,7 +10,7 @@ function sessionStub(env: Env, sessionId: string) {
   return env.SESSION_DO.get(env.SESSION_DO.idFromName(sid));
 }
 
-function normalizeHistory(raw: unknown): BuyerHistoryEntry[] {
+export function normalizeBuyerSessionHistory(raw: unknown): BuyerHistoryEntry[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((entry) => typeof entry === 'object' && entry !== null)
@@ -34,7 +34,7 @@ export async function readBuyerSessionHistory(
     const res = await stub.fetch('https://session/history');
     if (!res.ok) return [];
     const raw = await res.json().catch(() => []);
-    return normalizeHistory(raw);
+    return normalizeBuyerSessionHistory(raw);
   } catch (e) {
     console.warn('[buyer.session_history] read failed', e);
     return [];

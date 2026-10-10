@@ -56,7 +56,7 @@ describe('factsContextBlock variant lines', () => {
     expect(descriptive).not.toContain(SAMPLE_VARIANT_GID);
     expect(block).toContain(SAMPLE_VARIANT_GID);
     expect(block).toContain('metal: srebro');
-    expect(block).toContain('waga:');
+    expect(block).toMatch(/waga:\s*5 g/);
     expect(block).toContain('https://shop.example/products/pierscionek');
   });
 });
@@ -68,6 +68,14 @@ describe('scrubGidFromClientReply', () => {
     expect(out).not.toContain('gid://shopify');
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it('preserves paragraph breaks when scrubbing gid', () => {
+    const out = scrubGidFromClientReply(
+      `Akapit pierwszy ${SAMPLE_VARIANT_GID} .\n\nAkapit drugi bez gid.`,
+    );
+    expect(out).toContain('\n\n');
+    expect(out).toBe('Akapit pierwszy .\n\nAkapit drugi bez gid.');
   });
 });
 
@@ -274,6 +282,34 @@ describe('buyer compose turn — tools in system prompt', () => {
     expect(appendSpy).toHaveBeenCalledTimes(2);
   });
 
+  it('append failure still returns assistant reply', async () => {
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([]);
+    vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
+    vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockResolvedValue([]);
+    vi.spyOn(sessionHistory, 'appendBuyerSessionMessage').mockRejectedValue(new Error('do down'));
+
+    vi.spyOn(aiClient, 'getGroqResponse').mockResolvedValue('mimo błędu zapisu');
+
+    const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
+    const req = new Request('https://example.com/chat', { method: 'POST' });
+    const reply = await composeBuyerAssistantReply(env, 'epir-online-store', 'hej', req, {
+      sessionId: 'sess-append-fail',
+    });
+    expect(reply).toBe('mimo błędu zapisu');
+  });
+
+  it('without sessionId does not read session history', async () => {
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([]);
+    vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
+    const readSpy = vi.spyOn(sessionHistory, 'readBuyerSessionHistory');
+    vi.spyOn(aiClient, 'getGroqResponse').mockResolvedValue('ok');
+
+    const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
+    const req = new Request('https://example.com/chat', { method: 'POST' });
+    await composeBuyerAssistantReply(env, 'epir-online-store', 'hej', req);
+    expect(readSpy).not.toHaveBeenCalled();
+  });
+
   it('(b) productHandle injects PRODUKT NA STRONIE with metal and weight', async () => {
     vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([]);
     vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
@@ -337,7 +373,7 @@ describe('buyer compose turn — tools in system prompt', () => {
 
     expect(systemContent).toContain('[PRODUKT NA STRONIE]');
     expect(systemContent).toContain('metal: złoto');
-    expect(systemContent).toContain('waga:');
+    expect(systemContent).toMatch(/waga:\s*3 g/);
   });
 
   it('buyer_tool_loop_final stream error → getGroqResponse fallback with round final', async () => {
