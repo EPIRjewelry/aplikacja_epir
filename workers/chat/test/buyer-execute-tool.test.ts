@@ -357,4 +357,94 @@ describe('executeBuyerTool', () => {
       stripModelCartIds({ id: 'x', cart_id: 'y', update_items: [] }),
     ).toEqual({ update_items: [] });
   });
+
+  it('denies update_cart with model lines alias as empty_after_filter without MCP', async () => {
+    const spy = vi.spyOn(mcp, 'callMcpToolDirect');
+    const foreign = 'gid://shopify/ProductVariant/FOREIGN';
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const r = await executeBuyerTool({
+      env: {} as import('../src/config/bindings').Env,
+      channelId: 'epir-online-store',
+      readyTools: ['ucp_cart'],
+      name: 'update_cart',
+      argsJson: JSON.stringify({
+        lines: [{ merchandise_id: foreign, quantity: 1 }],
+      }),
+      sessionCartId: 'gid://shopify/Cart/SESSION',
+      allowedVariantIds: new Set([foreign]),
+    });
+    expect(JSON.parse(r.content).reason).toBe('empty_after_filter');
+    expect(spy).not.toHaveBeenCalled();
+    expect(r.content).not.toContain(foreign);
+    const dropped = logSpy.mock.calls
+      .map((c) => {
+        try {
+          return JSON.parse(String(c[0])) as { tag?: string; keys?: string[] };
+        } catch {
+          return null;
+        }
+      })
+      .find((o) => o?.tag === 'buyer.tool_args_dropped');
+    expect(dropped?.keys).toContain('lines');
+    logSpy.mockRestore();
+  });
+
+  it('denies create_cart with model lines alias as empty_after_filter without MCP', async () => {
+    const spy = vi.spyOn(mcp, 'callMcpToolDirect');
+    const foreign = 'gid://shopify/ProductVariant/FOREIGN';
+    const r = await executeBuyerTool({
+      env: {} as import('../src/config/bindings').Env,
+      channelId: 'epir-online-store',
+      readyTools: ['ucp_cart'],
+      name: 'create_cart',
+      argsJson: JSON.stringify({
+        lines: [{ merchandise_id: foreign, quantity: 1 }],
+      }),
+      sessionCartId: null,
+      allowedVariantIds: new Set([foreign]),
+    });
+    expect(JSON.parse(r.content).reason).toBe('empty_after_filter');
+    expect(spy).not.toHaveBeenCalled();
+    expect(r.content).not.toContain(foreign);
+  });
+
+  it('update_cart drops lines but keeps add_items; logs tool_args_dropped', async () => {
+    const spy = vi.spyOn(mcp, 'callMcpToolDirect').mockResolvedValue({
+      result: { continue_url: 'https://x', line_items: [] },
+    });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const allowed = 'gid://shopify/ProductVariant/ALLOWED';
+    const foreign = 'gid://shopify/ProductVariant/FOREIGN';
+    await executeBuyerTool({
+      env: { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env,
+      channelId: 'epir-online-store',
+      readyTools: ['ucp_cart'],
+      name: 'update_cart',
+      argsJson: JSON.stringify({
+        lines: [{ merchandise_id: foreign, quantity: 1 }],
+        add_items: [{ quantity: 1, variant_id: allowed }],
+        context: 'ignored',
+      }),
+      sessionCartId: 'gid://shopify/Cart/SESSION',
+      allowedVariantIds: new Set([allowed]),
+    });
+    expect(spy).toHaveBeenCalledOnce();
+    const mcpArgs = spy.mock.calls[0]![2] as Record<string, unknown>;
+    expect(mcpArgs).toEqual({
+      add_items: [{ quantity: 1, variant_id: allowed }],
+    });
+    expect(mcpArgs).not.toHaveProperty('lines');
+    expect(JSON.stringify(mcpArgs)).not.toContain(foreign);
+    const dropped = logSpy.mock.calls
+      .map((c) => {
+        try {
+          return JSON.parse(String(c[0])) as { tag?: string; keys?: string[] };
+        } catch {
+          return null;
+        }
+      })
+      .find((o) => o?.tag === 'buyer.tool_args_dropped');
+    expect(dropped?.keys).toEqual(expect.arrayContaining(['lines', 'context']));
+    logSpy.mockRestore();
+  });
 });

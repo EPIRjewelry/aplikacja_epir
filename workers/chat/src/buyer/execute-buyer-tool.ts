@@ -62,6 +62,58 @@ function parseArgs(argsJson: string): Record<string, unknown> {
   return {};
 }
 
+const CART_TOOL_ARG_WHITELIST: Record<string, readonly string[]> = {
+  create_cart: ['line_items'],
+  update_cart: ['add_items', 'update_items', 'remove_line_ids'],
+  get_cart: [],
+  cancel_cart: [],
+};
+
+/** Keep only MCP-accepted cart tool keys; log dropped model noise (key names only). */
+export function filterCartToolArgs(
+  toolName: string,
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  const allowed = CART_TOOL_ARG_WHITELIST[toolName];
+  if (allowed === undefined) {
+    return args;
+  }
+  const allowedSet = new Set(allowed);
+  const filtered: Record<string, unknown> = {};
+  const dropped: string[] = [];
+  for (const [key, value] of Object.entries(args)) {
+    if (allowedSet.has(key)) {
+      filtered[key] = value;
+    } else {
+      dropped.push(key);
+    }
+  }
+  if (dropped.length > 0) {
+    console.log(
+      JSON.stringify({
+        tag: 'buyer.tool_args_dropped',
+        tool: toolName,
+        keys: dropped,
+      }),
+    );
+  }
+  return filtered;
+}
+
+function cartArgsEmptyAfterFilter(toolName: string, args: Record<string, unknown>): boolean {
+  if (toolName === 'create_cart') {
+    return !Array.isArray(args.line_items) || args.line_items.length === 0;
+  }
+  if (toolName === 'update_cart') {
+    return (
+      !Array.isArray(args.add_items) &&
+      !Array.isArray(args.update_items) &&
+      !Array.isArray(args.remove_line_ids)
+    );
+  }
+  return false;
+}
+
 /** Strip model-supplied cart identifiers — SessionDO is the only source. */
 export function stripModelCartIds(args: Record<string, unknown>): Record<string, unknown> {
   const next = { ...args };
@@ -172,6 +224,12 @@ export async function executeBuyerTool(
     if (Array.isArray(args.line_items) || (args.cart && typeof args.cart === 'object')) {
       return deny('full_cart_replace_forbidden', { tool: input.name });
     }
+  }
+
+  args = filterCartToolArgs(input.name, args);
+
+  if (cartArgsEmptyAfterFilter(input.name, args)) {
+    return deny('empty_after_filter', { tool: input.name });
   }
 
   if (input.name === 'get_cart' || input.name === 'update_cart' || input.name === 'cancel_cart') {
