@@ -41,6 +41,11 @@ describe('buyer tool-readiness', () => {
 
     const r = await assessToolReadiness(env, 'epir-online-store', 'ucp_cart');
     expect(r.available).toBe(true);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/api/ucp/mcp');
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body.params.arguments.meta['ucp-agent'].profile).toBe(
+      'https://example.com/profile.json',
+    );
   });
 
   it('listAvailableBuyerTools omits tools that fail readiness', async () => {

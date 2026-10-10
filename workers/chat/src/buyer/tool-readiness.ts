@@ -1,5 +1,6 @@
 import type { BuyerChannelId } from './channel-switch';
 import { buildUcpAgentMeta, resolveUcpAgentProfileUrl } from '../catalog/ucp-agent-meta';
+import { getUcpCatalogEndpoint } from '../catalog/ucp-catalog-endpoint';
 import type { Env } from '../config/bindings';
 import { resolveStorefrontConfig } from '../config/storefronts';
 import { hasStorefrontCatalogToken } from '../facts/storefront-live';
@@ -34,30 +35,45 @@ function hasUcpAgentProfile(env: Env): boolean {
   return Boolean(url?.trim());
 }
 
-function ucpMetaMatchesConversation(env: Env, args: Record<string, unknown>): boolean {
-  const required = buildUcpAgentMeta(env);
-  const requiredProfile = (required.meta['ucp-agent'] as { profile?: string })?.profile;
-  const existingMeta =
-    args.meta && typeof args.meta === 'object' ? (args.meta as Record<string, unknown>) : {};
-  const existingUcp =
-    existingMeta['ucp-agent'] && typeof existingMeta['ucp-agent'] === 'object'
-      ? (existingMeta['ucp-agent'] as { profile?: string })
-      : {};
-  return existingUcp.profile === requiredProfile;
+function ucpCatalogEndpoint(env: Env, shopDomain: string): string {
+  return (
+    getUcpCatalogEndpoint(env) ||
+    `https://${shopDomain.replace(/\/$/, '')}/api/ucp/mcp`
+  );
 }
 
-async function mcpToolsListOk(shopDomain: string): Promise<{ ok: boolean; status: number }> {
-  const url = `https://${shopDomain}/api/mcp`;
+function shopPoliciesMcpEndpoint(shopDomain: string): string {
+  return `https://${shopDomain.replace(/\/$/, '')}/api/mcp`;
+}
+
+async function mcpToolsListOk(
+  url: string,
+  body: Record<string, unknown>,
+): Promise<{ ok: boolean; status: number }> {
   try {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', method: 'tools/list', id: 'buyer-readiness' }),
+      body: JSON.stringify(body),
     });
     return { ok: res.ok || res.status === 401, status: res.status };
   } catch {
     return { ok: false, status: 0 };
   }
+}
+
+function ucpToolsListBody(env: Env): Record<string, unknown> {
+  const agentMeta = buildUcpAgentMeta(env);
+  return {
+    jsonrpc: '2.0',
+    method: 'tools/list',
+    id: 'buyer-readiness',
+    params: {
+      arguments: {
+        meta: agentMeta.meta,
+      },
+    },
+  };
 }
 
 export async function assessToolReadiness(
@@ -78,7 +94,10 @@ export async function assessToolReadiness(
     if (!hasUcpAgentProfile(env)) {
       return { tool, available: false, reason: 'missing_ucp_agent_profile' };
     }
-    const ping = await mcpToolsListOk(shop);
+    const ping = await mcpToolsListOk(
+      ucpCatalogEndpoint(env, shop),
+      ucpToolsListBody(env),
+    );
     if (!ping.ok) {
       console.warn('[buyer.tool_readiness] catalog mcp health failed', { status: ping.status });
       return { tool, available: false, reason: `catalog_mcp_unhealthy_${ping.status}` };
@@ -90,11 +109,15 @@ export async function assessToolReadiness(
     if (!hasUcpAgentProfile(env)) {
       return { tool, available: false, reason: 'missing_ucp_agent_profile' };
     }
-    const sampleArgs = buildUcpAgentMeta(env);
-    if (!ucpMetaMatchesConversation(env, sampleArgs)) {
+    const profileUrl = resolveUcpAgentProfileUrl(env);
+    const envelopeProfile = buildUcpAgentMeta(env).meta['ucp-agent']?.profile;
+    if (!profileUrl?.trim() || profileUrl !== envelopeProfile) {
       return { tool, available: false, reason: 'ucp_agent_profile_mismatch' };
     }
-    const ping = await mcpToolsListOk(shop);
+    const ping = await mcpToolsListOk(
+      ucpCatalogEndpoint(env, shop),
+      ucpToolsListBody(env),
+    );
     if (!ping.ok) {
       console.warn('[buyer.tool_readiness] cart mcp health failed', { status: ping.status });
       return { tool, available: false, reason: `cart_mcp_unhealthy_${ping.status}` };
@@ -103,7 +126,11 @@ export async function assessToolReadiness(
   }
 
   if (tool === 'search_shop_policies_and_faqs') {
-    const ping = await mcpToolsListOk(shop);
+    const ping = await mcpToolsListOk(shopPoliciesMcpEndpoint(shop), {
+      jsonrpc: '2.0',
+      method: 'tools/list',
+      id: 'buyer-readiness',
+    });
     if (!ping.ok) {
       console.warn('[buyer.tool_readiness] policies mcp health failed', { status: ping.status });
       return { tool, available: false, reason: `policies_mcp_unhealthy_${ping.status}` };
