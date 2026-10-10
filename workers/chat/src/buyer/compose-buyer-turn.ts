@@ -27,9 +27,32 @@ function buyerIp(request: Request): string | undefined {
   return request.headers.get('CF-Connecting-IP')?.trim() || undefined;
 }
 
+function firstTextFromParts(parts: unknown): string | null {
+  if (!Array.isArray(parts)) return null;
+  for (const p of parts) {
+    if (typeof p !== 'object' || p === null) continue;
+    const o = p as Record<string, unknown>;
+    if (o.type === 'text' && typeof o.text === 'string' && o.text.trim()) {
+      return o.text.trim();
+    }
+  }
+  return null;
+}
+
+/** Widżety: `message`, potem `parts[{type:'text'}]`, na końcu legacy `messages[]`. */
 export function extractLastUserMessage(body: unknown): string | null {
   if (!body || typeof body !== 'object') return null;
-  const messages = (body as { messages?: unknown }).messages;
+  const rec = body as Record<string, unknown>;
+
+  if (typeof rec.message === 'string') {
+    const trimmed = rec.message.trim();
+    if (trimmed) return trimmed;
+  }
+
+  const fromParts = firstTextFromParts(rec.parts);
+  if (fromParts) return fromParts;
+
+  const messages = rec.messages;
   if (!Array.isArray(messages)) return null;
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];

@@ -64,14 +64,16 @@ describe('buyer turn channel gate', () => {
         return key.includes('epir-online-store') ? 'off' : null;
       },
     } as KVNamespace;
+    const offBody = {messages: [{role: 'user', content: 'Cześć'}]};
     const offRes = await handleBuyerTurn(
       new Request('https://x/chat', {
         method: 'POST',
-        body: JSON.stringify({messages: [{role: 'user', content: 'Cześć'}]}),
+        body: JSON.stringify(offBody),
         headers: {'Content-Type': 'application/json'},
       }),
       {GEMMA_RUNTIME_KV: offKv, ALLOWED_ORIGIN: '*'} as import('../src/config/bindings').Env,
       lock({}),
+      offBody,
     );
     expect(offRes.status).toBe(200);
     expect(((await offRes.json()) as {type: string}).type).toBe('unavailable');
@@ -84,10 +86,11 @@ describe('buyer turn channel gate', () => {
           return key.includes('epir-online-store') ? mode : null;
         },
       } as KVNamespace;
+      const turnBody = {messages: [{role: 'user', content: 'Szukam pierścionka'}]};
       const res = await handleBuyerTurn(
         new Request('https://x/chat', {
           method: 'POST',
-          body: JSON.stringify({messages: [{role: 'user', content: 'Szukam pierścionka'}]}),
+          body: JSON.stringify(turnBody),
           headers: {'Content-Type': 'application/json'},
         }),
         {
@@ -96,6 +99,7 @@ describe('buyer turn channel gate', () => {
           SHOP_DOMAIN: 'shop.myshopify.com',
         } as import('../src/config/bindings').Env,
         lock({}),
+        turnBody,
       );
       expect(res.status).toBe(200);
       const json = (await res.json()) as {type: string; reply?: string};

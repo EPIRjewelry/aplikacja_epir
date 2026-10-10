@@ -42,6 +42,7 @@ export async function handleBuyerTurn(
   request: Request,
   env: Env,
   brandLock: ChatBrandLock,
+  rawBody: unknown,
 ): Promise<Response> {
   const channelId = channelIdFromBrandLock(brandLock);
   const mode = channelId ? await readChannelMode(env, channelId) : 'off';
@@ -69,13 +70,25 @@ export async function handleBuyerTurn(
     });
   }
 
-  const body = await request.json().catch(() => null);
+  const body = rawBody;
   const userText = extractLastUserMessage(body);
   if (!userText) {
-    return new Response(JSON.stringify({ type: 'error', reason: 'missing_user_message' }), {
-      status: 400,
-      headers: buyerResponseHeaders(env, request),
-    });
+    const keys =
+      body && typeof body === 'object' && !Array.isArray(body)
+        ? Object.keys(body as Record<string, unknown>)
+        : [];
+    console.log(JSON.stringify({ tag: 'buyer.bad_request', keys }));
+    return new Response(
+      JSON.stringify({
+        type: 'error',
+        reason: 'missing_user_message',
+        error: 'Nie udało się odczytać wiadomości.',
+      }),
+      {
+        status: 400,
+        headers: buyerResponseHeaders(env, request),
+      },
+    );
   }
   const sessionId = extractSessionIdFromBody(body);
 
@@ -83,15 +96,29 @@ export async function handleBuyerTurn(
     const reply = await composeBuyerAssistantReply(env, channelId, userText, request, {
       sessionId,
     });
-    return new Response(JSON.stringify({ type: 'message', reply, channel_id: channelId, mode }), {
+    const okPayload: Record<string, unknown> = {
+      type: 'message',
+      reply,
+      channel_id: channelId,
+      mode,
+    };
+    if (sessionId) okPayload.session_id = sessionId;
+    return new Response(JSON.stringify(okPayload), {
       status: 200,
       headers: buyerResponseHeaders(env, request),
     });
   } catch (e) {
     console.error('[buyer.handle_turn] failed', e);
-    return new Response(JSON.stringify({ type: 'error', reason: 'assistant_failed' }), {
-      status: 500,
-      headers: buyerResponseHeaders(env, request),
-    });
+    return new Response(
+      JSON.stringify({
+        type: 'error',
+        reason: 'assistant_failed',
+        error: 'Asystent chwilowo nie odpowiada.',
+      }),
+      {
+        status: 500,
+        headers: buyerResponseHeaders(env, request),
+      },
+    );
   }
 }
