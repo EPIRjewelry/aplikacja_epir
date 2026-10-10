@@ -46,12 +46,39 @@ describe('channel-switch', () => {
   });
 });
 
-describe('buyer turn (PR1 always unavailable)', () => {
-  it('does not call model for on/internal/off', async () => {
+describe('buyer turn channel gate', () => {
+  it('off → unavailable without calling model; on/internal → compose path', async () => {
     const ai = await import('../src/ai-client');
-    const spy = vi.spyOn(ai, 'getGroqResponse').mockResolvedValue({content: 'x'} as never);
+    const spy = vi.spyOn(ai, 'getGroqResponse').mockResolvedValue('odpowiedź testowa');
+    const toolReadiness = await import('../src/buyer/tool-readiness');
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([]);
+    const aiProfile = await import('../src/ai-profile');
+    vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
+    const facts = await import('../src/facts');
+    vi.spyOn(facts, 'getCatalogRepository').mockRejectedValue(new Error('skip'));
+
     const {handleBuyerTurn} = await import('../src/buyer/handle-buyer-turn');
-    for (const mode of ['off', 'on', 'internal'] as const) {
+
+    const offKv = {
+      async get(key: string) {
+        return key.includes('epir-online-store') ? 'off' : null;
+      },
+    } as KVNamespace;
+    const offRes = await handleBuyerTurn(
+      new Request('https://x/chat', {
+        method: 'POST',
+        body: JSON.stringify({messages: [{role: 'user', content: 'Cześć'}]}),
+        headers: {'Content-Type': 'application/json'},
+      }),
+      {GEMMA_RUNTIME_KV: offKv, ALLOWED_ORIGIN: '*'} as import('../src/config/bindings').Env,
+      lock({}),
+    );
+    expect(offRes.status).toBe(200);
+    expect(((await offRes.json()) as {type: string}).type).toBe('unavailable');
+    expect(spy).not.toHaveBeenCalled();
+
+    for (const mode of ['on', 'internal'] as const) {
+      spy.mockClear();
       const kv = {
         async get(key: string) {
           return key.includes('epir-online-store') ? mode : null;
@@ -60,19 +87,22 @@ describe('buyer turn (PR1 always unavailable)', () => {
       const res = await handleBuyerTurn(
         new Request('https://x/chat', {
           method: 'POST',
-          headers: {
-            'X-Epir-Model-Variant': 'kimi_k25',
-            'X-Epir-OpenRouter-Model': 'openrouter/openai/gpt-4o',
-            Authorization: 'Bearer fake',
-          },
+          body: JSON.stringify({messages: [{role: 'user', content: 'Szukam pierścionka'}]}),
+          headers: {'Content-Type': 'application/json'},
         }),
-        {GEMMA_RUNTIME_KV: kv, ALLOWED_ORIGIN: '*'} as import('../src/config/bindings').Env,
+        {
+          GEMMA_RUNTIME_KV: kv,
+          ALLOWED_ORIGIN: '*',
+          SHOP_DOMAIN: 'shop.myshopify.com',
+        } as import('../src/config/bindings').Env,
         lock({}),
       );
       expect(res.status).toBe(200);
-      expect(((await res.json()) as {type: string}).type).toBe('unavailable');
+      const json = (await res.json()) as {type: string; reply?: string};
+      expect(json.type).toBe('message');
+      expect(json.reply).toBe('odpowiedź testowa');
+      expect(spy).toHaveBeenCalled();
     }
-    expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
 });
