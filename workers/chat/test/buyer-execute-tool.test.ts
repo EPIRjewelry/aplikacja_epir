@@ -109,6 +109,35 @@ describe('executeBuyerTool', () => {
     expect(spy.mock.calls[0]![2]).toEqual({ update_items: [{ id: 'line-1', quantity: 2 }] });
   });
 
+  it('writes set-cart-id after create_cart with flat presentCartForChat shape', async () => {
+    const writeSpy = vi.spyOn(sessionCart, 'writeSessionCartId').mockResolvedValue();
+    vi.spyOn(mcp, 'callMcpToolDirect').mockResolvedValue({
+      result: {
+        cart_id: 'gid://shopify/Cart/FLAT',
+        continue_url: 'https://zareczyny.epirbizuteria.pl/cart/c/1',
+        line_items: [],
+      },
+    });
+    const variant = 'gid://shopify/ProductVariant/99';
+    await executeBuyerTool({
+      env: {SHOP_DOMAIN: 'shop.myshopify.com'} as import('../src/config/bindings').Env,
+      channelId: 'epir-zareczyny',
+      readyTools: ['ucp_cart'],
+      name: 'create_cart',
+      argsJson: JSON.stringify({
+        line_items: [{quantity: 1, item: {id: variant}}],
+      }),
+      sessionId: 'sess-z-flat',
+      sessionCartId: null,
+      allowedVariantIds: new Set([variant]),
+    });
+    expect(writeSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      'sess-z-flat',
+      'gid://shopify/Cart/FLAT',
+    );
+  });
+
   it('(c) writes set-cart-id only after successful create_cart with UCP id', async () => {
     const writeSpy = vi.spyOn(sessionCart, 'writeSessionCartId').mockResolvedValue();
     vi.spyOn(mcp, 'callMcpToolDirect').mockResolvedValue({

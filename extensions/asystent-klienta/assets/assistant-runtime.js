@@ -1784,6 +1784,10 @@ async function sendMessageToWorker(
         mediaType: attachment.mediaType || 'image/jpeg',
       });
     }
+    const productHandle =
+      sectionEl && sectionEl.dataset && sectionEl.dataset.productHandle
+        ? String(sectionEl.dataset.productHandle).trim()
+        : '';
     const body = {
       storefrontId: storefrontId,
       channel: channel,
@@ -1799,6 +1803,9 @@ async function sendMessageToWorker(
       customer_id_hint_source:
         normalizeLoggedInCustomerId(customerIdentity && customerIdentity.source) || 'none',
     };
+    if (productHandle) {
+      body.productHandle = productHandle;
+    }
     if (parts.length > 0) {
       body.parts = parts;
     }

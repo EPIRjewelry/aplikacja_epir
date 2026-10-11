@@ -1,7 +1,13 @@
 import type { Env } from '../config/bindings';
 import { resolveCommerceContext } from '../config/commerce-context';
 import { callMcpToolDirect } from '../mcp_server';
-import { extractCartObject, lineItemsFromCartPayload, variantIdOf } from '../cart/ucp-cart';
+import {
+  extractCartObject,
+  lineItemsFromCartPayload,
+  readCartId,
+  variantIdOf,
+} from '../cart/ucp-cart';
+import { normalizeCartPayloadForParsing } from './cart-payload-normalize';
 import { getSizeTable } from '../size-table';
 import type { BuyerChannelId } from './channel-switch';
 import { buyerToolIdForName } from './buyer-tools';
@@ -41,7 +47,16 @@ export type ExecuteBuyerToolResult = {
   newVariantIds?: string[];
 };
 
-function deny(reason: string, extra?: Record<string, unknown>): ExecuteBuyerToolResult {
+function logBuyerToolCall(tool: string, channel: BuyerChannelId, ok: boolean): void {
+  console.log(JSON.stringify({ tag: 'buyer.tool_call', tool, channel, ok }));
+}
+
+function deny(
+  input: Pick<ExecuteBuyerToolInput, 'name' | 'channelId'>,
+  reason: string,
+  extra?: Record<string, unknown>,
+): ExecuteBuyerToolResult {
+  logBuyerToolCall(input.name, input.channelId, false);
   console.log(
     JSON.stringify({
       tag: 'buyer.tool_denied',
@@ -49,11 +64,15 @@ function deny(reason: string, extra?: Record<string, unknown>): ExecuteBuyerTool
       ...extra,
     }),
   );
+  const notice =
+    reason === 'variant_not_in_channel'
+      ? 'Ten wariant nie jest dostępny w tym kanale w tej turze — wybierz pozycję z wyniku wyszukiwania lub bloku produktów w kontekście.'
+      : 'Narzędzie niedostępne w tej turze — nie twierdź o wyniku z pamięci.';
   return {
     content: JSON.stringify({
       error: 'tool_denied',
       reason,
-      notice: 'Narzędzie niedostępne w tej turze — nie twierdź o wyniku z pamięci.',
+      notice,
     }),
   };
 }
@@ -165,21 +184,24 @@ function extractRetryAfterFromDetails(details: unknown): string | undefined {
   return m?.[1];
 }
 
-function cartIdFromMcpResult(result: unknown): string | null {
-  const cart = extractCartObject(result);
-  if (cart && typeof cart.id === 'string' && cart.id.trim()) return cart.id.trim();
+export function cartIdFromMcpResult(result: unknown): string | null {
+  const normalized = normalizeCartPayloadForParsing(result);
+  const cart = extractCartObject(normalized);
+  if (cart) {
+    const id = readCartId(cart);
+    if (id) return id;
+  }
   if (result && typeof result === 'object') {
-    const presented = result as { cart_id?: unknown };
-    if (typeof presented.cart_id === 'string' && presented.cart_id.trim()) {
-      return presented.cart_id.trim();
-    }
+    const presented = result as Record<string, unknown>;
+    const fromTop = readCartId(presented);
+    if (fromTop) return fromTop;
   }
   return null;
 }
 
 /** Variant ids already in the session cart (from server get_cart / payload). */
 export function variantIdsFromCartPayload(payload: unknown): string[] {
-  const lines = lineItemsFromCartPayload(payload);
+  const lines = lineItemsFromCartPayload(normalizeCartPayloadForParsing(payload));
   return lines.map((l) => l.item.id).filter(Boolean);
 }
 
@@ -188,7 +210,7 @@ export async function executeBuyerTool(
 ): Promise<ExecuteBuyerToolResult> {
   const toolId = buyerToolIdForName(input.name);
   if (!toolId || !input.readyTools.includes(toolId)) {
-    return deny('not_in_readiness', { tool: input.name });
+    return deny(input, 'not_in_readiness', { tool: input.name });
   }
 
   const brand = brandKeyForChannel(input.channelId);
@@ -197,6 +219,7 @@ export async function executeBuyerTool(
 
   if (toolId === 'get_size_table') {
     const table = await getSizeTable(input.env, brand);
+    logBuyerToolCall(input.name, input.channelId, true);
     return { content: table.content };
   }
 
@@ -204,7 +227,7 @@ export async function executeBuyerTool(
     const args = parseArgs(input.argsJson);
     const validated = validateSearchCatalogArgs(args);
     if (!validated.ok) {
-      return deny(validated.reason, {
+      return deny(input, validated.reason, {
         tool: input.name,
         dropped: validated.droppedKeys,
       });
@@ -234,6 +257,7 @@ export async function executeBuyerTool(
         filterIgnored: meta?.filterIgnored ?? [],
       }),
     );
+    logBuyerToolCall(input.name, input.channelId, true);
     return {
       content: JSON.stringify({
         products: formatted.descriptive,
@@ -250,6 +274,7 @@ export async function executeBuyerTool(
     const context = typeof args.context === 'string' ? args.context : undefined;
     const result = await searchShopPoliciesViaMcp(input.env, query, { context });
     if (!result.ok) {
+      logBuyerToolCall(input.name, input.channelId, false);
       return { content: KB_POLICY_UNAVAILABLE_REPLY };
     }
     await recordPolicyTouchIfIdentified(input.env, {
@@ -258,6 +283,7 @@ export async function executeBuyerTool(
       sources: result.sources.map((s) => s.url || s.title),
       contentHash: result.contentHash,
     });
+    logBuyerToolCall(input.name, input.channelId, true);
     return {
       content: JSON.stringify({
         answer: result.answer,
@@ -268,37 +294,37 @@ export async function executeBuyerTool(
 
   // --- cart tools ---
   if (toolId !== 'ucp_cart') {
-    return deny('unsupported_tool', { tool: input.name });
+    return deny(input, 'unsupported_tool', { tool: input.name });
   }
 
   let args = stripModelCartIds(parseArgs(input.argsJson));
 
   if (input.name === 'update_cart') {
     if (Array.isArray(args.line_items) || (args.cart && typeof args.cart === 'object')) {
-      return deny('full_cart_replace_forbidden', { tool: input.name });
+      return deny(input, 'full_cart_replace_forbidden', { tool: input.name });
     }
   }
 
   args = filterCartToolArgs(input.name, args);
 
   if (cartArgsEmptyAfterFilter(input.name, args)) {
-    return deny('empty_after_filter', { tool: input.name });
+    return deny(input, 'empty_after_filter', { tool: input.name });
   }
 
   if (input.name === 'get_cart' || input.name === 'update_cart' || input.name === 'cancel_cart') {
     if (!input.sessionCartId?.trim()) {
-      return deny('no_session_cart', { tool: input.name });
+      return deny(input, 'no_session_cart', { tool: input.name });
     }
   }
 
   if (input.name === 'create_cart' || input.name === 'update_cart') {
     const collected = collectVariantIdsFromArgs(args);
     if (!collected.ok) {
-      return deny(collected.reason, { tool: input.name });
+      return deny(input, collected.reason, { tool: input.name });
     }
     for (const vid of collected.ids) {
       if (!input.allowedVariantIds.has(vid)) {
-        return deny('variant_not_in_channel', { tool: input.name, variant_id: vid });
+        return deny(input, 'variant_not_in_channel', { tool: input.name, variant_id: vid });
       }
     }
   }
@@ -321,8 +347,10 @@ export async function executeBuyerTool(
           retry_after: retryAfter ?? null,
         }),
       );
+      logBuyerToolCall(input.name, input.channelId, false);
       return { content: CART_UNAVAILABLE };
     }
+    logBuyerToolCall(input.name, input.channelId, false);
     return {
       content: JSON.stringify({
         error: { code: mcpOut.error.code },
@@ -336,10 +364,20 @@ export async function executeBuyerTool(
 
   if (input.name === 'create_cart') {
     const newId = cartIdFromMcpResult(result);
+    let persisted = false;
     if (newId && input.sessionId?.trim()) {
       await writeSessionCartId(input.env, input.sessionId, newId);
       nextSessionCartId = newId;
+      persisted = true;
     }
+    console.log(
+      JSON.stringify({
+        tag: 'buyer.cart_created',
+        brand,
+        has_id: Boolean(newId),
+        persisted,
+      }),
+    );
   }
 
   if (input.name === 'cancel_cart' && input.sessionId?.trim()) {
@@ -347,6 +385,7 @@ export async function executeBuyerTool(
     nextSessionCartId = null;
   }
 
+  logBuyerToolCall(input.name, input.channelId, true);
   return {
     content: JSON.stringify(result ?? {}),
     sessionCartId: nextSessionCartId,

@@ -84,7 +84,7 @@ const UPDATE_CART: GroqToolCallDefinition = {
   function: {
     name: 'update_cart',
     description:
-      'Zmienia koszyk sesji przez łatkę (add_items / update_items / remove_line_ids). Nie podawaj pełnej listy line_items ani id koszyka — serwer scala z koszykiem sesji.',
+      'Zmienia koszyk sesji przez łatkę (add_items / update_items / remove_line_ids). Zmiana ilości lub usunięcie pozycji = update_cart z id linii z sekcji DANE TECHNICZNE koszyka, nie create_cart. Nie podawaj pełnej listy line_items ani id koszyka — serwer scala z koszykiem sesji.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -138,7 +138,7 @@ const SEARCH_POLICIES: GroqToolCallDefinition = {
   function: {
     name: 'search_shop_policies_and_faqs',
     description:
-      'Polityki sklepu, zwroty, wysyłka, kontakt, FAQ. Cytuj odpowiedź bazy wiedzy; nie dopowiadaj.',
+      'Obowiązkowe przy zwrotach, dostawie, reklamacjach, płatnościach, regulaminie i kontakcie. Odpowiedź wyłącznie z pola answer i sources — nie dopowiadaj kwot ani terminów.',
     parameters: {
       type: 'object',
       additionalProperties: false,

@@ -410,6 +410,13 @@ describe('buyer compose turn — tools in system prompt', () => {
 
     expect(reply).toBe('final fallback reply');
     expect(groqSpy).toHaveBeenCalledTimes(1);
+    const fallbackMessages = groqSpy.mock.calls[0]?.[0] ?? [];
+    expect(fallbackMessages.some((m) => m.role === 'tool')).toBe(false);
+    expect(
+      fallbackMessages.some(
+        (m) => m.role === 'assistant' && (m as {tool_calls?: unknown}).tool_calls,
+      ),
+    ).toBe(false);
     expect(groqSpy.mock.calls[0]?.[2]).toMatchObject({
       timingLabel: 'buyer_tool_loop_final_fallback',
       sessionId: 'sess-final-fallback',

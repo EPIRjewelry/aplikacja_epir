@@ -50,8 +50,19 @@ export function cartSummaryBlock(payload: unknown): string {
     descriptive.push(
       `- ${title}, ilość: ${qty}${variant ? `, wariant: ${variant}` : ''}`,
     );
-    const vid = variantIdOf(rec);
-    if (vid) technical.push(`  ${title} → ${vid}`);
+    const vid = variantIdOf(rec) || line.item?.id || '';
+    const lineId =
+      line.lineId ||
+      (typeof rec.id === 'string' && rec.id.trim() && !String(rec.id).includes('ProductVariant')
+        ? rec.id.trim()
+        : undefined);
+    if (lineId && vid) {
+      technical.push(`  ${title} → linia: ${lineId}, wariant: ${vid}`);
+    } else if (vid) {
+      technical.push(`  ${title} → wariant: ${vid}`);
+    } else if (lineId) {
+      technical.push(`  ${title} → linia: ${lineId}`);
+    }
   }
   return [descriptive.join('\n'), technical.length > 1 ? technical.join('\n') : '']
     .filter(Boolean)

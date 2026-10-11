@@ -97,6 +97,16 @@ function kazkaUrlTemplate(): string {
   );
 }
 
+function zareczynyUrlTemplate(): string {
+  return 'https://zareczyny.epirbizuteria.pl/products/{handle}';
+}
+
+function urlTemplateForChannel(channel: BuyerChannelId): string | undefined {
+  if (channel === 'kazka-hydrogen') return kazkaUrlTemplate();
+  if (channel === 'epir-zareczyny') return zareczynyUrlTemplate();
+  return undefined;
+}
+
 /** Nazwa kategorii (shopify.gemstone-type / jewelry-material): tylko name/title/label. */
 function metaobjectCategoryName(node: unknown): string | null {
   if (!isRecord(node)) return null;
@@ -413,7 +423,7 @@ export async function fetchProductFactsLive(
   if (!productIds.length) return [];
 
   const fetchedAt = new Date().toISOString();
-  const urlTemplate = channel === 'kazka-hydrogen' ? kazkaUrlTemplate() : undefined;
+  const urlTemplate = urlTemplateForChannel(channel);
   const byId = new Map<string, ProductFacts>();
 
   for (let i = 0; i < productIds.length; i += PAGE_SIZE) {
@@ -480,7 +490,7 @@ async function productNodeToFacts(
   options?: FetchStorefrontLiveOptions,
 ): Promise<ProductFacts | null> {
   const fetchedAt = new Date().toISOString();
-  const urlTemplate = channel === 'kazka-hydrogen' ? kazkaUrlTemplate() : undefined;
+  const urlTemplate = urlTemplateForChannel(channel);
   const productId = typeof raw.id === 'string' ? raw.id : '';
   if (!productId) return null;
 
