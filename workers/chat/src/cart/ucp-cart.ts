@@ -139,7 +139,10 @@ function addItemsOf(source: Record<string, unknown>): UcpCartLine[] {
 
 /**
  * Składa patch (add/update/remove) na istniejące pozycje.
- * Wynik to pełna lista do update_cart — czego nie ma, Shopify usuwa.
+ * Wynik to pełna lista do update_cart — czego nie ma, Shopify usuwa (UCP full replacement).
+ * update_items zmienia tylko quantity; zamiana wariantu = remove_line_ids + add_items w jednej łatce.
+ * @see https://shopify.dev/docs/agents/carts-and-checkout/cart-mcp
+ * @see https://ucp.dev/2026-08-25/specification/shopping/cart/
  */
 export function applyCartPatch(existing: ExistingLine[], source: Record<string, unknown>): UcpCartLine[] {
   let next = existing.map((line) => ({ ...line, item: { id: line.item.id } }));

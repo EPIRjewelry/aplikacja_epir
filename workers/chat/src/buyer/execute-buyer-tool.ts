@@ -11,6 +11,7 @@ import {
   variantIdOf,
 } from '../cart/ucp-cart';
 import {
+  formatCartErrorFromMessages,
   formatCartNoticeFromMessages,
   formatCartTotalsNote,
 } from './cart-continue-reply';
@@ -38,6 +39,13 @@ import { CATALOG_SEARCH_SERVER_LIMIT } from '../facts/catalog-ucp-args';
 import { formatMatchBlock, CATALOG_SEARCH_HEADER } from '../facts/format-product-block';
 import { getCatalogRepository } from '../facts';
 import type { CatalogFilters } from '../facts/types';
+import {
+  collectCartAddsWithOptions,
+  mergeCatalogMatchesIntoIndex,
+  stripSelectedOptionsFromCartArgs,
+  validateCartAddsAgainstIndex,
+  type VariantOptionIndex,
+} from './variant-option-gate';
 
 const CART_UNAVAILABLE =
   'Koszyk jest chwilowo niedostępny. Spróbuj ponownie za chwilę lub skorzystaj z koszyka na stronie sklepu.';
@@ -51,6 +59,7 @@ export type ExecuteBuyerToolInput = {
   sessionId?: string;
   sessionCartId: string | null;
   allowedVariantIds: Set<string>;
+  variantOptionIndex?: VariantOptionIndex;
   shopifyCustomerId?: string | null;
   request?: Request;
 };
@@ -65,6 +74,10 @@ export type ExecuteBuyerToolResult = {
   continueUrl?: string;
   cartNotices?: string[];
   cartTotalsNote?: string | null;
+  /** Surowy wynik koszyka po udanej mutacji (do deterministycznego potwierdzenia). */
+  cartMutationPayload?: unknown;
+  /** messages type=error — treść dla klienta, bez continue_url. */
+  cartClientErrors?: string[];
 };
 
 function logBuyerToolCall(tool: string, channel: BuyerChannelId, ok: boolean): void {
@@ -319,6 +332,9 @@ export async function executeBuyerTool(
         filterIgnored: meta?.filterIgnored ?? [],
       }),
     );
+    if (input.variantOptionIndex) {
+      mergeCatalogMatchesIntoIndex(input.variantOptionIndex, matches);
+    }
     logBuyerToolCall(input.name, input.channelId, true);
     return {
       content: JSON.stringify({
@@ -389,6 +405,33 @@ export async function executeBuyerTool(
         return deny(input, 'variant_not_in_channel', { tool: input.name, variant_id: vid });
       }
     }
+    const adds = collectCartAddsWithOptions(input.name, args);
+    const gateFail = input.variantOptionIndex
+      ? validateCartAddsAgainstIndex(input.variantOptionIndex, adds)
+      : null;
+    if (gateFail) {
+      logBuyerToolCall(input.name, input.channelId, false);
+      console.log(
+        JSON.stringify({
+          tag: 'buyer.variant_option_gate',
+          status: gateFail.status,
+          variant_id: gateFail.variant_id,
+        }),
+      );
+      const notice =
+        gateFail.status === 'needs_option'
+          ? 'Wybierz wariant (np. rozmiar) zanim dodamy produkt do koszyka.'
+          : gateFail.status === 'variant_options_unknown'
+            ? 'Sprawdź produkt w katalogu i podaj wariant.'
+            : 'Wybrany wariant nie odpowiada podanej opcji — popraw wybór.';
+      return {
+        content: JSON.stringify({
+          ...gateFail,
+          notice,
+        }),
+      };
+    }
+    args = stripSelectedOptionsFromCartArgs(args);
   }
 
   // update_cart: merge łatki z get_cart (line_items + attribution/context/buyer).
@@ -486,6 +529,44 @@ export async function executeBuyerTool(
         contentTextKeys: shape.contentTextKeys,
       }),
     );
+
+    // UCP messages type=error: treść klientowi, bez continue_url.
+    // not_found → wyczyść koszyk sesji.
+    // @see https://shopify.dev/docs/agents/carts-and-checkout/cart-mcp
+    // @see https://ucp.dev/2026-08-25/specification/shopping/cart/
+    if (cartMessagesHaveError(result) || isCartNotFoundResult(result)) {
+      const normalized = normalizeCartPayloadForParsing(result);
+      const cart = extractCartObject(normalized);
+      const errors = formatCartErrorFromMessages(cart?.messages);
+      const clientErrors =
+        errors.length > 0
+          ? errors
+          : isCartNotFoundResult(result)
+            ? [CART_NOT_FOUND_CLIENT_MESSAGE]
+            : ['Nie udało się zaktualizować koszyka. Proszę spróbować ponownie.'];
+      if (isCartNotFoundResult(result) && input.sessionId?.trim()) {
+        await writeSessionCartId(input.env, input.sessionId, '');
+        nextSessionCartId = null;
+        console.log(
+          JSON.stringify({
+            tag: 'buyer.cart_not_found',
+            tool: input.name,
+            via: 'messages_not_found',
+            cleared_session: true,
+          }),
+        );
+      }
+      logBuyerToolCall(input.name, input.channelId, false);
+      return {
+        content: JSON.stringify({
+          status: 'cart_error',
+          messages: clientErrors,
+          notice: clientErrors.join('\n\n'),
+        }),
+        sessionCartId: nextSessionCartId,
+        cartClientErrors: clientErrors,
+      };
+    }
   }
 
   if (input.name === 'create_cart') {
@@ -537,6 +618,7 @@ export async function executeBuyerTool(
     content: JSON.stringify(result ?? {}),
     sessionCartId: nextSessionCartId,
     ...(cartMutationSucceeded ? {cartMutationSucceeded: true} : {}),
+    ...(cartMutationSucceeded ? {cartMutationPayload: result} : {}),
     ...(continueUrl ? {continueUrl} : {}),
     ...(cartNotices ? {cartNotices} : {}),
     ...(cartTotalsNote ? {cartTotalsNote} : {}),

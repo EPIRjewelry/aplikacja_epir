@@ -19,6 +19,10 @@ import {
 } from '../src/buyer/execute-buyer-tool';
 import {urlsFromToolResult} from '../src/buyer/urls-from-tool-result';
 import {
+  buildCartContinueReply,
+  mergeModelTextWithCartBlock,
+} from '../src/buyer/cart-continue-reply';
+import {
   applyCartMutationHistoryOverride,
   collectAllowedUrls,
   foreignHostsInReply,
@@ -280,12 +284,52 @@ describe('isSuccessfulCartMutationResult / cartMutationSucceeded', () => {
       allowedVariantIds: new Set(['gid://shopify/ProductVariant/1']),
     });
     expect(updated.cartMutationSucceeded).toBeFalsy();
+    expect(updated.cartClientErrors).toContain('fail');
+    expect(updated.continueUrl).toBeUndefined();
     expect(
       applyCartMutationHistoryOverride(
         REPLY_LINK_REJECTED_CATALOG_MESSAGE,
         Boolean(updated.cartMutationSucceeded),
       ),
     ).toBe(REPLY_LINK_REJECTED_CATALOG_MESSAGE);
+  });
+
+  it('create_cart messages error not_found clears session cart and returns client errors', async () => {
+    const writeSpy = vi.spyOn(sessionCart, 'writeSessionCartId').mockResolvedValue();
+    vi.spyOn(mcpServer, 'callMcpToolDirect').mockResolvedValue({
+      result: {
+        messages: [
+          {
+            type: 'error',
+            code: 'not_found',
+            content: 'Koszyk nie istnieje',
+          },
+        ],
+      },
+    });
+    const created = await executeBuyerTool({
+      env: {} as import('../src/config/bindings').Env,
+      channelId: 'epir-online-store',
+      readyTools: ['ucp_cart'],
+      name: 'create_cart',
+      argsJson: JSON.stringify({
+        line_items: [{quantity: 1, item: {id: 'gid://shopify/ProductVariant/1'}}],
+      }),
+      sessionId: 'sess-not-found',
+      sessionCartId: 'gid://shopify/Cart/stale',
+      allowedVariantIds: new Set(['gid://shopify/ProductVariant/1']),
+    });
+    expect(created.cartMutationSucceeded).toBeFalsy();
+    expect(created.continueUrl).toBeUndefined();
+    expect(created.cartClientErrors?.some((e) => /nie istnieje|koszyka/i.test(e))).toBe(
+      true,
+    );
+    expect(writeSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      'sess-not-found',
+      '',
+    );
+    expect(created.sessionCartId).toBeNull();
   });
 });
 
@@ -387,10 +431,10 @@ describe('compose: sessionCartId without mutation keeps catalog stub (P2-b)', ()
       {sessionId: 'sess-prior-cart'},
     );
 
-    expect(reply).toBe(REPLY_LINK_REJECTED_CATALOG_MESSAGE);
+    expect(reply).toBe('Zobacz X.');
     expect(reply).not.toBe(REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE);
     const assistantAppend = appendSpy.mock.calls.find((c) => c[2] === 'assistant');
-    expect(assistantAppend?.[3]).toBe(REPLY_LINK_REJECTED_CATALOG_MESSAGE);
+    expect(assistantAppend?.[3]).toBe('Zobacz X.');
   });
 });
 
@@ -419,10 +463,13 @@ describe('compose: successful create_cart does not leave catalog stub for next t
 
     vi.spyOn(executeBuyerToolMod, 'executeBuyerTool').mockImplementation(async (input) => {
       if (input.name === 'create_cart') {
+        const presented = presentCartForChat(FLAT_MCP_RESULT);
         return {
-          content: JSON.stringify(presentCartForChat(FLAT_MCP_RESULT)),
+          content: JSON.stringify(presented),
           sessionCartId: FLAT_UCP_STRUCTURED_CONTENT.id,
           cartMutationSucceeded: true,
+          continueUrl: CONTINUE,
+          cartMutationPayload: presented,
         };
       }
       return {content: JSON.stringify({products: []})};
@@ -463,12 +510,23 @@ describe('compose: successful create_cart does not leave catalog stub for next t
       req,
       {sessionId: 'sess-p2c'},
     );
-    expect(replyA).toBe(REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE);
+    const expectedCartReply = buildCartContinueReply({
+      continueUrl: CONTINUE,
+      cartPayload: presentCartForChat(FLAT_MCP_RESULT),
+    });
+    expect(replyA).toBe(
+      mergeModelTextWithCartBlock('Koszyk: link', expectedCartReply, CONTINUE),
+    );
     expect(historyStore.some((h) => h.content === REPLY_LINK_REJECTED_CATALOG_MESSAGE)).toBe(
       false,
     );
     expect(
-      historyStore.some((h) => h.content === REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE),
+      historyStore.some(
+        (h) =>
+          h.content.includes(CONTINUE) &&
+          h.content.includes('Przejdź do koszyka') &&
+          h.content.includes('Ring'),
+      ),
     ).toBe(true);
 
     // Turn B: no cart mutation; history from A must not be catalog stub
@@ -508,7 +566,8 @@ describe('compose: successful create_cart does not leave catalog stub for next t
       priorAssistant.some(
         (m) =>
           typeof m.content === 'string' &&
-          m.content === REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE,
+          m.content.includes(CONTINUE) &&
+          m.content.includes('Przejdź do koszyka'),
       ),
     ).toBe(true);
   });

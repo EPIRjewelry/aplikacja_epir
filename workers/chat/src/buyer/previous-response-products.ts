@@ -2,6 +2,7 @@ import type {Env} from '../config/bindings';
 import {fetchProductFactsByHandle} from '../facts';
 import {formatProductsBlock} from '../facts/format-product-block';
 import type {BuyerChannelId} from './channel-switch';
+import type {ProductFacts} from '../facts/types';
 import type {BuyerHistoryEntry} from './session-history';
 
 export const PREV_RESPONSE_HEADER = '[PRODUKTY Z POPRZEDNIEJ ODPOWIEDZI]';
@@ -62,33 +63,43 @@ export async function buildPreviousResponseProductsBlock(
   catalogChannel: 'epir-online-store' | 'kazka-hydrogen',
   history: BuyerHistoryEntry[],
   request: Request,
-): Promise<{block: string; variantIds: string[]; urls: string[]}> {
+): Promise<{
+  block: string;
+  variantIds: string[];
+  urls: string[];
+  products: ProductFacts[];
+}> {
   const lastAssistant = [...history].reverse().find((h) => h.role === 'assistant');
   if (!lastAssistant?.content) {
-    return {block: '', variantIds: [], urls: []};
+    return {block: '', variantIds: [], urls: [], products: []};
   }
   const handles = extractProductHandlesFromAssistantText(lastAssistant.content, channelId);
-  if (!handles.length) return {block: '', variantIds: [], urls: [] };
+  if (!handles.length) return {block: '', variantIds: [], urls: [], products: [] };
 
-  const products = [];
+  const products: ProductFacts[] = [];
   for (const handle of handles) {
     try {
       const product = await fetchProductFactsByHandle(env, catalogChannel, handle, {
         clientRequest: request,
         urlChannel: channelId,
       });
-      if (product) products.push({product});
+      if (product) products.push(product);
     } catch {
       /* skip */
     }
   }
-  if (!products.length) return {block: '', variantIds: [], urls: [] };
+  if (!products.length) return {block: '', variantIds: [], urls: [], products: [] };
 
-  const formatted = formatProductsBlock(PREV_RESPONSE_HEADER, products, handles.length);
-  const urls = products.map((p) => p.product.url).filter(Boolean);
+  const formatted = formatProductsBlock(
+    PREV_RESPONSE_HEADER,
+    products.map((product) => ({product})),
+    handles.length,
+  );
+  const urls = products.map((p) => p.url).filter(Boolean);
   return {
     block: [formatted.descriptive, formatted.technical].filter(Boolean).join('\n\n'),
     variantIds: formatted.variantIds,
     urls,
+    products,
   };
 }

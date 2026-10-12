@@ -29,9 +29,15 @@ import {
   collectUrlsFromFactsBlocks,
 } from './previous-response-products';
 import {
+  createVariantOptionIndex,
+  mergeProductFactsIntoIndex,
+  type VariantOptionIndex,
+} from './variant-option-gate';
+import {
   applyCartMutationHistoryOverride,
   collectAllowedUrls,
   guardBuyerReplyLinks,
+  sanitizeMarkdownLinks,
   REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE,
   REPLY_LINK_REJECTED_CATALOG_MESSAGE,
   REPLY_LINK_REJECTED_NEUTRAL_MESSAGE,
@@ -51,8 +57,10 @@ import {
 } from './tool-readiness';
 import { detectForcedCartTool } from './cart-intent';
 import {
-  appendExactContinueUrlIfMissing,
   buildCartContinueReply,
+  buildCartErrorReply,
+  mergeModelTextWithCartBlock,
+  stripContinueUrlFromModelText,
 } from './cart-continue-reply';
 import {
   ASK_VARIANT_BEFORE_CART_MESSAGE,
@@ -309,8 +317,10 @@ const BUYER_TOOL_BLURBS: Partial<Record<BuyerToolId, string>> = {
   ucp_cart: [
     '• create_cart / get_cart / update_cart / cancel_cart — koszyk sesji klienta.',
     '  Koszyk dodawaj tylko po wyraźnej zgodzie. Wariant = id z sekcji DANE TECHNICZNE wyniku search_catalog lub [PRODUKT NA STRONIE] (nie wymyślaj).',
-    '  Gdy produkt ma więcej niż jeden wariant — zapytaj o wariant (rozmiar/kamień/metal) przed create_cart; nigdy „od [min]”.',
+    '  Gdy produkt ma więcej niż jeden wariant — zapytaj o wariant (rozmiar/kamień/metal) przed create_cart; podaj selected_options z wartościami klienta; nigdy „od [min]”.',
+    '  Zmiana rozmiaru/wariantu: update_cart z remove_line_ids starej linii + add_items nowego wariantu (selected_options); update_items tylko ilość.',
     '  update_cart: tylko łatka (add_items / update_items / remove_line_ids). Nie podawaj id koszyka ani pełnej listy line_items.',
+    '  Po udanej mutacji koszyka nie podawaj ilości, rozmiaru ani ceny pozycji — serwer dołączy blok „Stan koszyka (dane sklepu)”.',
     '  Link do klienta wyłącznie continue_url z ostatniego wyniku narzędzia — jeden link, niczego nie sklejaj.',
   ].join('\n'),
   search_shop_policies_and_faqs: [
@@ -430,17 +440,23 @@ type FinalizeReplyContext = {
   cartContinueUrl?: string | null;
   cartNotices?: string[];
   cartTotalsNote?: string | null;
+  cartMutationPayload?: unknown;
+  variantOptionIndex?: VariantOptionIndex;
+  /** messages type=error z create/update — treść klientowi, bez continue_url. */
+  cartClientErrors?: string[];
 };
 
 function cartDeterministicReply(ctx: FinalizeReplyContext): string | null {
   if (!ctx.cartMutatedSuccessfullyThisTurn || !ctx.cartContinueUrl?.trim()) {
     return null;
   }
-  return buildCartContinueReply(
-    ctx.cartContinueUrl.trim(),
-    ctx.cartNotices ?? [],
-    ctx.cartTotalsNote,
-  );
+  return buildCartContinueReply({
+    continueUrl: ctx.cartContinueUrl.trim(),
+    notices: ctx.cartNotices ?? [],
+    totalsNote: ctx.cartTotalsNote,
+    cartPayload: ctx.cartMutationPayload,
+    catalogIndex: ctx.variantOptionIndex,
+  });
 }
 
 function scrubToolAsTextOrFallback(
@@ -466,6 +482,7 @@ async function finalizeBuyerReply(
 ): Promise<string> {
   let scrubbed = scrubGidFromClientReply(reply);
   scrubbed = scrubToolAsTextOrFallback(scrubbed, ctx);
+  scrubbed = sanitizeMarkdownLinks(scrubbed, ctx.allowedUrls);
 
   const guardedRaw = await guardBuyerReplyLinks(env, scrubbed, ctx.allowedUrls, {
     sessionId,
@@ -485,17 +502,32 @@ async function finalizeBuyerReply(
     guarded === REPLY_LINK_REJECTED_NEUTRAL_MESSAGE ||
     guarded === REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE;
 
-  if (ctx.cartMutatedSuccessfullyThisTurn && rejectionOrEmpty) {
-    const deterministic = cartDeterministicReply(ctx);
-    if (deterministic) guarded = deterministic;
+  if (ctx.cartClientErrors?.length) {
+    const errBlock = buildCartErrorReply(ctx.cartClientErrors);
+    const continueUrl = ctx.cartContinueUrl?.trim() ?? '';
+    const withoutCartLinks = continueUrl
+      ? stripContinueUrlFromModelText(guarded, continueUrl)
+      : guarded;
+    if (rejectionOrEmpty || !withoutCartLinks.trim()) {
+      guarded = errBlock;
+    } else {
+      guarded = `${withoutCartLinks.trim()}\n\n${errBlock}`;
+    }
   } else if (ctx.cartMutatedSuccessfullyThisTurn) {
-    // Dołącz exact continue_url z Shopify, jeśli model go pominął (bez UTM).
-    guarded = appendExactContinueUrlIfMissing(
-      guarded,
-      ctx.cartContinueUrl,
-      ctx.cartNotices ?? [],
-      ctx.cartTotalsNote,
-    );
+    const deterministic = cartDeterministicReply(ctx);
+    if (deterministic) {
+      // Zawsze: tekst modelu (bez linków koszyka) + blok „Stan koszyka (dane sklepu)”.
+      // https://ucp.dev/2026-08-25/specification/shopping/cart/
+      if (rejectionOrEmpty) {
+        guarded = deterministic;
+      } else {
+        guarded = mergeModelTextWithCartBlock(
+          guarded,
+          deterministic,
+          ctx.cartContinueUrl!.trim(),
+        );
+      }
+    }
   }
 
   if (sessionId?.trim()) {
@@ -543,6 +575,7 @@ export async function composeBuyerAssistantReply(
   const contextBlocks: string[] = [];
   const allowedVariantIds = new Set<string>();
   const allowedUrlSeeds: string[] = [];
+  const variantOptionIndex = createVariantOptionIndex();
 
   const prevProducts = await buildPreviousResponseProductsBlock(
     env,
@@ -555,6 +588,7 @@ export async function composeBuyerAssistantReply(
     contextBlocks.push(prevProducts.block);
     for (const id of prevProducts.variantIds) allowedVariantIds.add(id);
     allowedUrlSeeds.push(...prevProducts.urls);
+    for (const p of prevProducts.products) mergeProductFactsIntoIndex(variantOptionIndex, p);
   }
 
   if (productHandle) {
@@ -569,6 +603,7 @@ export async function composeBuyerAssistantReply(
           [formatted.descriptive, formatted.technical].filter(Boolean).join('\n\n'),
         );
         for (const id of formatted.variantIds) allowedVariantIds.add(id);
+        mergeProductFactsIntoIndex(variantOptionIndex, product);
       }
     } catch (e) {
       console.warn('[buyer.compose_turn] page product skipped', e);
@@ -621,6 +656,7 @@ export async function composeBuyerAssistantReply(
     systemBase: systemParts,
     hadSearchCatalogThisTurn: false,
     cartMutatedSuccessfullyThisTurn: false,
+    variantOptionIndex,
   };
 
   const messages: GroqMessage[] = [
@@ -650,6 +686,7 @@ export async function composeBuyerAssistantReply(
       sessionId,
       sessionCartId,
       allowedVariantIds,
+      variantOptionIndex,
       shopifyCustomerId: null,
       request,
     });
@@ -661,6 +698,9 @@ export async function composeBuyerAssistantReply(
     }
     if (call.name === 'search_catalog') {
       finalizeCtx.hadSearchCatalogThisTurn = true;
+    }
+    if (executed.cartClientErrors?.length) {
+      finalizeCtx.cartClientErrors = executed.cartClientErrors;
     }
     if (executed.cartMutationSucceeded) {
       finalizeCtx.cartMutatedSuccessfullyThisTurn = true;
@@ -675,6 +715,9 @@ export async function composeBuyerAssistantReply(
       }
       if (executed.cartTotalsNote) {
         finalizeCtx.cartTotalsNote = executed.cartTotalsNote;
+      }
+      if (executed.cartMutationPayload !== undefined) {
+        finalizeCtx.cartMutationPayload = executed.cartMutationPayload;
       }
     }
     for (const url of urlsFromToolResult(call.name, executed.content)) {
