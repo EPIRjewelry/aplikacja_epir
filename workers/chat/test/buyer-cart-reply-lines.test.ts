@@ -148,12 +148,30 @@ describe('sanitizeMarkdownLinks placeholders', () => {
     expect(out).toBe('x');
     expect(out).not.toContain('TOKEN');
   });
+
+  it('rejects different cart token or key than allowlisted continue_url', () => {
+    const allowed = collectAllowedUrls([
+      'https://shop.myshopify.com/cart/c/GOODTOKEN?key=abc',
+    ]);
+    const otherToken = sanitizeMarkdownLinks(
+      '[koszyk](https://shop.myshopify.com/cart/c/OTHERTOKEN?key=abc)',
+      allowed,
+    );
+    expect(otherToken).toBe('koszyk');
+    expect(otherToken).not.toContain('OTHERTOKEN');
+    const otherKey = sanitizeMarkdownLinks(
+      '[koszyk](https://shop.myshopify.com/cart/c/GOODTOKEN?key=evil)',
+      allowed,
+    );
+    expect(otherKey).toBe('koszyk');
+    expect(otherKey).not.toContain('key=evil');
+  });
 });
 
 describe('disclosure presentation near line item', () => {
   const url = 'https://shop.myshopify.com/cart/c/TOKEN';
 
-  it('shows full disclosure text under the path-referenced line', () => {
+  it('shows full disclosure text under the path-referenced line ($.line_items[0])', () => {
     const longDisclosure =
       'Ilość tej pozycji została dostosowana do dostępnego stanu magazynowego — pełny komunikat bez skracania.';
     const reply = buildCartContinueReply({
@@ -183,7 +201,7 @@ describe('disclosure presentation near line item', () => {
           {
             type: 'warning',
             presentation: 'disclosure',
-            path: '/line_items/0',
+            path: '$.line_items[0]',
             content: longDisclosure,
           },
           {
@@ -194,6 +212,7 @@ describe('disclosure presentation near line item', () => {
         ],
       },
     });
+    expect(reply).toContain('Stan koszyka (dane sklepu)');
     expect(reply).toContain('Pierścionek Aurora');
     expect(reply).toContain(longDisclosure);
     const auroraIdx = reply.indexOf('Pierścionek Aurora');

@@ -56,7 +56,13 @@ export function resolveMessageLineIndex(
           : '';
   const path = pathRaw.trim();
   if (path) {
-    const idxMatch = path.match(/line_items\/(\d+)/i) || path.match(/\/lines\/(\d+)/i);
+    // UCP path: $.line_items[0], /line_items/0, line_items[0]
+    // @see https://ucp.dev/2026-08-25/specification/shopping/cart/
+    const idxMatch =
+      path.match(/\$\.?line_items\[(\d+)\]/i) ||
+      path.match(/line_items\[(\d+)\]/i) ||
+      path.match(/line_items\/(\d+)/i) ||
+      path.match(/\/lines\/(\d+)/i);
     if (idxMatch?.[1] != null) {
       const idx = Number(idxMatch[1]);
       if (Number.isInteger(idx) && idx >= 0 && idx < lineItems.length) return idx;
@@ -78,10 +84,12 @@ export function resolveMessageLineIndex(
 }
 
 export type PartitionedCartMessages = {
-  /** Pełne teksty disclosure przy indeksie pozycji. */
+  /** Pełne teksty disclosure przy indeksie pozycji (notice pod linią). */
   disclosuresByLineIndex: Map<number, string[]>;
-  /** warning/info bez disclosure liniowego — pełne teksty. */
+  /** warning (MUST) oraz opcjonalnie info — pełne teksty. */
   globalNotices: string[];
+  /** messages type=error — pełne teksty (bez continue_url). */
+  errors: string[];
 };
 
 export function partitionCartMessages(
@@ -90,17 +98,22 @@ export function partitionCartMessages(
 ): PartitionedCartMessages {
   const disclosuresByLineIndex = new Map<number, string[]>();
   const globalNotices: string[] = [];
+  const errors: string[] = [];
   if (!Array.isArray(messages)) {
-    return { disclosuresByLineIndex, globalNotices };
+    return { disclosuresByLineIndex, globalNotices, errors };
   }
   for (const m of messages) {
     if (!m || typeof m !== 'object') continue;
     const rec = m as Record<string, unknown>;
-    const type = typeof rec.type === 'string' ? rec.type : '';
-    if (type !== 'warning' && type !== 'info') continue;
+    const type = typeof rec.type === 'string' ? rec.type.toLowerCase() : '';
     const text = cartMessageFullText(rec);
     if (!text) continue;
-    if (isDisclosurePresentation(rec)) {
+    if (type === 'error') {
+      errors.push(text);
+      continue;
+    }
+    if (type !== 'warning' && type !== 'info') continue;
+    if (type === 'warning' && isDisclosurePresentation(rec)) {
       const idx = resolveMessageLineIndex(rec, lineItems);
       if (idx !== null) {
         const list = disclosuresByLineIndex.get(idx) ?? [];
@@ -112,25 +125,49 @@ export function partitionCartMessages(
       globalNotices.push(text);
       continue;
     }
+    // warning MUST; info opcjonalnie — pokazujemy gdy treść jest.
     globalNotices.push(text);
   }
-  return { disclosuresByLineIndex, globalNotices };
+  return { disclosuresByLineIndex, globalNotices, errors };
 }
 
-/** Wszystkie warning/info — pełny tekst (bez skracania). Liniowe disclosure i tak
- * renderuje buildCartContinueReply przy pozycji i deduplikuje w globalnych notices. */
+/** Warning (MUST) + info (opcjonalnie). Error osobno — formatCartErrorFromMessages. */
 export function formatCartNoticeFromMessages(messages: unknown): string[] {
   if (!Array.isArray(messages)) return [];
   const out: string[] = [];
   for (const m of messages) {
     if (!m || typeof m !== 'object') continue;
     const rec = m as Record<string, unknown>;
-    const type = typeof rec.type === 'string' ? rec.type : '';
+    const type = typeof rec.type === 'string' ? rec.type.toLowerCase() : '';
     if (type !== 'warning' && type !== 'info') continue;
     const text = cartMessageFullText(rec);
     if (text) out.push(text);
   }
   return out;
+}
+
+/** Pełne teksty messages type=error — bez skracania. */
+export function formatCartErrorFromMessages(messages: unknown): string[] {
+  if (!Array.isArray(messages)) return [];
+  const out: string[] = [];
+  for (const m of messages) {
+    if (!m || typeof m !== 'object') continue;
+    const rec = m as Record<string, unknown>;
+    const type = typeof rec.type === 'string' ? rec.type.toLowerCase() : '';
+    if (type !== 'error') continue;
+    const text = cartMessageFullText(rec);
+    if (text) out.push(text);
+  }
+  return out;
+}
+
+/** Odpowiedź przy błędzie koszyka — treść dla klienta, bez linku continue_url. */
+export function buildCartErrorReply(errors: string[]): string {
+  const parts = errors.map((e) => e.trim()).filter(Boolean);
+  if (!parts.length) {
+    return 'Nie udało się zaktualizować koszyka. Proszę spróbować ponownie.';
+  }
+  return parts.join('\n\n');
 }
 
 function currencySuffix(currency: unknown): string {
@@ -284,55 +321,6 @@ export function stripContinueUrlFromModelText(text: string, continueUrl: string)
   return out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-/**
- * Heurystyka: model podaje ilość/rozmiar sprzeczne z wynikiem koszyka.
- */
-export function modelContradictsCartPayload(
-  modelText: string,
-  cartPayload: unknown,
-): boolean {
-  if (!modelText.trim() || cartPayload == null) return false;
-  const normalized = normalizeCartPayloadForParsing(cartPayload);
-  const cart = extractCartObject(normalized);
-  const rawLines = cart && Array.isArray(cart.line_items) ? cart.line_items : [];
-  const cartQtys = new Set<number>();
-  const cartOptionValues = new Set<string>();
-  for (const row of rawLines) {
-    if (!row || typeof row !== 'object') continue;
-    const rec = row as Record<string, unknown>;
-    if (typeof rec.quantity === 'number') cartQtys.add(rec.quantity);
-    const opts = optionsFromLine(rec);
-    if (opts) {
-      for (const part of opts.split(',')) {
-        const m = part.trim().match(/(\d+(?:[.,]\d+)?)\s*$/);
-        if (m?.[1]) cartOptionValues.add(m[1].replace(',', '.'));
-      }
-    }
-    const item = rec.item;
-    if (item && typeof item === 'object') {
-      const so = (item as { selected_options?: unknown }).selected_options;
-      if (Array.isArray(so)) {
-        for (const o of so) {
-          if (!o || typeof o !== 'object') continue;
-          const v = (o as { value?: unknown }).value;
-          if (typeof v === 'string' && /^\d/.test(v.trim())) {
-            cartOptionValues.add(v.trim());
-          }
-        }
-      }
-    }
-  }
-  for (const m of modelText.matchAll(/(\d+)\s*szt/gi)) {
-    const n = Number(m[1]);
-    if (Number.isFinite(n) && cartQtys.size > 0 && !cartQtys.has(n)) return true;
-  }
-  for (const m of modelText.matchAll(/rozmiar\s*[:=]?\s*(\d+(?:[.,]\d+)?)/gi)) {
-    const v = (m[1] || '').replace(',', '.');
-    if (v && cartOptionValues.size > 0 && !cartOptionValues.has(v)) return true;
-  }
-  return false;
-}
-
 export type BuildCartContinueReplyInput = {
   continueUrl: string;
   notices?: string[];
@@ -389,8 +377,8 @@ export function buildCartContinueReply(
         disclosuresByLineIndex,
       )
     : [];
+  parts.push('Stan koszyka (dane sklepu)');
   if (lineSummaries.length) {
-    parts.push('W koszyku:');
     parts.push(...lineSummaries);
   } else {
     parts.push('Koszyk jest zaktualizowany.');
@@ -417,20 +405,16 @@ export function buildCartContinueReply(
 }
 
 /**
- * Składa prefix modelu + deterministyczny blok po mutacji.
- * Usuwa zduplikowane linki continue_url; przy sprzeczności ilości/rozmiaru — tylko blok.
+ * Po udanej mutacji: tekst modelu (bez linków do koszyka) + blok „Stan koszyka (dane sklepu)”.
+ * Bez heurystyk sprzeczności ilości/rozmiaru.
  */
 export function mergeModelTextWithCartBlock(
   modelText: string,
   cartBlock: string,
   continueUrl: string,
-  cartPayload?: unknown,
 ): string {
   const stripped = stripContinueUrlFromModelText(modelText, continueUrl);
   if (!stripped.trim()) return cartBlock;
-  if (cartPayload != null && modelContradictsCartPayload(stripped, cartPayload)) {
-    return cartBlock;
-  }
   return `${stripped}\n\n${cartBlock}`;
 }
 

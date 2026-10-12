@@ -11,6 +11,7 @@ import {
   variantIdOf,
 } from '../cart/ucp-cart';
 import {
+  formatCartErrorFromMessages,
   formatCartNoticeFromMessages,
   formatCartTotalsNote,
 } from './cart-continue-reply';
@@ -75,6 +76,8 @@ export type ExecuteBuyerToolResult = {
   cartTotalsNote?: string | null;
   /** Surowy wynik koszyka po udanej mutacji (do deterministycznego potwierdzenia). */
   cartMutationPayload?: unknown;
+  /** messages type=error — treść dla klienta, bez continue_url. */
+  cartClientErrors?: string[];
 };
 
 function logBuyerToolCall(tool: string, channel: BuyerChannelId, ok: boolean): void {
@@ -526,6 +529,44 @@ export async function executeBuyerTool(
         contentTextKeys: shape.contentTextKeys,
       }),
     );
+
+    // UCP messages type=error: treść klientowi, bez continue_url.
+    // not_found → wyczyść koszyk sesji.
+    // @see https://shopify.dev/docs/agents/carts-and-checkout/cart-mcp
+    // @see https://ucp.dev/2026-08-25/specification/shopping/cart/
+    if (cartMessagesHaveError(result) || isCartNotFoundResult(result)) {
+      const normalized = normalizeCartPayloadForParsing(result);
+      const cart = extractCartObject(normalized);
+      const errors = formatCartErrorFromMessages(cart?.messages);
+      const clientErrors =
+        errors.length > 0
+          ? errors
+          : isCartNotFoundResult(result)
+            ? [CART_NOT_FOUND_CLIENT_MESSAGE]
+            : ['Nie udało się zaktualizować koszyka. Proszę spróbować ponownie.'];
+      if (isCartNotFoundResult(result) && input.sessionId?.trim()) {
+        await writeSessionCartId(input.env, input.sessionId, '');
+        nextSessionCartId = null;
+        console.log(
+          JSON.stringify({
+            tag: 'buyer.cart_not_found',
+            tool: input.name,
+            via: 'messages_not_found',
+            cleared_session: true,
+          }),
+        );
+      }
+      logBuyerToolCall(input.name, input.channelId, false);
+      return {
+        content: JSON.stringify({
+          status: 'cart_error',
+          messages: clientErrors,
+          notice: clientErrors.join('\n\n'),
+        }),
+        sessionCartId: nextSessionCartId,
+        cartClientErrors: clientErrors,
+      };
+    }
   }
 
   if (input.name === 'create_cart') {

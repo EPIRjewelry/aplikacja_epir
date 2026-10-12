@@ -284,12 +284,52 @@ describe('isSuccessfulCartMutationResult / cartMutationSucceeded', () => {
       allowedVariantIds: new Set(['gid://shopify/ProductVariant/1']),
     });
     expect(updated.cartMutationSucceeded).toBeFalsy();
+    expect(updated.cartClientErrors).toContain('fail');
+    expect(updated.continueUrl).toBeUndefined();
     expect(
       applyCartMutationHistoryOverride(
         REPLY_LINK_REJECTED_CATALOG_MESSAGE,
         Boolean(updated.cartMutationSucceeded),
       ),
     ).toBe(REPLY_LINK_REJECTED_CATALOG_MESSAGE);
+  });
+
+  it('create_cart messages error not_found clears session cart and returns client errors', async () => {
+    const writeSpy = vi.spyOn(sessionCart, 'writeSessionCartId').mockResolvedValue();
+    vi.spyOn(mcpServer, 'callMcpToolDirect').mockResolvedValue({
+      result: {
+        messages: [
+          {
+            type: 'error',
+            code: 'not_found',
+            content: 'Koszyk nie istnieje',
+          },
+        ],
+      },
+    });
+    const created = await executeBuyerTool({
+      env: {} as import('../src/config/bindings').Env,
+      channelId: 'epir-online-store',
+      readyTools: ['ucp_cart'],
+      name: 'create_cart',
+      argsJson: JSON.stringify({
+        line_items: [{quantity: 1, item: {id: 'gid://shopify/ProductVariant/1'}}],
+      }),
+      sessionId: 'sess-not-found',
+      sessionCartId: 'gid://shopify/Cart/stale',
+      allowedVariantIds: new Set(['gid://shopify/ProductVariant/1']),
+    });
+    expect(created.cartMutationSucceeded).toBeFalsy();
+    expect(created.continueUrl).toBeUndefined();
+    expect(created.cartClientErrors?.some((e) => /nie istnieje|koszyka/i.test(e))).toBe(
+      true,
+    );
+    expect(writeSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      'sess-not-found',
+      '',
+    );
+    expect(created.sessionCartId).toBeNull();
   });
 });
 

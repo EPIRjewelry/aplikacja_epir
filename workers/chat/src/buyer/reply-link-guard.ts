@@ -210,7 +210,7 @@ export async function guardBuyerReplyLinks(
     const norm = normalizeUrlForAllowlist(u);
     if (allowedUrls.has(norm)) return false;
     for (const allowed of allowedUrls) {
-      if (norm === allowed || norm.startsWith(`${allowed}/`)) return false;
+      if (norm === allowed) return false;
     }
     return true;
   });

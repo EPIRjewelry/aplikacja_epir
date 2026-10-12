@@ -3,12 +3,37 @@ import {
   collectAllowedUrls,
   foreignHostsInReply,
   guardBuyerReplyLinks,
+  sanitizeMarkdownLinks,
   REPLY_LINK_REJECTED_CATALOG_MESSAGE,
   REPLY_LINK_REJECTED_NEUTRAL_MESSAGE,
 } from '../src/buyer/reply-link-guard';
 import * as aiClient from '../src/ai-client';
 
 describe('reply-link-guard', () => {
+  it('rejects different /cart/c/ token or key than allowlisted URL', () => {
+    const allowed = collectAllowedUrls([
+      'https://shop.myshopify.com/cart/c/GOOD?key=abc',
+    ]);
+    expect(
+      sanitizeMarkdownLinks(
+        '[k](https://shop.myshopify.com/cart/c/BAD?key=abc)',
+        allowed,
+      ),
+    ).toBe('k');
+    expect(
+      foreignHostsInReply(
+        '[k](https://shop.myshopify.com/cart/c/BAD?key=abc)',
+        allowed,
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      sanitizeMarkdownLinks(
+        '[k](https://shop.myshopify.com/cart/c/GOOD?key=evil)',
+        allowed,
+      ),
+    ).toBe('k');
+  });
+
   it('passes reply when link host is on allowlist', () => {
     const allowed = collectAllowedUrls(['https://epirbizuteria.pl/products/ring-a']);
     const foreign = foreignHostsInReply(

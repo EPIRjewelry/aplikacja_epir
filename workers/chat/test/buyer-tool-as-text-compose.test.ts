@@ -233,7 +233,7 @@ describe('compose: tool_choice force rules after PR #167 follow-up', () => {
       totalsNote: 'Suma szacunkowa: 50 zł (ostateczna kwota w kasie).',
       cartPayload,
     });
-    expect(reply).toBe(mergeModelTextWithCartBlock('Koszyk jest gotowy.', block, continueUrl, cartPayload));
+    expect(reply).toBe(mergeModelTextWithCartBlock('Koszyk jest gotowy.', block, continueUrl));
     expect(reply).toContain('Pierścionek Aurora');
     expect(reply).toContain('2 szt.');
     expect(reply).toContain('Dostosowano ilość');
