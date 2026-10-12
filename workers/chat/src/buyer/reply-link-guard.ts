@@ -75,12 +75,37 @@ export type SanitizeMarkdownLinksOpts = {
   channelId?: BuyerChannelId;
   /** Preferowany URL z kotwicą przy emitowaniu dozwolonego linku. */
   originalByNorm?: Map<string, string>;
+  /**
+   * Host z env.SHOP_DOMAIN (np. epir-art-silver-jewellery.myshopify.com).
+   * Dozwolony wyłącznie gdy URL jest exact na allowliście (continue_url tej tury).
+   */
+  shopDomain?: string;
 };
+
+/** Normalizuje SHOP_DOMAIN do hostname (bez protokołu / ścieżki). */
+export function normalizeShopDomainHost(raw: string | undefined | null): string | null {
+  const t = raw?.trim();
+  if (!t) return null;
+  try {
+    if (t.includes('://')) return new URL(t).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  return t.replace(/\/$/, '').toLowerCase();
+}
+
+function isOnExactAllowlist(norm: string, allowedUrls: Set<string>): boolean {
+  if (allowedUrls.has(norm)) return true;
+  for (const allowed of allowedUrls) {
+    if (norm === allowed) return true;
+  }
+  return false;
+}
 
 function isAllowedDest(
   dest: string,
   allowedUrls: Set<string>,
-  channelId?: BuyerChannelId,
+  opts?: SanitizeMarkdownLinksOpts,
 ): boolean {
   const trimmed = dest.trim();
   if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
@@ -88,19 +113,20 @@ function isAllowedDest(
   }
   let hostname = '';
   try {
-    hostname = new URL(trimmed).hostname;
+    hostname = new URL(trimmed).hostname.toLowerCase();
   } catch {
     return false;
   }
-  if (channelId && !hostAllowedForChannel(hostname, channelId)) {
-    return false;
-  }
   const norm = normalizeUrlForAllowlist(trimmed);
-  // Tylko dokładna równość po normalizacji — bez dopasowania prefiksem.
-  if (allowedUrls.has(norm)) return true;
-  for (const allowed of allowedUrls) {
-    if (norm === allowed) return true;
-  }
+  // Exact allowlista najpierw — bez dopasowania prefiksem.
+  if (!isOnExactAllowlist(norm, allowedUrls)) return false;
+
+  const channelId = opts?.channelId;
+  if (!channelId) return true;
+  if (hostAllowedForChannel(hostname, channelId)) return true;
+  // Cart MCP continue_url: host SHOP_DOMAIN tylko gdy URL exact z allowlisty tej tury.
+  const shopHost = normalizeShopDomainHost(opts?.shopDomain);
+  if (shopHost && hostname === shopHost) return true;
   return false;
 }
 
@@ -134,7 +160,7 @@ export function sanitizeMarkdownLinks(
   const withoutBadLinks = text.replace(
     MARKDOWN_LINK_ANY_DEST_RE,
     (full, label: string, dest: string) => {
-      if (isAllowedDest(dest, allowedUrls, opts?.channelId)) {
+      if (isAllowedDest(dest, allowedUrls, opts)) {
         const norm = normalizeUrlForAllowlist(dest);
         const original = opts?.originalByNorm?.get(norm);
         if (original && original.includes('#') && !String(dest).includes('#')) {

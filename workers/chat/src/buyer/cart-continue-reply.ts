@@ -384,17 +384,16 @@ export function stripAllCartContinueLinks(text: string): string {
 }
 
 /**
- * Walidacja składni Markdown: samotny „[…” bez zamkniętego linku (np. degeneracja modelu).
- * Nie ocenia sensu treści.
+ * Walidacja składni Markdown: usuwaj „[…” bez „](” w dowolnym miejscu tekstu
+ * (np. degeneracja modelu). Nie rusza poprawnych [label](url). Nie ocenia sensu.
  */
 export function stripBrokenMarkdownLinkPrefix(text: string): string {
   if (!text) return text;
-  let out = text.trim();
-  // Prefiks zaczyna się od „[” i nie zawiera poprawnego Markdown linku.
-  if (out.startsWith('[') && !/\[[^\]]*\]\([^)]+\)/.test(out.split('\n')[0] ?? '')) {
-    const firstNl = out.indexOf('\n');
-    out = (firstNl >= 0 ? out.slice(firstNl + 1) : '').trim();
-  }
+  let out = text;
+  // [label] nie poprzedzające ( — nie jest poprawnym linkiem Markdown.
+  out = out.replace(/\[[^\]]*\](?!\()/g, '');
+  // Niezamknięte [… do końca linii (brak ]).
+  out = out.replace(/\[[^\]\n]+(?=\n|$)/gm, '');
   return out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 

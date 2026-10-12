@@ -516,6 +516,7 @@ async function finalizeBuyerReply(
   scrubbed = sanitizeMarkdownLinks(scrubbed, ctx.allowedUrls, {
     channelId: ctx.channelId,
     originalByNorm: ctx.originalUrlByNorm,
+    shopDomain: env.SHOP_DOMAIN,
   });
 
   const guardedRaw = await guardBuyerReplyLinks(env, scrubbed, ctx.allowedUrls, {

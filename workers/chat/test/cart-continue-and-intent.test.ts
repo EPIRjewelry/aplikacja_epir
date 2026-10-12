@@ -116,6 +116,22 @@ describe('buildCartContinueReply / appendExactContinueUrlIfMissing', () => {
     expect(out).not.toContain('[');
   });
 
+  it('stripBrokenMarkdownLinkPrefix removes mid-text [… without ]( ; keeps valid links', () => {
+    const mid = stripBrokenMarkdownLinkPrefix(
+      'Przed [Link do koszyka z rozmi rozmi?] po',
+    );
+    expect(mid).toMatch(/Przed/);
+    expect(mid).toMatch(/po/);
+    expect(mid).not.toContain('[');
+    expect(mid).not.toContain('Link do koszyka');
+
+    const mixed = stripBrokenMarkdownLinkPrefix(
+      '[ok](https://example.com/x) i [zepsute?]',
+    );
+    expect(mixed).toContain('[ok](https://example.com/x)');
+    expect(mixed).not.toContain('zepsute');
+  });
+
   it('mergeModelTextWithCartBlock keeps only block continue_url after mutation', () => {
     const oldUrl = 'https://shop.myshopify.com/cart/c/OLD';
     const newUrl = 'https://shop.myshopify.com/cart/c/NEW';
