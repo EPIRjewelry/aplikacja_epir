@@ -1,5 +1,7 @@
 import {getGroqResponse, type GroqMessage} from '../ai-client';
 import type {Env} from '../config/bindings';
+import type {BuyerChannelId} from './channel-switch';
+import {hostAllowedForChannel} from './channel-origins';
 import {sanitizeUrlForLog} from './url-log-sanitize';
 
 /** Gdy w turze był search_catalog. */
@@ -58,17 +60,73 @@ export function collectAllowedUrls(allowed: Iterable<string>): Set<string> {
   return set;
 }
 
-function isAllowedDest(dest: string, allowedUrls: Set<string>): boolean {
-  const trimmed = dest.trim();
-  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
-    return false;
+/** Mapa norm → oryginał (z `#`), by emitować kotwicę mimo strip hash w allowliście. */
+export function collectOriginalUrlByNorm(allowed: Iterable<string>): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const raw of allowed) {
+    if (!raw?.trim()) continue;
+    const norm = normalizeUrlForAllowlist(raw);
+    if (!map.has(norm)) map.set(norm, raw.trim());
   }
-  const norm = normalizeUrlForAllowlist(trimmed);
-  // Tylko dokładna równość po normalizacji — bez dopasowania prefiksem.
+  return map;
+}
+
+export type SanitizeMarkdownLinksOpts = {
+  channelId?: BuyerChannelId;
+  /** Preferowany URL z kotwicą przy emitowaniu dozwolonego linku. */
+  originalByNorm?: Map<string, string>;
+  /**
+   * Host z env.SHOP_DOMAIN (np. epir-art-silver-jewellery.myshopify.com).
+   * Dozwolony wyłącznie gdy URL jest exact na allowliście (continue_url tej tury).
+   */
+  shopDomain?: string;
+};
+
+/** Normalizuje SHOP_DOMAIN do hostname (bez protokołu / ścieżki). */
+export function normalizeShopDomainHost(raw: string | undefined | null): string | null {
+  const t = raw?.trim();
+  if (!t) return null;
+  try {
+    if (t.includes('://')) return new URL(t).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  return t.replace(/\/$/, '').toLowerCase();
+}
+
+function isOnExactAllowlist(norm: string, allowedUrls: Set<string>): boolean {
   if (allowedUrls.has(norm)) return true;
   for (const allowed of allowedUrls) {
     if (norm === allowed) return true;
   }
+  return false;
+}
+
+function isAllowedDest(
+  dest: string,
+  allowedUrls: Set<string>,
+  opts?: SanitizeMarkdownLinksOpts,
+): boolean {
+  const trimmed = dest.trim();
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+    return false;
+  }
+  let hostname = '';
+  try {
+    hostname = new URL(trimmed).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  const norm = normalizeUrlForAllowlist(trimmed);
+  // Exact allowlista najpierw — bez dopasowania prefiksem.
+  if (!isOnExactAllowlist(norm, allowedUrls)) return false;
+
+  const channelId = opts?.channelId;
+  if (!channelId) return true;
+  if (hostAllowedForChannel(hostname, channelId)) return true;
+  // Cart MCP continue_url: host SHOP_DOMAIN tylko gdy URL exact z allowlisty tej tury.
+  const shopHost = normalizeShopDomainHost(opts?.shopDomain);
+  if (shopHost && hostname === shopHost) return true;
   return false;
 }
 
@@ -92,24 +150,30 @@ export function stripLoosePlaceholders(text: string): string {
 
 /**
  * Usuwa linki Markdown z celami spoza allowlisty (w tym {{placeholders}}).
- * Zostawia sam tekst etykiety. Nie podstawia URL. Potem strip luźnych {{...}}.
+ * Host poza kanałem = odrzucony. Kotwica `#` z oryginału allowlisty jest zachowana.
  */
-export function sanitizeMarkdownLinks(text: string, allowedUrls: Set<string>): string {
+export function sanitizeMarkdownLinks(
+  text: string,
+  allowedUrls: Set<string>,
+  opts?: SanitizeMarkdownLinksOpts,
+): string {
   const withoutBadLinks = text.replace(
     MARKDOWN_LINK_ANY_DEST_RE,
     (full, label: string, dest: string) => {
-      if (isAllowedDest(dest, allowedUrls)) return full;
-      const trimmedLabel = typeof label === 'string' ? label.trim() : '';
-      if (trimmedLabel) {
-        console.log(
-          JSON.stringify({
-            tag: 'buyer.reply_link_stripped',
-            reason: 'markdown_dest_not_allowed',
-            destPattern: dest.includes('{{') ? 'placeholder' : 'non_http_or_foreign',
-          }),
-        );
-        return trimmedLabel;
+      if (isAllowedDest(dest, allowedUrls, opts)) {
+        const norm = normalizeUrlForAllowlist(dest);
+        const original = opts?.originalByNorm?.get(norm);
+        if (original && original.includes('#') && !String(dest).includes('#')) {
+          const lbl = typeof label === 'string' ? label : '';
+          return `[${lbl}](${original})`;
+        }
+        if (original && original.includes('#')) {
+          const lbl = typeof label === 'string' ? label : '';
+          return `[${lbl}](${original})`;
+        }
+        return full;
       }
+      const trimmedLabel = typeof label === 'string' ? label.trim() : '';
       console.log(
         JSON.stringify({
           tag: 'buyer.reply_link_stripped',
@@ -117,7 +181,7 @@ export function sanitizeMarkdownLinks(text: string, allowedUrls: Set<string>): s
           destPattern: dest.includes('{{') ? 'placeholder' : 'non_http_or_foreign',
         }),
       );
-      return '';
+      return trimmedLabel || '';
     },
   );
   return stripLoosePlaceholders(withoutBadLinks);

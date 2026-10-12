@@ -128,4 +128,50 @@ describe('reply-link-guard', () => {
     );
     expect(out).toBe(REPLY_LINK_REJECTED_NEUTRAL_MESSAGE);
   });
+
+  const shopDomain = 'epir-art-silver-jewellery.myshopify.com';
+  const cartContinue = `https://${shopDomain}/cart/c/TOKEN123?key=k1`;
+
+  it('keeps exact allowlisted SHOP_DOMAIN continue_url on all channels (get_cart this turn)', () => {
+    const allowed = collectAllowedUrls([cartContinue]);
+    for (const channelId of [
+      'epir-online-store',
+      'kazka-hydrogen',
+      'epir-zareczyny',
+    ] as const) {
+      const out = sanitizeMarkdownLinks(
+        `Koszyk: [Przejdź do koszyka](${cartContinue})`,
+        allowed,
+        {channelId, shopDomain},
+      );
+      expect(out).toContain(cartContinue);
+      expect(out.match(/\/cart\/c\//g)?.length).toBe(1);
+      expect(out).toMatch(/myshopify\.com\/cart\/c\//);
+    }
+  });
+
+  it('strips myshopify /cart/c/ when only session/history (not on allowlist)', () => {
+    const allowed = collectAllowedUrls([]); // preload sesji nie seeduje continue_url
+    const stale = `https://${shopDomain}/cart/c/STALE?key=old`;
+    const out = sanitizeMarkdownLinks(
+      `Stary [koszyk](${stale})`,
+      allowed,
+      {channelId: 'epir-online-store', shopDomain},
+    );
+    expect(out).not.toContain('/cart/c/');
+    expect(out).not.toContain('myshopify.com');
+    expect(out.match(/\/cart\/c\//g)?.length ?? 0).toBe(0);
+  });
+
+  it('does not allow SHOP_DOMAIN host for non-allowlisted URL even if same host', () => {
+    const allowed = collectAllowedUrls([cartContinue]);
+    const other = `https://${shopDomain}/cart/c/OTHER`;
+    const out = sanitizeMarkdownLinks(
+      `[x](${other})`,
+      allowed,
+      {channelId: 'kazka-hydrogen', shopDomain},
+    );
+    expect(out).toBe('x');
+    expect(out).not.toContain('/cart/c/');
+  });
 });

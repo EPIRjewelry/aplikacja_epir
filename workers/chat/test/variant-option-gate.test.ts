@@ -3,7 +3,9 @@ import type { ProductFacts, VariantFacts } from '../src/facts/types';
 import {
   collectCartAddsWithOptions,
   createVariantOptionIndex,
+  findVariantIdBySelectedOptions,
   mergeProductFactsIntoIndex,
+  resolveVariantSwapFromCart,
   stripSelectedOptionsFromCartArgs,
   validateCartAddsAgainstIndex,
 } from '../src/buyer/variant-option-gate';
@@ -293,5 +295,143 @@ describe('multi-option and case-insensitive selected_options', () => {
       ],
     });
     expect(validateCartAddsAgainstIndex(index, adds)).toBeNull();
+  });
+});
+
+function soliterProduct(): ProductFacts {
+  const variants: VariantFacts[] = [
+    {
+      variantId: 'gid://shopify/ProductVariant/s14lab18',
+      title: '14k / LAB / 18',
+      image: null,
+      sku: null,
+      price: { minor: 450000, currency: 'PLN' },
+      compareAtPrice: null,
+      available: true,
+      selectedOptions: [
+        { name: 'Metal', value: '14k' },
+        { name: 'Kamień', value: 'LAB' },
+        { name: 'Rozmiar', value: '18' },
+      ],
+      metal: '14k',
+      size: '18',
+      stoneOrigin: 'lab_grown',
+      originEvidence: [],
+    },
+    {
+      variantId: 'gid://shopify/ProductVariant/s14lab16',
+      title: '14k / LAB / 16',
+      image: null,
+      sku: null,
+      price: { minor: 450000, currency: 'PLN' },
+      compareAtPrice: null,
+      available: true,
+      selectedOptions: [
+        { name: 'Metal', value: '14k' },
+        { name: 'Kamień', value: 'LAB' },
+        { name: 'Rozmiar', value: '16' },
+      ],
+      metal: '14k',
+      size: '16',
+      stoneOrigin: 'lab_grown',
+      originEvidence: [],
+    },
+  ];
+  return {
+    channel: 'kazka-hydrogen',
+    productId: 'gid://shopify/Product/soliter',
+    handle: 'soliter',
+    title: 'Soliter',
+    vendor: 'KAZKA',
+    productType: 'ring',
+    url: 'https://kazka.epirbizuteria.pl/products/soliter',
+    image: null,
+    collections: [],
+    descriptionText: '',
+    options: [
+      { name: 'Metal', values: ['14k'] },
+      { name: 'Kamień', values: ['LAB'] },
+      { name: 'Rozmiar', values: ['16', '18'] },
+    ],
+    variants,
+    priceRange: {
+      min: { minor: 450000, currency: 'PLN' },
+      max: { minor: 450000, currency: 'PLN' },
+      isFlat: true,
+    },
+    stones: [],
+    metals: ['14k'],
+    sizes: ['16', '18'],
+    metafields: {},
+    productOriginRaw: null,
+    dataIssues: [],
+    fetchedAt: '2026-01-01T00:00:00.000Z',
+  };
+}
+
+describe('resolveVariantSwapFromCart', () => {
+  it('inherits other options when exactly one cart line matches product', () => {
+    const index = createVariantOptionIndex();
+    mergeProductFactsIntoIndex(index, soliterProduct());
+    const resolved = resolveVariantSwapFromCart(
+      index,
+      [{ lineId: 'li1', variantId: 'gid://shopify/ProductVariant/s14lab18' }],
+      [{ name: 'Rozmiar', value: '16' }],
+      [],
+    );
+    expect(resolved.status).toBe('ok');
+    if (resolved.status === 'ok') {
+      expect(resolved.targetVariantId).toBe('gid://shopify/ProductVariant/s14lab16');
+      expect(resolved.selectedOptions).toEqual([
+        { name: 'Metal', value: '14k' },
+        { name: 'Kamień', value: 'LAB' },
+        { name: 'Rozmiar', value: '16' },
+      ]);
+      expect(resolved.removeLineId).toBe('li1');
+    }
+  });
+
+  it('asks by name/options when multiple lines of same product (never line_id)', () => {
+    const index = createVariantOptionIndex();
+    mergeProductFactsIntoIndex(index, soliterProduct());
+    const resolved = resolveVariantSwapFromCart(
+      index,
+      [
+        { lineId: 'li_a', variantId: 'gid://shopify/ProductVariant/s14lab18' },
+        { lineId: 'li_b', variantId: 'gid://shopify/ProductVariant/s14lab16' },
+      ],
+      [{ name: 'Rozmiar', value: '16' }],
+      [],
+    );
+    expect(resolved.status).toBe('ambiguous_lines');
+    if (resolved.status === 'ambiguous_lines') {
+      expect(resolved.choices.length).toBe(2);
+      expect(resolved.choices[0].title).toBe('Soliter');
+      expect(resolved.choices[0].optionsLine).toMatch(/Rozmiar/);
+      expect(JSON.stringify(resolved.choices)).not.toMatch(/li_/);
+    }
+  });
+
+  it('variant_unavailable when target options do not exist in catalog', () => {
+    const index = createVariantOptionIndex();
+    mergeProductFactsIntoIndex(index, soliterProduct());
+    const resolved = resolveVariantSwapFromCart(
+      index,
+      [{ lineId: 'li1', variantId: 'gid://shopify/ProductVariant/s14lab18' }],
+      [{ name: 'Rozmiar', value: '99' }],
+      [],
+    );
+    expect(resolved.status).toBe('variant_unavailable');
+  });
+
+  it('findVariantIdBySelectedOptions resolves like variantBySelectedOptions', () => {
+    const index = createVariantOptionIndex();
+    mergeProductFactsIntoIndex(index, soliterProduct());
+    const id = findVariantIdBySelectedOptions(index, 'gid://shopify/Product/soliter', [
+      { name: 'Metal', value: '14k' },
+      { name: 'Kamień', value: 'LAB' },
+      { name: 'Rozmiar', value: '16' },
+    ]);
+    expect(id).toBe('gid://shopify/ProductVariant/s14lab16');
   });
 });

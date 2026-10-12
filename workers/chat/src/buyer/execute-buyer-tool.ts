@@ -42,8 +42,10 @@ import type { CatalogFilters } from '../facts/types';
 import {
   collectCartAddsWithOptions,
   mergeCatalogMatchesIntoIndex,
+  resolveVariantSwapFromCart,
   stripSelectedOptionsFromCartArgs,
   validateCartAddsAgainstIndex,
+  type SelectedOption,
   type VariantOptionIndex,
 } from './variant-option-gate';
 
@@ -395,6 +397,121 @@ export async function executeBuyerTool(
     }
   }
 
+  // Wczesna walidacja jawnych variant_id (przed get_cart) — bez MCP przy obcym GID.
+  if (input.name === 'create_cart' || input.name === 'update_cart') {
+    const early = collectVariantIdsFromArgs(args);
+    if (!early.ok) {
+      return deny(input, early.reason, { tool: input.name });
+    }
+    for (const vid of early.ids) {
+      if (!input.allowedVariantIds.has(vid)) {
+        return deny(input, 'variant_not_in_channel', { tool: input.name, variant_id: vid });
+      }
+    }
+  }
+
+  // update_cart: get_cart → ewentualny swap opcji → full replacement + attribution.
+  // https://shopify.dev/docs/agents/carts-and-checkout/cart-mcp
+  // https://ucp.dev/2026-08-25/specification/shopping/cart/
+  let mcpArgs: Record<string, unknown> = args;
+  let updateExistingLines: ReturnType<typeof lineItemsFromCartPayload> | null = null;
+  let updateExistingCart: Record<string, unknown> | null = null;
+
+  if (input.name === 'update_cart' && input.sessionCartId?.trim()) {
+    const getOut = await callMcpToolDirect(input.env, 'get_cart', {}, {
+      brand,
+      sessionCartId: input.sessionCartId,
+      commerceContext,
+    });
+    const getPayload = getOut?.result ?? getOut;
+    if (getOut?.error || isCartNotFoundResult(getPayload)) {
+      logBuyerToolCall(input.name, input.channelId, false);
+      console.log(
+        JSON.stringify({
+          tag: 'buyer.cart_not_found',
+          tool: 'update_cart',
+          via: getOut?.error ? 'protocol_error' : 'messages_not_found',
+        }),
+      );
+      return {
+        content: JSON.stringify({
+          error: 'cart_not_found',
+          notice: CART_NOT_FOUND_CLIENT_MESSAGE,
+        }),
+      };
+    }
+    const existingPayload = normalizeCartPayloadForParsing(getPayload);
+    updateExistingCart = extractCartObject(existingPayload) ?? {};
+    updateExistingLines = lineItemsFromCartPayload(existingPayload);
+
+    // Dziedziczenie selected_options z dokładnie jednej linii produktu.
+    if (input.variantOptionIndex && Array.isArray(args.add_items)) {
+      const addRows = args.add_items as Record<string, unknown>[];
+      for (let i = 0; i < addRows.length; i++) {
+        const row = addRows[i];
+        if (!row || typeof row !== 'object') continue;
+        const partial = Array.isArray(row.selected_options)
+          ? (row.selected_options as SelectedOption[]).filter(
+              (o) => o && typeof o.name === 'string' && typeof o.value === 'string',
+            )
+          : [];
+        if (!partial.length) continue;
+        const removeIds = Array.isArray(args.remove_line_ids)
+          ? (args.remove_line_ids as unknown[]).filter((id): id is string => typeof id === 'string')
+          : [];
+        const cartLines = updateExistingLines.map((l) => ({
+          lineId: l.lineId,
+          variantId: l.item.id,
+        }));
+        const resolved = resolveVariantSwapFromCart(
+          input.variantOptionIndex,
+          cartLines,
+          partial.map((o) => ({ name: String(o.name).trim(), value: String(o.value).trim() })),
+          removeIds,
+        );
+        if (resolved.status === 'ambiguous_lines') {
+          logBuyerToolCall(input.name, input.channelId, false);
+          return {
+            content: JSON.stringify({
+              status: 'ambiguous_lines',
+              notice:
+                'W koszyku jest kilka pozycji tego produktu. Proszę wskazać, którą zmienić — po nazwie i opcjach (nie po identyfikatorze linii).',
+              choices: resolved.choices,
+            }),
+          };
+        }
+        if (resolved.status === 'variant_unavailable' || resolved.status === 'no_cart_line') {
+          logBuyerToolCall(input.name, input.channelId, false);
+          return {
+            content: JSON.stringify({
+              status: resolved.status,
+              notice: resolved.notice,
+            }),
+          };
+        }
+        if (resolved.status === 'ok') {
+          input.allowedVariantIds.add(resolved.targetVariantId);
+          const qty =
+            typeof row.quantity === 'number' && row.quantity >= 1
+              ? row.quantity
+              : 1;
+          addRows[i] = {
+            quantity: qty,
+            item: { id: resolved.targetVariantId },
+            selected_options: resolved.selectedOptions,
+          };
+          const removes = new Set(removeIds);
+          removes.add(resolved.removeLineId);
+          args = {
+            ...args,
+            add_items: addRows,
+            remove_line_ids: [...removes],
+          };
+        }
+      }
+    }
+  }
+
   if (input.name === 'create_cart' || input.name === 'update_cart') {
     const collected = collectVariantIdsFromArgs(args);
     if (!collected.ok) {
@@ -434,40 +551,14 @@ export async function executeBuyerTool(
     args = stripSelectedOptionsFromCartArgs(args);
   }
 
-  // update_cart: merge łatki z get_cart (line_items + attribution/context/buyer).
-  // Bez edycji mcp_server — pełny payload idzie jako explicit line_items.
-  // https://shopify.dev/docs/agents/carts-and-checkout/cart-mcp
-  // https://ucp.dev/2026-08-25/specification/shopping/cart/mcp/
-  let mcpArgs: Record<string, unknown> = args;
-  if (input.name === 'update_cart' && input.sessionCartId?.trim()) {
-    const getOut = await callMcpToolDirect(input.env, 'get_cart', {}, {
-      brand,
-      sessionCartId: input.sessionCartId,
-      commerceContext,
-    });
-    const getPayload = getOut?.result ?? getOut;
-    // Protocol error LUB UCP messages type=error code=not_found — bez update_cart.
-    if (getOut?.error || isCartNotFoundResult(getPayload)) {
-      logBuyerToolCall(input.name, input.channelId, false);
-      console.log(
-        JSON.stringify({
-          tag: 'buyer.cart_not_found',
-          tool: 'update_cart',
-          via: getOut?.error ? 'protocol_error' : 'messages_not_found',
-        }),
-      );
-      return {
-        content: JSON.stringify({
-          error: 'cart_not_found',
-          notice: CART_NOT_FOUND_CLIENT_MESSAGE,
-        }),
-      };
-    }
-    const existingPayload = normalizeCartPayloadForParsing(getPayload);
-    const existingCart = extractCartObject(existingPayload) ?? {};
-    const existingLines = lineItemsFromCartPayload(existingPayload);
-    const mergedLines = applyCartPatch(existingLines, args);
-    const preserved = preservedCartStateFields({}, existingCart);
+  if (
+    input.name === 'update_cart' &&
+    input.sessionCartId?.trim() &&
+    updateExistingLines &&
+    updateExistingCart
+  ) {
+    const mergedLines = applyCartPatch(updateExistingLines, args);
+    const preserved = preservedCartStateFields({}, updateExistingCart);
     mcpArgs = {
       id: input.sessionCartId.trim(),
       cart: {

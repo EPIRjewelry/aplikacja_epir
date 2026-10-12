@@ -6,7 +6,7 @@ import {
 } from '../ai-client';
 import type { Env } from '../config/bindings';
 import { resolveCommerceContext } from '../config/commerce-context';
-import { fetchProductFactsByHandle } from '../facts';
+import { fetchProductFactsByHandle, fetchProductFactsForVariantIds } from '../facts';
 import {
   formatProductsBlock,
   PAGE_PRODUCT_HEADER,
@@ -18,6 +18,10 @@ import { LUXURY_SYSTEM_PROMPT } from '../prompts/luxury-system-prompt';
 import { buildBuyerToolDefinitions, filterModelWiredBuyerTools } from './buyer-tools';
 import type { BuyerChannelId } from './channel-switch';
 import { catalogSnapshotChannel } from './channel-switch';
+import {
+  defaultCustomOrderUrlForChannel,
+  validateCustomOrderUrl,
+} from './channel-origins';
 import { cartSummaryBlock } from './cart-summary-block';
 import {
   continueUrlFromCartPayload,
@@ -36,6 +40,7 @@ import {
 import {
   applyCartMutationHistoryOverride,
   collectAllowedUrls,
+  collectOriginalUrlByNorm,
   guardBuyerReplyLinks,
   sanitizeMarkdownLinks,
   REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE,
@@ -60,6 +65,8 @@ import {
   buildCartContinueReply,
   buildCartErrorReply,
   mergeModelTextWithCartBlock,
+  stripAllCartContinueLinks,
+  stripBrokenMarkdownLinkPrefix,
   stripContinueUrlFromModelText,
 } from './cart-continue-reply';
 import {
@@ -320,8 +327,9 @@ const BUYER_TOOL_BLURBS: Partial<Record<BuyerToolId, string>> = {
     '  Gdy produkt ma więcej niż jeden wariant — zapytaj o wariant (rozmiar/kamień/metal) przed create_cart; podaj selected_options z wartościami klienta; nigdy „od [min]”.',
     '  Zmiana rozmiaru/wariantu: update_cart z remove_line_ids starej linii + add_items nowego wariantu (selected_options); update_items tylko ilość.',
     '  update_cart: tylko łatka (add_items / update_items / remove_line_ids). Nie podawaj id koszyka ani pełnej listy line_items.',
-    '  Po udanej mutacji koszyka nie podawaj ilości, rozmiaru ani ceny pozycji — serwer dołączy blok „Stan koszyka (dane sklepu)”.',
-    '  Link do klienta wyłącznie continue_url z ostatniego wyniku narzędzia — jeden link, niczego nie sklejaj.',
+    '  Po udanej mutacji koszyka nie podawaj ilości, rozmiaru ani ceny pozycji — serwer dołączy blok „Stan koszyka (dane sklepu)” z pełnym wariantem i ceną z wyniku.',
+    '  Przy zmianie opcji używaj selected_options z rozmowy / z linii koszyka; nie pytaj ponownie o opcje już znane; nigdy nie pytaj o line_id — użyj „linia:” z bloku koszyka.',
+    '  Link koszyka: wyłącznie continue_url z get_cart/create_cart/update_cart tej tury — nie z pamięci sesji.',
   ].join('\n'),
   search_shop_policies_and_faqs: [
     '• search_shop_policies_and_faqs — zwroty, wysyłka, regulamin, kontakt, FAQ.',
@@ -432,6 +440,8 @@ export type ComposeBuyerTurnOptions = {
 
 type FinalizeReplyContext = {
   allowedUrls: Set<string>;
+  originalUrlByNorm: Map<string, string>;
+  channelId: BuyerChannelId;
   systemBase: string;
   hadSearchCatalogThisTurn: boolean;
   /** Tylko sukces create_cart/update_cart w tej turze — nie samo sessionCartId. */
@@ -473,6 +483,27 @@ function scrubToolAsTextOrFallback(
   return cartDeterministicReply(ctx) ?? FINAL_TOOL_FALLBACK_USER;
 }
 
+function logBuyerTiming(fields: {
+  get_cart_ms: number;
+  total_ms: number;
+  tool_rounds?: number;
+  cart_mutated?: boolean;
+}): void {
+  console.log(
+    JSON.stringify({
+      tag: 'buyer.timing',
+      get_cart_ms: fields.get_cart_ms,
+      total_ms: fields.total_ms,
+      ...(typeof fields.tool_rounds === 'number'
+        ? { tool_rounds: fields.tool_rounds }
+        : {}),
+      ...(typeof fields.cart_mutated === 'boolean'
+        ? { cart_mutated: fields.cart_mutated }
+        : {}),
+    }),
+  );
+}
+
 async function finalizeBuyerReply(
   env: Env,
   sessionId: string | undefined,
@@ -482,7 +513,11 @@ async function finalizeBuyerReply(
 ): Promise<string> {
   let scrubbed = scrubGidFromClientReply(reply);
   scrubbed = scrubToolAsTextOrFallback(scrubbed, ctx);
-  scrubbed = sanitizeMarkdownLinks(scrubbed, ctx.allowedUrls);
+  scrubbed = sanitizeMarkdownLinks(scrubbed, ctx.allowedUrls, {
+    channelId: ctx.channelId,
+    originalByNorm: ctx.originalUrlByNorm,
+    shopDomain: env.SHOP_DOMAIN,
+  });
 
   const guardedRaw = await guardBuyerReplyLinks(env, scrubbed, ctx.allowedUrls, {
     sessionId,
@@ -504,10 +539,12 @@ async function finalizeBuyerReply(
 
   if (ctx.cartClientErrors?.length) {
     const errBlock = buildCartErrorReply(ctx.cartClientErrors);
+    let withoutCartLinks = stripAllCartContinueLinks(guarded);
     const continueUrl = ctx.cartContinueUrl?.trim() ?? '';
-    const withoutCartLinks = continueUrl
-      ? stripContinueUrlFromModelText(guarded, continueUrl)
-      : guarded;
+    if (continueUrl) {
+      withoutCartLinks = stripContinueUrlFromModelText(withoutCartLinks, continueUrl);
+    }
+    withoutCartLinks = stripBrokenMarkdownLinkPrefix(withoutCartLinks);
     if (rejectionOrEmpty || !withoutCartLinks.trim()) {
       guarded = errBlock;
     } else {
@@ -528,6 +565,9 @@ async function finalizeBuyerReply(
         );
       }
     }
+  } else {
+    // Bez mutacji: nie zostawiaj broken „[…”; link koszyka tylko jeśli był z get_cart tej tury (allowlista).
+    guarded = stripBrokenMarkdownLinkPrefix(guarded);
   }
 
   if (sessionId?.trim()) {
@@ -564,6 +604,8 @@ export async function composeBuyerAssistantReply(
     userText,
   });
 
+  const turnStartedAt = Date.now();
+  let getCartMs = 0;
   const profile = await fetchAIProfileByHandle(env, channelId, buyerIp(request));
   const profilePrompt = profile ? buildAIProfilePrompt(profile) : '';
   const readyAll = await listAvailableBuyerTools(env, channelId);
@@ -576,6 +618,19 @@ export async function composeBuyerAssistantReply(
   const allowedVariantIds = new Set<string>();
   const allowedUrlSeeds: string[] = [];
   const variantOptionIndex = createVariantOptionIndex();
+
+  // Formularz indywidualny: EPIR+GZ hardcode; Kazka z ai_profile.custom_order_url.
+  const profileOrderUrl = profile?.custom_order_url
+    ? validateCustomOrderUrl(profile.custom_order_url, channelId)
+    : null;
+  const defaultOrderUrl = defaultCustomOrderUrlForChannel(channelId);
+  const customOrderUrl = profileOrderUrl || defaultOrderUrl;
+  if (customOrderUrl) {
+    allowedUrlSeeds.push(customOrderUrl);
+    contextBlocks.push(
+      `[FORMULARZ ZAMÓWIENIA INDYWIDUALNEGO]\nurl: ${customOrderUrl}`,
+    );
+  }
 
   const prevProducts = await buildPreviousResponseProductsBlock(
     env,
@@ -614,6 +669,7 @@ export async function composeBuyerAssistantReply(
   if (sessionId && availableTools.includes('ucp_cart')) {
     sessionCartId = await readSessionCartId(env, sessionId);
     if (sessionCartId) {
+      const cartT0 = Date.now();
       try {
         const brand = brandKeyForChannel(channelId);
         const cartOut = await callMcpToolDirect(
@@ -626,18 +682,51 @@ export async function composeBuyerAssistantReply(
             commerceContext: resolveCommerceContext(brand),
           },
         );
-        if (!cartOut?.error) {
+        getCartMs = Date.now() - cartT0;
+        if (cartOut?.error) {
+          console.log(
+            JSON.stringify({
+              tag: 'buyer.session_cart_read_failed',
+              reason: 'protocol_error',
+              code: typeof cartOut.error?.code === 'number' ? cartOut.error.code : null,
+            }),
+          );
+          contextBlocks.push(
+            '[KOSZYK SESJI]\nNie udało się odczytać zawartości koszyka. Nie proś klientki o identyfikator linii — zaproponuj ponowienie lub nowy koszyk.',
+          );
+        } else {
           const payload = normalizeCartPayloadForParsing(cartOut.result ?? cartOut);
           const summary = cartSummaryBlock(payload);
           if (summary) contextBlocks.push(summary);
-          for (const vid of variantIdsFromCartPayload(payload)) {
-            allowedVariantIds.add(vid);
+          const vids = variantIdsFromCartPayload(payload);
+          for (const vid of vids) allowedVariantIds.add(vid);
+          // continue_url z preloadu NIE idzie na allowlistę — tylko z get_cart narzędzia lub mutacji.
+          if (vids.length) {
+            try {
+              const products = await fetchProductFactsForVariantIds(
+                env,
+                catalogChannel,
+                vids,
+                { clientRequest: request, urlChannel: channelId },
+              );
+              for (const p of products) mergeProductFactsIntoIndex(variantOptionIndex, p);
+            } catch (e) {
+              console.warn('[buyer.compose_turn] cart variant facts skipped', e);
+            }
           }
-          const cartUrl = continueUrlFromCartPayload(payload);
-          if (cartUrl) allowedUrlSeeds.push(cartUrl);
         }
       } catch (e) {
+        getCartMs = Date.now() - cartT0;
+        console.log(
+          JSON.stringify({
+            tag: 'buyer.session_cart_read_failed',
+            reason: 'exception',
+          }),
+        );
         console.warn('[buyer.compose_turn] session cart variants skipped', e);
+        contextBlocks.push(
+          '[KOSZYK SESJI]\nNie udało się odczytać zawartości koszyka. Nie proś klientki o identyfikator linii.',
+        );
       }
     }
   }
@@ -651,8 +740,11 @@ export async function composeBuyerAssistantReply(
   });
   allowedUrlSeeds.push(...collectUrlsFromFactsBlocks(contextBlocks));
   const allowedUrls = collectAllowedUrls(allowedUrlSeeds);
+  const originalUrlByNorm = collectOriginalUrlByNorm(allowedUrlSeeds);
   const finalizeCtx: FinalizeReplyContext = {
     allowedUrls,
+    originalUrlByNorm,
+    channelId,
     systemBase: systemParts,
     hadSearchCatalogThisTurn: false,
     cartMutatedSuccessfullyThisTurn: false,
@@ -666,12 +758,25 @@ export async function composeBuyerAssistantReply(
   ];
 
   const toolDefinitions = buildBuyerToolDefinitions(modelTools);
+  let toolRoundsUsed = 0;
+
+  const finishReply = async (reply: string): Promise<string> => {
+    const out = await finalizeBuyerReply(env, sessionId, userText, reply, finalizeCtx);
+    logBuyerTiming({
+      get_cart_ms: getCartMs,
+      total_ms: Date.now() - turnStartedAt,
+      tool_rounds: toolRoundsUsed,
+      cart_mutated: finalizeCtx.cartMutatedSuccessfullyThisTurn,
+    });
+    return out;
+  };
+
   if (toolDefinitions.length === 0) {
     const reply = await getGroqResponse(messages, env, {
       timingLabel: 'buyer_turn',
       sessionId,
     });
-    return finalizeBuyerReply(env, sessionId, userText, reply, finalizeCtx);
+    return finishReply(reply);
   }
 
   let forcedToolUsed = false;
@@ -702,12 +807,35 @@ export async function composeBuyerAssistantReply(
     if (executed.cartClientErrors?.length) {
       finalizeCtx.cartClientErrors = executed.cartClientErrors;
     }
+    if (call.name === 'get_cart') {
+      // Link koszyka bez mutacji: tylko continue_url z get_cart tej tury (nie z preloadu sesji).
+      const fromTool = continueUrlFromCartPayload(
+        normalizeCartPayloadForParsing(
+          (() => {
+            try {
+              return JSON.parse(executed.content);
+            } catch {
+              return null;
+            }
+          })(),
+        ),
+      );
+      if (fromTool) {
+        for (const normalized of collectAllowedUrls([fromTool])) {
+          allowedUrls.add(normalized);
+          if (!finalizeCtx.originalUrlByNorm.has(normalized)) {
+            finalizeCtx.originalUrlByNorm.set(normalized, fromTool);
+          }
+        }
+      }
+    }
     if (executed.cartMutationSucceeded) {
       finalizeCtx.cartMutatedSuccessfullyThisTurn = true;
       if (executed.continueUrl) {
         finalizeCtx.cartContinueUrl = executed.continueUrl;
         for (const normalized of collectAllowedUrls([executed.continueUrl])) {
           allowedUrls.add(normalized);
+          finalizeCtx.originalUrlByNorm.set(normalized, executed.continueUrl);
         }
       }
       if (executed.cartNotices?.length) {
@@ -720,9 +848,12 @@ export async function composeBuyerAssistantReply(
         finalizeCtx.cartMutationPayload = executed.cartMutationPayload;
       }
     }
-    for (const url of urlsFromToolResult(call.name, executed.content)) {
+    for (const url of urlsFromToolResult(call.name, executed.content, channelId)) {
       for (const normalized of collectAllowedUrls([url])) {
         allowedUrls.add(normalized);
+        if (!finalizeCtx.originalUrlByNorm.has(normalized)) {
+          finalizeCtx.originalUrlByNorm.set(normalized, url);
+        }
       }
     }
     messages.push({
@@ -767,6 +898,7 @@ export async function composeBuyerAssistantReply(
   };
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    toolRoundsUsed = round + 1;
     let text: string;
     let toolCalls: GroqToolCall[];
     try {
@@ -785,7 +917,7 @@ export async function composeBuyerAssistantReply(
           timingLabel: `buyer_tool_loop_fallback_${round}`,
           sessionId,
         });
-        return finalizeBuyerReply(env, sessionId, userText, reply, finalizeCtx);
+        return finishReply(reply);
       }
       throw err;
     }
@@ -822,14 +954,10 @@ export async function composeBuyerAssistantReply(
           );
           const forced = await collectStreamRound(forceStream);
           if (forced.toolCalls.length === 0) {
-            return finalizeBuyerReply(
-              env,
-              sessionId,
-              userText,
+            return finishReply(
               looksLikeToolCallAsText(text)
                 ? clientReplyForToolAsTextWithoutForce(text)
                 : FINAL_TOOL_FALLBACK_USER,
-              finalizeCtx,
             );
           }
           messages.push({
@@ -856,13 +984,7 @@ export async function composeBuyerAssistantReply(
                 : 'stream_error',
             }),
           );
-          return finalizeBuyerReply(
-            env,
-            sessionId,
-            userText,
-            FINAL_TOOL_FALLBACK_USER,
-            finalizeCtx,
-          );
+          return finishReply(FINAL_TOOL_FALLBACK_USER);
         }
       }
       if (looksLikeToolCallAsText(text)) {
@@ -872,15 +994,9 @@ export async function composeBuyerAssistantReply(
             keys: toolAsTextKeyNames(text),
           }),
         );
-        return finalizeBuyerReply(
-          env,
-          sessionId,
-          userText,
-          clientReplyForToolAsTextWithoutForce(text),
-          finalizeCtx,
-        );
+        return finishReply(clientReplyForToolAsTextWithoutForce(text));
       }
-      return finalizeBuyerReply(env, sessionId, userText, text, finalizeCtx);
+      return finishReply(text);
     }
 
     messages.push({
@@ -908,7 +1024,7 @@ export async function composeBuyerAssistantReply(
       { toolChoice: 'none' },
     );
     const { text: finalText } = await collectStreamRound(finalStream);
-    return finalizeBuyerReply(env, sessionId, userText, finalText, finalizeCtx);
+    return finishReply(finalText);
   } catch {
     console.warn(JSON.stringify({ tag: 'buyer.tool_loop_fallback', round: 'final' }));
     const fallbackMessages = buildFinalRoundFallbackMessages(
@@ -921,11 +1037,11 @@ export async function composeBuyerAssistantReply(
         timingLabel: 'buyer_tool_loop_final_fallback',
         sessionId,
       });
-      return finalizeBuyerReply(env, sessionId, userText, reply, finalizeCtx);
+      return finishReply(reply);
     } catch {
       const deterministic = cartDeterministicReply(finalizeCtx);
       if (deterministic) {
-        return finalizeBuyerReply(env, sessionId, userText, deterministic, finalizeCtx);
+        return finishReply(deterministic);
       }
       const cartLink = lastCartLinkFromMessages(messages);
       // Link tylko po mutacji w tej turze — nie z samego sessionCartId.
@@ -937,7 +1053,7 @@ export async function composeBuyerAssistantReply(
               finalizeCtx.cartTotalsNote,
             )
           : FINAL_TOOL_FALLBACK_USER;
-      return finalizeBuyerReply(env, sessionId, userText, staticReply, finalizeCtx);
+      return finishReply(staticReply);
     }
   }
 }

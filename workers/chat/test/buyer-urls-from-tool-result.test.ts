@@ -44,4 +44,16 @@ describe('urlsFromToolResult', () => {
     );
     expect(foreign).toEqual([]);
   });
+
+  it('resolves relative KB markdown path against channel origin', () => {
+    const urls = urlsFromToolResult(
+      'search_shop_policies_and_faqs',
+      JSON.stringify({
+        answer: 'Zobacz [formularz](/pages/zaprojektuj-swoj-model).',
+        sources: [],
+      }),
+      'epir-online-store',
+    );
+    expect(urls).toContain('https://epirbizuteria.pl/pages/zaprojektuj-swoj-model');
+  });
 });

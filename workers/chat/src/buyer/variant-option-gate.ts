@@ -12,12 +12,16 @@ import { variantIdOf } from '../cart/ucp-cart';
 export type SelectedOption = { name: string; value: string };
 
 export type VariantOptionEntry = {
+  productId: string;
   productTitle: string;
   variantTitle: string;
   selectedOptions: SelectedOption[];
   /** Kanoniczne nazwy opcji → wartości z katalogu. */
   optionValuesByName: Map<string, string[]>;
   requiresOptionChoice: boolean;
+  /** Cena wariantu (minor) — do potwierdzenia po mutacji. */
+  priceMinor?: number | null;
+  priceCurrency?: string | null;
 };
 
 export type VariantOptionIndex = Map<string, VariantOptionEntry>;
@@ -101,11 +105,13 @@ export function mergeProductFactsIntoIndex(
   }
   const needsChoice = requiresChoice(product, variants);
   const productTitle = product.title?.trim() || 'Produkt';
+  const productId = product.productId?.trim() || '';
 
   for (const v of variants) {
     const vid = v.variantId?.trim();
     if (!vid) continue;
     index.set(vid, {
+      productId,
       productTitle,
       variantTitle: v.title?.trim() || '',
       selectedOptions: (v.selectedOptions ?? []).map((o) => ({
@@ -114,6 +120,8 @@ export function mergeProductFactsIntoIndex(
       })),
       optionValuesByName,
       requiresOptionChoice: needsChoice,
+      priceMinor: v.price?.minor ?? null,
+      priceCurrency: v.price?.currency ?? null,
     });
   }
 }
@@ -315,4 +323,203 @@ export function lookupVariantDisplay(
     .map((o) => `${o.name} ${o.value}`)
     .join(', ');
   return { title, optionsLine: opts || null };
+}
+
+export type CartLineForSwap = {
+  lineId?: string;
+  variantId: string;
+};
+
+/**
+ * Docelowy wariant po nadpisaniu opcji (jak variantBySelectedOptions).
+ * @see https://shopify.dev/docs/api/storefront/latest/objects/Product
+ */
+export function findVariantIdBySelectedOptions(
+  index: VariantOptionIndex,
+  productId: string,
+  selected: SelectedOption[],
+): string | null {
+  if (!productId || !selected.length) return null;
+  for (const [vid, entry] of index) {
+    if (entry.productId !== productId) continue;
+    if (entry.selectedOptions.length !== selected.length) {
+      // Porównaj po wymaganych parach (case-insensitive).
+    }
+    let ok = true;
+    for (const sel of selected) {
+      const vo = entry.selectedOptions.find(
+        (o) => normalizeOptKey(o.name) === normalizeOptKey(sel.name),
+      );
+      if (!vo || normalizeOptKey(vo.value) !== normalizeOptKey(sel.value)) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok && selected.length >= entry.selectedOptions.filter((o) => o.value !== 'Default Title').length) {
+      // Wszystkie podane opcje zgadzają się; wymagaj pełnego pokrycia opcji wariantu.
+      const allMatch = entry.selectedOptions.every((o) => {
+        if (o.value === 'Default Title') return true;
+        const sel = selected.find((s) => normalizeOptKey(s.name) === normalizeOptKey(o.name));
+        return sel && normalizeOptKey(sel.value) === normalizeOptKey(o.value);
+      });
+      if (allMatch) return vid;
+    }
+  }
+  return null;
+}
+
+export type ResolveSwapResult =
+  | {
+      status: 'ok';
+      targetVariantId: string;
+      removeLineId: string;
+      selectedOptions: SelectedOption[];
+      productTitle: string;
+    }
+  | {
+      status: 'ambiguous_lines';
+      choices: Array<{ title: string; optionsLine: string; lineHint: string }>;
+    }
+  | { status: 'variant_unavailable'; notice: string }
+  | { status: 'no_cart_line'; notice: string };
+
+/**
+ * Dziedziczenie opcji z linii koszyka tylko gdy dokładnie jedna linia produktu.
+ * Nigdy nie prosi o line_id — przy wielu liniach zwraca wybór po nazwie/opcjach.
+ */
+export function resolveVariantSwapFromCart(
+  index: VariantOptionIndex,
+  cartLines: CartLineForSwap[],
+  partialOptions: SelectedOption[],
+  removeLineIds: string[],
+): ResolveSwapResult {
+  let baseVariantId: string | null = null;
+  let removeLineId = '';
+
+  if (removeLineIds.length === 1) {
+    const rid = removeLineIds[0].trim();
+    const line = cartLines.find((l) => l.lineId === rid || l.variantId === rid);
+    if (line) {
+      baseVariantId = line.variantId;
+      removeLineId = line.lineId || rid;
+    }
+  }
+
+  if (!baseVariantId) {
+    const byProduct = new Map<string, CartLineForSwap[]>();
+    for (const line of cartLines) {
+      const entry = index.get(line.variantId);
+      if (!entry?.productId) continue;
+      const list = byProduct.get(entry.productId) ?? [];
+      list.push(line);
+      byProduct.set(entry.productId, list);
+    }
+    // Jeśli partialOptions wskazują produkt przez dopasowanie wariantu w koszyku:
+    const candidates: CartLineForSwap[] = [];
+    for (const line of cartLines) {
+      const entry = index.get(line.variantId);
+      if (!entry) continue;
+      // Linia tego samego produktu, którego opcje są nadpisywane.
+      candidates.push(line);
+    }
+    // Zawęź do produktów, które mają nadpisywaną opcję w katalogu.
+    const relevant = candidates.filter((line) => {
+      const entry = index.get(line.variantId);
+      if (!entry) return false;
+      return partialOptions.every((sel) => lookupOptionValues(entry.optionValuesByName, sel.name));
+    });
+    const productIds = new Set(
+      relevant.map((l) => index.get(l.variantId)?.productId).filter(Boolean) as string[],
+    );
+    if (productIds.size === 1) {
+      const pid = [...productIds][0];
+      const linesOfProduct = cartLines.filter((l) => index.get(l.variantId)?.productId === pid);
+      if (linesOfProduct.length === 1) {
+        baseVariantId = linesOfProduct[0].variantId;
+        removeLineId = linesOfProduct[0].lineId || linesOfProduct[0].variantId;
+      } else if (linesOfProduct.length > 1) {
+        return {
+          status: 'ambiguous_lines',
+          choices: linesOfProduct.map((l) => {
+            const e = index.get(l.variantId)!;
+            const optionsLine = e.selectedOptions
+              .filter((o) => o.value !== 'Default Title')
+              .map((o) => `${o.name} ${o.value}`)
+              .join(', ');
+            return {
+              title: e.productTitle,
+              optionsLine,
+              lineHint: optionsLine || e.variantTitle || 'pozycja',
+            };
+          }),
+        };
+      }
+    } else if (relevant.length === 1) {
+      baseVariantId = relevant[0].variantId;
+      removeLineId = relevant[0].lineId || relevant[0].variantId;
+    } else if (relevant.length > 1) {
+      return {
+        status: 'ambiguous_lines',
+        choices: relevant.map((l) => {
+          const e = index.get(l.variantId)!;
+          const optionsLine = e.selectedOptions
+            .filter((o) => o.value !== 'Default Title')
+            .map((o) => `${o.name} ${o.value}`)
+            .join(', ');
+          return {
+            title: e.productTitle,
+            optionsLine,
+            lineHint: optionsLine || e.variantTitle || 'pozycja',
+          };
+        }),
+      };
+    }
+  }
+
+  if (!baseVariantId) {
+    return {
+      status: 'no_cart_line',
+      notice: 'Nie znajduję w koszyku pozycji do zmiany. Proszę wskazać produkt po nazwie i opcjach.',
+    };
+  }
+
+  const base = index.get(baseVariantId);
+  if (!base) {
+    return {
+      status: 'variant_unavailable',
+      notice: 'Nie mogę odczytać opcji wariantu z katalogu. Proszę spróbować ponownie.',
+    };
+  }
+
+  const merged = new Map<string, SelectedOption>();
+  for (const o of base.selectedOptions) {
+    merged.set(normalizeOptKey(o.name), { name: o.name, value: o.value });
+  }
+  for (const sel of partialOptions) {
+    const looked = lookupOptionValues(base.optionValuesByName, sel.name);
+    const canonicalName = looked?.canonicalName ?? sel.name;
+    const canonicalValue =
+      looked?.values.find((v) => normalizeOptKey(v) === normalizeOptKey(sel.value)) ?? sel.value;
+    merged.set(normalizeOptKey(canonicalName), {
+      name: canonicalName,
+      value: canonicalValue,
+    });
+  }
+  const fullOptions = [...merged.values()];
+  const targetId = findVariantIdBySelectedOptions(index, base.productId, fullOptions);
+  if (!targetId) {
+    return {
+      status: 'variant_unavailable',
+      notice:
+        'Ten wariant nie jest dostępny w ofercie (opcje nie odpowiadają żadnemu wariantowi sklepu).',
+    };
+  }
+  const target = index.get(targetId)!;
+  return {
+    status: 'ok',
+    targetVariantId: targetId,
+    removeLineId: removeLineId || baseVariantId,
+    selectedOptions: target.selectedOptions,
+    productTitle: target.productTitle,
+  };
 }
