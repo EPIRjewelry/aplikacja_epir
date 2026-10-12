@@ -333,8 +333,10 @@ describe('Harmony smoke — reasoning + tool_call + finalny tekst', () => {
       expect(firstBody.model).toBe('openai/gpt-oss-120b');
       expect(firstBody.parallel_tool_calls).toBe(true);
       expect(firstBody.include_reasoning).toBe(true);
+      // streamAssistantResponse używa timingLabel tool_loop_* → MODEL_PARAMS (nie BUYER_*).
       expect(firstBody.reasoning_effort).toBe('low');
       expect(firstBody.max_tokens).toBe(2048);
+      expect(firstBody.max_completion_tokens).toBeUndefined();
       // Regresja na incydent Groq sierpień 2025 — `json_schema` + `tools` → 400.
       expect(firstBody.response_format).toBeUndefined();
       expect(Array.isArray(firstBody.tools)).toBe(true);

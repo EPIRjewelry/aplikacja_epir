@@ -295,16 +295,13 @@ export const MODEL_VARIANT_KEYS = Object.keys(MODEL_VARIANTS) as readonly ModelV
 export type ReasoningEffort = 'low' | 'medium' | 'high';
 
 /**
- * Parametry modelu dla Harmony / GPT-OSS-120B (Groq via AI Gateway).
+ * Parametry modelu domyślne / operator / Workers AI (nie buyer storefront).
  *
- * Kluczowe różnice względem poprzedniej generacji (Kimi/Workers AI):
- * - `max_tokens` = 2048 — Harmony zużywa część budżetu na kanał `analysis`
- *   (`reasoning`), więc 1300 było za mało i ucinało finalną wypowiedź.
- * - `include_reasoning` = `true` — Groq zwraca `delta.reasoning` w streamie;
- *   parser w `ai-client.ts createGroqStreamTransform` odrzuca ten kanał z widoku
- *   klienta, ale używamy go do telemetrii i ewentualnego debugowania.
- * - `reasoning_effort` = `'low'` — buyer-facing UX wymaga niskiej latencji
- *   i krótkiego łańcucha myśli; Operator Studio może override'ować.
+ * Buyer storefront używa {@link BUYER_MODEL_PARAMS} (selektor `timingLabel` `buyer_*`
+ * w `ai-client.ts`). Ten obiekt zostaje bez zmian zachowania dla operatora i ścieżek
+ * bez prefiksu `buyer_`.
+ *
+ * @see https://console.groq.com/docs/model/openai/gpt-oss-120b
  */
 export const MODEL_PARAMS = {
   /**
@@ -360,6 +357,48 @@ export const MODEL_PARAMS = {
     include_usage: true,
   },
 } as const;
+
+/**
+ * Parametry inference wyłącznie dla ścieżki buyera (`timingLabel` zaczyna się od `buyer_`).
+ * Model bez zmian: `groq/openai/gpt-oss-120b`.
+ *
+ * - `reasoning_effort: 'medium'` — więcej budżetu reasoning niż `low`
+ *   (@see https://console.groq.com/docs/reasoning ).
+ * - `max_completion_tokens: 4096` — Groq preferuje to pole zamiast przestarzałego
+ *   `max_tokens` (@see https://console.groq.com/docs/api-reference#chat-create ).
+ * - Bez `reasoning_format` (wzajemnie wyklucza się z `include_reasoning` na Groq).
+ * - `temperature: 0.3` — poniżej zalecanego przez Groq zakresu ~0.5–0.7; do porównania
+ *   w teście Audytora (medium vs high / 0.3 vs 0.5) po deployu.
+ *
+ * @see https://console.groq.com/docs/model/openai/gpt-oss-120b
+ */
+export const BUYER_MODEL_PARAMS = {
+  temperature: 0.3,
+  max_completion_tokens: 4096,
+  top_p: 0.9,
+  include_reasoning: true as const,
+  reasoning_effort: 'medium' as ReasoningEffort,
+  stream_options: {
+    include_usage: true,
+  },
+} as const;
+
+/**
+ * Retry AI Gateway — tylko wywołania buyer_ (ten sam selektor co {@link BUYER_MODEL_PARAMS}).
+ * Jedno ponowienie (`max-attempts: 2`), bez własnej pętli w kodzie workera.
+ *
+ * @see https://developers.cloudflare.com/ai-gateway/configuration/request-handling/#request-retries
+ */
+export const BUYER_AIG_RETRY = {
+  maxAttempts: 2,
+  retryDelayMs: 1000,
+  backoff: 'exponential',
+} as const;
+
+/** True gdy etykieta timing pochodzi ze ścieżki buyera (`compose-buyer-turn`). */
+export function isBuyerTimingLabel(timingLabel?: string): boolean {
+  return typeof timingLabel === 'string' && timingLabel.startsWith('buyer_');
+}
 
 /**
  * Type-safe export of model parameters
