@@ -91,6 +91,9 @@
   data-brand="epir"
   data-start-closed="{{ block.settings.start_closed | default: default_start_closed }}"
   data-stream-render="dots"
+  {% if template.name == 'product' %}
+  data-product-handle="{{ product.handle | escape }}"
+  {% endif %}
 >
   <style>
     #epir-assistant-embed .assistant-form button {

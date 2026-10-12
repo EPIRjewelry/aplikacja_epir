@@ -55,9 +55,26 @@ function formatWeightAmount(weight: number, unit: string): string {
   return `${text} ${suffix}`;
 }
 
+function stripHtmlToPlain(text: string): string {
+  return text
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function truncateDescription(text: string, max = 600): string {
+  const plain = stripHtmlToPlain(text);
+  if (plain.length <= max) return plain;
+  return `${plain.slice(0, max - 1)}…`;
+}
+
 function formatWeight(variants: VariantFacts[]): string | null {
   const withWeight = variants.filter(
-    (v) => v.weight != null && Number.isFinite(v.weight) && v.weightUnit,
+    (v) =>
+      v.weight != null &&
+      Number.isFinite(v.weight) &&
+      v.weight > 0 &&
+      v.weightUnit,
   );
   if (!withWeight.length) return null;
   const first = withWeight[0];
@@ -112,6 +129,8 @@ export function formatSingleProductDescriptive(input: ProductBlockFormatInput): 
   if (dims) lines.push(`  wymiary: ${dims}`);
   const weight = formatWeight(variants);
   if (weight) lines.push(`  waga: ${weight}`);
+  const desc = input.product.descriptionText?.trim();
+  if (desc) lines.push(`  opis: ${truncateDescription(desc)}`);
   if (input.product.url) lines.push(`  url: ${input.product.url}`);
   lines.push(`  dostępność: ${availabilityLabel(variants)}`);
   return lines;

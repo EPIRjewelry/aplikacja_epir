@@ -39,11 +39,11 @@ describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
     expect(LUXURY_SYSTEM_PROMPT).not.toContain('Przy braku trafień powiedz to wprost');
   });
 
-  it('includes product presentation example with catalog-backed price placeholder', () => {
-    expect(LUXURY_SYSTEM_PROMPT).toContain('Przykład poprawnej odpowiedzi');
-    expect(LUXURY_SYSTEM_PROMPT).toContain('Pierścionek z Topazem');
-    expect(LUXURY_SYSTEM_PROMPT).toContain('topaz London Blue');
-    expect(LUXURY_SYSTEM_PROMPT).toContain('[cena z wyniku]');
+  it('forbids copy-paste product URL examples and SKU in client copy', () => {
+    expect(LUXURY_SYSTEM_PROMPT).not.toContain('[cena z wyniku]');
+    expect(LUXURY_SYSTEM_PROMPT).not.toContain('Przykład poprawnej odpowiedzi');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('Nie podawaj klientowi kodów SKU');
+    expect(LUXURY_SYSTEM_PROMPT).toContain('[PRODUKTY Z POPRZEDNIEJ ODPOWIEDZI]');
   });
 
   it('includes EPIR brand language principles as default', () => {

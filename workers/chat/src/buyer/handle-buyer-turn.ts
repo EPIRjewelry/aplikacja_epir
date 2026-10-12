@@ -6,6 +6,7 @@ import {
   extractProductHandleFromBody,
   extractSessionIdFromBody,
 } from './compose-buyer-turn';
+import {extractChannelFromBody, extractStorefrontIdFromBody} from './session-context';
 import {channelIdFromBrandLock, readChannelMode} from './channel-switch';
 
 function buyerResponseHeaders(env: Env, request: Request): Record<string, string> {
@@ -102,6 +103,8 @@ export async function handleBuyerTurn(
     const reply = await composeBuyerAssistantReply(env, channelId, userText, request, {
       sessionId,
       productHandle,
+      storefrontId: extractStorefrontIdFromBody(body),
+      bodyChannel: extractChannelFromBody(body),
     });
     const okPayload: Record<string, unknown> = {
       type: 'message',

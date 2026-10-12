@@ -2,6 +2,23 @@ import {describe, expect, it} from 'vitest';
 import {normalizeProduct} from '../src/facts/normalize';
 
 describe('facts normalize', () => {
+  it('builds zareczyny product URL from handle template', () => {
+    const facts = normalizeProduct(
+      {
+        id: 'gid://shopify/Product/1',
+        handle: 'solitaire-gold',
+        title: 'Solitaire',
+        variants: {nodes: []},
+      },
+      {
+        channel: 'epir-zareczyny',
+        urlTemplate: 'https://zareczyny.epirbizuteria.pl/products/{handle}',
+        fetchedAt: '2026-01-01T00:00:00.000Z',
+      },
+    );
+    expect(facts?.url).toBe('https://zareczyny.epirbizuteria.pl/products/solitaire-gold');
+  });
+
   it('skips GE product without onlineStoreUrl', () => {
     expect(
       normalizeProduct(

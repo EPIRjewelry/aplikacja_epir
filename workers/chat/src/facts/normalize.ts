@@ -281,12 +281,13 @@ export function normalizeProduct(raw: unknown, options: NormalizeOptions): Produ
     if (resolved.productOriginRaw) productOriginRaw = resolved.productOriginRaw;
 
     const weightRaw = v.weight;
-    const weight =
+    let weight =
       typeof weightRaw === 'number' && Number.isFinite(weightRaw)
         ? weightRaw
         : typeof weightRaw === 'string' && weightRaw.trim() && Number.isFinite(Number(weightRaw))
           ? Number(weightRaw)
           : null;
+    if (weight != null && weight <= 0) weight = null;
     const weightUnit = asStr(v.weightUnit) ?? null;
 
     variants.push({
@@ -311,7 +312,7 @@ export function normalizeProduct(raw: unknown, options: NormalizeOptions): Produ
   }
 
   let url = '';
-  if (channel === 'epir-online-store' || channel === 'epir-zareczyny') {
+  if (channel === 'epir-online-store') {
     const storeUrl = asStr(raw.onlineStoreUrl);
     if (!storeUrl) return null;
     url = storeUrl;

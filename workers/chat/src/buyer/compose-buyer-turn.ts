@@ -19,13 +19,27 @@ import { buildBuyerToolDefinitions, filterModelWiredBuyerTools } from './buyer-t
 import type { BuyerChannelId } from './channel-switch';
 import { catalogSnapshotChannel } from './channel-switch';
 import { cartSummaryBlock } from './cart-summary-block';
+import {
+  continueUrlFromCartPayload,
+  normalizeCartPayloadForParsing,
+} from './cart-payload-normalize';
 import { executeBuyerTool, variantIdsFromCartPayload } from './execute-buyer-tool';
+import {
+  buildPreviousResponseProductsBlock,
+  collectUrlsFromFactsBlocks,
+} from './previous-response-products';
+import {
+  collectAllowedUrls,
+  guardBuyerReplyLinks,
+} from './reply-link-guard';
+import {urlsFromToolResult} from './urls-from-tool-result';
 import { readSessionCartId } from './session-cart';
 import {
   appendBuyerSessionMessage,
   lastBuyerHistoryEntries,
   readBuyerSessionHistory,
 } from './session-history';
+import { ensureBuyerSessionContext } from './session-context';
 import {
   brandKeyForChannel,
   listAvailableBuyerTools,
@@ -33,6 +47,52 @@ import {
 } from './tool-readiness';
 
 const MAX_TOOL_ROUNDS = 3;
+const FINAL_TOOL_FALLBACK_USER =
+  'Nie udało się wykonać operacji, proszę spróbować ponownie.';
+
+function summarizeToolResultsForFallback(messages: GroqMessage[]): string {
+  const parts: string[] = [];
+  for (const m of messages) {
+    if (m.role === 'tool' && typeof m.content === 'string' && m.content.trim()) {
+      parts.push(m.content.trim().slice(0, 2500));
+    }
+  }
+  return parts.join('\n---\n').slice(0, 8000);
+}
+
+function buildFinalRoundFallbackMessages(
+  systemContent: string,
+  userText: string,
+  priorMessages: GroqMessage[],
+): GroqMessage[] {
+  const summary = summarizeToolResultsForFallback(priorMessages);
+  const system = summary
+    ? `${systemContent}\n\n[Wyniki narzędzi tej tury]\n${summary}`
+    : systemContent;
+  return [
+    { role: 'system', content: system },
+    { role: 'user', content: userText },
+  ];
+}
+
+function lastCartLinkFromMessages(messages: GroqMessage[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== 'tool' || typeof m.content !== 'string') continue;
+    try {
+      const parsed = JSON.parse(m.content) as Record<string, unknown>;
+      const cont =
+        typeof parsed.continue_url === 'string' ? parsed.continue_url.trim() : '';
+      const checkout =
+        typeof parsed.checkout_url === 'string' ? parsed.checkout_url.trim() : '';
+      const url = cont || checkout;
+      if (url) return url;
+    } catch {
+      /* skip */
+    }
+  }
+  return null;
+}
 
 const HARD_RULES_PAN_PANI = [
   'Zawsze forma grzecznościowa Pan/Pani, nigdy 2. os. l.poj. (ty, możesz, znajdziesz, szukasz).',
@@ -329,6 +389,14 @@ async function collectStreamRound(
 export type ComposeBuyerTurnOptions = {
   sessionId?: string;
   productHandle?: string;
+  storefrontId?: string;
+  bodyChannel?: string;
+};
+
+type FinalizeReplyContext = {
+  allowedUrls: Set<string>;
+  systemBase: string;
+  hadSearchCatalogThisTurn: boolean;
 };
 
 async function finalizeBuyerReply(
@@ -336,17 +404,24 @@ async function finalizeBuyerReply(
   sessionId: string | undefined,
   userText: string,
   reply: string,
+  ctx: FinalizeReplyContext,
 ): Promise<string> {
   const scrubbed = scrubGidFromClientReply(reply);
+  const guarded = await guardBuyerReplyLinks(env, scrubbed, ctx.allowedUrls, {
+    sessionId,
+    systemBase: ctx.systemBase,
+    userText,
+    hadSearchCatalogThisTurn: ctx.hadSearchCatalogThisTurn,
+  });
   if (sessionId?.trim()) {
     try {
       await appendBuyerSessionMessage(env, sessionId, 'user', userText);
-      await appendBuyerSessionMessage(env, sessionId, 'assistant', scrubbed);
+      await appendBuyerSessionMessage(env, sessionId, 'assistant', guarded);
     } catch (e) {
       console.warn('[buyer.compose_turn] session history append failed', e);
     }
   }
-  return scrubbed;
+  return guarded;
 }
 
 export async function composeBuyerAssistantReply(
@@ -359,18 +434,45 @@ export async function composeBuyerAssistantReply(
   const sessionId = opts?.sessionId?.trim() || undefined;
   const productHandle = opts?.productHandle?.trim() || undefined;
   const catalogChannel = catalogSnapshotChannel(channelId);
+
+  await ensureBuyerSessionContext(env, {
+    sessionId,
+    channelId,
+    storefrontId: opts?.storefrontId,
+    bodyChannel: opts?.bodyChannel,
+    userText,
+  });
+
   const profile = await fetchAIProfileByHandle(env, channelId, buyerIp(request));
   const profilePrompt = profile ? buildAIProfilePrompt(profile) : '';
   const readyAll = await listAvailableBuyerTools(env, channelId);
   const availableTools = filterToolsForSession(readyAll, sessionId);
 
+  const history =
+    sessionId ? lastBuyerHistoryEntries(await readBuyerSessionHistory(env, sessionId)) : [];
+
   const contextBlocks: string[] = [];
   const allowedVariantIds = new Set<string>();
+  const allowedUrlSeeds: string[] = [];
+
+  const prevProducts = await buildPreviousResponseProductsBlock(
+    env,
+    channelId,
+    catalogChannel,
+    history,
+    request,
+  );
+  if (prevProducts.block) {
+    contextBlocks.push(prevProducts.block);
+    for (const id of prevProducts.variantIds) allowedVariantIds.add(id);
+    allowedUrlSeeds.push(...prevProducts.urls);
+  }
 
   if (productHandle) {
     try {
       const product = await fetchProductFactsByHandle(env, catalogChannel, productHandle, {
         clientRequest: request,
+        urlChannel: channelId,
       });
       if (product) {
         const formatted = formatProductsBlock(PAGE_PRODUCT_HEADER, [{ product }], 1);
@@ -401,12 +503,14 @@ export async function composeBuyerAssistantReply(
           },
         );
         if (!cartOut?.error) {
-          const payload = cartOut.result ?? cartOut;
+          const payload = normalizeCartPayloadForParsing(cartOut.result ?? cartOut);
           const summary = cartSummaryBlock(payload);
           if (summary) contextBlocks.push(summary);
           for (const vid of variantIdsFromCartPayload(payload)) {
             allowedVariantIds.add(vid);
           }
+          const cartUrl = continueUrlFromCartPayload(payload);
+          if (cartUrl) allowedUrlSeeds.push(cartUrl);
         }
       } catch (e) {
         console.warn('[buyer.compose_turn] session cart variants skipped', e);
@@ -415,14 +519,19 @@ export async function composeBuyerAssistantReply(
   }
 
   const modelTools = filterModelWiredBuyerTools(availableTools);
+  const factsBlock = contextBlocks.join('\n\n');
   const systemParts = buildBuyerTurnSystemPrompt({
     modelTools,
     profilePrompt,
-    factsBlock: contextBlocks.join('\n\n'),
+    factsBlock,
   });
-
-  const history =
-    sessionId ? lastBuyerHistoryEntries(await readBuyerSessionHistory(env, sessionId)) : [];
+  allowedUrlSeeds.push(...collectUrlsFromFactsBlocks(contextBlocks));
+  const allowedUrls = collectAllowedUrls(allowedUrlSeeds);
+  const finalizeCtx: FinalizeReplyContext = {
+    allowedUrls,
+    systemBase: systemParts,
+    hadSearchCatalogThisTurn: false,
+  };
 
   const messages: GroqMessage[] = [
     { role: 'system', content: systemParts },
@@ -436,7 +545,7 @@ export async function composeBuyerAssistantReply(
       timingLabel: 'buyer_turn',
       sessionId,
     });
-    return finalizeBuyerReply(env, sessionId, userText, reply);
+    return finalizeBuyerReply(env, sessionId, userText, reply, finalizeCtx);
   }
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -458,13 +567,13 @@ export async function composeBuyerAssistantReply(
           timingLabel: `buyer_tool_loop_fallback_${round}`,
           sessionId,
         });
-        return finalizeBuyerReply(env, sessionId, userText, reply);
+        return finalizeBuyerReply(env, sessionId, userText, reply, finalizeCtx);
       }
       throw err;
     }
 
     if (toolCalls.length === 0) {
-      return finalizeBuyerReply(env, sessionId, userText, text);
+      return finalizeBuyerReply(env, sessionId, userText, text, finalizeCtx);
     }
 
     messages.push({
@@ -496,6 +605,14 @@ export async function composeBuyerAssistantReply(
       if (executed.newVariantIds?.length) {
         for (const id of executed.newVariantIds) allowedVariantIds.add(id);
       }
+      if (call.name === 'search_catalog') {
+        finalizeCtx.hadSearchCatalogThisTurn = true;
+      }
+      for (const url of urlsFromToolResult(call.name, executed.content)) {
+        for (const normalized of collectAllowedUrls([url])) {
+          allowedUrls.add(normalized);
+        }
+      }
       messages.push({
         role: 'tool',
         tool_call_id: call.id,
@@ -515,13 +632,26 @@ export async function composeBuyerAssistantReply(
       { toolChoice: 'none' },
     );
     const { text: finalText } = await collectStreamRound(finalStream);
-    return finalizeBuyerReply(env, sessionId, userText, finalText);
+    return finalizeBuyerReply(env, sessionId, userText, finalText, finalizeCtx);
   } catch {
     console.warn(JSON.stringify({ tag: 'buyer.tool_loop_fallback', round: 'final' }));
-    const reply = await getGroqResponse(messages, env, {
-      timingLabel: 'buyer_tool_loop_final_fallback',
-      sessionId,
-    });
-    return finalizeBuyerReply(env, sessionId, userText, reply);
+    const fallbackMessages = buildFinalRoundFallbackMessages(
+      systemParts,
+      userText,
+      messages,
+    );
+    try {
+      const reply = await getGroqResponse(fallbackMessages, env, {
+        timingLabel: 'buyer_tool_loop_final_fallback',
+        sessionId,
+      });
+      return finalizeBuyerReply(env, sessionId, userText, reply, finalizeCtx);
+    } catch {
+      const cartLink = lastCartLinkFromMessages(messages);
+      const staticReply = cartLink
+        ? `Koszyk jest gotowy: [Przejdź do koszyka](${cartLink})`
+        : FINAL_TOOL_FALLBACK_USER;
+      return finalizeBuyerReply(env, sessionId, userText, staticReply, finalizeCtx);
+    }
   }
 }
