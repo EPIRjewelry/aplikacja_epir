@@ -415,13 +415,16 @@ export async function executeBuyerTool(
           variant_id: gateFail.variant_id,
         }),
       );
+      const notice =
+        gateFail.status === 'needs_option'
+          ? 'Wybierz wariant (np. rozmiar) zanim dodamy produkt do koszyka.'
+          : gateFail.status === 'variant_options_unknown'
+            ? 'Sprawdź produkt w katalogu i podaj wariant.'
+            : 'Wybrany wariant nie odpowiada podanej opcji — popraw wybór.';
       return {
         content: JSON.stringify({
           ...gateFail,
-          notice:
-            gateFail.status === 'needs_option'
-              ? 'Wybierz wariant (np. rozmiar) zanim dodamy produkt do koszyka.'
-              : 'Wybrany wariant nie odpowiada podanej opcji — popraw wybór.',
+          notice,
         }),
       };
     }

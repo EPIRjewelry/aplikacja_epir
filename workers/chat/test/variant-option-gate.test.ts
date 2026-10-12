@@ -214,4 +214,84 @@ describe('executeBuyerTool option gate blocks MCP', () => {
     const parsed = JSON.parse(out.content) as { status?: string };
     expect(parsed.status).toBe('needs_option');
   });
+
+  it('variant on allowlist but missing from option index → variant_options_unknown', async () => {
+    const mcpSpy = vi.spyOn(mcpServer, 'callMcpToolDirect');
+    const out = await executeBuyerTool({
+      env: {} as import('../src/config/bindings').Env,
+      channelId: 'epir-online-store',
+      readyTools: ['ucp_cart'],
+      name: 'create_cart',
+      argsJson: JSON.stringify({
+        line_items: [{ quantity: 1, item: { id: 'gid://shopify/ProductVariant/9' } }],
+      }),
+      sessionCartId: null,
+      allowedVariantIds: new Set(['gid://shopify/ProductVariant/9']),
+      variantOptionIndex: createVariantOptionIndex(),
+    });
+    expect(mcpSpy).not.toHaveBeenCalled();
+    const parsed = JSON.parse(out.content) as { status?: string; notice?: string };
+    expect(parsed.status).toBe('variant_options_unknown');
+    expect(parsed.notice).toMatch(/katalogu/i);
+  });
+});
+
+function gkProduct(): ProductFacts {
+  const base = ringProduct();
+  return {
+    ...base,
+    title: 'Pierścionek GK',
+    options: [
+      { name: 'Rozmiar', values: ['17', '18'] },
+      { name: 'Kamień', values: ['Brylant', 'Szafir'] },
+    ],
+    sizes: ['17', '18'],
+    variants: [
+      {
+        ...base.variants[0],
+        variantId: 'gid://shopify/ProductVariant/gk18b',
+        selectedOptions: [
+          { name: 'Rozmiar', value: '18' },
+          { name: 'Kamień', value: 'Brylant' },
+        ],
+        size: '18',
+      },
+    ],
+  };
+}
+
+describe('multi-option and case-insensitive selected_options', () => {
+  it('needs_option when only Rozmiar provided for Rozmiar+Kamień', () => {
+    const index = createVariantOptionIndex();
+    mergeProductFactsIntoIndex(index, gkProduct());
+    const adds = collectCartAddsWithOptions('create_cart', {
+      line_items: [
+        {
+          quantity: 1,
+          item: { id: 'gid://shopify/ProductVariant/gk18b' },
+          selected_options: [{ name: 'Rozmiar', value: '18' }],
+        },
+      ],
+    });
+    const fail = validateCartAddsAgainstIndex(index, adds);
+    expect(fail?.status).toBe('needs_option');
+    if (fail?.status === 'needs_option') {
+      expect(fail.missing_options).toContain('Kamień');
+    }
+  });
+
+  it('accepts case-insensitive option name rozmiar = Rozmiar', () => {
+    const index = createVariantOptionIndex();
+    mergeProductFactsIntoIndex(index, ringProduct());
+    const adds = collectCartAddsWithOptions('create_cart', {
+      line_items: [
+        {
+          quantity: 1,
+          item: { id: 'gid://shopify/ProductVariant/18' },
+          selected_options: [{ name: 'rozmiar', value: '18' }],
+        },
+      ],
+    });
+    expect(validateCartAddsAgainstIndex(index, adds)).toBeNull();
+  });
 });

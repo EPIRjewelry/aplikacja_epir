@@ -64,22 +64,52 @@ function isAllowedDest(dest: string, allowedUrls: Set<string>): boolean {
     return false;
   }
   const norm = normalizeUrlForAllowlist(trimmed);
+  // Tylko dokładna równość po normalizacji — bez dopasowania prefiksem.
   if (allowedUrls.has(norm)) return true;
   for (const allowed of allowedUrls) {
-    if (norm === allowed || norm.startsWith(`${allowed}/`)) return true;
+    if (norm === allowed) return true;
   }
   return false;
 }
 
+const LOOSE_PLACEHOLDER_RE = /\{\{[^{}]+\}\}/g;
+
+/** Usuwa luźne {{...}} poza składnią linku Markdown (nie podstawia URL). */
+export function stripLoosePlaceholders(text: string): string {
+  if (!text.includes('{{')) return text;
+  const next = text.replace(LOOSE_PLACEHOLDER_RE, '');
+  if (next !== text) {
+    console.log(
+      JSON.stringify({
+        tag: 'buyer.reply_link_stripped',
+        reason: 'loose_placeholder',
+        destPattern: 'placeholder',
+      }),
+    );
+  }
+  return next.replace(/[ \t]{2,}/g, ' ').replace(/ \n/g, '\n').trimEnd();
+}
+
 /**
  * Usuwa linki Markdown z celami spoza allowlisty (w tym {{placeholders}}).
- * Zostawia sam tekst etykiety. Nie podstawia URL.
+ * Zostawia sam tekst etykiety. Nie podstawia URL. Potem strip luźnych {{...}}.
  */
 export function sanitizeMarkdownLinks(text: string, allowedUrls: Set<string>): string {
-  return text.replace(MARKDOWN_LINK_ANY_DEST_RE, (full, label: string, dest: string) => {
-    if (isAllowedDest(dest, allowedUrls)) return full;
-    const trimmedLabel = typeof label === 'string' ? label.trim() : '';
-    if (trimmedLabel) {
+  const withoutBadLinks = text.replace(
+    MARKDOWN_LINK_ANY_DEST_RE,
+    (full, label: string, dest: string) => {
+      if (isAllowedDest(dest, allowedUrls)) return full;
+      const trimmedLabel = typeof label === 'string' ? label.trim() : '';
+      if (trimmedLabel) {
+        console.log(
+          JSON.stringify({
+            tag: 'buyer.reply_link_stripped',
+            reason: 'markdown_dest_not_allowed',
+            destPattern: dest.includes('{{') ? 'placeholder' : 'non_http_or_foreign',
+          }),
+        );
+        return trimmedLabel;
+      }
       console.log(
         JSON.stringify({
           tag: 'buyer.reply_link_stripped',
@@ -87,17 +117,10 @@ export function sanitizeMarkdownLinks(text: string, allowedUrls: Set<string>): s
           destPattern: dest.includes('{{') ? 'placeholder' : 'non_http_or_foreign',
         }),
       );
-      return trimmedLabel;
-    }
-    console.log(
-      JSON.stringify({
-        tag: 'buyer.reply_link_stripped',
-        reason: 'markdown_dest_not_allowed',
-        destPattern: dest.includes('{{') ? 'placeholder' : 'non_http_or_foreign',
-      }),
-    );
-    return '';
-  });
+      return '';
+    },
+  );
+  return stripLoosePlaceholders(withoutBadLinks);
 }
 
 export function urlsInReply(text: string): string[] {
@@ -128,7 +151,7 @@ export function foreignHostsInReply(
     if (allowedUrls.has(norm)) continue;
     let matched = false;
     for (const allowed of allowedUrls) {
-      if (norm === allowed || norm.startsWith(`${allowed}/`)) {
+      if (norm === allowed) {
         matched = true;
         break;
       }

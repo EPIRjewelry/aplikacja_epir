@@ -8,8 +8,8 @@ import * as sessionCart from '../src/buyer/session-cart';
 import * as executeBuyerToolMod from '../src/buyer/execute-buyer-tool';
 import * as mcpServer from '../src/mcp_server';
 import {
-  appendExactContinueUrlIfMissing,
   buildCartContinueReply,
+  mergeModelTextWithCartBlock,
 } from '../src/buyer/cart-continue-reply';
 import {ASK_VARIANT_BEFORE_CART_MESSAGE} from '../src/buyer/tool-as-text';
 
@@ -170,23 +170,37 @@ describe('compose: tool_choice force rules after PR #167 follow-up', () => {
     expect(reply).not.toContain('update_cart');
   });
 
-  it('after successful cart mutation appends exact continue_url when model omitted it', async () => {
+  it('after successful cart mutation always ends with deterministic cart block', async () => {
     const continueUrl =
       'https://epir-art-silver-jewellery.myshopify.com/cart/c/EXACTTOKEN';
+    const cartPayload = {
+      continue_url: continueUrl,
+      cart_id: 'gid://shopify/Cart/1',
+      line_items: [
+        {
+          quantity: 2,
+          item: {
+            id: 'gid://shopify/ProductVariant/1',
+            title: 'Pierścionek Aurora',
+            selected_options: [{name: 'Rozmiar', value: '18'}],
+          },
+        },
+      ],
+      messages: [
+        {type: 'warning', code: 'quantity_adjusted', content: 'Dostosowano ilość'},
+      ],
+      totals: [{type: 'total', amount: 5000, display_pl: '50 zł'}],
+    };
     mockComposeBasics();
     vi.spyOn(sessionCart, 'readSessionCartId').mockResolvedValue(null);
     vi.spyOn(executeBuyerToolMod, 'executeBuyerTool').mockResolvedValue({
-      content: JSON.stringify({
-        continue_url: continueUrl,
-        cart_id: 'gid://shopify/Cart/1',
-        messages: [
-          {type: 'warning', code: 'quantity_adjusted', content: 'Dostosowano ilość'},
-        ],
-      }),
+      content: JSON.stringify(cartPayload),
       sessionCartId: 'gid://shopify/Cart/1',
       cartMutationSucceeded: true,
       continueUrl,
       cartNotices: ['Dostosowano ilość'],
+      cartTotalsNote: 'Suma szacunkowa: 50 zł (ostateczna kwota w kasie).',
+      cartMutationPayload: cartPayload,
     });
     vi.spyOn(aiClient, 'streamGroqEvents').mockImplementation(
       async (_m, _e, _t, _s, timingLabel) => {
@@ -213,13 +227,16 @@ describe('compose: tool_choice force rules after PR #167 follow-up', () => {
       req,
       {sessionId: 'sess-append'},
     );
-    expect(reply).toBe(
-      appendExactContinueUrlIfMissing(
-        'Koszyk jest gotowy.',
-        continueUrl,
-        ['Dostosowano ilość'],
-      ),
-    );
+    const block = buildCartContinueReply({
+      continueUrl,
+      notices: ['Dostosowano ilość'],
+      totalsNote: 'Suma szacunkowa: 50 zł (ostateczna kwota w kasie).',
+      cartPayload,
+    });
+    expect(reply).toBe(mergeModelTextWithCartBlock('Koszyk jest gotowy.', block, continueUrl, cartPayload));
+    expect(reply).toContain('Pierścionek Aurora');
+    expect(reply).toContain('2 szt.');
+    expect(reply).toContain('Dostosowano ilość');
     expect(reply).toContain(continueUrl);
     expect(reply).not.toContain('utm_');
   });
@@ -383,13 +400,12 @@ describe('compose: tool_choice force rules after PR #167 follow-up', () => {
       req,
       {sessionId: 'sess-cont'},
     );
-    expect(reply).toBe(
-      buildCartContinueReply(
-        continueUrl,
-        ['Dostosowano ilość'],
-        'Suma szacunkowa: 50 zł (ostateczna kwota w kasie).',
-      ),
+    const block = buildCartContinueReply(
+      continueUrl,
+      ['Dostosowano ilość'],
+      'Suma szacunkowa: 50 zł (ostateczna kwota w kasie).',
     );
+    expect(reply).toBe(mergeModelTextWithCartBlock('Zły link', block, continueUrl));
     expect(reply).toContain(continueUrl);
     expect(reply).not.toContain('utm_');
   });

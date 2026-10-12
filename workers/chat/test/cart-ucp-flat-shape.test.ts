@@ -18,7 +18,10 @@ import {
   isSuccessfulCartMutationResult,
 } from '../src/buyer/execute-buyer-tool';
 import {urlsFromToolResult} from '../src/buyer/urls-from-tool-result';
-import {buildCartContinueReply} from '../src/buyer/cart-continue-reply';
+import {
+  buildCartContinueReply,
+  mergeModelTextWithCartBlock,
+} from '../src/buyer/cart-continue-reply';
 import {
   applyCartMutationHistoryOverride,
   collectAllowedUrls,
@@ -471,11 +474,20 @@ describe('compose: successful create_cart does not leave catalog stub for next t
       continueUrl: CONTINUE,
       cartPayload: presentCartForChat(FLAT_MCP_RESULT),
     });
-    expect(replyA).toBe(expectedCartReply);
+    expect(replyA).toBe(
+      mergeModelTextWithCartBlock('Koszyk: link', expectedCartReply, CONTINUE),
+    );
     expect(historyStore.some((h) => h.content === REPLY_LINK_REJECTED_CATALOG_MESSAGE)).toBe(
       false,
     );
-    expect(historyStore.some((h) => h.content === expectedCartReply)).toBe(true);
+    expect(
+      historyStore.some(
+        (h) =>
+          h.content.includes(CONTINUE) &&
+          h.content.includes('Przejdź do koszyka') &&
+          h.content.includes('Ring'),
+      ),
+    ).toBe(true);
 
     // Turn B: no cart mutation; history from A must not be catalog stub
     vi.spyOn(sessionCart, 'readSessionCartId').mockResolvedValue(

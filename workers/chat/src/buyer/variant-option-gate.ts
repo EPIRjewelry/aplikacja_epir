@@ -1,7 +1,10 @@
 /**
  * Indeks wariantów z ProductFacts (katalog tej tury) — walidacja selected_options
  * przed mutacją koszyka. Storefront: ProductVariant.selectedOptions.
+ * Porównanie name/value: trim + lower-case (jak opcjonalny caseInsensitiveMatch
+ * w Product.variantBySelectedOptions).
  * @see https://shopify.dev/docs/api/storefront/latest/objects/ProductVariant
+ * @see https://shopify.dev/docs/api/storefront/latest/objects/Product
  */
 import type { ProductFacts, VariantFacts } from '../facts/types';
 import { variantIdOf } from '../cart/ucp-cart';
@@ -12,6 +15,7 @@ export type VariantOptionEntry = {
   productTitle: string;
   variantTitle: string;
   selectedOptions: SelectedOption[];
+  /** Kanoniczne nazwy opcji → wartości z katalogu. */
   optionValuesByName: Map<string, string[]>;
   requiresOptionChoice: boolean;
 };
@@ -22,20 +26,63 @@ export function createVariantOptionIndex(): VariantOptionIndex {
   return new Map();
 }
 
+export function normalizeOptKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
 function isDefaultTitleOnly(product: ProductFacts, variants: VariantFacts[]): boolean {
-  if (variants.length <= 1) return true;
   const names = product.options?.map((o) => o.name.trim()) ?? [];
   if (names.length === 1 && names[0]?.toLowerCase() === 'title') {
     const values = product.options[0]?.values ?? [];
     if (values.length === 1 && values[0]?.trim() === 'Default Title') return true;
   }
+  // Jedyny wariant bez opcji multi-value = brak wyboru.
+  if (variants.length <= 1 && !hasMultiValueOption(product)) return true;
+  return false;
+}
+
+function hasMultiValueOption(product: ProductFacts): boolean {
+  for (const opt of product.options ?? []) {
+    const name = opt.name?.trim() ?? '';
+    const vals = (opt.values ?? []).map((v) => v.trim()).filter(Boolean);
+    if (normalizeOptKey(name) === 'title' && vals.every((v) => v === 'Default Title')) {
+      continue;
+    }
+    if (vals.length > 1) return true;
+  }
   return false;
 }
 
 function requiresChoice(product: ProductFacts, variants: VariantFacts[]): boolean {
-  if (variants.length <= 1) return false;
   if (isDefaultTitleOnly(product, variants)) return false;
-  return (product.options?.length ?? 0) > 0;
+  // Wielowariantowy LUB dowolna opcja z >1 wartością (np. Rozmiar+Kamień przy jednym GID).
+  if (variants.length > 1) return (product.options?.length ?? 0) > 0;
+  return hasMultiValueOption(product);
+}
+
+function lookupOptionValues(
+  optionValuesByName: Map<string, string[]>,
+  name: string,
+): { canonicalName: string; values: string[] } | null {
+  const key = normalizeOptKey(name);
+  for (const [canonicalName, values] of optionValuesByName) {
+    if (normalizeOptKey(canonicalName) === key) {
+      return { canonicalName, values };
+    }
+  }
+  return null;
+}
+
+/** Opcje z więcej niż jedną wartością (poza Title/Default Title). */
+export function requiredMultiValueOptionNames(entry: VariantOptionEntry): string[] {
+  const out: string[] = [];
+  for (const [name, vals] of entry.optionValuesByName) {
+    if (normalizeOptKey(name) === 'title' && vals.every((v) => v.trim() === 'Default Title')) {
+      continue;
+    }
+    if (vals.length > 1) out.push(name);
+  }
+  return out;
 }
 
 export function mergeProductFactsIntoIndex(
@@ -125,22 +172,21 @@ export function collectCartAddsWithOptions(
   return adds;
 }
 
-function normalizeOptKey(name: string): string {
-  return name.trim().toLowerCase();
-}
-
 function optionsMatchVariant(
   entry: VariantOptionEntry,
   selected: SelectedOption[],
 ): boolean {
   for (const sel of selected) {
-    const allowed = entry.optionValuesByName.get(sel.name) ?? [];
-    const allowedNorm = new Set(allowed.map((v) => v.trim()));
-    if (!allowedNorm.has(sel.value.trim())) return false;
+    const looked = lookupOptionValues(entry.optionValuesByName, sel.name);
+    if (!looked) return false;
+    const allowedNorm = new Set(looked.values.map((v) => normalizeOptKey(v)));
+    if (!allowedNorm.has(normalizeOptKey(sel.value))) return false;
     const variantOpt = entry.selectedOptions.find(
       (o) => normalizeOptKey(o.name) === normalizeOptKey(sel.name),
     );
-    if (!variantOpt || variantOpt.value.trim() !== sel.value.trim()) return false;
+    if (!variantOpt || normalizeOptKey(variantOpt.value) !== normalizeOptKey(sel.value)) {
+      return false;
+    }
   }
   return true;
 }
@@ -157,6 +203,10 @@ export type OptionGateFailure =
       variant_id: string;
       selected_options: SelectedOption[];
       expected_options: SelectedOption[];
+    }
+  | {
+      status: 'variant_options_unknown';
+      variant_id: string;
     };
 
 export function validateCartAddsAgainstIndex(
@@ -165,26 +215,54 @@ export function validateCartAddsAgainstIndex(
 ): OptionGateFailure | null {
   for (const add of adds) {
     const entry = index.get(add.variantId);
-    if (!entry) continue;
+    if (!entry) {
+      return {
+        status: 'variant_options_unknown',
+        variant_id: add.variantId,
+      };
+    }
     if (!entry.requiresOptionChoice) continue;
 
-    const missingNames = [...entry.optionValuesByName.keys()].filter((name) => {
-      const vals = entry.optionValuesByName.get(name) ?? [];
-      if (normalizeOptKey(name) === 'title' && vals.every((v) => v === 'Default Title')) {
-        return false;
-      }
-      return true;
-    });
+    const required = requiredMultiValueOptionNames(entry);
+    const mustHave =
+      required.length > 0
+        ? required
+        : [...entry.optionValuesByName.keys()].filter((name) => {
+            const vals = entry.optionValuesByName.get(name) ?? [];
+            return !(
+              normalizeOptKey(name) === 'title' &&
+              vals.every((v) => v.trim() === 'Default Title')
+            );
+          });
 
-    if (!add.selectedOptions?.length) {
+    const provided = new Set(
+      (add.selectedOptions ?? []).map((s) => normalizeOptKey(s.name)),
+    );
+    const missing = mustHave.filter((name) => !provided.has(normalizeOptKey(name)));
+
+    if (missing.length > 0) {
       const available_values: Record<string, string[]> = {};
-      for (const name of missingNames) {
+      for (const name of missing) {
         const vals = entry.optionValuesByName.get(name);
         if (vals?.length) available_values[name] = vals;
       }
       return {
         status: 'needs_option',
-        missing_options: missingNames.length ? missingNames : ['Rozmiar'],
+        missing_options: missing.length ? missing : ['Rozmiar'],
+        available_values,
+        variant_id: add.variantId,
+      };
+    }
+
+    if (!add.selectedOptions?.length) {
+      const available_values: Record<string, string[]> = {};
+      for (const name of mustHave) {
+        const vals = entry.optionValuesByName.get(name);
+        if (vals?.length) available_values[name] = vals;
+      }
+      return {
+        status: 'needs_option',
+        missing_options: mustHave.length ? mustHave : ['Rozmiar'],
         available_values,
         variant_id: add.variantId,
       };
@@ -195,6 +273,7 @@ export function validateCartAddsAgainstIndex(
         status: 'option_mismatch',
         variant_id: add.variantId,
         selected_options: add.selectedOptions,
+        // Kanoniczne z wariantu (nie z args modelu).
         expected_options: entry.selectedOptions,
       };
     }

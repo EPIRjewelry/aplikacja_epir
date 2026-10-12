@@ -57,8 +57,8 @@ import {
 } from './tool-readiness';
 import { detectForcedCartTool } from './cart-intent';
 import {
-  appendExactContinueUrlIfMissing,
   buildCartContinueReply,
+  mergeModelTextWithCartBlock,
 } from './cart-continue-reply';
 import {
   ASK_VARIANT_BEFORE_CART_MESSAGE,
@@ -477,9 +477,7 @@ async function finalizeBuyerReply(
 ): Promise<string> {
   let scrubbed = scrubGidFromClientReply(reply);
   scrubbed = scrubToolAsTextOrFallback(scrubbed, ctx);
-  const beforeMarkdownSanitize = scrubbed;
   scrubbed = sanitizeMarkdownLinks(scrubbed, ctx.allowedUrls);
-  const markdownLinksStripped = beforeMarkdownSanitize !== scrubbed;
 
   const guardedRaw = await guardBuyerReplyLinks(env, scrubbed, ctx.allowedUrls, {
     sessionId,
@@ -501,21 +499,19 @@ async function finalizeBuyerReply(
 
   if (ctx.cartMutatedSuccessfullyThisTurn) {
     const deterministic = cartDeterministicReply(ctx);
-    const exactContinue = ctx.cartContinueUrl?.trim() ?? '';
-    const missingExactContinue = Boolean(exactContinue && !guarded.includes(exactContinue));
-    if (
-      deterministic &&
-      (rejectionOrEmpty || (missingExactContinue && markdownLinksStripped))
-    ) {
-      guarded = deterministic;
-    } else {
-      // Dołącz exact continue_url z Shopify, jeśli model go pominął (bez UTM).
-      guarded = appendExactContinueUrlIfMissing(
-        guarded,
-        ctx.cartContinueUrl,
-        ctx.cartNotices ?? [],
-        ctx.cartTotalsNote,
-      );
+    if (deterministic) {
+      // Po mutacji zawsze kończymy blokiem z wyniku Shopify (pozycje, messages, suma, link).
+      // https://ucp.dev/2026-08-25/specification/shopping/cart/
+      if (rejectionOrEmpty) {
+        guarded = deterministic;
+      } else {
+        guarded = mergeModelTextWithCartBlock(
+          guarded,
+          deterministic,
+          ctx.cartContinueUrl!.trim(),
+          ctx.cartMutationPayload,
+        );
+      }
     }
   }
 

@@ -103,6 +103,7 @@ describe('buildCartContinueReply line summaries', () => {
       metafields: {},
       productOriginRaw: null,
       dataIssues: [],
+      fetchedAt: '2026-01-01T00:00:00.000Z',
     };
     mergeProductFactsIntoIndex(index, product);
     const lines = formatCartLineSummaries(
@@ -130,8 +131,76 @@ describe('sanitizeMarkdownLinks placeholders', () => {
     expect(out).toContain('https://shop.myshopify.com/cart/c/REAL');
   });
 
-  it('plain braces without markdown link unchanged', () => {
+  it('strips loose {{placeholders}} outside markdown links', () => {
     const allowed = collectAllowedUrls([]);
-    expect(sanitizeMarkdownLinks('foo {{bar}} baz', allowed)).toBe('foo {{bar}} baz');
+    const out = sanitizeMarkdownLinks('foo {{bar}} baz', allowed);
+    expect(out).not.toContain('{{');
+    expect(out).toContain('foo');
+    expect(out).toContain('baz');
+  });
+
+  it('rejects prefix path on allowlist — exact URL only', () => {
+    const allowed = collectAllowedUrls(['https://shop.myshopify.com/cart/c']);
+    const out = sanitizeMarkdownLinks(
+      '[x](https://shop.myshopify.com/cart/c/TOKEN)',
+      allowed,
+    );
+    expect(out).toBe('x');
+    expect(out).not.toContain('TOKEN');
+  });
+});
+
+describe('disclosure presentation near line item', () => {
+  const url = 'https://shop.myshopify.com/cart/c/TOKEN';
+
+  it('shows full disclosure text under the path-referenced line', () => {
+    const longDisclosure =
+      'Ilość tej pozycji została dostosowana do dostępnego stanu magazynowego — pełny komunikat bez skracania.';
+    const reply = buildCartContinueReply({
+      continueUrl: url,
+      cartPayload: {
+        line_items: [
+          {
+            id: 'li_1',
+            quantity: 1,
+            item: {
+              id: 'gid://shopify/ProductVariant/18',
+              title: 'Pierścionek Aurora',
+              selected_options: [{ name: 'Rozmiar', value: '18' }],
+            },
+          },
+          {
+            id: 'li_2',
+            quantity: 1,
+            item: {
+              id: 'gid://shopify/ProductVariant/9',
+              title: 'Obrączka',
+              selected_options: [{ name: 'Rozmiar', value: '9' }],
+            },
+          },
+        ],
+        messages: [
+          {
+            type: 'warning',
+            presentation: 'disclosure',
+            path: '/line_items/0',
+            content: longDisclosure,
+          },
+          {
+            type: 'warning',
+            code: 'quantity_adjusted',
+            content: 'Dostosowano ilość globalnie',
+          },
+        ],
+      },
+    });
+    expect(reply).toContain('Pierścionek Aurora');
+    expect(reply).toContain(longDisclosure);
+    const auroraIdx = reply.indexOf('Pierścionek Aurora');
+    const disclosureIdx = reply.indexOf(longDisclosure);
+    const obraczkaIdx = reply.indexOf('Obrączka');
+    expect(disclosureIdx).toBeGreaterThan(auroraIdx);
+    expect(disclosureIdx).toBeLessThan(obraczkaIdx);
+    expect(reply).toContain('Dostosowano ilość globalnie');
   });
 });
