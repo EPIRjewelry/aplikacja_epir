@@ -50,9 +50,14 @@ import {
   type BuyerToolId,
 } from './tool-readiness';
 import { detectForcedCartTool } from './cart-intent';
-import { buildCartContinueReply } from './cart-continue-reply';
 import {
+  appendExactContinueUrlIfMissing,
+  buildCartContinueReply,
+} from './cart-continue-reply';
+import {
+  ASK_VARIANT_BEFORE_CART_MESSAGE,
   looksLikeToolCallAsText,
+  toolAsTextCartMutationAllowed,
   toolAsTextKeyNames,
   toolNameFromAsText,
 } from './tool-as-text';
@@ -472,6 +477,14 @@ async function finalizeBuyerReply(
   if (ctx.cartMutatedSuccessfullyThisTurn && rejectionOrEmpty) {
     const deterministic = cartDeterministicReply(ctx);
     if (deterministic) guarded = deterministic;
+  } else if (ctx.cartMutatedSuccessfullyThisTurn) {
+    // Dołącz exact continue_url z Shopify, jeśli model go pominął (bez UTM).
+    guarded = appendExactContinueUrlIfMissing(
+      guarded,
+      ctx.cartContinueUrl,
+      ctx.cartNotices ?? [],
+      ctx.cartTotalsNote,
+    );
   }
 
   if (sessionId?.trim()) {
@@ -666,16 +679,37 @@ export async function composeBuyerAssistantReply(
     });
   };
 
+  /**
+   * Named tool_choice tylko: (a) get_cart po intencji odczytu;
+   * (b) tool-as-text create/update gdy warianty na allowliście katalogu.
+   * @see https://console.groq.com/docs/tool-use/local-tool-calling
+   */
   const resolveForcedToolName = (text: string): string | null => {
     if (looksLikeToolCallAsText(text)) {
       const fromText = toolNameFromAsText(text);
-      if (fromText && toolDefsInclude(toolDefinitions, fromText)) return fromText;
+      if (!fromText || !toolDefsInclude(toolDefinitions, fromText)) return null;
+      if (fromText === 'get_cart') return 'get_cart';
+      if (
+        (fromText === 'create_cart' || fromText === 'update_cart') &&
+        toolAsTextCartMutationAllowed(text, allowedVariantIds)
+      ) {
+        return fromText;
+      }
+      return null;
     }
     if (!finalizeCtx.cartMutatedSuccessfullyThisTurn) {
       const cartTool = detectForcedCartTool(userText, sessionCartId);
       if (cartTool && toolDefsInclude(toolDefinitions, cartTool)) return cartTool;
     }
     return null;
+  };
+
+  const clientReplyForToolAsTextWithoutForce = (text: string): string => {
+    const name = toolNameFromAsText(text);
+    if (name === 'create_cart' || name === 'update_cart') {
+      return ASK_VARIANT_BEFORE_CART_MESSAGE;
+    }
+    return FINAL_TOOL_FALLBACK_USER;
   };
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -707,22 +741,17 @@ export async function composeBuyerAssistantReply(
         !forcedToolUsed ? resolveForcedToolName(text) : null;
       if (forcedName) {
         forcedToolUsed = true;
-        if (looksLikeToolCallAsText(text)) {
-          console.log(
-            JSON.stringify({
-              tag: 'buyer.tool_as_text_retry',
-              keys: toolAsTextKeyNames(text),
-              forced: forcedName,
-            }),
-          );
-        } else {
-          console.log(
-            JSON.stringify({
-              tag: 'buyer.cart_intent_force_tool',
-              forced: forcedName,
-            }),
-          );
-        }
+        console.log(
+          JSON.stringify({
+            tag: looksLikeToolCallAsText(text)
+              ? 'buyer.tool_as_text_retry'
+              : 'buyer.cart_intent_force_tool',
+            keys: looksLikeToolCallAsText(text)
+              ? toolAsTextKeyNames(text)
+              : undefined,
+            forced: forcedName,
+          }),
+        );
         try {
           const forceStream = await streamGroqEvents(
             messages,
@@ -743,7 +772,9 @@ export async function composeBuyerAssistantReply(
               env,
               sessionId,
               userText,
-              looksLikeToolCallAsText(text) ? FINAL_TOOL_FALLBACK_USER : text,
+              looksLikeToolCallAsText(text)
+                ? clientReplyForToolAsTextWithoutForce(text)
+                : text,
               finalizeCtx,
             );
           }
@@ -765,10 +796,27 @@ export async function composeBuyerAssistantReply(
             env,
             sessionId,
             userText,
-            looksLikeToolCallAsText(text) ? FINAL_TOOL_FALLBACK_USER : text,
+            looksLikeToolCallAsText(text)
+              ? clientReplyForToolAsTextWithoutForce(text)
+              : text,
             finalizeCtx,
           );
         }
+      }
+      if (looksLikeToolCallAsText(text)) {
+        console.log(
+          JSON.stringify({
+            tag: 'buyer.tool_as_text_blocked',
+            keys: toolAsTextKeyNames(text),
+          }),
+        );
+        return finalizeBuyerReply(
+          env,
+          sessionId,
+          userText,
+          clientReplyForToolAsTextWithoutForce(text),
+          finalizeCtx,
+        );
       }
       return finalizeBuyerReply(env, sessionId, userText, text, finalizeCtx);
     }

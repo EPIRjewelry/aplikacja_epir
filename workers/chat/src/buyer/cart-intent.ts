@@ -1,32 +1,21 @@
 /**
- * Lekka heurystyka intencji koszyka (PL) — wymuszenie tool_choice bez nadmiernego
- * odpalania przy zwykłych pytaniach produktowych.
+ * Intencja odczytu koszyka — jedyne keyword-force tool_choice (get_cart).
+ * create_cart / update_cart: tool_choice auto; Groq: potwierdź dane przed wywołaniem.
+ * @see https://console.groq.com/docs/tool-use/local-tool-calling
  */
 
-export type CartForcedTool = 'create_cart' | 'update_cart' | 'get_cart';
+export type CartForcedTool = 'get_cart';
 
-const ADD_RE =
-  /\b(dodaj|wrzu[cć]|dolo[zż]|wrzucamy|dodajcie)\b.*\b(koszyk|koszyka)\b|\bdo\s+koszyka\b/i;
-const UPDATE_QTY_RE =
-  /\b(zmie[nń]\s+(ilo[sś][cć]|na\s+\d+)|ilo[sś][cć]\s+na\s+\d+|usu[nń]\s+(z\s+)?koszyk|wyjmij\s+z\s+koszyk)/i;
 const SHOW_RE =
   /\b(poka[zż]\s+koszyk|co\s+(mam|jest)\s+w\s+koszyk|zawarto[sś][cć]\s+koszyk|m[oó]j\s+koszyk)\b/i;
 
+/** Tylko get_cart (odczyt). Nigdy create_cart / update_cart po słowach kluczowych. */
 export function detectForcedCartTool(
   userText: string,
   sessionCartId: string | null,
 ): CartForcedTool | null {
   const text = userText.trim();
   if (!text) return null;
-
-  if (SHOW_RE.test(text)) {
-    return sessionCartId ? 'get_cart' : null;
-  }
-  if (UPDATE_QTY_RE.test(text)) {
-    return sessionCartId ? 'update_cart' : null;
-  }
-  if (ADD_RE.test(text)) {
-    return sessionCartId ? 'update_cart' : 'create_cart';
-  }
+  if (SHOW_RE.test(text) && sessionCartId?.trim()) return 'get_cart';
   return null;
 }

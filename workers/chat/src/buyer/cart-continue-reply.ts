@@ -60,3 +60,30 @@ export function buildCartContinueReply(
   parts.push(`[Przejdź do koszyka](${continueUrl})`);
   return parts.join('\n\n');
 }
+
+/**
+ * Po mutacji w tej turze: jeśli reply nie zawiera exact continue_url z Shopify —
+ * dołącz ostrzeżenia + link (bez UTM, bez zmiany URL).
+ * @see https://shopify.dev/docs/agents/carts-and-checkout/cart-mcp
+ * @see https://ucp.dev/2026-08-25/specification/shopping/cart/
+ */
+export function appendExactContinueUrlIfMissing(
+  reply: string,
+  continueUrl: string | null | undefined,
+  notices: string[] = [],
+  totalsNote?: string | null,
+): string {
+  const url = continueUrl?.trim();
+  if (!url) return reply;
+  if (reply.includes(url)) return reply;
+  const parts: string[] = [];
+  if (reply.trim()) parts.push(reply.trim());
+  for (const n of notices) {
+    if (n.trim() && !reply.includes(n.trim())) parts.push(n.trim());
+  }
+  if (totalsNote?.trim() && !reply.includes(totalsNote.trim())) {
+    parts.push(totalsNote.trim());
+  }
+  parts.push(`[Przejdź do koszyka](${url})`);
+  return parts.join('\n\n');
+}

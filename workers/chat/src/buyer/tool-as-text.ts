@@ -79,3 +79,58 @@ export function toolNameFromAsText(text: string): string | null {
   }
   return null;
 }
+
+function pushVariantId(out: string[], raw: unknown): void {
+  if (typeof raw !== 'string') return;
+  const id = raw.trim();
+  if (id.includes('ProductVariant')) out.push(id);
+}
+
+/** Variant GID z tool-as-text (line_items / add_items / arguments). */
+export function variantIdsFromToolAsText(text: string): string[] {
+  const found: string[] = [];
+  for (const obj of extractJsonObjectsFromText(text)) {
+    if (!looksLikeToolObject(obj)) continue;
+    const bags: unknown[] = [
+      obj.line_items,
+      obj.add_items,
+      obj.update_items,
+      isRecord(obj.arguments) ? obj.arguments.line_items : null,
+      isRecord(obj.arguments) ? obj.arguments.add_items : null,
+      isRecord(obj.parameters) ? obj.parameters.line_items : null,
+      isRecord(obj.parameters) ? obj.parameters.add_items : null,
+      isRecord(obj.cart) ? obj.cart.line_items : null,
+    ];
+    for (const bag of bags) {
+      if (!Array.isArray(bag)) continue;
+      for (const entry of bag) {
+        if (!isRecord(entry)) continue;
+        pushVariantId(found, entry.product_variant_id);
+        pushVariantId(found, entry.merchandise_id);
+        pushVariantId(found, entry.variant_id);
+        if (isRecord(entry.item)) pushVariantId(found, entry.item.id);
+        pushVariantId(found, entry.id);
+      }
+    }
+  }
+  return [...new Set(found)];
+}
+
+/**
+ * create/update z tool-as-text wolno wymusić tylko gdy każdy wykryty wariant
+ * jest na allowliście katalogu/faktów; brak wariantu = nie wymuszaj.
+ */
+export function toolAsTextCartMutationAllowed(
+  text: string,
+  allowedVariantIds: Set<string>,
+): boolean {
+  const name = toolNameFromAsText(text);
+  if (name !== 'create_cart' && name !== 'update_cart') return false;
+  const ids = variantIdsFromToolAsText(text);
+  if (ids.length === 0) return false;
+  return ids.every((id) => allowedVariantIds.has(id));
+}
+
+export const ASK_VARIANT_BEFORE_CART_MESSAGE =
+  'Proszę wskazać rozmiar lub wariant produktu, zanim dodam go do koszyka.';
+

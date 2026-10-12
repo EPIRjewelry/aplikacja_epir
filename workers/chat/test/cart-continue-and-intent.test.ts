@@ -1,16 +1,25 @@
 import {describe, expect, it} from 'vitest';
 import {detectForcedCartTool} from '../src/buyer/cart-intent';
 import {
+  appendExactContinueUrlIfMissing,
   buildCartContinueReply,
   formatCartNoticeFromMessages,
 } from '../src/buyer/cart-continue-reply';
 import {prepareUcpCartCall, applyCartPatch} from '../src/cart/ucp-cart';
 
-describe('cart intent', () => {
-  it('forces update_cart for quantity change when session cart exists', () => {
-    expect(detectForcedCartTool('zmień ilość na 2', 'gid://shopify/Cart/1')).toBe(
-      'update_cart',
+describe('cart intent — only get_cart may be keyword-forced', () => {
+  it('forces get_cart for show-cart when session cart exists', () => {
+    expect(detectForcedCartTool('pokaż koszyk', 'gid://shopify/Cart/1')).toBe(
+      'get_cart',
     );
+  });
+
+  it('does not force create_cart/update_cart on add / quantity keywords', () => {
+    expect(detectForcedCartTool('jak dodać do koszyka?', null)).toBeNull();
+    expect(detectForcedCartTool('dodaj do koszyka', null)).toBeNull();
+    expect(
+      detectForcedCartTool('zmień ilość na 2', 'gid://shopify/Cart/1'),
+    ).toBeNull();
   });
 
   it('does not force tools on ordinary product question', () => {
@@ -18,14 +27,37 @@ describe('cart intent', () => {
   });
 });
 
-describe('buildCartContinueReply', () => {
+describe('buildCartContinueReply / appendExactContinueUrlIfMissing', () => {
   it('uses exact continue_url without UTM', () => {
     const url =
       'https://epir-art-silver-jewellery.myshopify.com/cart/c/Z2lkOi8vc2hvcGlmeS9DYXJ0LzE';
-    const reply = buildCartContinueReply(url, ['Ilość dostosowana'], 'Suma szacunkowa: 100 zł (ostateczna kwota w kasie).');
+    const reply = buildCartContinueReply(
+      url,
+      ['Ilość dostosowana'],
+      'Suma szacunkowa: 100 zł (ostateczna kwota w kasie).',
+    );
     expect(reply).toContain(url);
     expect(reply).not.toContain('utm_');
     expect(reply).toContain('Ilość dostosowana');
+  });
+
+  it('appends exact continue_url when model omitted it', () => {
+    const url = 'https://shop.myshopify.com/cart/c/EXACT';
+    const out = appendExactContinueUrlIfMissing(
+      'Koszyk gotowy.',
+      url,
+      ['Dostosowano ilość'],
+    );
+    expect(out).toContain('Koszyk gotowy.');
+    expect(out).toContain(url);
+    expect(out).toContain('Dostosowano ilość');
+    expect(out).not.toContain('utm_');
+  });
+
+  it('does not duplicate when url already present', () => {
+    const url = 'https://shop.myshopify.com/cart/c/EXACT';
+    const reply = `Link: ${url}`;
+    expect(appendExactContinueUrlIfMissing(reply, url)).toBe(reply);
   });
 
   it('formats quantity_adjusted warning', () => {
