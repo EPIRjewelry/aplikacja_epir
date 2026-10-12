@@ -202,6 +202,47 @@ export function cartIdFromMcpResult(result: unknown): string | null {
   return null;
 }
 
+function cartMessagesHaveError(result: unknown): boolean {
+  const normalized = normalizeCartPayloadForParsing(result);
+  const cart = extractCartObject(normalized);
+  const messages = cart && Array.isArray(cart.messages) ? cart.messages : null;
+  if (!messages) {
+    if (result && typeof result === 'object') {
+      const top = result as Record<string, unknown>;
+      if (Array.isArray(top.messages)) {
+        return top.messages.some(
+          (m) =>
+            m &&
+            typeof m === 'object' &&
+            (m as Record<string, unknown>).type === 'error',
+        );
+      }
+    }
+    return false;
+  }
+  return messages.some(
+    (m) =>
+      m && typeof m === 'object' && (m as Record<string, unknown>).type === 'error',
+  );
+}
+
+/** create/update: sukces tylko bez isError, z id koszyka i bez messages type=error. */
+export function isSuccessfulCartMutationResult(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return false;
+  const rec = result as Record<string, unknown>;
+  if (rec.isError === true) return false;
+  if (
+    rec.structuredContent &&
+    typeof rec.structuredContent === 'object' &&
+    (rec.structuredContent as Record<string, unknown>).isError === true
+  ) {
+    return false;
+  }
+  if (!cartIdFromMcpResult(result)) return false;
+  if (cartMessagesHaveError(result)) return false;
+  return true;
+}
+
 /** Variant ids already in the session cart (from server get_cart / payload). */
 export function variantIdsFromCartPayload(payload: unknown): string[] {
   const lines = lineItemsFromCartPayload(normalizeCartPayloadForParsing(payload));
@@ -389,7 +430,8 @@ export async function executeBuyerTool(
       nextSessionCartId = newId;
       persisted = true;
     }
-    cartMutationSucceeded = Boolean(newId && persisted);
+    cartMutationSucceeded =
+      isSuccessfulCartMutationResult(result) && Boolean(newId && persisted);
     console.log(
       JSON.stringify({
         tag: 'buyer.cart_created',
@@ -401,7 +443,7 @@ export async function executeBuyerTool(
   }
 
   if (input.name === 'update_cart') {
-    cartMutationSucceeded = true;
+    cartMutationSucceeded = isSuccessfulCartMutationResult(result);
   }
 
   if (input.name === 'cancel_cart' && input.sessionId?.trim()) {

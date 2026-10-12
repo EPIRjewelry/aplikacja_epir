@@ -2,7 +2,7 @@
  * Fixture płaski jak UCP Cart MCP spec:
  * https://ucp.dev/2026-08-25/specification/shopping/cart/mcp/
  */
-import {describe, expect, it, vi} from 'vitest';
+import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {
   cartShapeKeyNames,
   extractCartObject,
@@ -12,7 +12,11 @@ import {
   continueUrlFromCartPayload,
   normalizeCartPayloadForParsing,
 } from '../src/buyer/cart-payload-normalize';
-import {cartIdFromMcpResult} from '../src/buyer/execute-buyer-tool';
+import {
+  cartIdFromMcpResult,
+  executeBuyerTool,
+  isSuccessfulCartMutationResult,
+} from '../src/buyer/execute-buyer-tool';
 import {urlsFromToolResult} from '../src/buyer/urls-from-tool-result';
 import {
   applyCartMutationHistoryOverride,
@@ -22,8 +26,13 @@ import {
   REPLY_LINK_REJECTED_CATALOG_MESSAGE,
 } from '../src/buyer/reply-link-guard';
 import * as sessionCart from '../src/buyer/session-cart';
-import {executeBuyerTool} from '../src/buyer/execute-buyer-tool';
 import * as mcpServer from '../src/mcp_server';
+import {composeBuyerAssistantReply} from '../src/buyer/compose-buyer-turn';
+import * as toolReadiness from '../src/buyer/tool-readiness';
+import * as aiProfile from '../src/ai-profile';
+import * as aiClient from '../src/ai-client';
+import * as sessionHistory from '../src/buyer/session-history';
+import * as executeBuyerToolMod from '../src/buyer/execute-buyer-tool';
 
 const CONTINUE =
   'https://epir-art-silver-jewellery.myshopify.com/cart/c/Z2lkOi8vc2hvcGlmeS9DYXJ0LzE';
@@ -68,6 +77,10 @@ const NESTED_CART_RESULT = {
     },
   },
 };
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('cart UCP flat structuredContent', () => {
   it('extractCartObject reads flat structuredContent (UCP spec shape)', () => {
@@ -153,13 +166,17 @@ describe('cart UCP flat structuredContent', () => {
       FLAT_UCP_STRUCTURED_CONTENT.id,
     );
 
-    vi.spyOn(mcpServer, 'callMcpToolDirect').mockImplementation(async (_env, name, args) => {
-      expect(name).toBe('update_cart');
-      const rec = args as Record<string, unknown>;
-      // top-level id identifies the cart (UCP)
-      expect(rec.id === FLAT_UCP_STRUCTURED_CONTENT.id || true).toBe(true);
-      return {result: presentCartForChat(FLAT_MCP_RESULT)};
-    });
+    vi.spyOn(mcpServer, 'callMcpToolDirect').mockImplementation(
+      async (_env, name, _args, brandOrOptions) => {
+        expect(name).toBe('update_cart');
+        const opts =
+          typeof brandOrOptions === 'object' && brandOrOptions
+            ? brandOrOptions
+            : {sessionCartId: null};
+        expect(opts.sessionCartId).toBe(FLAT_UCP_STRUCTURED_CONTENT.id);
+        return {result: presentCartForChat(FLAT_MCP_RESULT)};
+      },
+    );
 
     const updated = await executeBuyerTool({
       env: {} as import('../src/config/bindings').Env,
@@ -177,6 +194,90 @@ describe('cart UCP flat structuredContent', () => {
   });
 });
 
+describe('isSuccessfulCartMutationResult / cartMutationSucceeded', () => {
+  it('rejects isError results', () => {
+    expect(
+      isSuccessfulCartMutationResult({
+        isError: true,
+        structuredContent: FLAT_UCP_STRUCTURED_CONTENT,
+      }),
+    ).toBe(false);
+  });
+
+  it('rejects cart messages with type error', () => {
+    const withErr = presentCartForChat({
+      structuredContent: {
+        ...FLAT_UCP_STRUCTURED_CONTENT,
+        messages: [
+          {
+            type: 'error',
+            code: 'out_of_stock',
+            content: 'Unavailable',
+            severity: 'unrecoverable',
+          },
+        ],
+      },
+    });
+    expect(isSuccessfulCartMutationResult(withErr)).toBe(false);
+  });
+
+  it('create_cart with isError does not set cartMutationSucceeded', async () => {
+    vi.spyOn(sessionCart, 'writeSessionCartId').mockResolvedValue();
+    vi.spyOn(mcpServer, 'callMcpToolDirect').mockResolvedValue({
+      result: {isError: true, cart_id: FLAT_UCP_STRUCTURED_CONTENT.id},
+    });
+    const created = await executeBuyerTool({
+      env: {} as import('../src/config/bindings').Env,
+      channelId: 'epir-online-store',
+      readyTools: ['ucp_cart'],
+      name: 'create_cart',
+      argsJson: JSON.stringify({
+        line_items: [{quantity: 1, item: {id: 'gid://shopify/ProductVariant/1'}}],
+      }),
+      sessionId: 'sess-err-1',
+      sessionCartId: null,
+      allowedVariantIds: new Set(['gid://shopify/ProductVariant/1']),
+    });
+    expect(created.cartMutationSucceeded).toBeFalsy();
+    expect(
+      applyCartMutationHistoryOverride(
+        REPLY_LINK_REJECTED_CATALOG_MESSAGE,
+        Boolean(created.cartMutationSucceeded),
+      ),
+    ).toBe(REPLY_LINK_REJECTED_CATALOG_MESSAGE);
+  });
+
+  it('update_cart with messages error does not set cartMutationSucceeded', async () => {
+    vi.spyOn(mcpServer, 'callMcpToolDirect').mockResolvedValue({
+      result: presentCartForChat({
+        structuredContent: {
+          ...FLAT_UCP_STRUCTURED_CONTENT,
+          messages: [{type: 'error', code: 'x', content: 'fail'}],
+        },
+      }),
+    });
+    const updated = await executeBuyerTool({
+      env: {} as import('../src/config/bindings').Env,
+      channelId: 'epir-online-store',
+      readyTools: ['ucp_cart'],
+      name: 'update_cart',
+      argsJson: JSON.stringify({
+        add_items: [{quantity: 1, item: {id: 'gid://shopify/ProductVariant/1'}}],
+      }),
+      sessionId: 'sess-err-2',
+      sessionCartId: FLAT_UCP_STRUCTURED_CONTENT.id,
+      allowedVariantIds: new Set(['gid://shopify/ProductVariant/1']),
+    });
+    expect(updated.cartMutationSucceeded).toBeFalsy();
+    expect(
+      applyCartMutationHistoryOverride(
+        REPLY_LINK_REJECTED_CATALOG_MESSAGE,
+        Boolean(updated.cartMutationSucceeded),
+      ),
+    ).toBe(REPLY_LINK_REJECTED_CATALOG_MESSAGE);
+  });
+});
+
 describe('cart mutation history override', () => {
   it('replaces catalog stub only when cart mutated this turn', () => {
     expect(
@@ -188,5 +289,216 @@ describe('cart mutation history override', () => {
     expect(
       applyCartMutationHistoryOverride(REPLY_LINK_REJECTED_CATALOG_MESSAGE, false),
     ).toBe(REPLY_LINK_REJECTED_CATALOG_MESSAGE);
+  });
+});
+
+function toolCallStream(
+  name: string,
+  id: string,
+  args = '{}',
+): ReadableStream<aiClient.GroqStreamEvent> {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue({
+        type: 'tool_call',
+        call: {id, name, arguments: args},
+      });
+      controller.close();
+    },
+  });
+}
+
+function multiToolCallStream(
+  calls: {name: string; id: string; args?: string}[],
+): ReadableStream<aiClient.GroqStreamEvent> {
+  return new ReadableStream({
+    start(controller) {
+      for (const c of calls) {
+        controller.enqueue({
+          type: 'tool_call',
+          call: {id: c.id, name: c.name, arguments: c.args ?? '{}'},
+        });
+      }
+      controller.close();
+    },
+  });
+}
+
+function textStream(text: string): ReadableStream<aiClient.GroqStreamEvent> {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue({type: 'text', delta: text});
+      controller.close();
+    },
+  });
+}
+
+describe('compose: sessionCartId without mutation keeps catalog stub (P2-b)', () => {
+  it('prior sessionCartId alone does not yield cart-updated note', async () => {
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([
+      'search_catalog',
+      'ucp_cart',
+    ]);
+    vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
+    vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockResolvedValue([]);
+    const appendSpy = vi
+      .spyOn(sessionHistory, 'appendBuyerSessionMessage')
+      .mockResolvedValue();
+    vi.spyOn(sessionCart, 'readSessionCartId').mockResolvedValue(
+      FLAT_UCP_STRUCTURED_CONTENT.id,
+    );
+    vi.spyOn(mcpServer, 'callMcpToolDirect').mockResolvedValue({
+      result: presentCartForChat(FLAT_MCP_RESULT),
+    });
+    vi.spyOn(executeBuyerToolMod, 'executeBuyerTool').mockResolvedValue({
+      content: JSON.stringify({products: []}),
+      // brak cartMutationSucceeded
+    });
+    vi.spyOn(aiClient, 'getGroqResponse').mockResolvedValue(
+      'Nadal [zły](https://example.com/x).',
+    );
+    vi.spyOn(aiClient, 'streamGroqEvents').mockImplementation(
+      async (_m, _e, _t, _s, timingLabel) => {
+        if (timingLabel === 'buyer_tool_loop_0') {
+          return toolCallStream('search_catalog', 'c1', '{"query":"pierścionek"}');
+        }
+        return textStream('Zobacz [X](https://example.com/foreign).');
+      },
+    );
+
+    const env = {SHOP_DOMAIN: 'shop.myshopify.com'} as import('../src/config/bindings').Env;
+    const req = new Request('https://example.com/chat', {method: 'POST'});
+    const reply = await composeBuyerAssistantReply(
+      env,
+      'epir-online-store',
+      'Szukam pierścionka',
+      req,
+      {sessionId: 'sess-prior-cart'},
+    );
+
+    expect(reply).toBe(REPLY_LINK_REJECTED_CATALOG_MESSAGE);
+    expect(reply).not.toBe(REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE);
+    const assistantAppend = appendSpy.mock.calls.find((c) => c[2] === 'assistant');
+    expect(assistantAppend?.[3]).toBe(REPLY_LINK_REJECTED_CATALOG_MESSAGE);
+  });
+});
+
+describe('compose: successful create_cart does not leave catalog stub for next turn (P2-c)', () => {
+  it('turn A stores cart note; turn B history is not catalog stub', async () => {
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([
+      'search_catalog',
+      'ucp_cart',
+    ]);
+    vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
+    vi.spyOn(sessionCart, 'readSessionCartId').mockResolvedValue(null);
+    vi.spyOn(sessionCart, 'writeSessionCartId').mockResolvedValue();
+    vi.spyOn(mcpServer, 'callMcpToolDirect').mockResolvedValue({
+      result: presentCartForChat(FLAT_MCP_RESULT),
+    });
+
+    const historyStore: {role: 'user' | 'assistant'; content: string}[] = [];
+    vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockImplementation(async () => [
+      ...historyStore,
+    ]);
+    vi.spyOn(sessionHistory, 'appendBuyerSessionMessage').mockImplementation(
+      async (_env, _sid, role, content) => {
+        historyStore.push({role, content});
+      },
+    );
+
+    vi.spyOn(executeBuyerToolMod, 'executeBuyerTool').mockImplementation(async (input) => {
+      if (input.name === 'create_cart') {
+        return {
+          content: JSON.stringify(presentCartForChat(FLAT_MCP_RESULT)),
+          sessionCartId: FLAT_UCP_STRUCTURED_CONTENT.id,
+          cartMutationSucceeded: true,
+        };
+      }
+      return {content: JSON.stringify({products: []})};
+    });
+    vi.spyOn(aiClient, 'getGroqResponse').mockResolvedValue(
+      'Nadal [zły](https://example.com/x).',
+    );
+    vi.spyOn(aiClient, 'streamGroqEvents').mockImplementation(
+      async (_m, _e, _t, _s, timingLabel) => {
+        if (timingLabel === 'buyer_tool_loop_0') {
+          // search_catalog → stub katalogowy; create_cart → override na notatkę koszyka
+          return multiToolCallStream([
+            {
+              name: 'search_catalog',
+              id: 'c-search',
+              args: '{"query":"pierścionek"}',
+            },
+            {
+              name: 'create_cart',
+              id: 'c-create',
+              args: JSON.stringify({
+                line_items: [{quantity: 1, item: {id: 'gid://shopify/ProductVariant/1'}}],
+              }),
+            },
+          ]);
+        }
+        return textStream('Koszyk: [link](https://example.com/bad)');
+      },
+    );
+
+    const env = {SHOP_DOMAIN: 'shop.myshopify.com'} as import('../src/config/bindings').Env;
+    const req = new Request('https://example.com/chat', {method: 'POST'});
+
+    const replyA = await composeBuyerAssistantReply(
+      env,
+      'epir-online-store',
+      'Dodaj do koszyka',
+      req,
+      {sessionId: 'sess-p2c'},
+    );
+    expect(replyA).toBe(REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE);
+    expect(historyStore.some((h) => h.content === REPLY_LINK_REJECTED_CATALOG_MESSAGE)).toBe(
+      false,
+    );
+    expect(
+      historyStore.some((h) => h.content === REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE),
+    ).toBe(true);
+
+    // Turn B: no cart mutation; history from A must not be catalog stub
+    vi.spyOn(sessionCart, 'readSessionCartId').mockResolvedValue(
+      FLAT_UCP_STRUCTURED_CONTENT.id,
+    );
+    vi.spyOn(executeBuyerToolMod, 'executeBuyerTool').mockResolvedValue({
+      content: '{"ok":true}',
+    });
+    vi.spyOn(aiClient, 'getGroqResponse').mockResolvedValue(
+      'Kontynuacja bez ponownego wyboru wariantu.',
+    );
+
+    let turnBMessages: aiClient.GroqMessage[] = [];
+    vi.spyOn(aiClient, 'streamGroqEvents').mockImplementation(async (messages) => {
+      turnBMessages = messages as aiClient.GroqMessage[];
+      return textStream('Kontynuacja bez ponownego wyboru wariantu.');
+    });
+
+    const replyB = await composeBuyerAssistantReply(
+      env,
+      'epir-online-store',
+      'podaj status koszyka',
+      req,
+      {sessionId: 'sess-p2c'},
+    );
+    expect(replyB).toContain('Kontynuacja');
+    const priorAssistant = turnBMessages.filter((m) => m.role === 'assistant');
+    expect(
+      priorAssistant.some(
+        (m) =>
+          typeof m.content === 'string' &&
+          m.content === REPLY_LINK_REJECTED_CATALOG_MESSAGE,
+      ),
+    ).toBe(false);
+    expect(
+      priorAssistant.some(
+        (m) =>
+          typeof m.content === 'string' &&
+          m.content === REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE,
+      ),
+    ).toBe(true);
   });
 });
