@@ -586,3 +586,53 @@ export async function fetchProductFactsByHandle(
     return null;
   }
 }
+
+/**
+ * ProductFacts (pełne rodzeństwo wariantów) dla GID ProductVariant z koszyka.
+ * @see https://shopify.dev/docs/api/storefront/latest/objects/ProductVariant
+ */
+export async function fetchProductFactsForVariantIds(
+  env: Env,
+  channel: BuyerChannelId,
+  variantIds: string[],
+  options?: FetchStorefrontLiveOptions,
+): Promise<ProductFacts[]> {
+  if (!hasStorefrontCatalogToken(env, channel) || !variantIds.length) return [];
+  const uniqueVids = [...new Set(variantIds.map((id) => id.trim()).filter(Boolean))];
+  const productIds = new Set<string>();
+  for (let i = 0; i < uniqueVids.length; i += PAGE_SIZE) {
+    const batch = uniqueVids.slice(i, i + PAGE_SIZE);
+    const query = `
+      query VariantProductIds($ids: [ID!]!) @inContext(country: PL, language: PL) {
+        nodes(ids: $ids) {
+          ... on ProductVariant {
+            id
+            product { id }
+          }
+        }
+      }
+    `;
+    try {
+      const data = await storefrontGraphqlRetry(env, channel, query, {ids: batch}, options);
+      const nodes = data.nodes as Array<Record<string, unknown> | null> | null;
+      for (const node of nodes ?? []) {
+        if (!node || typeof node !== 'object') continue;
+        const product = node.product;
+        if (product && typeof product === 'object') {
+          const pid = (product as {id?: unknown}).id;
+          if (typeof pid === 'string' && pid.includes('/Product/')) productIds.add(pid);
+        }
+      }
+    } catch (err) {
+      console.warn(
+        JSON.stringify({
+          tag: 'facts.variant_product_ids_error',
+          channel,
+          reason: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+  }
+  if (!productIds.size) return [];
+  return fetchProductFactsLive(env, channel, [...productIds], options);
+}

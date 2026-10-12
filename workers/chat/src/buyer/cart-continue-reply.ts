@@ -260,6 +260,42 @@ function optionsFromLine(line: Record<string, unknown>): string | null {
   return null;
 }
 
+function formatPriceMinor(minor: number, currency: string | null | undefined): string {
+  const cur = (currency || 'PLN').toUpperCase();
+  const amount = (minor / 100).toFixed(2);
+  return cur === 'PLN' ? `${amount} zł` : `${amount} ${cur}`;
+}
+
+/** Cena pozycji z payloadu koszyka (wynik narzędzia) albo z indeksu katalogu. */
+function priceFromLine(
+  line: Record<string, unknown>,
+  catalogIndex?: VariantOptionIndex,
+  variantId?: string | null,
+): string | null {
+  const item = line.item;
+  if (item && typeof item === 'object') {
+    const rec = item as Record<string, unknown>;
+    if (typeof rec.price === 'number' && Number.isFinite(rec.price)) {
+      const cur = typeof rec.currency === 'string' ? rec.currency : 'PLN';
+      // UCP: amount często w minor units.
+      return formatPriceMinor(rec.price, cur);
+    }
+    if (rec.price && typeof rec.price === 'object') {
+      const p = rec.price as Record<string, unknown>;
+      const amount = typeof p.amount === 'number' ? p.amount : null;
+      const cur = typeof p.currency === 'string' ? p.currency : 'PLN';
+      if (amount !== null) return formatPriceMinor(amount, cur);
+    }
+  }
+  if (variantId && catalogIndex) {
+    const entry = catalogIndex.get(variantId);
+    if (typeof entry?.priceMinor === 'number') {
+      return formatPriceMinor(entry.priceMinor, entry.priceCurrency);
+    }
+  }
+  return null;
+}
+
 export function formatCartLineSummaries(
   cartPayload: unknown,
   catalogIndex?: VariantOptionIndex,
@@ -278,16 +314,28 @@ export function formatCartLineSummaries(
     let title = lineTitleFromRaw(rec);
     let opts = optionsFromLine(rec);
     const vid = variantIdFromLine(rec);
-    if ((!title || !opts) && vid && catalogIndex) {
+    if (vid && catalogIndex) {
       const lookup = lookupVariantDisplay(catalogIndex, vid);
+      const entry = catalogIndex.get(vid);
       if (lookup) {
         if (!title && lookup.title) title = lookup.title;
-        if (!opts && lookup.optionsLine) opts = lookup.optionsLine;
+      }
+      // Pełny wariant: wszystkie opcje z katalogu/faktu (nie tylko z raw linii).
+      if (entry?.selectedOptions?.length) {
+        const fullOpts = entry.selectedOptions
+          .filter((o) => o.value && o.value !== 'Default Title')
+          .map((o) => `${o.name} ${o.value}`)
+          .join(', ');
+        if (fullOpts) opts = fullOpts;
+      } else if (!opts && lookup?.optionsLine) {
+        opts = lookup.optionsLine;
       }
     }
+    const priceLine = priceFromLine(rec, catalogIndex, vid);
     const parts: string[] = [];
     if (title) parts.push(title);
     if (opts) parts.push(opts);
+    if (priceLine) parts.push(priceLine);
     parts.push(`${qty} szt.`);
     if (parts.length === 1 && parts[0]?.endsWith(' szt.')) {
       // Brak nazwy/opcji — i tak pokaż disclosure przy indeksie, jeśli jest.
@@ -318,6 +366,35 @@ export function stripContinueUrlFromModelText(text: string, continueUrl: string)
     '',
   );
   out = out.replace(new RegExp(escaped, 'gi'), '');
+  return out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+const CART_C_MD_LINK_RE = /\[[^\]]*\]\(https?:\/\/[^)\s]*\/cart\/c\/[^)\s]*\)/gi;
+const CART_C_BARE_URL_RE = /https?:\/\/[^\s)\]>]*\/cart\/c\/[^\s)\]>]*/gi;
+
+/**
+ * Po mutacji: usuń z tekstu modelu każdy link /cart/c/… (stary z sesji i nowy),
+ * żeby w odpowiedzi został tylko continue_url z bloku deterministycznego.
+ */
+export function stripAllCartContinueLinks(text: string): string {
+  if (!text) return text;
+  let out = text.replace(CART_C_MD_LINK_RE, '');
+  out = out.replace(CART_C_BARE_URL_RE, '');
+  return out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
+ * Walidacja składni Markdown: samotny „[…” bez zamkniętego linku (np. degeneracja modelu).
+ * Nie ocenia sensu treści.
+ */
+export function stripBrokenMarkdownLinkPrefix(text: string): string {
+  if (!text) return text;
+  let out = text.trim();
+  // Prefiks zaczyna się od „[” i nie zawiera poprawnego Markdown linku.
+  if (out.startsWith('[') && !/\[[^\]]*\]\([^)]+\)/.test(out.split('\n')[0] ?? '')) {
+    const firstNl = out.indexOf('\n');
+    out = (firstNl >= 0 ? out.slice(firstNl + 1) : '').trim();
+  }
   return out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
@@ -413,7 +490,10 @@ export function mergeModelTextWithCartBlock(
   cartBlock: string,
   continueUrl: string,
 ): string {
-  const stripped = stripContinueUrlFromModelText(modelText, continueUrl);
+  // Najpierw wszystkie /cart/c/ (stary+nowy), potem exact continue_url, potem broken [.
+  let stripped = stripAllCartContinueLinks(modelText);
+  stripped = stripContinueUrlFromModelText(stripped, continueUrl);
+  stripped = stripBrokenMarkdownLinkPrefix(stripped);
   if (!stripped.trim()) return cartBlock;
   return `${stripped}\n\n${cartBlock}`;
 }

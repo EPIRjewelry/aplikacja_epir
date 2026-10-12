@@ -1,5 +1,7 @@
 import {getGroqResponse, type GroqMessage} from '../ai-client';
 import type {Env} from '../config/bindings';
+import type {BuyerChannelId} from './channel-switch';
+import {hostAllowedForChannel} from './channel-origins';
 import {sanitizeUrlForLog} from './url-log-sanitize';
 
 /** Gdy w turze był search_catalog. */
@@ -58,9 +60,39 @@ export function collectAllowedUrls(allowed: Iterable<string>): Set<string> {
   return set;
 }
 
-function isAllowedDest(dest: string, allowedUrls: Set<string>): boolean {
+/** Mapa norm → oryginał (z `#`), by emitować kotwicę mimo strip hash w allowliście. */
+export function collectOriginalUrlByNorm(allowed: Iterable<string>): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const raw of allowed) {
+    if (!raw?.trim()) continue;
+    const norm = normalizeUrlForAllowlist(raw);
+    if (!map.has(norm)) map.set(norm, raw.trim());
+  }
+  return map;
+}
+
+export type SanitizeMarkdownLinksOpts = {
+  channelId?: BuyerChannelId;
+  /** Preferowany URL z kotwicą przy emitowaniu dozwolonego linku. */
+  originalByNorm?: Map<string, string>;
+};
+
+function isAllowedDest(
+  dest: string,
+  allowedUrls: Set<string>,
+  channelId?: BuyerChannelId,
+): boolean {
   const trimmed = dest.trim();
   if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+    return false;
+  }
+  let hostname = '';
+  try {
+    hostname = new URL(trimmed).hostname;
+  } catch {
+    return false;
+  }
+  if (channelId && !hostAllowedForChannel(hostname, channelId)) {
     return false;
   }
   const norm = normalizeUrlForAllowlist(trimmed);
@@ -92,24 +124,30 @@ export function stripLoosePlaceholders(text: string): string {
 
 /**
  * Usuwa linki Markdown z celami spoza allowlisty (w tym {{placeholders}}).
- * Zostawia sam tekst etykiety. Nie podstawia URL. Potem strip luźnych {{...}}.
+ * Host poza kanałem = odrzucony. Kotwica `#` z oryginału allowlisty jest zachowana.
  */
-export function sanitizeMarkdownLinks(text: string, allowedUrls: Set<string>): string {
+export function sanitizeMarkdownLinks(
+  text: string,
+  allowedUrls: Set<string>,
+  opts?: SanitizeMarkdownLinksOpts,
+): string {
   const withoutBadLinks = text.replace(
     MARKDOWN_LINK_ANY_DEST_RE,
     (full, label: string, dest: string) => {
-      if (isAllowedDest(dest, allowedUrls)) return full;
-      const trimmedLabel = typeof label === 'string' ? label.trim() : '';
-      if (trimmedLabel) {
-        console.log(
-          JSON.stringify({
-            tag: 'buyer.reply_link_stripped',
-            reason: 'markdown_dest_not_allowed',
-            destPattern: dest.includes('{{') ? 'placeholder' : 'non_http_or_foreign',
-          }),
-        );
-        return trimmedLabel;
+      if (isAllowedDest(dest, allowedUrls, opts?.channelId)) {
+        const norm = normalizeUrlForAllowlist(dest);
+        const original = opts?.originalByNorm?.get(norm);
+        if (original && original.includes('#') && !String(dest).includes('#')) {
+          const lbl = typeof label === 'string' ? label : '';
+          return `[${lbl}](${original})`;
+        }
+        if (original && original.includes('#')) {
+          const lbl = typeof label === 'string' ? label : '';
+          return `[${lbl}](${original})`;
+        }
+        return full;
       }
+      const trimmedLabel = typeof label === 'string' ? label.trim() : '';
       console.log(
         JSON.stringify({
           tag: 'buyer.reply_link_stripped',
@@ -117,7 +155,7 @@ export function sanitizeMarkdownLinks(text: string, allowedUrls: Set<string>): s
           destPattern: dest.includes('{{') ? 'placeholder' : 'non_http_or_foreign',
         }),
       );
-      return '';
+      return trimmedLabel || '';
     },
   );
   return stripLoosePlaceholders(withoutBadLinks);

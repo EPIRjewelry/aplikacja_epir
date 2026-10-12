@@ -9,6 +9,8 @@ export interface AIProfile {
   promotion_rules: string;
   /** Legacy field; not included in buyer Gemma prompt (policies via MCP). */
   faq_theme?: string;
+  /** Opcjonalny URL formularza zamówienia indywidualnego (np. Kazka z kotwicą). */
+  custom_order_url?: string;
 }
 
 interface MetaobjectFieldNode {
@@ -90,11 +92,13 @@ function normalizeAIProfile(
   }
 
   const faqTheme = values.get('faq_theme') ?? '';
+  const customOrderUrl = values.get('custom_order_url') ?? '';
   const profile: AIProfile = {
     brand_voice: values.get('brand_voice') ?? '',
     core_values: values.get('core_values') ?? '',
     promotion_rules: values.get('promotion_rules') ?? '',
     ...(faqTheme ? { faq_theme: faqTheme } : {}),
+    ...(customOrderUrl ? { custom_order_url: customOrderUrl } : {}),
   };
 
   if (

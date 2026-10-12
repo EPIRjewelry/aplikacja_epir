@@ -5,6 +5,7 @@ import {buildUcpSearchCatalogArgs, parseUcpFilterIgnoredMessages} from './catalo
 import {computeFacetsFromMatches, filterProducts} from './filter';
 import {
   fetchProductFactsByHandle,
+  fetchProductFactsForVariantIds,
   fetchProductFactsLive,
   hasStorefrontCatalogToken,
   type FetchStorefrontLiveOptions,
@@ -136,7 +137,7 @@ export async function getCatalogRepository(
 export {buildUcpSearchCatalogArgs, CATALOG_SEARCH_SERVER_LIMIT, parseUcpFilterIgnoredMessages} from './catalog-ucp-args';
 export {formatMatchBlock, formatProductsBlock, PAGE_PRODUCT_HEADER} from './format-product-block';
 export {normalizeProduct} from './normalize';
-export {fetchProductFactsByHandle} from './storefront-live';
+export {fetchProductFactsByHandle, fetchProductFactsForVariantIds} from './storefront-live';
 export type {
   ProductFacts,
   VariantFacts,

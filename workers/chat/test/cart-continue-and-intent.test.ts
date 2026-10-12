@@ -3,9 +3,18 @@ import {detectForcedCartTool} from '../src/buyer/cart-intent';
 import {
   appendExactContinueUrlIfMissing,
   buildCartContinueReply,
+  formatCartLineSummaries,
   formatCartNoticeFromMessages,
   formatCartTotalsNote,
+  mergeModelTextWithCartBlock,
+  stripAllCartContinueLinks,
+  stripBrokenMarkdownLinkPrefix,
 } from '../src/buyer/cart-continue-reply';
+import {
+  createVariantOptionIndex,
+  mergeProductFactsIntoIndex,
+} from '../src/buyer/variant-option-gate';
+import type { ProductFacts, VariantFacts } from '../src/facts/types';
 import {prepareUcpCartCall, applyCartPatch} from '../src/cart/ucp-cart';
 
 describe('cart intent — only get_cart may be keyword-forced', () => {
@@ -88,6 +97,105 @@ describe('buildCartContinueReply / appendExactContinueUrlIfMissing', () => {
     );
     expect(note).toContain('EUR');
     expect(note).not.toMatch(/\bzł\b/);
+  });
+
+  it('strips all /cart/c/ links from model text (old + new)', () => {
+    const oldUrl = 'https://shop.myshopify.com/cart/c/OLD?key=1';
+    const newUrl = 'https://shop.myshopify.com/cart/c/NEW?key=2';
+    const text = `Stary [koszyk](${oldUrl}) i bare ${newUrl}`;
+    const stripped = stripAllCartContinueLinks(text);
+    expect(stripped).not.toContain('/cart/c/');
+    expect(stripped).toContain('Stary');
+  });
+
+  it('stripBrokenMarkdownLinkPrefix removes degenerate [… without closed link', () => {
+    const text =
+      '[Link do konta koszyka z dodanym pierścion z tą rozmi rozmi rozmi?]\n\nDalej tekst.';
+    const out = stripBrokenMarkdownLinkPrefix(text);
+    expect(out).toBe('Dalej tekst.');
+    expect(out).not.toContain('[');
+  });
+
+  it('mergeModelTextWithCartBlock keeps only block continue_url after mutation', () => {
+    const oldUrl = 'https://shop.myshopify.com/cart/c/OLD';
+    const newUrl = 'https://shop.myshopify.com/cart/c/NEW';
+    const block = buildCartContinueReply(newUrl, [], null);
+    const merged = mergeModelTextWithCartBlock(
+      `Gotowe [stary](${oldUrl})`,
+      block,
+      newUrl,
+    );
+    expect(merged).toContain(newUrl);
+    expect(merged).not.toContain(oldUrl);
+    expect(merged.match(/\/cart\/c\//g)?.length).toBe(1);
+  });
+
+  it('formatCartLineSummaries shows full options and price from catalog index', () => {
+    const variants: VariantFacts[] = [
+      {
+        variantId: 'gid://shopify/ProductVariant/p1',
+        title: '14k / LAB / 16',
+        image: null,
+        sku: null,
+        price: { minor: 450000, currency: 'PLN' },
+        compareAtPrice: null,
+        available: true,
+        selectedOptions: [
+          { name: 'Metal', value: '14k' },
+          { name: 'Kamień', value: 'LAB' },
+          { name: 'Rozmiar', value: '16' },
+        ],
+        metal: '14k',
+        size: '16',
+        stoneOrigin: 'lab_grown',
+        originEvidence: [],
+      },
+    ];
+    const product: ProductFacts = {
+      channel: 'epir-online-store',
+      productId: 'gid://shopify/Product/p',
+      handle: 'ring',
+      title: 'Soliter',
+      vendor: 'EPIR',
+      productType: 'ring',
+      url: 'https://epirbizuteria.pl/products/ring',
+      image: null,
+      collections: [],
+      descriptionText: '',
+      options: [
+        { name: 'Metal', values: ['14k'] },
+        { name: 'Kamień', values: ['LAB'] },
+        { name: 'Rozmiar', values: ['16'] },
+      ],
+      variants,
+      priceRange: {
+        min: { minor: 450000, currency: 'PLN' },
+        max: { minor: 450000, currency: 'PLN' },
+        isFlat: true,
+      },
+      stones: [],
+      metals: ['14k'],
+      sizes: ['16'],
+      metafields: {},
+      productOriginRaw: null,
+      dataIssues: [],
+      fetchedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const index = createVariantOptionIndex();
+    mergeProductFactsIntoIndex(index, product);
+    const lines = formatCartLineSummaries(
+      {
+        line_items: [
+          { quantity: 1, item: { id: 'gid://shopify/ProductVariant/p1' } },
+        ],
+      },
+      index,
+    );
+    expect(lines[0]).toMatch(/Soliter/);
+    expect(lines[0]).toMatch(/Metal 14k/);
+    expect(lines[0]).toMatch(/Kamień LAB/);
+    expect(lines[0]).toMatch(/Rozmiar 16/);
+    expect(lines[0]).toMatch(/4500\.00 zł/);
   });
 });
 
