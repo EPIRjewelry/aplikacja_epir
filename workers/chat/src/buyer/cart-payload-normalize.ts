@@ -1,9 +1,20 @@
-import {extractCartObject} from '../cart/ucp-cart';
+import {extractCartObject, isFlatUcpCartRecord} from '../cart/ucp-cart';
 
-/** UCP po presentCartForChat: płaski cart_id + line_items — owijka dla extractCartObject. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * UCP po presentCartForChat: płaski cart_id + line_items — owijka dla extractCartObject.
+ * structuredContent z płaskim koszykiem UCP (bez .cart) nie blokuje ekstrakcji —
+ * https://ucp.dev/2026-08-25/specification/shopping/cart/mcp/
+ */
 export function normalizeCartPayloadForParsing(payload: unknown): unknown {
   if (!payload || typeof payload !== 'object') return payload;
   const rec = payload as Record<string, unknown>;
+  if (isRecord(rec.structuredContent) && isFlatUcpCartRecord(rec.structuredContent)) {
+    return payload;
+  }
   if (rec.structuredContent || rec.cart) return payload;
   const hasLines = Array.isArray(rec.line_items) && rec.line_items.length > 0;
   const hasId = typeof rec.cart_id === 'string' && rec.cart_id.trim();

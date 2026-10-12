@@ -2,6 +2,7 @@ import type { Env } from '../config/bindings';
 import { resolveCommerceContext } from '../config/commerce-context';
 import { callMcpToolDirect } from '../mcp_server';
 import {
+  cartShapeKeyNames,
   extractCartObject,
   lineItemsFromCartPayload,
   readCartId,
@@ -45,6 +46,8 @@ export type ExecuteBuyerToolResult = {
   content: string;
   sessionCartId?: string | null;
   newVariantIds?: string[];
+  /** Sukces create_cart/update_cart w tej turze (nie samo sessionCartId z historii). */
+  cartMutationSucceeded?: boolean;
 };
 
 function logBuyerToolCall(tool: string, channel: BuyerChannelId, ok: boolean): void {
@@ -197,6 +200,47 @@ export function cartIdFromMcpResult(result: unknown): string | null {
     if (fromTop) return fromTop;
   }
   return null;
+}
+
+function cartMessagesHaveError(result: unknown): boolean {
+  const normalized = normalizeCartPayloadForParsing(result);
+  const cart = extractCartObject(normalized);
+  const messages = cart && Array.isArray(cart.messages) ? cart.messages : null;
+  if (!messages) {
+    if (result && typeof result === 'object') {
+      const top = result as Record<string, unknown>;
+      if (Array.isArray(top.messages)) {
+        return top.messages.some(
+          (m) =>
+            m &&
+            typeof m === 'object' &&
+            (m as Record<string, unknown>).type === 'error',
+        );
+      }
+    }
+    return false;
+  }
+  return messages.some(
+    (m) =>
+      m && typeof m === 'object' && (m as Record<string, unknown>).type === 'error',
+  );
+}
+
+/** create/update: sukces tylko bez isError, z id koszyka i bez messages type=error. */
+export function isSuccessfulCartMutationResult(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return false;
+  const rec = result as Record<string, unknown>;
+  if (rec.isError === true) return false;
+  if (
+    rec.structuredContent &&
+    typeof rec.structuredContent === 'object' &&
+    (rec.structuredContent as Record<string, unknown>).isError === true
+  ) {
+    return false;
+  }
+  if (!cartIdFromMcpResult(result)) return false;
+  if (cartMessagesHaveError(result)) return false;
+  return true;
 }
 
 /** Variant ids already in the session cart (from server get_cart / payload). */
@@ -362,6 +406,21 @@ export async function executeBuyerTool(
 
   const result = mcpOut.result;
   let nextSessionCartId = input.sessionCartId;
+  let cartMutationSucceeded = false;
+
+  if (input.name === 'create_cart' || input.name === 'update_cart') {
+    // TODO: usunąć po potwierdzeniu kształtu
+    const shape = cartShapeKeyNames(result);
+    console.log(
+      JSON.stringify({
+        tag: 'buyer.cart_shape',
+        tool: input.name,
+        resultKeys: shape.resultKeys,
+        structuredContentKeys: shape.structuredContentKeys,
+        contentTextKeys: shape.contentTextKeys,
+      }),
+    );
+  }
 
   if (input.name === 'create_cart') {
     const newId = cartIdFromMcpResult(result);
@@ -371,6 +430,8 @@ export async function executeBuyerTool(
       nextSessionCartId = newId;
       persisted = true;
     }
+    cartMutationSucceeded =
+      isSuccessfulCartMutationResult(result) && Boolean(newId && persisted);
     console.log(
       JSON.stringify({
         tag: 'buyer.cart_created',
@@ -379,6 +440,10 @@ export async function executeBuyerTool(
         persisted,
       }),
     );
+  }
+
+  if (input.name === 'update_cart') {
+    cartMutationSucceeded = isSuccessfulCartMutationResult(result);
   }
 
   if (input.name === 'cancel_cart' && input.sessionId?.trim()) {
@@ -390,5 +455,6 @@ export async function executeBuyerTool(
   return {
     content: JSON.stringify(result ?? {}),
     sessionCartId: nextSessionCartId,
+    ...(cartMutationSucceeded ? {cartMutationSucceeded: true} : {}),
   };
 }
