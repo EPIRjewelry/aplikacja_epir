@@ -6,7 +6,10 @@
 
 import type { AiClientEnv } from './config/bindings';
 import {
+  BUYER_AIG_RETRY,
+  BUYER_MODEL_PARAMS,
   CHAT_MODEL_ID,
+  isBuyerTimingLabel,
   MODEL_PARAMS,
   MODEL_VARIANTS,
   type ModelCapabilities,
@@ -66,7 +69,10 @@ type GatewayCompatBody = {
    * kroku. Aktualne API Groq akceptuje `parallel_tool_calls: true` (domyślnie true).
    */
   parallel_tool_calls?: boolean;
+  /** Operator / legacy — przestarzałe względem `max_completion_tokens` na Groq. */
   max_tokens?: number;
+  /** Buyer (gpt-oss) — preferowane pole limitu completion (@see Groq chat-create). */
+  max_completion_tokens?: number;
   temperature?: number;
   top_p?: number;
   /** Harmony: dołącz kanał reasoning (`delta.reasoning`) do streamu. */
@@ -203,15 +209,24 @@ async function callGatewayCompat(
     model: modelName,
   };
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'cf-aig-authorization': `Bearer ${gatewayToken}`,
+    Authorization: `Bearer ${groqApiKey}`,
+  };
+  // Retry bramy wyłącznie dla buyer_ — operator bez cf-aig-max-attempts.
+  // https://developers.cloudflare.com/ai-gateway/configuration/request-handling/#request-retries
+  if (isBuyerTimingLabel(timingLabel)) {
+    headers['cf-aig-max-attempts'] = String(BUYER_AIG_RETRY.maxAttempts);
+    headers['cf-aig-retry-delay'] = String(BUYER_AIG_RETRY.retryDelayMs);
+    headers['cf-aig-backoff'] = BUYER_AIG_RETRY.backoff;
+  }
+
   const t0 = Date.now();
   const res = await fetch(url, {
     method: 'POST',
     signal: abortSignal,
-    headers: {
-      'Content-Type': 'application/json',
-      'cf-aig-authorization': `Bearer ${gatewayToken}`,
-      Authorization: `Bearer ${groqApiKey}`,
-    },
+    headers,
     body: JSON.stringify(payload),
   });
 
@@ -957,23 +972,40 @@ export async function streamGroqEventsViaGateway(
     options?.toolChoice !== undefined ? options.toolChoice : defaultToolChoice;
 
   const resolvedModel = options?.modelId ?? MODEL_VARIANTS.default.id;
+  const label = timingLabel ?? 'streamGroqEventsViaGateway';
+  const buyer = isBuyerTimingLabel(label);
 
-  const body: GatewayCompatBody = {
-    model: resolvedModel,
-    messages: sanitizedMessages,
-    stream: true,
-    tools,
-    tool_choice: resolvedToolChoice,
-    parallel_tool_calls: true,
-    max_tokens: options?.maxTokens ?? MODEL_PARAMS.max_tokens,
-    temperature: MODEL_PARAMS.temperature,
-    top_p: MODEL_PARAMS.top_p,
-    include_reasoning: MODEL_PARAMS.include_reasoning,
-    reasoning_effort: MODEL_PARAMS.reasoning_effort,
-  };
+  const body: GatewayCompatBody = buyer
+    ? {
+        model: resolvedModel,
+        messages: sanitizedMessages,
+        stream: true,
+        tools,
+        tool_choice: resolvedToolChoice,
+        parallel_tool_calls: true,
+        max_completion_tokens:
+          options?.maxTokens ?? BUYER_MODEL_PARAMS.max_completion_tokens,
+        temperature: BUYER_MODEL_PARAMS.temperature,
+        top_p: BUYER_MODEL_PARAMS.top_p,
+        include_reasoning: BUYER_MODEL_PARAMS.include_reasoning,
+        reasoning_effort: BUYER_MODEL_PARAMS.reasoning_effort,
+      }
+    : {
+        model: resolvedModel,
+        messages: sanitizedMessages,
+        stream: true,
+        tools,
+        tool_choice: resolvedToolChoice,
+        parallel_tool_calls: true,
+        max_tokens: options?.maxTokens ?? MODEL_PARAMS.max_tokens,
+        temperature: MODEL_PARAMS.temperature,
+        top_p: MODEL_PARAMS.top_p,
+        include_reasoning: MODEL_PARAMS.include_reasoning,
+        reasoning_effort: MODEL_PARAMS.reasoning_effort,
+      };
 
   const res = await callGatewayCompat(env, body, {
-    timingLabel: timingLabel ?? 'streamGroqEventsViaGateway',
+    timingLabel: label,
     abortSignal: options?.abortSignal,
   });
 
@@ -1438,22 +1470,36 @@ export async function getGroqResponseViaGateway(
   const resolvedModel = options?.modelId ?? MODEL_VARIANTS.default.id;
   const forMemory = options?.forMemory === true;
   const sanitizedMessages = sanitizeHarmonyHistory(messages);
+  const label = options?.timingLabel ?? 'getGroqResponseViaGateway';
+  const buyer = isBuyerTimingLabel(label);
 
-  const body: GatewayCompatBody = {
-    model: resolvedModel,
-    messages: sanitizedMessages,
-    stream: false,
-    max_tokens: options?.max_tokens ?? MODEL_PARAMS.max_tokens,
-    temperature: MODEL_PARAMS.temperature,
-    top_p: MODEL_PARAMS.top_p,
-    include_reasoning: MODEL_PARAMS.include_reasoning,
-    reasoning_effort: MODEL_PARAMS.reasoning_effort,
-  };
+  const body: GatewayCompatBody = buyer
+    ? {
+        model: resolvedModel,
+        messages: sanitizedMessages,
+        stream: false,
+        max_completion_tokens:
+          options?.max_tokens ?? BUYER_MODEL_PARAMS.max_completion_tokens,
+        temperature: BUYER_MODEL_PARAMS.temperature,
+        top_p: BUYER_MODEL_PARAMS.top_p,
+        include_reasoning: BUYER_MODEL_PARAMS.include_reasoning,
+        reasoning_effort: BUYER_MODEL_PARAMS.reasoning_effort,
+      }
+    : {
+        model: resolvedModel,
+        messages: sanitizedMessages,
+        stream: false,
+        max_tokens: options?.max_tokens ?? MODEL_PARAMS.max_tokens,
+        temperature: MODEL_PARAMS.temperature,
+        top_p: MODEL_PARAMS.top_p,
+        include_reasoning: MODEL_PARAMS.include_reasoning,
+        reasoning_effort: MODEL_PARAMS.reasoning_effort,
+      };
 
   let res: Response;
   try {
     res = await callGatewayCompat(env, body, {
-      timingLabel: options?.timingLabel ?? 'getGroqResponseViaGateway',
+      timingLabel: label,
     });
   } catch (err) {
     console.error('[AI Gateway] getGroqResponseViaGateway network_error', err);
