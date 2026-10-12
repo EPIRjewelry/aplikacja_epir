@@ -7,7 +7,11 @@
 import {useState, useCallback, useRef, useEffect} from 'react';
 import ReactMarkdown, {type Components} from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import {DEFAULT_PERSONA_UI, type PersonaUi} from './persona-ui';
+import {
+  AI_ASSISTANT_DISCLOSURE,
+  DEFAULT_PERSONA_UI,
+  type PersonaUi,
+} from './persona-ui';
 import {parseChatPathContext} from './chat-path-context';
 import {resolveShopAuthTokenForChat} from './commerce/shop-sign-in';
 import {
@@ -716,8 +720,17 @@ function ChatWidgetFallback({
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2">
       {isOpen && (
         <div className="flex h-80 w-96 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
-          <div className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium">
-            {personaUi.chatTitle}
+          <div
+            className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium"
+            role="banner"
+          >
+            <span data-testid="chat-title">{personaUi.chatTitle}</span>
+            <span
+              className="ml-2 text-xs font-normal text-gray-500"
+              data-testid="ai-disclosure"
+            >
+              {AI_ASSISTANT_DISCLOSURE}
+            </span>
           </div>
           {!messagingAllowed && (
             <div className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-900">

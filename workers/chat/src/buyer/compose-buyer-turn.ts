@@ -32,6 +32,9 @@ import {
   applyCartMutationHistoryOverride,
   collectAllowedUrls,
   guardBuyerReplyLinks,
+  REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE,
+  REPLY_LINK_REJECTED_CATALOG_MESSAGE,
+  REPLY_LINK_REJECTED_NEUTRAL_MESSAGE,
 } from './reply-link-guard';
 import {urlsFromToolResult} from './urls-from-tool-result';
 import { readSessionCartId } from './session-cart';
@@ -46,6 +49,18 @@ import {
   listAvailableBuyerTools,
   type BuyerToolId,
 } from './tool-readiness';
+import { detectForcedCartTool } from './cart-intent';
+import {
+  appendExactContinueUrlIfMissing,
+  buildCartContinueReply,
+} from './cart-continue-reply';
+import {
+  ASK_VARIANT_BEFORE_CART_MESSAGE,
+  looksLikeToolCallAsText,
+  toolAsTextCartMutationAllowed,
+  toolAsTextKeyNames,
+  toolNameFromAsText,
+} from './tool-as-text';
 
 const MAX_TOOL_ROUNDS = 3;
 const FINAL_TOOL_FALLBACK_USER =
@@ -136,6 +151,17 @@ function shouldFallbackToolLoop(err: unknown, round: number): boolean {
   return (
     /tool_use_failed|not in request\.tools|Tool call validation failed/i.test(msg) ||
     /AI Gateway stream error event from Groq/i.test(msg)
+  );
+}
+
+/** Groq 400 gdy model nie wywołał wymuszonego narzędzia (tool_choice function). */
+function isForcedToolChoiceRejected(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    /\b400\b/.test(msg) ||
+    /tool_use_failed|Tool call validation failed|failed_generation|tool_choice/i.test(
+      msg,
+    )
   );
 }
 
@@ -285,7 +311,7 @@ const BUYER_TOOL_BLURBS: Partial<Record<BuyerToolId, string>> = {
     '  Koszyk dodawaj tylko po wyraźnej zgodzie. Wariant = id z sekcji DANE TECHNICZNE wyniku search_catalog lub [PRODUKT NA STRONIE] (nie wymyślaj).',
     '  Gdy produkt ma więcej niż jeden wariant — zapytaj o wariant (rozmiar/kamień/metal) przed create_cart; nigdy „od [min]”.',
     '  update_cart: tylko łatka (add_items / update_items / remove_line_ids). Nie podawaj id koszyka ani pełnej listy line_items.',
-    '  Link do klienta wyłącznie continue_url z wyniku narzędzia.',
+    '  Link do klienta wyłącznie continue_url z ostatniego wyniku narzędzia — jeden link, niczego nie sklejaj.',
   ].join('\n'),
   search_shop_policies_and_faqs: [
     '• search_shop_policies_and_faqs — zwroty, wysyłka, regulamin, kontakt, FAQ.',
@@ -400,7 +426,36 @@ type FinalizeReplyContext = {
   hadSearchCatalogThisTurn: boolean;
   /** Tylko sukces create_cart/update_cart w tej turze — nie samo sessionCartId. */
   cartMutatedSuccessfullyThisTurn: boolean;
+  /** Exact continue_url z udanej mutacji w tej turze (bez UTM). */
+  cartContinueUrl?: string | null;
+  cartNotices?: string[];
+  cartTotalsNote?: string | null;
 };
+
+function cartDeterministicReply(ctx: FinalizeReplyContext): string | null {
+  if (!ctx.cartMutatedSuccessfullyThisTurn || !ctx.cartContinueUrl?.trim()) {
+    return null;
+  }
+  return buildCartContinueReply(
+    ctx.cartContinueUrl.trim(),
+    ctx.cartNotices ?? [],
+    ctx.cartTotalsNote,
+  );
+}
+
+function scrubToolAsTextOrFallback(
+  reply: string,
+  ctx: FinalizeReplyContext,
+): string {
+  if (!looksLikeToolCallAsText(reply)) return reply;
+  console.log(
+    JSON.stringify({
+      tag: 'buyer.tool_as_text_blocked',
+      keys: toolAsTextKeyNames(reply),
+    }),
+  );
+  return cartDeterministicReply(ctx) ?? FINAL_TOOL_FALLBACK_USER;
+}
 
 async function finalizeBuyerReply(
   env: Env,
@@ -409,18 +464,40 @@ async function finalizeBuyerReply(
   reply: string,
   ctx: FinalizeReplyContext,
 ): Promise<string> {
-  const scrubbed = scrubGidFromClientReply(reply);
+  let scrubbed = scrubGidFromClientReply(reply);
+  scrubbed = scrubToolAsTextOrFallback(scrubbed, ctx);
+
   const guardedRaw = await guardBuyerReplyLinks(env, scrubbed, ctx.allowedUrls, {
     sessionId,
     systemBase: ctx.systemBase,
     userText,
     hadSearchCatalogThisTurn: ctx.hadSearchCatalogThisTurn,
   });
-  // Stub katalogowy po udanym koszyku w tej turze fałszuje kontekst (pętle „podaj rozmiar”).
-  const guarded = applyCartMutationHistoryOverride(
+
+  let guarded = applyCartMutationHistoryOverride(
     guardedRaw,
     ctx.cartMutatedSuccessfullyThisTurn,
   );
+
+  const rejectionOrEmpty =
+    !guarded.trim() ||
+    guarded === REPLY_LINK_REJECTED_CATALOG_MESSAGE ||
+    guarded === REPLY_LINK_REJECTED_NEUTRAL_MESSAGE ||
+    guarded === REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE;
+
+  if (ctx.cartMutatedSuccessfullyThisTurn && rejectionOrEmpty) {
+    const deterministic = cartDeterministicReply(ctx);
+    if (deterministic) guarded = deterministic;
+  } else if (ctx.cartMutatedSuccessfullyThisTurn) {
+    // Dołącz exact continue_url z Shopify, jeśli model go pominął (bez UTM).
+    guarded = appendExactContinueUrlIfMissing(
+      guarded,
+      ctx.cartContinueUrl,
+      ctx.cartNotices ?? [],
+      ctx.cartTotalsNote,
+    );
+  }
+
   if (sessionId?.trim()) {
     try {
       await appendBuyerSessionMessage(env, sessionId, 'user', userText);
@@ -430,6 +507,10 @@ async function finalizeBuyerReply(
     }
   }
   return guarded;
+}
+
+function toolDefsInclude(defs: ReturnType<typeof buildBuyerToolDefinitions>, name: string): boolean {
+  return defs.some((d) => d.function?.name === name);
 }
 
 export async function composeBuyerAssistantReply(
@@ -557,6 +638,91 @@ export async function composeBuyerAssistantReply(
     return finalizeBuyerReply(env, sessionId, userText, reply, finalizeCtx);
   }
 
+  let forcedToolUsed = false;
+
+  const applyExecutedTool = async (call: GroqToolCall): Promise<void> => {
+    const executed = await executeBuyerTool({
+      env,
+      channelId,
+      readyTools: availableTools,
+      name: call.name,
+      argsJson: call.arguments,
+      sessionId,
+      sessionCartId,
+      allowedVariantIds,
+      shopifyCustomerId: null,
+      request,
+    });
+    if (executed.sessionCartId !== undefined) {
+      sessionCartId = executed.sessionCartId;
+    }
+    if (executed.newVariantIds?.length) {
+      for (const id of executed.newVariantIds) allowedVariantIds.add(id);
+    }
+    if (call.name === 'search_catalog') {
+      finalizeCtx.hadSearchCatalogThisTurn = true;
+    }
+    if (executed.cartMutationSucceeded) {
+      finalizeCtx.cartMutatedSuccessfullyThisTurn = true;
+      if (executed.continueUrl) {
+        finalizeCtx.cartContinueUrl = executed.continueUrl;
+        for (const normalized of collectAllowedUrls([executed.continueUrl])) {
+          allowedUrls.add(normalized);
+        }
+      }
+      if (executed.cartNotices?.length) {
+        finalizeCtx.cartNotices = executed.cartNotices;
+      }
+      if (executed.cartTotalsNote) {
+        finalizeCtx.cartTotalsNote = executed.cartTotalsNote;
+      }
+    }
+    for (const url of urlsFromToolResult(call.name, executed.content)) {
+      for (const normalized of collectAllowedUrls([url])) {
+        allowedUrls.add(normalized);
+      }
+    }
+    messages.push({
+      role: 'tool',
+      tool_call_id: call.id,
+      name: call.name,
+      content: executed.content,
+    });
+  };
+
+  /**
+   * Named tool_choice tylko: (a) get_cart po intencji odczytu;
+   * (b) tool-as-text create/update gdy warianty na allowliście katalogu.
+   * @see https://console.groq.com/docs/tool-use/local-tool-calling
+   */
+  const resolveForcedToolName = (text: string): string | null => {
+    if (looksLikeToolCallAsText(text)) {
+      const fromText = toolNameFromAsText(text);
+      if (!fromText || !toolDefsInclude(toolDefinitions, fromText)) return null;
+      if (fromText === 'get_cart') return 'get_cart';
+      if (
+        (fromText === 'create_cart' || fromText === 'update_cart') &&
+        toolAsTextCartMutationAllowed(text, allowedVariantIds)
+      ) {
+        return fromText;
+      }
+      return null;
+    }
+    if (!finalizeCtx.cartMutatedSuccessfullyThisTurn) {
+      const cartTool = detectForcedCartTool(userText, sessionCartId);
+      if (cartTool && toolDefsInclude(toolDefinitions, cartTool)) return cartTool;
+    }
+    return null;
+  };
+
+  const clientReplyForToolAsTextWithoutForce = (text: string): string => {
+    const name = toolNameFromAsText(text);
+    if (name === 'create_cart' || name === 'update_cart') {
+      return ASK_VARIANT_BEFORE_CART_MESSAGE;
+    }
+    return FINAL_TOOL_FALLBACK_USER;
+  };
+
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     let text: string;
     let toolCalls: GroqToolCall[];
@@ -582,6 +748,95 @@ export async function composeBuyerAssistantReply(
     }
 
     if (toolCalls.length === 0) {
+      const forcedName =
+        !forcedToolUsed ? resolveForcedToolName(text) : null;
+      if (forcedName) {
+        forcedToolUsed = true;
+        console.log(
+          JSON.stringify({
+            tag: looksLikeToolCallAsText(text)
+              ? 'buyer.tool_as_text_retry'
+              : 'buyer.cart_intent_force_tool',
+            keys: looksLikeToolCallAsText(text)
+              ? toolAsTextKeyNames(text)
+              : undefined,
+            forced: forcedName,
+          }),
+        );
+        try {
+          const forceStream = await streamGroqEvents(
+            messages,
+            env,
+            toolDefinitions,
+            sessionId,
+            `buyer_tool_loop_${round}_forced`,
+            {
+              toolChoice: {
+                type: 'function',
+                function: { name: forcedName },
+              },
+            },
+          );
+          const forced = await collectStreamRound(forceStream);
+          if (forced.toolCalls.length === 0) {
+            return finalizeBuyerReply(
+              env,
+              sessionId,
+              userText,
+              looksLikeToolCallAsText(text)
+                ? clientReplyForToolAsTextWithoutForce(text)
+                : FINAL_TOOL_FALLBACK_USER,
+              finalizeCtx,
+            );
+          }
+          messages.push({
+            role: 'assistant',
+            content: forced.text || null,
+            tool_calls: forced.toolCalls.map((c) => ({
+              id: c.id,
+              type: 'function' as const,
+              function: { name: c.name, arguments: c.arguments },
+            })),
+          });
+          for (const call of forced.toolCalls) {
+            await applyExecutedTool(call);
+          }
+          continue;
+        } catch (forceErr) {
+          // https://console.groq.com/docs/tool-use — 400 gdy brak wymuszonego tool call
+          console.log(
+            JSON.stringify({
+              tag: 'buyer.forced_tool_choice_failed',
+              forced: forcedName,
+              reason: isForcedToolChoiceRejected(forceErr)
+                ? 'groq_rejected'
+                : 'stream_error',
+            }),
+          );
+          return finalizeBuyerReply(
+            env,
+            sessionId,
+            userText,
+            FINAL_TOOL_FALLBACK_USER,
+            finalizeCtx,
+          );
+        }
+      }
+      if (looksLikeToolCallAsText(text)) {
+        console.log(
+          JSON.stringify({
+            tag: 'buyer.tool_as_text_blocked',
+            keys: toolAsTextKeyNames(text),
+          }),
+        );
+        return finalizeBuyerReply(
+          env,
+          sessionId,
+          userText,
+          clientReplyForToolAsTextWithoutForce(text),
+          finalizeCtx,
+        );
+      }
       return finalizeBuyerReply(env, sessionId, userText, text, finalizeCtx);
     }
 
@@ -596,41 +851,7 @@ export async function composeBuyerAssistantReply(
     });
 
     for (const call of toolCalls) {
-      const executed = await executeBuyerTool({
-        env,
-        channelId,
-        readyTools: availableTools,
-        name: call.name,
-        argsJson: call.arguments,
-        sessionId,
-        sessionCartId,
-        allowedVariantIds,
-        shopifyCustomerId: null,
-        request,
-      });
-      if (executed.sessionCartId !== undefined) {
-        sessionCartId = executed.sessionCartId;
-      }
-      if (executed.newVariantIds?.length) {
-        for (const id of executed.newVariantIds) allowedVariantIds.add(id);
-      }
-      if (call.name === 'search_catalog') {
-        finalizeCtx.hadSearchCatalogThisTurn = true;
-      }
-      if (executed.cartMutationSucceeded) {
-        finalizeCtx.cartMutatedSuccessfullyThisTurn = true;
-      }
-      for (const url of urlsFromToolResult(call.name, executed.content)) {
-        for (const normalized of collectAllowedUrls([url])) {
-          allowedUrls.add(normalized);
-        }
-      }
-      messages.push({
-        role: 'tool',
-        tool_call_id: call.id,
-        name: call.name,
-        content: executed.content,
-      });
+      await applyExecutedTool(call);
     }
   }
 
@@ -659,10 +880,20 @@ export async function composeBuyerAssistantReply(
       });
       return finalizeBuyerReply(env, sessionId, userText, reply, finalizeCtx);
     } catch {
+      const deterministic = cartDeterministicReply(finalizeCtx);
+      if (deterministic) {
+        return finalizeBuyerReply(env, sessionId, userText, deterministic, finalizeCtx);
+      }
       const cartLink = lastCartLinkFromMessages(messages);
-      const staticReply = cartLink
-        ? `Koszyk jest gotowy: [Przejdź do koszyka](${cartLink})`
-        : FINAL_TOOL_FALLBACK_USER;
+      // Link tylko po mutacji w tej turze — nie z samego sessionCartId.
+      const staticReply =
+        finalizeCtx.cartMutatedSuccessfullyThisTurn && cartLink
+          ? buildCartContinueReply(
+              cartLink,
+              finalizeCtx.cartNotices ?? [],
+              finalizeCtx.cartTotalsNote,
+            )
+          : FINAL_TOOL_FALLBACK_USER;
       return finalizeBuyerReply(env, sessionId, userText, staticReply, finalizeCtx);
     }
   }

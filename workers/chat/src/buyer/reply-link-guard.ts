@@ -1,5 +1,6 @@
 import {getGroqResponse, type GroqMessage} from '../ai-client';
 import type {Env} from '../config/bindings';
+import {sanitizeUrlForLog} from './url-log-sanitize';
 
 /** Gdy w turze był search_catalog. */
 export const REPLY_LINK_REJECTED_CATALOG_MESSAGE =
@@ -11,6 +12,7 @@ export const REPLY_LINK_REJECTED_NEUTRAL_MESSAGE =
 /**
  * Gdy w tej turze udany create_cart/update_cart, a guard odrzucił link —
  * neutralna notatka bez URL (nie stub „brak produktu”).
+ * Preferuj buildCartContinueReply gdy jest exact continue_url.
  */
 export const REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE =
   'Koszyk jest zaktualizowany. Nie mogę teraz bezpiecznie podać linku — napisz, jeśli mam go powtórzyć.';
@@ -74,6 +76,10 @@ export function foreignHostsInReply(
 ): string[] {
   const foreign: string[] = [];
   for (const url of urlsInReply(reply)) {
+    if (url.includes('|')) {
+      foreign.push('pipe');
+      continue;
+    }
     const norm = normalizeUrlForAllowlist(url);
     if (allowedUrls.has(norm)) continue;
     let matched = false;
@@ -87,7 +93,7 @@ export function foreignHostsInReply(
     try {
       foreign.push(new URL(url).hostname);
     } catch {
-      foreign.push(url);
+      foreign.push('parse_error');
     }
   }
   return foreign;
@@ -97,6 +103,25 @@ function rejectionMessage(hadSearchCatalogThisTurn: boolean): string {
   return hadSearchCatalogThisTurn
     ? REPLY_LINK_REJECTED_CATALOG_MESSAGE
     : REPLY_LINK_REJECTED_NEUTRAL_MESSAGE;
+}
+
+function logReplyLinkRejected(rawUrlOrHost: string, reason: 'not_in_allowlist' | 'pipe' | 'parse_error'): void {
+  const sanitized =
+    rawUrlOrHost === 'pipe' || rawUrlOrHost === 'parse_error'
+      ? {host: null, pathPattern: null, has_query: false, reason: rawUrlOrHost}
+      : sanitizeUrlForLog(
+          rawUrlOrHost.includes('://') ? rawUrlOrHost : `https://${rawUrlOrHost}/`,
+          reason,
+        );
+  console.log(
+    JSON.stringify({
+      tag: 'buyer.reply_link_rejected',
+      host: sanitized.host,
+      pathPattern: sanitized.pathPattern,
+      has_query: sanitized.has_query,
+      reason: sanitized.reason,
+    }),
+  );
 }
 
 export async function guardBuyerReplyLinks(
@@ -113,16 +138,46 @@ export async function guardBuyerReplyLinks(
   const foreign = foreignHostsInReply(reply, allowedUrls);
   if (!foreign.length) return reply;
 
-  const allowedList =
-    allowedUrls.size > 0 ? [...allowedUrls].join('\n') : '(brak dozwolonych linków w tej turze)';
+  const firstForeignUrl = urlsInReply(reply).find((u) => {
+    if (u.includes('|')) return true;
+    const norm = normalizeUrlForAllowlist(u);
+    if (allowedUrls.has(norm)) return false;
+    for (const allowed of allowedUrls) {
+      if (norm === allowed || norm.startsWith(`${allowed}/`)) return false;
+    }
+    return true;
+  });
+  const rejectReason = firstForeignUrl?.includes('|')
+    ? 'pipe'
+    : firstForeignUrl
+      ? 'not_in_allowlist'
+      : 'parse_error';
 
+  const allowedList =
+    allowedUrls.size > 0
+      ? [...allowedUrls]
+          .map((u) => {
+            try {
+              const parsed = new URL(u);
+              return `${parsed.origin}${parsed.pathname.replace(/\/cart\/c\/[^/]+/i, '/cart/c/:token').replace(/\/products\/[^/]+/i, '/products/:handle')}`;
+            } catch {
+              return '(url)';
+            }
+          })
+          .join('\n')
+      : '(brak dozwolonych linków w tej turze)';
+
+  // Retry: odrzucona treść jako notatka systemowa + user (nie assistant).
+  // @see https://console.groq.com/docs/tool-use
   const retryMessages: GroqMessage[] = [
     {
       role: 'system',
-      content: `${opts.systemBase}\n\n[Dozwolone URL tej tury]\n${allowedList}\n\n[NOTATKA SYSTEMOWA] Poprzednia odpowiedź zawierała linki spoza wyników narzędzi i faktów. Usuń je. Podawaj wyłącznie dozwolone adresy.`,
+      content: `${opts.systemBase}\n\n[Dozwolone URL tej tury — wzorce]\n${allowedList}\n\n[NOTATKA SYSTEMOWA] Poprzednia odpowiedź zawierała linki spoza wyników narzędzi i faktów i została odrzucona. Nie powtarzaj jej. Podawaj wyłącznie dozwolone adresy.`,
     },
-    {role: 'user', content: opts.userText},
-    {role: 'assistant', content: reply},
+    {
+      role: 'user',
+      content: `${opts.userText}\n\nPopraw odpowiedź bez niedozwolonych linków.`,
+    },
   ];
   const rejected = rejectionMessage(opts.hadSearchCatalogThisTurn);
   try {
@@ -130,23 +185,18 @@ export async function guardBuyerReplyLinks(
       timingLabel: 'buyer_reply_link_guard_retry',
       sessionId: opts.sessionId,
     });
-    const foreignAfter = foreignHostsInReply(retried, allowedUrls);
-    if (!foreignAfter.length) return retried.trim();
-    console.log(
-      JSON.stringify({
-        tag: 'buyer.reply_link_rejected',
-        host: foreignAfter[0],
-      }),
-    );
+    const trimmed = typeof retried === 'string' ? retried.trim() : '';
+    if (!trimmed) {
+      logReplyLinkRejected(firstForeignUrl ?? foreign[0] ?? '', rejectReason);
+      return rejected;
+    }
+    const foreignAfter = foreignHostsInReply(trimmed, allowedUrls);
+    if (!foreignAfter.length) return trimmed;
+    logReplyLinkRejected(firstForeignUrl ?? foreignAfter[0] ?? '', rejectReason);
     return rejected;
   } catch (e) {
     console.warn('[buyer.reply_link_guard] retry failed', e);
-    console.log(
-      JSON.stringify({
-        tag: 'buyer.reply_link_rejected',
-        host: foreign[0],
-      }),
-    );
+    logReplyLinkRejected(firstForeignUrl ?? foreign[0] ?? '', rejectReason);
     return rejected;
   }
 }

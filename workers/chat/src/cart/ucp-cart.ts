@@ -189,6 +189,52 @@ function cartContext(commerce?: CommerceContext): Record<string, string> | undef
   return { address_country: commerce.address_country };
 }
 
+/**
+ * Pola stanu koszyka do ponownego wysłania przy update (UCP/Shopify PUT).
+ * Attribution trzeba wysłać ponownie, aby ją zachować:
+ * https://shopify.dev/docs/agents/carts-and-checkout/cart-mcp
+ * cart w żądaniu MUST NOT contain id: https://ucp.dev/2026-08-25/specification/shopping/cart/mcp/
+ */
+export function preservedCartStateFields(
+  source: Record<string, unknown>,
+  fromExistingCart?: Record<string, unknown> | null,
+): Record<string, unknown> {
+  const fromCart = isRecord(source.cart) ? source.cart : null;
+  const pick = (key: string): unknown => {
+    if (fromCart && fromCart[key] !== undefined) return fromCart[key];
+    if (source[key] !== undefined) return source[key];
+    if (fromExistingCart && fromExistingCart[key] !== undefined) return fromExistingCart[key];
+    return undefined;
+  };
+  const out: Record<string, unknown> = {};
+  for (const key of ['attribution', 'buyer', 'context'] as const) {
+    const v = pick(key);
+    if (v !== undefined && v !== null) out[key] = v;
+  }
+  return out;
+}
+
+function buildCartObject(
+  lineItems: UcpCartLine[],
+  source: Record<string, unknown>,
+  commerce?: CommerceContext,
+  fromExistingCart?: Record<string, unknown> | null,
+): Record<string, unknown> {
+  const preserved = preservedCartStateFields(source, fromExistingCart);
+  const ctx =
+    preserved.context && isRecord(preserved.context)
+      ? preserved.context
+      : cartContext(commerce);
+  const cart: Record<string, unknown> = {
+    line_items: lineItems,
+    ...preserved,
+  };
+  if (ctx && !cart.context) cart.context = ctx;
+  // UCP: cart object MUST NOT contain id
+  delete cart.id;
+  return cart;
+}
+
 function withMeta(
   args: Record<string, unknown>,
   env: { UCP_AGENT_PROFILE_URL?: string; WORKER_ORIGIN?: string },
@@ -206,10 +252,10 @@ export function prepareUcpCartCall(
   env: { UCP_AGENT_PROFILE_URL?: string; WORKER_ORIGIN?: string },
   commerce?: CommerceContext,
   existingLines?: ExistingLine[] | null,
+  existingCartState?: Record<string, unknown> | null,
 ): PreparedUcpCart {
   const source = isRecord(rawArgs) ? rawArgs : {};
   const cartId = readCartId(source);
-  const context = cartContext(commerce);
 
   if (toolName === 'get_cart') {
     if (!cartId) {
@@ -251,7 +297,7 @@ export function prepareUcpCartCall(
       mcpToolName: 'create_cart',
       needsExistingLines: false,
       arguments: withMeta(
-        { cart: { line_items: lines, ...(context ? { context } : {}) } },
+        { cart: buildCartObject(lines, source, commerce, existingCartState) },
         env,
       ),
     };
@@ -265,7 +311,7 @@ export function prepareUcpCartCall(
       arguments: withMeta(
         {
           id: cartId,
-          cart: { line_items: explicit, ...(context ? { context } : {}) },
+          cart: buildCartObject(explicit, source, commerce, existingCartState),
         },
         env,
       ),
@@ -299,7 +345,7 @@ export function prepareUcpCartCall(
     arguments: withMeta(
       {
         id: cartId,
-        cart: { line_items: lines, ...(context ? { context } : {}) },
+        cart: buildCartObject(lines, source, commerce, existingCartState),
       },
       env,
     ),

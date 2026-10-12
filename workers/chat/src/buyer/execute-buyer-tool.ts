@@ -2,13 +2,26 @@ import type { Env } from '../config/bindings';
 import { resolveCommerceContext } from '../config/commerce-context';
 import { callMcpToolDirect } from '../mcp_server';
 import {
+  applyCartPatch,
   cartShapeKeyNames,
   extractCartObject,
   lineItemsFromCartPayload,
+  preservedCartStateFields,
   readCartId,
   variantIdOf,
 } from '../cart/ucp-cart';
-import { normalizeCartPayloadForParsing } from './cart-payload-normalize';
+import {
+  formatCartNoticeFromMessages,
+  formatCartTotalsNote,
+} from './cart-continue-reply';
+import {
+  CART_NOT_FOUND_CLIENT_MESSAGE,
+  isCartNotFoundResult,
+} from './cart-not-found';
+import {
+  continueUrlFromCartPayload,
+  normalizeCartPayloadForParsing,
+} from './cart-payload-normalize';
 import { getSizeTable } from '../size-table';
 import type { BuyerChannelId } from './channel-switch';
 import { buyerToolIdForName } from './buyer-tools';
@@ -48,6 +61,10 @@ export type ExecuteBuyerToolResult = {
   newVariantIds?: string[];
   /** Sukces create_cart/update_cart w tej turze (nie samo sessionCartId z historii). */
   cartMutationSucceeded?: boolean;
+  /** Exact continue_url z wyniku Shopify po udanej mutacji (bez UTM). */
+  continueUrl?: string;
+  cartNotices?: string[];
+  cartTotalsNote?: string | null;
 };
 
 function logBuyerToolCall(tool: string, channel: BuyerChannelId, ok: boolean): void {
@@ -374,8 +391,57 @@ export async function executeBuyerTool(
     }
   }
 
-  // Ensure create_cart uses line_items shape; patches for update go as-is (without ids).
-  const mcpOut = await callMcpToolDirect(input.env, input.name, args, {
+  // update_cart: merge łatki z get_cart (line_items + attribution/context/buyer).
+  // Bez edycji mcp_server — pełny payload idzie jako explicit line_items.
+  // https://shopify.dev/docs/agents/carts-and-checkout/cart-mcp
+  // https://ucp.dev/2026-08-25/specification/shopping/cart/mcp/
+  let mcpArgs: Record<string, unknown> = args;
+  if (input.name === 'update_cart' && input.sessionCartId?.trim()) {
+    const getOut = await callMcpToolDirect(input.env, 'get_cart', {}, {
+      brand,
+      sessionCartId: input.sessionCartId,
+      commerceContext,
+    });
+    const getPayload = getOut?.result ?? getOut;
+    // Protocol error LUB UCP messages type=error code=not_found — bez update_cart.
+    if (getOut?.error || isCartNotFoundResult(getPayload)) {
+      logBuyerToolCall(input.name, input.channelId, false);
+      console.log(
+        JSON.stringify({
+          tag: 'buyer.cart_not_found',
+          tool: 'update_cart',
+          via: getOut?.error ? 'protocol_error' : 'messages_not_found',
+        }),
+      );
+      return {
+        content: JSON.stringify({
+          error: 'cart_not_found',
+          notice: CART_NOT_FOUND_CLIENT_MESSAGE,
+        }),
+      };
+    }
+    const existingPayload = normalizeCartPayloadForParsing(getPayload);
+    const existingCart = extractCartObject(existingPayload) ?? {};
+    const existingLines = lineItemsFromCartPayload(existingPayload);
+    const mergedLines = applyCartPatch(existingLines, args);
+    const preserved = preservedCartStateFields({}, existingCart);
+    mcpArgs = {
+      id: input.sessionCartId.trim(),
+      cart: {
+        line_items: mergedLines,
+        ...preserved,
+      },
+    };
+    if (
+      mcpArgs.cart &&
+      typeof mcpArgs.cart === 'object' &&
+      'id' in (mcpArgs.cart as object)
+    ) {
+      delete (mcpArgs.cart as Record<string, unknown>).id;
+    }
+  }
+
+  const mcpOut = await callMcpToolDirect(input.env, input.name, mcpArgs, {
     brand,
     sessionCartId: input.sessionCartId,
     commerceContext,
@@ -451,10 +517,28 @@ export async function executeBuyerTool(
     nextSessionCartId = null;
   }
 
+  let continueUrl: string | undefined;
+  let cartNotices: string[] | undefined;
+  let cartTotalsNote: string | null | undefined;
+  if (cartMutationSucceeded) {
+    const normalized = normalizeCartPayloadForParsing(result);
+    const cart = extractCartObject(normalized);
+    const url = continueUrlFromCartPayload(normalized);
+    if (url) continueUrl = url;
+    const notices = formatCartNoticeFromMessages(cart?.messages);
+    if (notices.length) cartNotices = notices;
+    const currency =
+      typeof cart?.currency === 'string' ? cart.currency : null;
+    cartTotalsNote = formatCartTotalsNote(cart?.totals, currency) ?? null;
+  }
+
   logBuyerToolCall(input.name, input.channelId, true);
   return {
     content: JSON.stringify(result ?? {}),
     sessionCartId: nextSessionCartId,
     ...(cartMutationSucceeded ? {cartMutationSucceeded: true} : {}),
+    ...(continueUrl ? {continueUrl} : {}),
+    ...(cartNotices ? {cartNotices} : {}),
+    ...(cartTotalsNote ? {cartTotalsNote} : {}),
   };
 }

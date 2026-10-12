@@ -609,6 +609,21 @@
 }
 
 /* Header mapping */
+.epir-assistant__ai-disclosure {
+  display: inline-block;
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #6b7280;
+  vertical-align: middle;
+}
+
+/* GE: ciemny .assistant-header — kontrast ≥ 4,5:1 (AI Act art. 50; WCAG AA).
+   Para: tło #1a1a1a, tekst #e5e7eb. */
+.assistant-header .epir-assistant__ai-disclosure {
+  color: #e5e7eb;
+}
+
 .assistant-header {
   background: linear-gradient(135deg, var(--epir-primary-color) 0%, #333 100%);
   color: #fff;
