@@ -167,13 +167,19 @@ describe('cart UCP flat structuredContent', () => {
     );
 
     vi.spyOn(mcpServer, 'callMcpToolDirect').mockImplementation(
-      async (_env, name, _args, brandOrOptions) => {
-        expect(name).toBe('update_cart');
+      async (_env, name, args, brandOrOptions) => {
         const opts =
           typeof brandOrOptions === 'object' && brandOrOptions
             ? brandOrOptions
             : {sessionCartId: null};
         expect(opts.sessionCartId).toBe(FLAT_UCP_STRUCTURED_CONTENT.id);
+        if (name === 'get_cart') {
+          return {result: presentCartForChat(FLAT_MCP_RESULT)};
+        }
+        expect(name).toBe('update_cart');
+        const rec = args as Record<string, unknown>;
+        expect(rec.id).toBe(FLAT_UCP_STRUCTURED_CONTENT.id);
+        expect((rec.cart as Record<string, unknown>)?.id).toBeUndefined();
         return {result: presentCartForChat(FLAT_MCP_RESULT)};
       },
     );
@@ -248,13 +254,18 @@ describe('isSuccessfulCartMutationResult / cartMutationSucceeded', () => {
   });
 
   it('update_cart with messages error does not set cartMutationSucceeded', async () => {
-    vi.spyOn(mcpServer, 'callMcpToolDirect').mockResolvedValue({
-      result: presentCartForChat({
-        structuredContent: {
-          ...FLAT_UCP_STRUCTURED_CONTENT,
-          messages: [{type: 'error', code: 'x', content: 'fail'}],
-        },
-      }),
+    vi.spyOn(mcpServer, 'callMcpToolDirect').mockImplementation(async (_e, name) => {
+      if (name === 'get_cart') {
+        return {result: presentCartForChat(FLAT_MCP_RESULT)};
+      }
+      return {
+        result: presentCartForChat({
+          structuredContent: {
+            ...FLAT_UCP_STRUCTURED_CONTENT,
+            messages: [{type: 'error', code: 'x', content: 'fail'}],
+          },
+        }),
+      };
     });
     const updated = await executeBuyerTool({
       env: {} as import('../src/config/bindings').Env,

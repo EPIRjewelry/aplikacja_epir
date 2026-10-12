@@ -89,11 +89,41 @@ describe('executeBuyerTool', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it('passes update_cart patch to callMcpToolDirect without manual get_cart', async () => {
-    const spy = vi.spyOn(mcp, 'callMcpToolDirect').mockResolvedValue({
-      result: { continue_url: 'https://x', line_items: [{}, {}] },
+  it('update_cart merges get_cart state then calls update with top-level id', async () => {
+    const spy = vi.spyOn(mcp, 'callMcpToolDirect').mockImplementation(async (_e, name) => {
+      if (name === 'get_cart') {
+        return {
+          result: {
+            id: 'gid://shopify/Cart/SESSION',
+            line_items: [
+              {
+                id: 'line-1',
+                quantity: 1,
+                item: {id: 'gid://shopify/ProductVariant/1'},
+              },
+            ],
+            attribution: {content: 'from-get'},
+            context: {address_country: 'PL'},
+            buyer: {email: 'a@b.c'},
+            continue_url: 'https://x/cart/c/TOKEN',
+          },
+        };
+      }
+      return {
+        result: {
+          id: 'gid://shopify/Cart/SESSION',
+          continue_url: 'https://x/cart/c/TOKEN',
+          line_items: [
+            {
+              id: 'line-1',
+              quantity: 2,
+              item: {id: 'gid://shopify/ProductVariant/1'},
+            },
+          ],
+        },
+      };
     });
-    await executeBuyerTool({
+    const out = await executeBuyerTool({
       env: { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env,
       channelId: 'epir-online-store',
       readyTools: ['ucp_cart'],
@@ -104,9 +134,15 @@ describe('executeBuyerTool', () => {
       sessionCartId: 'gid://shopify/Cart/SESSION',
       allowedVariantIds: new Set(),
     });
-    expect(spy).toHaveBeenCalledOnce();
-    expect(spy.mock.calls[0]![1]).toBe('update_cart');
-    expect(spy.mock.calls[0]![2]).toEqual({ update_items: [{ id: 'line-1', quantity: 2 }] });
+    expect(spy.mock.calls.map((c) => c[1])).toEqual(['get_cart', 'update_cart']);
+    const updateArgs = spy.mock.calls[1]![2] as Record<string, unknown>;
+    expect(updateArgs.id).toBe('gid://shopify/Cart/SESSION');
+    const cart = updateArgs.cart as Record<string, unknown>;
+    expect(cart.id).toBeUndefined();
+    expect(cart.attribution).toEqual({content: 'from-get'});
+    expect(cart.buyer).toEqual({email: 'a@b.c'});
+    expect(out.continueUrl).toBe('https://x/cart/c/TOKEN');
+    expect(out.cartMutationSucceeded).toBe(true);
   });
 
   it('writes set-cart-id after create_cart with flat presentCartForChat shape', async () => {
@@ -438,8 +474,17 @@ describe('executeBuyerTool', () => {
   });
 
   it('update_cart drops lines but keeps add_items; logs tool_args_dropped', async () => {
-    const spy = vi.spyOn(mcp, 'callMcpToolDirect').mockResolvedValue({
-      result: { continue_url: 'https://x', line_items: [] },
+    const spy = vi.spyOn(mcp, 'callMcpToolDirect').mockImplementation(async (_e, name) => {
+      if (name === 'get_cart') {
+        return {
+          result: {
+            id: 'gid://shopify/Cart/SESSION',
+            line_items: [],
+            continue_url: 'https://x',
+          },
+        };
+      }
+      return {result: {continue_url: 'https://x', line_items: [], id: 'gid://shopify/Cart/SESSION'}};
     });
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const allowed = 'gid://shopify/ProductVariant/ALLOWED';
@@ -457,12 +502,11 @@ describe('executeBuyerTool', () => {
       sessionCartId: 'gid://shopify/Cart/SESSION',
       allowedVariantIds: new Set([allowed]),
     });
-    expect(spy).toHaveBeenCalledOnce();
-    const mcpArgs = spy.mock.calls[0]![2] as Record<string, unknown>;
-    expect(mcpArgs).toEqual({
-      add_items: [{ quantity: 1, variant_id: allowed }],
-    });
-    expect(mcpArgs).not.toHaveProperty('lines');
+    expect(spy.mock.calls.map((c) => c[1])).toEqual(['get_cart', 'update_cart']);
+    const mcpArgs = spy.mock.calls[1]![2] as Record<string, unknown>;
+    expect(mcpArgs.id).toBe('gid://shopify/Cart/SESSION');
+    const cart = mcpArgs.cart as Record<string, unknown>;
+    expect(cart.id).toBeUndefined();
     expect(JSON.stringify(mcpArgs)).not.toContain(foreign);
     const dropped = logSpy.mock.calls
       .map((c) => {

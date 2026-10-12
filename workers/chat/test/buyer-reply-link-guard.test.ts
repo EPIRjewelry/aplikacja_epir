@@ -63,7 +63,7 @@ describe('reply-link-guard', () => {
     expect(out).toBe(REPLY_LINK_REJECTED_CATALOG_MESSAGE);
   });
 
-  it('retry includes original user question', async () => {
+  it('retry ends with user correction (not assistant role for rejected reply)', async () => {
     const groqSpy = vi.spyOn(aiClient, 'getGroqResponse').mockResolvedValue('OK bez linków.');
     const allowed = collectAllowedUrls(['https://epirbizuteria.pl/products/a']);
     await guardBuyerReplyLinks(
@@ -77,9 +77,30 @@ describe('reply-link-guard', () => {
       },
     );
     const messages = groqSpy.mock.calls[0]?.[0] ?? [];
-    expect(messages.some((m) => m.role === 'user' && m.content === 'Jakie są warunki zwrotu?')).toBe(
-      true,
+    expect(messages.some((m) => m.role === 'assistant')).toBe(false);
+    const users = messages.filter((m) => m.role === 'user');
+    expect(users.length).toBeGreaterThanOrEqual(1);
+    expect(String(users[users.length - 1]?.content ?? '')).toContain(
+      'Popraw odpowiedź bez niedozwolonych linków',
     );
-    expect(messages.some((m) => m.role === 'assistant')).toBe(true);
+    expect(String(users[users.length - 1]?.content ?? '')).toContain(
+      'Jakie są warunki zwrotu?',
+    );
+  });
+
+  it('empty retry content is treated as rejection', async () => {
+    vi.spyOn(aiClient, 'getGroqResponse').mockResolvedValue('   ');
+    const allowed = collectAllowedUrls(['https://epirbizuteria.pl/products/a']);
+    const out = await guardBuyerReplyLinks(
+      {} as import('../src/config/bindings').Env,
+      'Zły [link](https://example.com/z).',
+      allowed,
+      {
+        systemBase: 'sys',
+        userText: 'hej',
+        hadSearchCatalogThisTurn: false,
+      },
+    );
+    expect(out).toBe(REPLY_LINK_REJECTED_NEUTRAL_MESSAGE);
   });
 });

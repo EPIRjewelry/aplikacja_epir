@@ -102,5 +102,9 @@ export {
   type CustomerPrivacyConsentBridgeProps,
 } from './CustomerPrivacyConsentBridge';
 export type {PersonaUi} from './persona-ui';
-export {DEFAULT_PERSONA_UI} from './persona-ui';
+export {
+  AI_ASSISTANT_DISCLOSURE,
+  DEFAULT_PERSONA_UI,
+  chatHeaderParts,
+} from './persona-ui';
 export {ClientOnly} from './ClientOnly';
