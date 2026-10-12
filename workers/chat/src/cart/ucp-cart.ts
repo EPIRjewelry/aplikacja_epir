@@ -45,8 +45,21 @@ export function isUcpCartTool(toolName: string): boolean {
   return UCP_CART_TOOL_NAMES.has(toolName);
 }
 
+/**
+ * Płaski koszyk UCP (spec Cart MCP): id + line_items lub continue_url.
+ * https://ucp.dev/2026-08-25/specification/shopping/cart/mcp/
+ */
+export function isFlatUcpCartRecord(rec: Record<string, unknown>): boolean {
+  if (!nonEmpty(rec.id)) return false;
+  const hasLines = Array.isArray(rec.line_items);
+  const hasContinue = nonEmpty(rec.continue_url);
+  return hasLines || hasContinue;
+}
+
 export function readCartId(source: Record<string, unknown>): string | null {
   if (nonEmpty(source.id) && source.id.startsWith('gid://shopify/Cart/')) return source.id.trim();
+  // Płaski UCP / Shopify Cart MCP: id string; cart_id z presentCartForChat
+  if (nonEmpty(source.id) && isFlatUcpCartRecord(source)) return source.id.trim();
   if (nonEmpty(source.cart_id)) return source.cart_id.trim();
   return null;
 }
@@ -298,6 +311,13 @@ export function extractCartObject(payload: unknown): Record<string, unknown> | n
   if (isRecord(payload.structuredContent) && isRecord(payload.structuredContent.cart)) {
     return payload.structuredContent.cart;
   }
+  // Spec UCP: structuredContent = { ucp, id, line_items, continue_url, … } (bez .cart)
+  if (isRecord(payload.structuredContent) && isFlatUcpCartRecord(payload.structuredContent)) {
+    return payload.structuredContent;
+  }
+  if (isFlatUcpCartRecord(payload)) {
+    return payload;
+  }
   if (isRecord(payload.cart) && (payload.cart.continue_url || payload.cart.line_items || payload.cart.id)) {
     return payload.cart;
   }
@@ -309,6 +329,7 @@ export function extractCartObject(payload: unknown): Record<string, unknown> | n
         const parsed = JSON.parse(part.text) as unknown;
         const nested = extractCartObject(parsed);
         if (nested) return nested;
+        if (isRecord(parsed) && isFlatUcpCartRecord(parsed)) return parsed;
       } catch {
         /* text is not cart JSON */
       }
@@ -316,6 +337,35 @@ export function extractCartObject(payload: unknown): Record<string, unknown> | n
   }
   if (isRecord(payload.result)) return extractCartObject(payload.result);
   return null;
+}
+
+/** Tylko nazwy kluczy — do tymczasowego logu buyer.cart_shape (bez wartości). */
+export function cartShapeKeyNames(result: unknown): {
+  resultKeys: string[];
+  structuredContentKeys: string[] | null;
+  contentTextKeys: string[] | null;
+} {
+  if (!isRecord(result)) {
+    return {resultKeys: [], structuredContentKeys: null, contentTextKeys: null};
+  }
+  const resultKeys = Object.keys(result);
+  let structuredContentKeys: string[] | null = null;
+  if (isRecord(result.structuredContent)) {
+    structuredContentKeys = Object.keys(result.structuredContent);
+  }
+  let contentTextKeys: string[] | null = null;
+  if (Array.isArray(result.content) && result.content[0] && isRecord(result.content[0])) {
+    const text = result.content[0].text;
+    if (typeof text === 'string' && text.trim()) {
+      try {
+        const parsed = JSON.parse(text) as unknown;
+        if (isRecord(parsed)) contentTextKeys = Object.keys(parsed);
+      } catch {
+        contentTextKeys = null;
+      }
+    }
+  }
+  return {resultKeys, structuredContentKeys, contentTextKeys};
 }
 
 function annotateUcpMoney(value: unknown, depth: number): unknown {

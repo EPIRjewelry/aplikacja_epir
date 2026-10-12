@@ -8,6 +8,27 @@ export const REPLY_LINK_REJECTED_CATALOG_MESSAGE =
 export const REPLY_LINK_REJECTED_NEUTRAL_MESSAGE =
   'Nie mogę potwierdzić tej informacji w naszych danych.';
 
+/**
+ * Gdy w tej turze udany create_cart/update_cart, a guard odrzucił link —
+ * neutralna notatka bez URL (nie stub „brak produktu”).
+ */
+export const REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE =
+  'Koszyk jest zaktualizowany. Nie mogę teraz bezpiecznie podać linku — napisz, jeśli mam go powtórzyć.';
+
+/** Tylko po sukcesie create/update w bieżącej turze — nie samo sessionCartId. */
+export function applyCartMutationHistoryOverride(
+  guarded: string,
+  cartMutatedSuccessfullyThisTurn: boolean,
+): string {
+  if (
+    cartMutatedSuccessfullyThisTurn &&
+    guarded === REPLY_LINK_REJECTED_CATALOG_MESSAGE
+  ) {
+    return REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE;
+  }
+  return guarded;
+}
+
 /** @deprecated użyj REPLY_LINK_REJECTED_CATALOG_MESSAGE */
 export const REPLY_LINK_REJECTED_MESSAGE = REPLY_LINK_REJECTED_CATALOG_MESSAGE;
 

@@ -2,6 +2,7 @@ import type { Env } from '../config/bindings';
 import { resolveCommerceContext } from '../config/commerce-context';
 import { callMcpToolDirect } from '../mcp_server';
 import {
+  cartShapeKeyNames,
   extractCartObject,
   lineItemsFromCartPayload,
   readCartId,
@@ -45,6 +46,8 @@ export type ExecuteBuyerToolResult = {
   content: string;
   sessionCartId?: string | null;
   newVariantIds?: string[];
+  /** Sukces create_cart/update_cart w tej turze (nie samo sessionCartId z historii). */
+  cartMutationSucceeded?: boolean;
 };
 
 function logBuyerToolCall(tool: string, channel: BuyerChannelId, ok: boolean): void {
@@ -362,6 +365,21 @@ export async function executeBuyerTool(
 
   const result = mcpOut.result;
   let nextSessionCartId = input.sessionCartId;
+  let cartMutationSucceeded = false;
+
+  if (input.name === 'create_cart' || input.name === 'update_cart') {
+    // TODO: usunąć po potwierdzeniu kształtu
+    const shape = cartShapeKeyNames(result);
+    console.log(
+      JSON.stringify({
+        tag: 'buyer.cart_shape',
+        tool: input.name,
+        resultKeys: shape.resultKeys,
+        structuredContentKeys: shape.structuredContentKeys,
+        contentTextKeys: shape.contentTextKeys,
+      }),
+    );
+  }
 
   if (input.name === 'create_cart') {
     const newId = cartIdFromMcpResult(result);
@@ -371,6 +389,7 @@ export async function executeBuyerTool(
       nextSessionCartId = newId;
       persisted = true;
     }
+    cartMutationSucceeded = Boolean(newId && persisted);
     console.log(
       JSON.stringify({
         tag: 'buyer.cart_created',
@@ -379,6 +398,10 @@ export async function executeBuyerTool(
         persisted,
       }),
     );
+  }
+
+  if (input.name === 'update_cart') {
+    cartMutationSucceeded = true;
   }
 
   if (input.name === 'cancel_cart' && input.sessionId?.trim()) {
@@ -390,5 +413,6 @@ export async function executeBuyerTool(
   return {
     content: JSON.stringify(result ?? {}),
     sessionCartId: nextSessionCartId,
+    ...(cartMutationSucceeded ? {cartMutationSucceeded: true} : {}),
   };
 }

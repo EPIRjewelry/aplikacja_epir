@@ -29,6 +29,7 @@ import {
   collectUrlsFromFactsBlocks,
 } from './previous-response-products';
 import {
+  applyCartMutationHistoryOverride,
   collectAllowedUrls,
   guardBuyerReplyLinks,
 } from './reply-link-guard';
@@ -397,6 +398,8 @@ type FinalizeReplyContext = {
   allowedUrls: Set<string>;
   systemBase: string;
   hadSearchCatalogThisTurn: boolean;
+  /** Tylko sukces create_cart/update_cart w tej turze — nie samo sessionCartId. */
+  cartMutatedSuccessfullyThisTurn: boolean;
 };
 
 async function finalizeBuyerReply(
@@ -407,12 +410,17 @@ async function finalizeBuyerReply(
   ctx: FinalizeReplyContext,
 ): Promise<string> {
   const scrubbed = scrubGidFromClientReply(reply);
-  const guarded = await guardBuyerReplyLinks(env, scrubbed, ctx.allowedUrls, {
+  const guardedRaw = await guardBuyerReplyLinks(env, scrubbed, ctx.allowedUrls, {
     sessionId,
     systemBase: ctx.systemBase,
     userText,
     hadSearchCatalogThisTurn: ctx.hadSearchCatalogThisTurn,
   });
+  // Stub katalogowy po udanym koszyku w tej turze fałszuje kontekst (pętle „podaj rozmiar”).
+  const guarded = applyCartMutationHistoryOverride(
+    guardedRaw,
+    ctx.cartMutatedSuccessfullyThisTurn,
+  );
   if (sessionId?.trim()) {
     try {
       await appendBuyerSessionMessage(env, sessionId, 'user', userText);
@@ -531,6 +539,7 @@ export async function composeBuyerAssistantReply(
     allowedUrls,
     systemBase: systemParts,
     hadSearchCatalogThisTurn: false,
+    cartMutatedSuccessfullyThisTurn: false,
   };
 
   const messages: GroqMessage[] = [
@@ -607,6 +616,9 @@ export async function composeBuyerAssistantReply(
       }
       if (call.name === 'search_catalog') {
         finalizeCtx.hadSearchCatalogThisTurn = true;
+      }
+      if (executed.cartMutationSucceeded) {
+        finalizeCtx.cartMutatedSuccessfullyThisTurn = true;
       }
       for (const url of urlsFromToolResult(call.name, executed.content)) {
         for (const normalized of collectAllowedUrls([url])) {
