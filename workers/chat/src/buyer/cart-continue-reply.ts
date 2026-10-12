@@ -1,6 +1,7 @@
 /**
  * Deterministyczna odpowiedź z continue_url dokładnie jak z Shopify (bez UTM).
  * Atrybucja: pole attribution w create/update — https://shopify.dev/docs/agents/carts-and-checkout/cart-mcp
+ * Messages warning/info MUST be displayed: https://ucp.dev/2026-08-25/specification/shopping/cart/
  */
 
 export function formatCartNoticeFromMessages(messages: unknown): string[] {
@@ -24,21 +25,40 @@ export function formatCartNoticeFromMessages(messages: unknown): string[] {
   return out;
 }
 
-export function formatCartTotalsNote(totals: unknown): string | null {
+function currencySuffix(currency: unknown): string {
+  if (typeof currency !== 'string' || !currency.trim()) return '';
+  const c = currency.trim().toUpperCase();
+  if (c === 'PLN') return ' zł';
+  return ` ${c}`;
+}
+
+/**
+ * Suma szacunkowa — waluta z totals / koszyka, bez hardcodu „zł” dla innych walut.
+ */
+export function formatCartTotalsNote(
+  totals: unknown,
+  cartCurrency?: string | null,
+): string | null {
   if (!Array.isArray(totals)) return null;
   for (const t of totals) {
     if (!t || typeof t !== 'object') continue;
     const rec = t as Record<string, unknown>;
     if (rec.type !== 'total') continue;
     const amount = rec.amount;
+    const currency =
+      (typeof rec.currency === 'string' && rec.currency.trim()) ||
+      (typeof cartCurrency === 'string' && cartCurrency.trim()) ||
+      null;
     const display =
       typeof rec.display_pl === 'string'
         ? rec.display_pl
-        : typeof amount === 'number'
-          ? `${(amount / 100).toFixed(2)} zł`
-          : typeof amount === 'string'
-            ? amount
-            : null;
+        : typeof rec.price_display_pl === 'string'
+          ? rec.price_display_pl
+          : typeof amount === 'number'
+            ? `${(amount / 100).toFixed(2)}${currencySuffix(currency)}`
+            : typeof amount === 'string'
+              ? `${amount}${currency ? currencySuffix(currency) : ''}`
+              : null;
     if (display) {
       return `Suma szacunkowa: ${display} (ostateczna kwota w kasie).`;
     }
@@ -62,9 +82,10 @@ export function buildCartContinueReply(
 }
 
 /**
- * Po mutacji w tej turze: jeśli reply nie zawiera exact continue_url z Shopify —
- * dołącz ostrzeżenia + link (bez UTM, bez zmiany URL).
- * @see https://shopify.dev/docs/agents/carts-and-checkout/cart-mcp
+ * Po mutacji w tej turze:
+ * - ostrzeżenia/info UCP zawsze (nawet gdy model podał continue_url),
+ * - exact continue_url tylko gdy brakuje,
+ * - totals note gdy brakuje.
  * @see https://ucp.dev/2026-08-25/specification/shopping/cart/
  */
 export function appendExactContinueUrlIfMissing(
@@ -73,17 +94,18 @@ export function appendExactContinueUrlIfMissing(
   notices: string[] = [],
   totalsNote?: string | null,
 ): string {
-  const url = continueUrl?.trim();
-  if (!url) return reply;
-  if (reply.includes(url)) return reply;
+  const url = continueUrl?.trim() || '';
+  const missingNotices = notices.filter((n) => n.trim() && !reply.includes(n.trim()));
+  const missingTotals =
+    totalsNote?.trim() && !reply.includes(totalsNote.trim()) ? totalsNote.trim() : null;
+  const missingUrl = Boolean(url && !reply.includes(url));
+
+  if (!missingNotices.length && !missingTotals && !missingUrl) return reply;
+
   const parts: string[] = [];
   if (reply.trim()) parts.push(reply.trim());
-  for (const n of notices) {
-    if (n.trim() && !reply.includes(n.trim())) parts.push(n.trim());
-  }
-  if (totalsNote?.trim() && !reply.includes(totalsNote.trim())) {
-    parts.push(totalsNote.trim());
-  }
-  parts.push(`[Przejdź do koszyka](${url})`);
+  for (const n of missingNotices) parts.push(n.trim());
+  if (missingTotals) parts.push(missingTotals);
+  if (missingUrl) parts.push(`[Przejdź do koszyka](${url})`);
   return parts.join('\n\n');
 }

@@ -15,6 +15,10 @@ import {
   formatCartTotalsNote,
 } from './cart-continue-reply';
 import {
+  CART_NOT_FOUND_CLIENT_MESSAGE,
+  isCartNotFoundResult,
+} from './cart-not-found';
+import {
   continueUrlFromCartPayload,
   normalizeCartPayloadForParsing,
 } from './cart-payload-normalize';
@@ -398,16 +402,25 @@ export async function executeBuyerTool(
       sessionCartId: input.sessionCartId,
       commerceContext,
     });
-    if (getOut?.error) {
+    const getPayload = getOut?.result ?? getOut;
+    // Protocol error LUB UCP messages type=error code=not_found — bez update_cart.
+    if (getOut?.error || isCartNotFoundResult(getPayload)) {
       logBuyerToolCall(input.name, input.channelId, false);
+      console.log(
+        JSON.stringify({
+          tag: 'buyer.cart_not_found',
+          tool: 'update_cart',
+          via: getOut?.error ? 'protocol_error' : 'messages_not_found',
+        }),
+      );
       return {
         content: JSON.stringify({
-          error: { code: getOut.error.code },
-          notice: CART_UNAVAILABLE,
+          error: 'cart_not_found',
+          notice: CART_NOT_FOUND_CLIENT_MESSAGE,
         }),
       };
     }
-    const existingPayload = normalizeCartPayloadForParsing(getOut.result ?? getOut);
+    const existingPayload = normalizeCartPayloadForParsing(getPayload);
     const existingCart = extractCartObject(existingPayload) ?? {};
     const existingLines = lineItemsFromCartPayload(existingPayload);
     const mergedLines = applyCartPatch(existingLines, args);
@@ -514,7 +527,9 @@ export async function executeBuyerTool(
     if (url) continueUrl = url;
     const notices = formatCartNoticeFromMessages(cart?.messages);
     if (notices.length) cartNotices = notices;
-    cartTotalsNote = formatCartTotalsNote(cart?.totals) ?? null;
+    const currency =
+      typeof cart?.currency === 'string' ? cart.currency : null;
+    cartTotalsNote = formatCartTotalsNote(cart?.totals, currency) ?? null;
   }
 
   logBuyerToolCall(input.name, input.channelId, true);

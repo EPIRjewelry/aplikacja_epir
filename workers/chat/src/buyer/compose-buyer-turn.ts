@@ -154,6 +154,17 @@ function shouldFallbackToolLoop(err: unknown, round: number): boolean {
   );
 }
 
+/** Groq 400 gdy model nie wywołał wymuszonego narzędzia (tool_choice function). */
+function isForcedToolChoiceRejected(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    /\b400\b/.test(msg) ||
+    /tool_use_failed|Tool call validation failed|failed_generation|tool_choice/i.test(
+      msg,
+    )
+  );
+}
+
 function buyerIp(request: Request): string | undefined {
   return request.headers.get('CF-Connecting-IP')?.trim() || undefined;
 }
@@ -774,7 +785,7 @@ export async function composeBuyerAssistantReply(
               userText,
               looksLikeToolCallAsText(text)
                 ? clientReplyForToolAsTextWithoutForce(text)
-                : text,
+                : FINAL_TOOL_FALLBACK_USER,
               finalizeCtx,
             );
           }
@@ -791,14 +802,22 @@ export async function composeBuyerAssistantReply(
             await applyExecutedTool(call);
           }
           continue;
-        } catch {
+        } catch (forceErr) {
+          // https://console.groq.com/docs/tool-use — 400 gdy brak wymuszonego tool call
+          console.log(
+            JSON.stringify({
+              tag: 'buyer.forced_tool_choice_failed',
+              forced: forcedName,
+              reason: isForcedToolChoiceRejected(forceErr)
+                ? 'groq_rejected'
+                : 'stream_error',
+            }),
+          );
           return finalizeBuyerReply(
             env,
             sessionId,
             userText,
-            looksLikeToolCallAsText(text)
-              ? clientReplyForToolAsTextWithoutForce(text)
-              : text,
+            FINAL_TOOL_FALLBACK_USER,
             finalizeCtx,
           );
         }

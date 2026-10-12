@@ -4,6 +4,7 @@ import {
   appendExactContinueUrlIfMissing,
   buildCartContinueReply,
   formatCartNoticeFromMessages,
+  formatCartTotalsNote,
 } from '../src/buyer/cart-continue-reply';
 import {prepareUcpCartCall, applyCartPatch} from '../src/cart/ucp-cart';
 
@@ -54,10 +55,23 @@ describe('buildCartContinueReply / appendExactContinueUrlIfMissing', () => {
     expect(out).not.toContain('utm_');
   });
 
-  it('does not duplicate when url already present', () => {
+  it('does not duplicate when url and notices already present', () => {
     const url = 'https://shop.myshopify.com/cart/c/EXACT';
-    const reply = `Link: ${url}`;
-    expect(appendExactContinueUrlIfMissing(reply, url)).toBe(reply);
+    const reply = `Link: ${url}\n\nDostosowano ilość`;
+    expect(
+      appendExactContinueUrlIfMissing(reply, url, ['Dostosowano ilość']),
+    ).toBe(reply);
+  });
+
+  it('always appends Shopify warnings even when continue_url already in reply (UCP MUST)', () => {
+    const url = 'https://shop.myshopify.com/cart/c/EXACT';
+    const reply = `Koszyk gotowy: [link](${url})`;
+    const out = appendExactContinueUrlIfMissing(reply, url, [
+      'Dostosowano ilość',
+    ]);
+    expect(out).toContain(url);
+    expect(out).toContain('Dostosowano ilość');
+    expect(out).not.toContain('utm_');
   });
 
   it('formats quantity_adjusted warning', () => {
@@ -65,6 +79,15 @@ describe('buildCartContinueReply / appendExactContinueUrlIfMissing', () => {
       {type: 'warning', code: 'quantity_adjusted', content: 'Dostosowano ilość'},
     ]);
     expect(notices).toContain('Dostosowano ilość');
+  });
+
+  it('formatCartTotalsNote uses currency from totals (not hardcoded zł for EUR)', () => {
+    const note = formatCartTotalsNote(
+      [{type: 'total', amount: 1990, currency: 'EUR'}],
+      'EUR',
+    );
+    expect(note).toContain('EUR');
+    expect(note).not.toMatch(/\bzł\b/);
   });
 });
 
