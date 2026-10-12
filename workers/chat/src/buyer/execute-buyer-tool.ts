@@ -235,6 +235,7 @@ export async function executeBuyerTool(
     const catalogChannel = catalogSnapshotChannel(input.channelId);
     const repo = await getCatalogRepository(input.env, catalogChannel, {
       clientRequest,
+      urlChannel: input.channelId,
     });
     const filters: CatalogFilters = {
       text: validated.query,

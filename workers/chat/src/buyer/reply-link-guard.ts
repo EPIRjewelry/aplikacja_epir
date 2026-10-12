@@ -1,8 +1,15 @@
 import {getGroqResponse, type GroqMessage} from '../ai-client';
 import type {Env} from '../config/bindings';
 
-export const REPLY_LINK_REJECTED_MESSAGE =
+/** Gdy w turze był search_catalog. */
+export const REPLY_LINK_REJECTED_CATALOG_MESSAGE =
   'Nie znajduję takiego produktu w naszej ofercie.';
+
+export const REPLY_LINK_REJECTED_NEUTRAL_MESSAGE =
+  'Nie mogę potwierdzić tej informacji w naszych danych.';
+
+/** @deprecated użyj REPLY_LINK_REJECTED_CATALOG_MESSAGE */
+export const REPLY_LINK_REJECTED_MESSAGE = REPLY_LINK_REJECTED_CATALOG_MESSAGE;
 
 const MARKDOWN_LINK_RE = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/gi;
 const BARE_URL_RE = /https?:\/\/[^\s)\]>]+/gi;
@@ -65,23 +72,38 @@ export function foreignHostsInReply(
   return foreign;
 }
 
+function rejectionMessage(hadSearchCatalogThisTurn: boolean): string {
+  return hadSearchCatalogThisTurn
+    ? REPLY_LINK_REJECTED_CATALOG_MESSAGE
+    : REPLY_LINK_REJECTED_NEUTRAL_MESSAGE;
+}
+
 export async function guardBuyerReplyLinks(
   env: Env,
   reply: string,
   allowedUrls: Set<string>,
-  opts: {sessionId?: string; systemBase: string},
+  opts: {
+    sessionId?: string;
+    systemBase: string;
+    userText: string;
+    hadSearchCatalogThisTurn: boolean;
+  },
 ): Promise<string> {
-  if (!allowedUrls.size) return reply;
   const foreign = foreignHostsInReply(reply, allowedUrls);
   if (!foreign.length) return reply;
+
+  const allowedList =
+    allowedUrls.size > 0 ? [...allowedUrls].join('\n') : '(brak dozwolonych linków w tej turze)';
 
   const retryMessages: GroqMessage[] = [
     {
       role: 'system',
-      content: `${opts.systemBase}\n\n[NOTATKA SYSTEMOWA] Odpowiedź zawiera produkty lub linki spoza wyników narzędzi i faktów tej tury. Usuń te produkty i linki. Podawaj wyłącznie linki z dozwolonej listy wyników.`,
+      content: `${opts.systemBase}\n\n[Dozwolone URL tej tury]\n${allowedList}\n\n[NOTATKA SYSTEMOWA] Poprzednia odpowiedź zawierała linki spoza wyników narzędzi i faktów. Usuń je. Podawaj wyłącznie dozwolone adresy.`,
     },
-    {role: 'user', content: reply},
+    {role: 'user', content: opts.userText},
+    {role: 'assistant', content: reply},
   ];
+  const rejected = rejectionMessage(opts.hadSearchCatalogThisTurn);
   try {
     const retried = await getGroqResponse(retryMessages, env, {
       timingLabel: 'buyer_reply_link_guard_retry',
@@ -95,7 +117,7 @@ export async function guardBuyerReplyLinks(
         host: foreignAfter[0],
       }),
     );
-    return REPLY_LINK_REJECTED_MESSAGE;
+    return rejected;
   } catch (e) {
     console.warn('[buyer.reply_link_guard] retry failed', e);
     console.log(
@@ -104,6 +126,6 @@ export async function guardBuyerReplyLinks(
         host: foreign[0],
       }),
     );
-    return REPLY_LINK_REJECTED_MESSAGE;
+    return rejected;
   }
 }

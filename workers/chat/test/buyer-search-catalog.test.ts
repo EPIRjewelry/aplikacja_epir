@@ -62,4 +62,128 @@ describe('search_catalog buyer tool', () => {
       10,
     );
   });
+
+  it('execute search_catalog on epir-zareczyny passes urlChannel to repository', async () => {
+    const repoSpy = vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [],
+        total: 0,
+        facets: {
+          total: 0,
+          byOrigin: { natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0 },
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
+    vi.spyOn(mcpServer, 'callMcpToolDirect');
+
+    await executeBuyerTool({
+      env: {
+        SHOP_DOMAIN: 'shop.myshopify.com',
+        PRIVATE_STOREFRONT_API_TOKEN: 'x',
+      } as import('../src/config/bindings').Env,
+      channelId: 'epir-zareczyny',
+      readyTools: ['search_catalog'],
+      name: 'search_catalog',
+      argsJson: JSON.stringify({ query: 'pierścionek' }),
+      sessionCartId: null,
+      allowedVariantIds: new Set(),
+      request: new Request('https://example.com'),
+    });
+
+    expect(repoSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      'epir-online-store',
+      expect.objectContaining({ urlChannel: 'epir-zareczyny' }),
+    );
+  });
+
+  it('search_catalog on epir-zareczyny returns product url on zareczyny subdomain', async () => {
+    const zareczynyProductUrl = 'https://zareczyny.epirbizuteria.pl/products/solitaire-gold';
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [
+          {
+            product: {
+              channel: 'epir-zareczyny',
+              productId: 'gid://shopify/Product/1',
+              handle: 'solitaire-gold',
+              title: 'Solitaire',
+              vendor: '',
+              productType: null,
+              url: zareczynyProductUrl,
+              image: null,
+              collections: [],
+              descriptionText: '',
+              options: [],
+              variants: [
+                {
+                  variantId: 'gid://shopify/ProductVariant/1',
+                  title: 'default',
+                  image: null,
+                  sku: null,
+                  weight: 3,
+                  weightUnit: 'GRAMS',
+                  price: { minor: 10000, currency: 'PLN', display_pl: '100 zł'},
+                  compareAtPrice: null,
+                  available: true,
+                  selectedOptions: [],
+                  metal: 'złoto',
+                  size: null,
+                  stoneOrigin: 'unknown',
+                  originEvidence: [],
+                },
+              ],
+              priceRange: {
+                min: { minor: 10000, currency: 'PLN', display_pl: '100 zł'},
+                max: { minor: 10000, currency: 'PLN', display_pl: '100 zł'},
+                isFlat: true,
+              },
+              stones: [],
+              metals: ['złoto'],
+              sizes: [],
+              metafields: {},
+              productOriginRaw: null,
+              dataIssues: [],
+              fetchedAt: new Date().toISOString(),
+            },
+            matchingVariants: [],
+            matchingPriceRange: {
+              min: { minor: 10000, currency: 'PLN', display_pl: '100 zł'},
+              max: { minor: 10000, currency: 'PLN', display_pl: '100 zł'},
+              isFlat: true,
+            },
+          },
+        ],
+        total: 1,
+        facets: {
+          total: 1,
+          byOrigin: { natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0 },
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
+    vi.spyOn(mcpServer, 'callMcpToolDirect');
+
+    const r = await executeBuyerTool({
+      env: {
+        SHOP_DOMAIN: 'shop.myshopify.com',
+        PRIVATE_STOREFRONT_API_TOKEN: 'x',
+      } as import('../src/config/bindings').Env,
+      channelId: 'epir-zareczyny',
+      readyTools: ['search_catalog'],
+      name: 'search_catalog',
+      argsJson: JSON.stringify({ query: 'solitaire' }),
+      sessionCartId: null,
+      allowedVariantIds: new Set(['gid://shopify/ProductVariant/1']),
+      request: new Request('https://example.com'),
+    });
+
+    const body = JSON.parse(r.content) as {products?: string};
+    expect(body.products).toContain('zareczyny.epirbizuteria.pl/products/solitaire-gold');
+  });
 });

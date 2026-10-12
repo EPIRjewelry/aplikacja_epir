@@ -22,6 +22,14 @@ describe('previous-response-products', () => {
     expect(handles).toEqual([]);
   });
 
+  it('accepts apex epir host on epir-zareczyny channel (legacy links)', () => {
+    const handles = extractProductHandlesFromAssistantText(
+      '[A](https://epirbizuteria.pl/products/legacy-ring)',
+      'epir-zareczyny',
+    );
+    expect(handles).toEqual(['legacy-ring']);
+  });
+
   it('exports header constant for compose block', () => {
     expect(PREV_RESPONSE_HEADER).toContain('POPRZEDNIEJ');
   });

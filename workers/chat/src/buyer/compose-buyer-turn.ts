@@ -32,6 +32,7 @@ import {
   collectAllowedUrls,
   guardBuyerReplyLinks,
 } from './reply-link-guard';
+import {urlsFromToolResult} from './urls-from-tool-result';
 import { readSessionCartId } from './session-cart';
 import {
   appendBuyerSessionMessage,
@@ -48,24 +49,6 @@ import {
 const MAX_TOOL_ROUNDS = 3;
 const FINAL_TOOL_FALLBACK_USER =
   'Nie udało się wykonać operacji, proszę spróbować ponownie.';
-
-function urlsFromToolResult(toolName: string, content: string): string[] {
-  const urls: string[] = [];
-  try {
-    const parsed = JSON.parse(content) as Record<string, unknown>;
-    if (typeof parsed.continue_url === 'string') urls.push(parsed.continue_url);
-    if (typeof parsed.checkout_url === 'string') urls.push(parsed.checkout_url);
-    if (typeof parsed.products === 'string') {
-      urls.push(...collectUrlsFromFactsBlocks([parsed.products]));
-    }
-    if (toolName === 'search_catalog' && typeof parsed.technical === 'string') {
-      /* variant ids only in technical */
-    }
-  } catch {
-    /* not JSON */
-  }
-  return urls;
-}
 
 function summarizeToolResultsForFallback(messages: GroqMessage[]): string {
   const parts: string[] = [];
@@ -413,6 +396,7 @@ export type ComposeBuyerTurnOptions = {
 type FinalizeReplyContext = {
   allowedUrls: Set<string>;
   systemBase: string;
+  hadSearchCatalogThisTurn: boolean;
 };
 
 async function finalizeBuyerReply(
@@ -426,6 +410,8 @@ async function finalizeBuyerReply(
   const guarded = await guardBuyerReplyLinks(env, scrubbed, ctx.allowedUrls, {
     sessionId,
     systemBase: ctx.systemBase,
+    userText,
+    hadSearchCatalogThisTurn: ctx.hadSearchCatalogThisTurn,
   });
   if (sessionId?.trim()) {
     try {
@@ -486,6 +472,7 @@ export async function composeBuyerAssistantReply(
     try {
       const product = await fetchProductFactsByHandle(env, catalogChannel, productHandle, {
         clientRequest: request,
+        urlChannel: channelId,
       });
       if (product) {
         const formatted = formatProductsBlock(PAGE_PRODUCT_HEADER, [{ product }], 1);
@@ -543,6 +530,7 @@ export async function composeBuyerAssistantReply(
   const finalizeCtx: FinalizeReplyContext = {
     allowedUrls,
     systemBase: systemParts,
+    hadSearchCatalogThisTurn: false,
   };
 
   const messages: GroqMessage[] = [
@@ -616,6 +604,9 @@ export async function composeBuyerAssistantReply(
       }
       if (executed.newVariantIds?.length) {
         for (const id of executed.newVariantIds) allowedVariantIds.add(id);
+      }
+      if (call.name === 'search_catalog') {
+        finalizeCtx.hadSearchCatalogThisTurn = true;
       }
       for (const url of urlsFromToolResult(call.name, executed.content)) {
         for (const normalized of collectAllowedUrls([url])) {

@@ -43,13 +43,7 @@ export function extractChannelFromBody(body: unknown): string | undefined {
   return trimmed || undefined;
 }
 
-const ensuredTurns = new Set<string>();
-
-function turnKey(sessionId: string, userText: string): string {
-  return `${sessionId}::${userText}`;
-}
-
-/** Raz na turę: kanoniczny session_id i storefront w SessionDO (join z pixel). */
+/** Każda tura z session_id: kanoniczny session_id i storefront w SessionDO (join z pixel). */
 export async function ensureBuyerSessionContext(
   env: Env,
   input: {
@@ -62,10 +56,6 @@ export async function ensureBuyerSessionContext(
 ): Promise<void> {
   const sid = input.sessionId?.trim();
   if (!sid || !env.SESSION_DO) return;
-
-  const key = turnKey(sid, input.userText);
-  if (ensuredTurns.has(key)) return;
-  ensuredTurns.add(key);
 
   const sfConfig = resolveStorefrontConfig(env, input.storefrontId);
   const channel =
@@ -95,12 +85,6 @@ export async function ensureBuyerSessionContext(
       });
     }
   } catch (e) {
-    ensuredTurns.delete(key);
     console.warn('[buyer.session_context] ensure failed', e);
   }
-}
-
-/** Tylko testy — reset pamięci „raz na turę”. */
-export function resetBuyerSessionContextTurnCache(): void {
-  ensuredTurns.clear();
 }

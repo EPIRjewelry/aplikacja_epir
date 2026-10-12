@@ -9,7 +9,11 @@ export const PREV_RESPONSE_HEADER = '[PRODUKTY Z POPRZEDNIEJ ODPOWIEDZI]';
 const CHANNEL_PRODUCT_HOSTS: Record<BuyerChannelId, string[]> = {
   'epir-online-store': ['epirbizuteria.pl', 'www.epirbizuteria.pl', 'l.epirbizuteria.pl'],
   'kazka-hydrogen': ['kazka.epirbizuteria.pl'],
-  'epir-zareczyny': ['zareczyny.epirbizuteria.pl'],
+  'epir-zareczyny': [
+    'zareczyny.epirbizuteria.pl',
+    'epirbizuteria.pl',
+    'www.epirbizuteria.pl',
+  ],
 };
 
 const PRODUCT_PATH_RE =
@@ -71,6 +75,7 @@ export async function buildPreviousResponseProductsBlock(
     try {
       const product = await fetchProductFactsByHandle(env, catalogChannel, handle, {
         clientRequest: request,
+        urlChannel: channelId,
       });
       if (product) products.push({product});
     } catch {

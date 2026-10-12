@@ -1,11 +1,8 @@
-import {describe, expect, it, vi, beforeEach} from 'vitest';
+import {describe, expect, it} from 'vitest';
 import {SessionDO} from '../src/index';
 import type {Env} from '../src/config/bindings';
 import {makeDurableStateStub} from './helpers/session-do-sql-stub';
-import {
-  ensureBuyerSessionContext,
-  resetBuyerSessionContextTurnCache,
-} from '../src/buyer/session-context';
+import {ensureBuyerSessionContext} from '../src/buyer/session-context';
 import {appendBuyerSessionMessage} from '../src/buyer/session-history';
 import {q1SessionsWithChatAndPurchase} from '../../bigquery-batch/src/q1-session-join';
 
@@ -51,10 +48,6 @@ function makeSessionNamespace() {
 }
 
 describe('ensureBuyerSessionContext', () => {
-  beforeEach(() => {
-    resetBuyerSessionContextTurnCache();
-  });
-
   it('calls set-session-id and set-storefront-context before append', async () => {
     const {namespace, calls} = makeSessionNamespace();
     const env = {SESSION_DO: namespace} as Env;
@@ -75,6 +68,23 @@ describe('ensureBuyerSessionContext', () => {
     expect(setSidIdx).toBeGreaterThanOrEqual(0);
     expect(setSfIdx).toBeGreaterThan(setSidIdx);
     expect(appendIdx).toBeGreaterThan(setSfIdx);
+  });
+
+  it('runs set-session-id on every turn (no turn cache)', async () => {
+    const {namespace, calls} = makeSessionNamespace();
+    const env = {SESSION_DO: namespace} as Env;
+    const sid = 'uuid-repeat';
+    const input = {
+      sessionId: sid,
+      channelId: 'epir-online-store' as const,
+      storefrontId: 'epir-liquid',
+      bodyChannel: 'online-store',
+      userText: 'Hej',
+    };
+    await ensureBuyerSessionContext(env, input);
+    await ensureBuyerSessionContext(env, input);
+    const setSidCount = calls.filter((c) => c.path === 'set-session-id').length;
+    expect(setSidCount).toBe(2);
   });
 
   it('does nothing without session_id', async () => {

@@ -46,7 +46,20 @@ type PageInfo = {hasNextPage?: boolean; endCursor?: string | null};
 
 export type FetchStorefrontLiveOptions = {
   clientRequest?: Request;
+  /** Kanał rozmowy — URL produktu (np. GZ), niezależnie od migawki katalogu. */
+  urlChannel?: BuyerChannelId;
 };
+
+function resolveProductUrlContext(
+  catalogChannel: BuyerChannelId,
+  options?: FetchStorefrontLiveOptions,
+): {urlTemplate: string | undefined; normalizeChannel: BuyerChannelId} {
+  const urlChannel = options?.urlChannel ?? catalogChannel;
+  const urlTemplate = urlTemplateForChannel(urlChannel);
+  const normalizeChannel =
+    urlTemplate && urlChannel !== catalogChannel ? urlChannel : catalogChannel;
+  return {urlTemplate, normalizeChannel};
+}
 
 type TokenMode = 'private' | 'public';
 
@@ -423,7 +436,7 @@ export async function fetchProductFactsLive(
   if (!productIds.length) return [];
 
   const fetchedAt = new Date().toISOString();
-  const urlTemplate = urlTemplateForChannel(channel);
+  const {urlTemplate, normalizeChannel} = resolveProductUrlContext(channel, options);
   const byId = new Map<string, ProductFacts>();
 
   for (let i = 0; i < productIds.length; i += PAGE_SIZE) {
@@ -465,7 +478,7 @@ export async function fetchProductFactsLive(
       delete (merged as Record<string, unknown>).stoneEducationMeta;
 
       const facts = normalizeProduct(merged, {
-        channel,
+        channel: normalizeChannel,
         urlTemplate,
         fetchedAt,
       });
@@ -490,7 +503,7 @@ async function productNodeToFacts(
   options?: FetchStorefrontLiveOptions,
 ): Promise<ProductFacts | null> {
   const fetchedAt = new Date().toISOString();
-  const urlTemplate = urlTemplateForChannel(channel);
+  const {urlTemplate, normalizeChannel} = resolveProductUrlContext(channel, options);
   const productId = typeof raw.id === 'string' ? raw.id : '';
   if (!productId) return null;
 
@@ -524,7 +537,7 @@ async function productNodeToFacts(
   delete (merged as Record<string, unknown>).stoneEducationMeta;
 
   const facts = normalizeProduct(merged, {
-    channel,
+    channel: normalizeChannel,
     urlTemplate,
     fetchedAt,
   });
