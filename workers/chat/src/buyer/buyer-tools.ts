@@ -32,7 +32,7 @@ const CREATE_CART: GroqToolCallDefinition = {
   function: {
     name: 'create_cart',
     description:
-      'Tworzy koszyk z wybranymi wariantami (id wariantu z sekcji DANE TECHNICZNE). Tylko po wyraźnej zgodzie klienta. Gdy produkt ma wiele wariantów — najpierw zapytaj o wariant.',
+      'Tworzy koszyk z wybranymi wariantami (id wariantu z sekcji DANE TECHNICZNE). Tylko po wyraźnej zgodzie klienta. Gdy produkt ma wiele wariantów — najpierw zapytaj o wariant i podaj selected_options z wartościami, które klient podał w rozmowie.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -54,6 +54,20 @@ const CREATE_CART: GroqToolCallDefinition = {
                   },
                 },
                 required: ['id'],
+              },
+              selected_options: {
+                type: 'array',
+                description:
+                  'Opcje wybrane przez klienta w rozmowie (np. Rozmiar 18). Wymagane przy produktach wielowariantowych.',
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    name: { type: 'string' },
+                    value: { type: 'string' },
+                  },
+                  required: ['name', 'value'],
+                },
               },
             },
             required: ['quantity', 'item'],
@@ -84,7 +98,7 @@ const UPDATE_CART: GroqToolCallDefinition = {
   function: {
     name: 'update_cart',
     description:
-      'Zmienia koszyk sesji przez łatkę (add_items / update_items / remove_line_ids). Zmiana ilości lub usunięcie pozycji = update_cart z id linii z sekcji DANE TECHNICZNE koszyka, nie create_cart. Nie podawaj pełnej listy line_items ani id koszyka — serwer scala z koszykiem sesji.',
+      'Zmienia koszyk sesji przez łatkę (add_items / update_items / remove_line_ids). Zmiana ilości = update_items (tylko quantity). Zmiana rozmiaru/wariantu = remove_line_ids starej linii + add_items nowego wariantu w jednej łatce (z selected_options). Nie podawaj pełnej listy line_items ani id koszyka — serwer scala z koszykiem sesji.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -96,6 +110,18 @@ const UPDATE_CART: GroqToolCallDefinition = {
             properties: {
               product_variant_id: { type: 'string' },
               quantity: { type: 'integer', minimum: 1 },
+              selected_options: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    name: { type: 'string' },
+                    value: { type: 'string' },
+                  },
+                  required: ['name', 'value'],
+                },
+              },
             },
             required: ['product_variant_id', 'quantity'],
           },

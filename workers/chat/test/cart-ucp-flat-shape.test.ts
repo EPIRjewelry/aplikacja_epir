@@ -18,6 +18,7 @@ import {
   isSuccessfulCartMutationResult,
 } from '../src/buyer/execute-buyer-tool';
 import {urlsFromToolResult} from '../src/buyer/urls-from-tool-result';
+import {buildCartContinueReply} from '../src/buyer/cart-continue-reply';
 import {
   applyCartMutationHistoryOverride,
   collectAllowedUrls,
@@ -387,10 +388,10 @@ describe('compose: sessionCartId without mutation keeps catalog stub (P2-b)', ()
       {sessionId: 'sess-prior-cart'},
     );
 
-    expect(reply).toBe(REPLY_LINK_REJECTED_CATALOG_MESSAGE);
+    expect(reply).toBe('Zobacz X.');
     expect(reply).not.toBe(REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE);
     const assistantAppend = appendSpy.mock.calls.find((c) => c[2] === 'assistant');
-    expect(assistantAppend?.[3]).toBe(REPLY_LINK_REJECTED_CATALOG_MESSAGE);
+    expect(assistantAppend?.[3]).toBe('Zobacz X.');
   });
 });
 
@@ -419,10 +420,13 @@ describe('compose: successful create_cart does not leave catalog stub for next t
 
     vi.spyOn(executeBuyerToolMod, 'executeBuyerTool').mockImplementation(async (input) => {
       if (input.name === 'create_cart') {
+        const presented = presentCartForChat(FLAT_MCP_RESULT);
         return {
-          content: JSON.stringify(presentCartForChat(FLAT_MCP_RESULT)),
+          content: JSON.stringify(presented),
           sessionCartId: FLAT_UCP_STRUCTURED_CONTENT.id,
           cartMutationSucceeded: true,
+          continueUrl: CONTINUE,
+          cartMutationPayload: presented,
         };
       }
       return {content: JSON.stringify({products: []})};
@@ -463,13 +467,15 @@ describe('compose: successful create_cart does not leave catalog stub for next t
       req,
       {sessionId: 'sess-p2c'},
     );
-    expect(replyA).toBe(REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE);
+    const expectedCartReply = buildCartContinueReply({
+      continueUrl: CONTINUE,
+      cartPayload: presentCartForChat(FLAT_MCP_RESULT),
+    });
+    expect(replyA).toBe(expectedCartReply);
     expect(historyStore.some((h) => h.content === REPLY_LINK_REJECTED_CATALOG_MESSAGE)).toBe(
       false,
     );
-    expect(
-      historyStore.some((h) => h.content === REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE),
-    ).toBe(true);
+    expect(historyStore.some((h) => h.content === expectedCartReply)).toBe(true);
 
     // Turn B: no cart mutation; history from A must not be catalog stub
     vi.spyOn(sessionCart, 'readSessionCartId').mockResolvedValue(
@@ -508,7 +514,8 @@ describe('compose: successful create_cart does not leave catalog stub for next t
       priorAssistant.some(
         (m) =>
           typeof m.content === 'string' &&
-          m.content === REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE,
+          m.content.includes(CONTINUE) &&
+          m.content.includes('Przejdź do koszyka'),
       ),
     ).toBe(true);
   });

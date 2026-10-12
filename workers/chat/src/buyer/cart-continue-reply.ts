@@ -4,6 +4,13 @@
  * Messages warning/info MUST be displayed: https://ucp.dev/2026-08-25/specification/shopping/cart/
  */
 
+import { extractCartObject } from '../cart/ucp-cart';
+import { normalizeCartPayloadForParsing } from './cart-payload-normalize';
+import {
+  lookupVariantDisplay,
+  type VariantOptionIndex,
+} from './variant-option-gate';
+
 export function formatCartNoticeFromMessages(messages: unknown): string[] {
   if (!Array.isArray(messages)) return [];
   const out: string[] = [];
@@ -66,18 +73,127 @@ export function formatCartTotalsNote(
   return null;
 }
 
+function lineTitleFromRaw(line: Record<string, unknown>): string | null {
+  const item = line.item;
+  if (item && typeof item === 'object') {
+    const t = (item as { title?: unknown }).title;
+    if (typeof t === 'string' && t.trim()) return t.trim();
+  }
+  const merch = line.merchandise;
+  if (merch && typeof merch === 'object') {
+    const m = merch as Record<string, unknown>;
+    const pt = m.product;
+    if (pt && typeof pt === 'object') {
+      const title = (pt as { title?: unknown }).title;
+      if (typeof title === 'string' && title.trim()) return title.trim();
+    }
+    const mt = m.title;
+    if (typeof mt === 'string' && mt.trim()) return mt.trim();
+  }
+  return null;
+}
+
+function variantIdFromLine(line: Record<string, unknown>): string | null {
+  const item = line.item;
+  if (item && typeof item === 'object') {
+    const id = (item as { id?: unknown }).id;
+    if (typeof id === 'string' && id.trim()) return id.trim();
+  }
+  return null;
+}
+
+function optionsFromLine(line: Record<string, unknown>): string | null {
+  const item = line.item;
+  if (item && typeof item === 'object') {
+    const opts = (item as { selected_options?: unknown }).selected_options;
+    if (Array.isArray(opts)) {
+      const bits = opts
+        .map((o) => {
+          if (!o || typeof o !== 'object') return '';
+          const rec = o as Record<string, unknown>;
+          const n = typeof rec.name === 'string' ? rec.name : '';
+          const v = typeof rec.value === 'string' ? rec.value : '';
+          return n && v && v !== 'Default Title' ? `${n} ${v}` : '';
+        })
+        .filter(Boolean);
+      if (bits.length) return bits.join(', ');
+    }
+  }
+  return null;
+}
+
+export function formatCartLineSummaries(
+  cartPayload: unknown,
+  catalogIndex?: VariantOptionIndex,
+): string[] {
+  const normalized = normalizeCartPayloadForParsing(cartPayload);
+  const cart = extractCartObject(normalized);
+  const rawLines = cart && Array.isArray(cart.line_items) ? cart.line_items : [];
+  const lines: string[] = [];
+  for (const row of rawLines) {
+    if (!row || typeof row !== 'object') continue;
+    const rec = row as Record<string, unknown>;
+    const qty = typeof rec.quantity === 'number' ? rec.quantity : null;
+    if (qty === null || qty < 1) continue;
+    let title = lineTitleFromRaw(rec);
+    let opts = optionsFromLine(rec);
+    const vid = variantIdFromLine(rec);
+    if ((!title || !opts) && vid && catalogIndex) {
+      const lookup = lookupVariantDisplay(catalogIndex, vid);
+      if (lookup) {
+        if (!title && lookup.title) title = lookup.title;
+        if (!opts && lookup.optionsLine) opts = lookup.optionsLine;
+      }
+    }
+    const parts: string[] = [];
+    if (title) parts.push(title);
+    if (opts) parts.push(opts);
+    parts.push(`${qty} szt.`);
+    if (parts.length === 1 && parts[0]?.endsWith(' szt.')) {
+      continue;
+    }
+    lines.push(`• ${parts.join(' — ')}`);
+  }
+  return lines;
+}
+
+export type BuildCartContinueReplyInput = {
+  continueUrl: string;
+  notices?: string[];
+  totalsNote?: string | null;
+  cartPayload?: unknown;
+  catalogIndex?: VariantOptionIndex;
+};
+
 /** Dokładne porównanie continue_url — bez doklejania UTM. */
 export function buildCartContinueReply(
-  continueUrl: string,
+  continueUrlOrInput: string | BuildCartContinueReplyInput,
   notices: string[] = [],
   totalsNote?: string | null,
 ): string {
-  const parts: string[] = ['Koszyk jest zaktualizowany.'];
-  for (const n of notices) {
+  const input: BuildCartContinueReplyInput =
+    typeof continueUrlOrInput === 'string'
+      ? { continueUrl: continueUrlOrInput, notices, totalsNote }
+      : continueUrlOrInput;
+
+  const parts: string[] = [];
+  const lineSummaries = input.cartPayload
+    ? formatCartLineSummaries(input.cartPayload, input.catalogIndex)
+    : [];
+  if (lineSummaries.length) {
+    parts.push('W koszyku:');
+    parts.push(...lineSummaries);
+  } else {
+    parts.push('Koszyk jest zaktualizowany.');
+  }
+
+  const noticeList = input.notices ?? [];
+  for (const n of noticeList) {
     if (n.trim()) parts.push(n.trim());
   }
-  if (totalsNote?.trim()) parts.push(totalsNote.trim());
-  parts.push(`[Przejdź do koszyka](${continueUrl})`);
+  const totals = input.totalsNote ?? null;
+  if (totals?.trim()) parts.push(totals.trim());
+  parts.push(`[Przejdź do koszyka](${input.continueUrl.trim()})`);
   return parts.join('\n\n');
 }
 

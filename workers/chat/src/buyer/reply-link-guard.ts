@@ -34,7 +34,9 @@ export function applyCartMutationHistoryOverride(
 /** @deprecated użyj REPLY_LINK_REJECTED_CATALOG_MESSAGE */
 export const REPLY_LINK_REJECTED_MESSAGE = REPLY_LINK_REJECTED_CATALOG_MESSAGE;
 
-const MARKDOWN_LINK_RE = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/gi;
+/** Dowolny cel w nawiasie — w tym placeholdery {{continue_url}}. */
+const MARKDOWN_LINK_ANY_DEST_RE = /\[([^\]]*)\]\(([^)]+)\)/gi;
+const MARKDOWN_LINK_HTTP_RE = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/gi;
 const BARE_URL_RE = /https?:\/\/[^\s)\]>]+/gi;
 
 function normalizeUrlForAllowlist(url: string): string {
@@ -56,11 +58,53 @@ export function collectAllowedUrls(allowed: Iterable<string>): Set<string> {
   return set;
 }
 
+function isAllowedDest(dest: string, allowedUrls: Set<string>): boolean {
+  const trimmed = dest.trim();
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+    return false;
+  }
+  const norm = normalizeUrlForAllowlist(trimmed);
+  if (allowedUrls.has(norm)) return true;
+  for (const allowed of allowedUrls) {
+    if (norm === allowed || norm.startsWith(`${allowed}/`)) return true;
+  }
+  return false;
+}
+
+/**
+ * Usuwa linki Markdown z celami spoza allowlisty (w tym {{placeholders}}).
+ * Zostawia sam tekst etykiety. Nie podstawia URL.
+ */
+export function sanitizeMarkdownLinks(text: string, allowedUrls: Set<string>): string {
+  return text.replace(MARKDOWN_LINK_ANY_DEST_RE, (full, label: string, dest: string) => {
+    if (isAllowedDest(dest, allowedUrls)) return full;
+    const trimmedLabel = typeof label === 'string' ? label.trim() : '';
+    if (trimmedLabel) {
+      console.log(
+        JSON.stringify({
+          tag: 'buyer.reply_link_stripped',
+          reason: 'markdown_dest_not_allowed',
+          destPattern: dest.includes('{{') ? 'placeholder' : 'non_http_or_foreign',
+        }),
+      );
+      return trimmedLabel;
+    }
+    console.log(
+      JSON.stringify({
+        tag: 'buyer.reply_link_stripped',
+        reason: 'markdown_dest_not_allowed',
+        destPattern: dest.includes('{{') ? 'placeholder' : 'non_http_or_foreign',
+      }),
+    );
+    return '';
+  });
+}
+
 export function urlsInReply(text: string): string[] {
   const found = new Set<string>();
   let m: RegExpExecArray | null;
-  MARKDOWN_LINK_RE.lastIndex = 0;
-  while ((m = MARKDOWN_LINK_RE.exec(text)) !== null) {
+  MARKDOWN_LINK_HTTP_RE.lastIndex = 0;
+  while ((m = MARKDOWN_LINK_HTTP_RE.exec(text)) !== null) {
     if (m[2]) found.add(m[2]);
   }
   BARE_URL_RE.lastIndex = 0;
