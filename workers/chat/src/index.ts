@@ -165,6 +165,10 @@ import {
 
 // Importy Klienta Shopify (używane przez mcp_server, ale nie tutaj)
 import {handleBuyerTurn} from './buyer/handle-buyer-turn';
+import {
+  handleBuyerSessionPrivacyRequest,
+  handleChatSessionLinkedFromPixel,
+} from './buyer/session-context';
 
 // Typy sesji i żądań
 type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
@@ -453,6 +457,8 @@ function isSessionChatRoute(pathname: string): boolean {
     pathname.endsWith('/customer') ||
     pathname.endsWith('/set-session-id') ||
     pathname.endsWith('/set-storefront-context') ||
+    pathname.endsWith('/set-session-privacy') ||
+    pathname.endsWith('/buyer-session-known') ||
     pathname.endsWith('/replace-last-user-text') ||
     pathname.endsWith('/persist-usage') ||
     pathname.endsWith('/persist-tool-call') ||
@@ -1335,6 +1341,9 @@ type SessionContextRow = {
   session_id: string | null;
   storefront_id: string | null;
   channel: string | null;
+  analytics_consent: number | null;
+  session_id_source: string | null;
+  analytics_client_id: string | null;
 };
 
 type SessionCustomerRow = {
@@ -1394,6 +1403,9 @@ function emptySessionContext(): SessionContextRow {
     session_id: null,
     storefront_id: null,
     channel: null,
+    analytics_consent: null,
+    session_id_source: null,
+    analytics_client_id: null,
   };
 }
 
@@ -1508,6 +1520,9 @@ export class SessionDO {
       )
     `);
     this.execIgnoreDuplicateColumn('ALTER TABLE messages ADD COLUMN message_uid TEXT');
+    this.execIgnoreDuplicateColumn('ALTER TABLE session_context ADD COLUMN analytics_consent INTEGER');
+    this.execIgnoreDuplicateColumn('ALTER TABLE session_context ADD COLUMN session_id_source TEXT');
+    this.execIgnoreDuplicateColumn('ALTER TABLE session_context ADD COLUMN analytics_client_id TEXT');
     this.sql.exec(`
       CREATE INDEX IF NOT EXISTS idx_session_messages_ts
       ON messages(ts ASC, id ASC)
@@ -1692,6 +1707,55 @@ export class SessionDO {
       if (payload && (typeof payload.storefront_id === 'string' || typeof payload.channel === 'string')) {
         this.setStorefrontContext(payload.storefront_id, payload.channel);
         await this.persistSessionRecord({ lastActivity: now() });
+      }
+      return new Response('ok');
+    }
+
+    // GET /buyer-session-known — read-only; czy sesja była już zainicjowana turą kupującego
+    if (method === 'GET' && pathname.endsWith('/buyer-session-known')) {
+      const meta = this.getSessionMeta();
+      const ctx = this.getSessionContext();
+      const known =
+        meta.message_seq > 0 ||
+        Boolean(ctx.storefront_id?.trim() && ctx.channel?.trim());
+      return new Response(JSON.stringify({known}), {
+        headers: {'Content-Type': 'application/json'},
+      });
+    }
+
+    // POST /set-session-privacy — analytics consent + session id source (EDOG match denominator)
+    if (method === 'POST' && pathname.endsWith('/set-session-privacy')) {
+      const payload = (await request.json().catch(() => null)) as {
+        analytics_consent?: number | boolean;
+        session_id_source?: string;
+        analytics_client_id?: string | null;
+      } | null;
+      if (payload) {
+        const patch: Partial<Omit<SessionContextRow, 'id'>> = {};
+        if (payload.analytics_consent === 0 || payload.analytics_consent === 1) {
+          patch.analytics_consent = payload.analytics_consent;
+        } else if (payload.analytics_consent === true) {
+          patch.analytics_consent = 1;
+        } else if (payload.analytics_consent === false) {
+          patch.analytics_consent = 0;
+        }
+        if (payload.session_id_source === 'cookie' || payload.session_id_source === 'session_storage') {
+          patch.session_id_source = payload.session_id_source;
+        }
+        if (patch.analytics_consent === 0) {
+          patch.analytics_client_id = null;
+        } else if (patch.analytics_consent === 1) {
+          const rawClient = payload.analytics_client_id;
+          if (typeof rawClient === 'string' && rawClient.trim()) {
+            patch.analytics_client_id = rawClient.trim();
+          } else if (rawClient === null) {
+            patch.analytics_client_id = null;
+          }
+        }
+        if (Object.keys(patch).length > 0) {
+          this.updateSessionContext(patch);
+          await this.persistSessionRecord({ lastActivity: now() });
+        }
       }
       return new Response('ok');
     }
@@ -1886,7 +1950,7 @@ export class SessionDO {
 
   private getSessionContext(): SessionContextRow {
     const row = this.sql.exec(
-      'SELECT cart_id, session_id, storefront_id, channel FROM session_context WHERE id = 1',
+      'SELECT cart_id, session_id, storefront_id, channel, analytics_consent, session_id_source, analytics_client_id FROM session_context WHERE id = 1',
     ).one() as Omit<SessionContextRow, 'id'> | null;
 
     return {
@@ -1897,11 +1961,14 @@ export class SessionDO {
 
   private writeSessionContext(next: SessionContextRow): void {
     this.sql.exec(
-      'UPDATE session_context SET cart_id = ?, session_id = ?, storefront_id = ?, channel = ? WHERE id = 1',
+      'UPDATE session_context SET cart_id = ?, session_id = ?, storefront_id = ?, channel = ?, analytics_consent = ?, session_id_source = ?, analytics_client_id = ? WHERE id = 1',
       next.cart_id,
       next.session_id,
       next.storefront_id,
       next.channel,
+      next.analytics_consent,
+      next.session_id_source,
+      next.analytics_client_id,
     );
   }
 
@@ -1913,6 +1980,14 @@ export class SessionDO {
       session_id: patch.session_id !== undefined ? patch.session_id : current.session_id,
       storefront_id: patch.storefront_id !== undefined ? patch.storefront_id : current.storefront_id,
       channel: patch.channel !== undefined ? patch.channel : current.channel,
+      analytics_consent:
+        patch.analytics_consent !== undefined ? patch.analytics_consent : current.analytics_consent,
+      session_id_source:
+        patch.session_id_source !== undefined ? patch.session_id_source : current.session_id_source,
+      analytics_client_id:
+        patch.analytics_client_id !== undefined
+          ? patch.analytics_client_id
+          : current.analytics_client_id,
     });
   }
 
@@ -2185,6 +2260,9 @@ export class SessionDO {
       message_count: meta.message_seq,
       storefront_id: sessionContext.storefront_id ?? null,
       channel: sessionContext.channel ?? null,
+      analytics_consent: sessionContext.analytics_consent ?? null,
+      session_id_source: sessionContext.session_id_source ?? null,
+      analytics_client_id: sessionContext.analytics_client_id ?? null,
     };
   }
 
@@ -2203,9 +2281,10 @@ export class SessionDO {
           `INSERT INTO sessions (
             session_id, customer_id, first_name, last_name, cart_id,
             created_at, last_activity, archived_at, message_count,
-            storefront_id, channel, persist_status, last_persist_error, last_persist_error_at
+            storefront_id, channel, persist_status, last_persist_error, last_persist_error_at,
+            analytics_consent, session_id_source, analytics_client_id
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(session_id) DO UPDATE SET
             customer_id = excluded.customer_id,
             first_name = excluded.first_name,
@@ -2218,7 +2297,14 @@ export class SessionDO {
             channel = excluded.channel,
             persist_status = excluded.persist_status,
             last_persist_error = excluded.last_persist_error,
-            last_persist_error_at = excluded.last_persist_error_at`
+            last_persist_error_at = excluded.last_persist_error_at,
+            analytics_consent = COALESCE(excluded.analytics_consent, sessions.analytics_consent),
+            session_id_source = COALESCE(excluded.session_id_source, sessions.session_id_source),
+            analytics_client_id = CASE
+              WHEN excluded.analytics_consent = 0 THEN NULL
+              WHEN excluded.analytics_client_id IS NOT NULL THEN excluded.analytics_client_id
+              ELSE sessions.analytics_client_id
+            END`
         )
         .bind(
           snapshot.session_id,
@@ -2235,6 +2321,9 @@ export class SessionDO {
           options?.persistStatus ?? 'ok',
           options?.lastPersistError ?? null,
           options?.lastPersistErrorAt ?? null,
+          snapshot.analytics_consent,
+          snapshot.session_id_source,
+          snapshot.analytics_client_id,
         )
         .run();
     } catch (error) {
@@ -5306,6 +5395,25 @@ export default {
           }
         }
 
+        // chat_session_linked: zapisz analytics_client_id w DB_CHATBOT (przed proxy).
+        if (method === 'POST' && (pathname === '/pixel' || pathname === '/pixel/events')) {
+          try {
+            const peek = (await request.clone().json().catch(() => null)) as {
+              type?: unknown;
+            } | null;
+            if (peek && peek.type === 'chat_session_linked') {
+              await handleChatSessionLinkedFromPixel(env, peek);
+            }
+          } catch (linkErr) {
+            console.warn(
+              JSON.stringify({
+                tag: 'buyer.chat_session_linked.intercept',
+                error: String((linkErr as Error)?.message ?? linkErr).slice(0, 120),
+              }),
+            );
+          }
+        }
+
         // Utrzymujemy ścieżkę `/pixel*`, ale podmieniamy host na upstream analytics (np. POST /pixel/events).
         const analyticsUrl = `https://analytics.internal${pathname}${url.search}`;
         const upstreamRequest = new Request(analyticsUrl, request);
@@ -5439,6 +5547,10 @@ export default {
       return handleHistoryRequest(request, env, {appProxyVerified: true});
     }
 
+    if (url.pathname === '/apps/assistant/session-privacy' && request.method === 'POST') {
+      return handleBuyerSessionPrivacyRequest(request, env, cors(env, request));
+    }
+
     // Endpoint czatu headless / BFF – zabezpieczony shared secret + headers kontekstowe.
     // Uwaga: Shopify App Proxy przekazuje /apps/assistant/chat jako /chat do backendu
     // i dodaje podpis HMAC w query/headerach.
@@ -5474,6 +5586,22 @@ export default {
         return s2sHistory.response;
       }
       return handleHistoryRequest(request, env, {contextOverride: s2sHistory.contextOverride});
+    }
+
+    if (url.pathname === '/session-privacy' && request.method === 'POST') {
+      if (hasAppProxySignature(request, url)) {
+        const appProxyAuthError = await authorizeAppProxyRequest(request, env);
+        if (appProxyAuthError) {
+          return appProxyAuthError;
+        }
+        return handleBuyerSessionPrivacyRequest(request, env, cors(env, request));
+      }
+
+      const s2sPrivacy = verifyS2SChatRequest(request, env);
+      if (!s2sPrivacy.ok) {
+        return s2sPrivacy.response;
+      }
+      return handleBuyerSessionPrivacyRequest(request, env, cors(env, request));
     }
 
     // Consent Gate (S2S jak /chat — ten sam kontrakt nagłówków)

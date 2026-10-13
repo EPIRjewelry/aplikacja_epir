@@ -20,6 +20,9 @@ export type FlowHealthSnapshot = {
   pixel_null_session_rate_24h: number | null;
   chat_pixel_session_match_rate: number | null;
   chat_sessions_24h: number;
+  chat_sessions_total: number;
+  chat_sessions_consented: number;
+  chat_sessions_matched: number;
   warehouse_q1_ok: boolean;
   warehouse_q1_row_count: number | null;
   warehouse_q1_skipped: boolean;
@@ -40,6 +43,9 @@ export type FlowHealthInput = {
   pixel_null_session_rate_24h: number | null;
   chat_pixel_session_match_rate: number | null;
   chat_sessions_24h: number;
+  chat_sessions_total: number;
+  chat_sessions_consented: number;
+  chat_sessions_matched: number;
   warehouse_q1_row_count: number | null;
   warehouse_q1_skipped: boolean;
   warehouse_q1_error?: string;
@@ -122,12 +128,13 @@ export function computeEdogVerdict(input: FlowHealthInput): { verdict: EdogVerdi
     degraded = true;
   }
 
-  if (!fail && input.chat_sessions_24h > 0) {
+  const consentedSessions = input.chat_sessions_consented ?? 0;
+  if (!fail && consentedSessions > 0) {
     const rate = input.chat_pixel_session_match_rate;
     if (rate === null || rate === 0) {
       reasons.push('chat_pixel_session_mismatch');
       fail = true;
-    } else if (input.chat_sessions_24h >= CHAT_MATCH_MIN_SESSIONS && rate < CHAT_MATCH_DEGRADED_RATE) {
+    } else if (consentedSessions >= CHAT_MATCH_MIN_SESSIONS && rate < CHAT_MATCH_DEGRADED_RATE) {
       reasons.push(`chat_pixel_session_match_low:${(rate * 100).toFixed(0)}%`);
       degraded = true;
     }

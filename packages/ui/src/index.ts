@@ -58,10 +58,22 @@ export {
 } from './ChatWidget';
 export {
   persistChatSessionIdFromWorker,
+  readAnalyticsClientIdForChat,
   readBrowserAnalyticsSessionId,
   readEpirSessionIdFromDocumentCookie,
   readShopifyYFromDocumentCookie,
   resolveEffectiveChatSessionId,
+  resolveEffectiveChatSessionWithMeta,
+  readShopifyAnalyticsProcessingAllowed,
+  scrubInvalidChatSessionStorage,
+  installShopifyCustomerPrivacyChatListeners,
+  rememberChatSessionIdForPrivacy,
+  readLastChatSessionIdForPrivacy,
+  postChatSessionPrivacyUpdate,
+  resolveChatSessionPrivacyApiUrl,
+  isEpirSessionCookiePixelCopy,
+  type ChatSessionIdSource,
+  type ResolvedChatSession,
 } from './epir-session-browser';
 export {
   type ConsentPayload,

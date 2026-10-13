@@ -1,5 +1,9 @@
 import {register} from "@shopify/web-pixels-extension";
-import {EPIR_CHAT_SESSION_STORAGE_KEY, pickEpirPixelSessionId} from "./pixel-session-id";
+import {
+  EPIR_CHAT_SESSION_STORAGE_KEY,
+  isValidChatSessionLinkId,
+  pickEpirPixelSessionId,
+} from "./pixel-session-id";
 
 // Zmienić przed deployem – fallback gdy brak ustawienia w extension settings
 const DEFAULT_PIXEL_ENDPOINT = 'https://asystent.epirbizuteria.pl';
@@ -121,17 +125,6 @@ function extractClientIdFromInit(initApi: unknown): string | null {
   return null;
 }
 
-async function readBrowserCookie(browserApi: PixelBrowser, name: string): Promise<string> {
-  try {
-    const getCookie = browserApi.cookie?.get;
-    if (typeof getCookie !== 'function') return '';
-    const raw = await getCookie(name);
-    return typeof raw === 'string' ? raw.trim() : '';
-  } catch (_) {
-    return '';
-  }
-}
-
 async function readChatSessionStorage(browserApi: PixelBrowser): Promise<string> {
   try {
     const raw = await browserApi.sessionStorage.getItem(EPIR_CHAT_SESSION_STORAGE_KEY);
@@ -142,48 +135,21 @@ async function readChatSessionStorage(browserApi: PixelBrowser): Promise<string>
 }
 
 /**
- * Ta sama tożsamość co żywy czat, potem clientId Shopify (zamiennik `_shopify_y`).
- * Kolejność: `_epir_session_id`, `_shopify_y`, `epir-assistant-session`, clientId, id z wcześniejszego zdarzenia.
- * Puste źródła → brak POST (nie generujemy drugiego id).
- * Gdy cookie epir jest puste, zapisujemy wybrane id do `_epir_session_id`, żeby czat je czytał.
+ * `pixel_events.session_id` = Shopify `clientId` (bez `_shopify_y`, bez nadpisywania chat storage).
  */
 async function resolveEpirSessionId(
-  browserApi: PixelBrowser,
+  _browserApi: PixelBrowser,
   event: unknown,
   initApi: unknown,
   memory: {id: string},
 ): Promise<string> {
-  const epirSessionId = await readBrowserCookie(browserApi, '_epir_session_id');
-  const shopifyY = epirSessionId ? '' : await readBrowserCookie(browserApi, '_shopify_y');
-  const chatSessionStorage = await readChatSessionStorage(browserApi);
-  const haveStableId = Boolean(epirSessionId || shopifyY || chatSessionStorage);
-  const eventClientId = haveStableId ? '' : extractClientIdFromEvent(event) || '';
-  const initClientId = haveStableId || eventClientId ? '' : extractClientIdFromInit(initApi) || '';
   const pick = pickEpirPixelSessionId({
-    epirSessionId,
-    shopifyY,
-    chatSessionStorage,
-    eventClientId,
-    initClientId,
+    eventClientId: extractClientIdFromEvent(event) || '',
+    initClientId: extractClientIdFromInit(initApi) || '',
     remembered: memory.id,
   });
   if (!pick.sessionId) return '';
   memory.id = pick.sessionId;
-  if (pick.pinEpirCookie) {
-    try {
-      const setCookie = browserApi.cookie?.set;
-      if (typeof setCookie === 'function') await setCookie('_epir_session_id', pick.sessionId);
-    } catch (_) {
-      /* sandbox może odrzucić zapis cookie */
-    }
-  }
-  if (pick.pinChatStorage) {
-    try {
-      await browserApi.sessionStorage.setItem(EPIR_CHAT_SESSION_STORAGE_KEY, pick.sessionId);
-    } catch (_) {
-      /* brak sessionStorage */
-    }
-  }
   return pick.sessionId;
 }
 
@@ -193,6 +159,63 @@ register(async (api) => {
 
     const browserApi = browser as PixelBrowser;
     const sessionMemory: {id: string} = {id: ''};
+    /** Raz na parę (chat_session_id, client_id) w tym runtime piksela. */
+    const linkedChatPairs = new Set<string>();
+
+    /**
+     * Przy zgodzie: odczyt `sess_*` z top-frame sessionStorage → `chat_session_linked`.
+     * Bez zgody: nie czytaj storage czatu.
+     */
+    async function maybeEmitChatSessionLinked(pixelEvent: unknown): Promise<void> {
+      try {
+        if (!isAnalyticsProcessingExplicitlyAllowed(pixelEvent, init, apiPrivacy)) return;
+        const clientId =
+          extractClientIdFromEvent(pixelEvent) ||
+          extractClientIdFromInit(init) ||
+          sessionMemory.id ||
+          '';
+        if (!clientId) return;
+        const chatSessionId = await readChatSessionStorage(browserApi);
+        if (!isValidChatSessionLinkId(chatSessionId)) return;
+        const pairKey = `${chatSessionId}\0${clientId}`;
+        if (linkedChatPairs.has(pairKey)) return;
+        linkedChatPairs.add(pairKey);
+
+        const baseUrl = (settings?.pixelEndpoint || DEFAULT_PIXEL_ENDPOINT).replace(/\/$/, '');
+        await fetch(`${baseUrl}/pixel`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            type: 'chat_session_linked',
+            data: {
+              chat_session_id: chatSessionId,
+              client_id: clientId,
+              pixel_sender: 'web_pixel_extension',
+            },
+          }),
+        });
+      } catch (_) {
+        /* silent */
+      }
+    }
+
+    try {
+      const privacyApi = apiPrivacy as {
+        subscribe?: (event: string, cb: (payload: unknown) => void) => void;
+      } | undefined;
+      if (privacyApi && typeof privacyApi.subscribe === 'function') {
+        privacyApi.subscribe('visitorConsentCollected', (payload) => {
+          const allowed = privacyFlag(payload);
+          if (allowed !== true) return;
+          void maybeEmitChatSessionLinked({
+            clientId: sessionMemory.id || extractClientIdFromInit(init) || '',
+            customerPrivacy: {analyticsProcessingAllowed: true},
+          });
+        });
+      }
+    } catch (_) {
+      /* silent */
+    }
 
     // ============================================================================
     // CUSTOMER & SESSION TRACKING
@@ -483,9 +506,10 @@ register(async (api) => {
           sessionMemory,
         );
         if (!resolvedSessionId) return;
+        await maybeEmitChatSessionLinked(pixelEvent);
         const storefront = await getStorefrontForEvent(pixelEvent);
         const attribution = await getAttributionForEvent(pixelEvent);
-        // Enrich event data with customer_id, session_id (cookie lub clientId), storefront_id, channel
+        // Enrich: session_id = Shopify clientId (EDOG join key po stronie pixel_events)
         const enrichedData = {
           ...(typeof eventData === 'object' && eventData !== null ? eventData : {}),
           ...flattenCommerceFields(eventData),

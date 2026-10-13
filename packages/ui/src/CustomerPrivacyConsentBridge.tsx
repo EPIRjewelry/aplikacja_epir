@@ -1,6 +1,11 @@
 import {useCustomerPrivacy} from '@shopify/hydrogen';
 import type {CountryCode, LanguageCode} from '@shopify/hydrogen/storefront-api-types';
-import {useEffect} from 'react';
+import {useEffect, useRef} from 'react';
+import {
+  postChatSessionPrivacyUpdate,
+  readLastChatSessionIdForPrivacy,
+  scrubInvalidChatSessionStorage,
+} from './epir-session-browser';
 
 export type CustomerPrivacyConsentBridgeProps = {
   checkoutDomain: string;
@@ -15,7 +20,22 @@ export type CustomerPrivacyConsentBridgeProps = {
    * żeby nie używać `window.location.host` jako „sklepu”.
    */
   sameDomainForStorefrontApi?: boolean;
+  /** Hydrogen BFF / App Proxy — cofnięcie zgody → POST `/session-privacy` z ostatnim `session_id` z czatu. */
+  chatApiUrl?: string;
+  chatSessionStorageKey?: string;
 };
+
+function syncChatSessionPrivacyRevoke(chatApiUrl: string, sessionStorageKey: string): void {
+  const remembered = readLastChatSessionIdForPrivacy();
+  if (!remembered?.sessionId) return;
+  void postChatSessionPrivacyUpdate(chatApiUrl, {
+    session_id: remembered.sessionId,
+    analytics_consent: false,
+    analytics_client_id: null,
+    ...(remembered.sessionIdSource ? {session_id_source: remembered.sessionIdSource} : {}),
+  });
+  scrubInvalidChatSessionStorage(sessionStorageKey);
+}
 
 /**
  * Iteracja 1: bez natywnego bannera Shopify (`withPrivacyBanner: false` jest ustawiane w wywołaniu hooka).
@@ -32,6 +52,8 @@ export function CustomerPrivacyConsentBridge({
   locale,
   consentGranted,
   sameDomainForStorefrontApi = false,
+  chatApiUrl,
+  chatSessionStorageKey = 'epir-assistant-session',
 }: CustomerPrivacyConsentBridgeProps) {
   const {customerPrivacy} = useCustomerPrivacy({
     checkoutDomain,
@@ -71,6 +93,25 @@ export function CustomerPrivacyConsentBridge({
       );
     });
   }, [customerPrivacy, consentGranted]);
+
+  useEffect(() => {
+    if (!chatApiUrl) return;
+    const onCollected = (ev: Event) => {
+      const detail = (ev as CustomEvent<{analyticsAllowed?: boolean}>).detail;
+      if (!detail || detail.analyticsAllowed !== false) return;
+      syncChatSessionPrivacyRevoke(chatApiUrl, chatSessionStorageKey);
+    };
+    document.addEventListener('visitorConsentCollected', onCollected, false);
+    return () => document.removeEventListener('visitorConsentCollected', onCollected, false);
+  }, [chatApiUrl, chatSessionStorageKey]);
+
+  const prevConsentGranted = useRef(consentGranted);
+  useEffect(() => {
+    if (chatApiUrl && prevConsentGranted.current && !consentGranted) {
+      syncChatSessionPrivacyRevoke(chatApiUrl, chatSessionStorageKey);
+    }
+    prevConsentGranted.current = consentGranted;
+  }, [consentGranted, chatApiUrl, chatSessionStorageKey]);
 
   return null;
 }

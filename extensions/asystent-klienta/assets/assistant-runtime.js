@@ -8,81 +8,172 @@ var EPIR_LOGGED_IN_CUSTOMER_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 var EPIR_LOGGED_IN_CUSTOMER_PREFLIGHT_ATTEMPTS = 3;
 var EPIR_LOGGED_IN_CUSTOMER_PREFLIGHT_DELAY_MS = 75;
 var EPIR_ASSISTANT_SESSION_KEY = 'epir-assistant-session';
-var EPIR_ANALYTICS_SESSION_COOKIE = '_epir_session_id';
-var EPIR_SHOPIFY_Y_COOKIE = '_shopify_y';
+var EPIR_LAST_CHAT_SESSION_PRIVACY_KEY = 'epir-last-chat-session-for-privacy';
+var EPIR_CHAT_SESSION_STORAGE_PREFIX = 'sess_';
+var EPIR_CHAT_SESSION_ID_RE = /^sess_[A-Za-z0-9-]{1,123}$/;
 
-function readNamedDocumentCookie(name) {
-  try {
-    var parts = String(document.cookie || '').split(';');
-    for (var i = 0; i < parts.length; i++) {
-      var t = parts[i].trim();
-      var eq = t.indexOf('=');
-      if (eq === -1) continue;
-      if (t.slice(0, eq).trim() !== name) continue;
-      var raw = t.slice(eq + 1).trim();
-      if (!raw) return '';
-      try { return decodeURIComponent(raw).trim(); } catch (e) { return raw; }
-    }
-  } catch (e2) {}
-  return '';
+function isValidChatSessionStorageValue(value) {
+  return Boolean(value && EPIR_CHAT_SESSION_ID_RE.test(String(value).trim()));
 }
 
-function readEpirAnalyticsSessionCookie() {
-  return readNamedDocumentCookie(EPIR_ANALYTICS_SESSION_COOKIE);
-}
-
-/** `_epir_session_id`, inaczej `_shopify_y` (Web Pixel `event.clientId`). Bez UUID. */
-function resolveAnalyticsSessionIdFromCookies() {
-  var epir = readEpirAnalyticsSessionCookie();
-  if (epir) return epir;
-  return readNamedDocumentCookie(EPIR_SHOPIFY_Y_COOKIE);
-}
-
-/**
- * Join czatu z pikselem: cookie wygrywa z `epir-assistant-session`.
- * Nowa sesja (pusta sessionStorage) bierze cookie.
- * Brak cookie i storage → sess_ + crypto.randomUUID(), zapis TYLKO do sessionStorage (nie cookie).
- * Wymaga nowoczesnej przeglądarki z crypto.randomUUID(); fallback poza zakresem PR E1.
- */
-function resolveEffectiveAssistantSessionId(sessionIdKey) {
+function scrubInvalidAssistantSessionStorage(sessionIdKey) {
   var key = sessionIdKey || EPIR_ASSISTANT_SESSION_KEY;
-  var fromCookie = '';
-  try { fromCookie = resolveAnalyticsSessionIdFromCookies(); } catch (e) {}
-  if (fromCookie) {
-    try {
-      var existing = sessionStorage.getItem(key);
-      if (!existing || !String(existing).trim()) sessionStorage.setItem(key, fromCookie);
-    } catch (e2) {}
-    return fromCookie;
-  }
   try {
     var stored = sessionStorage.getItem(key);
-    if (stored && String(stored).trim()) return String(stored).trim();
-  } catch (e3) {}
+    if (stored && !isValidChatSessionStorageValue(String(stored).trim())) {
+      sessionStorage.removeItem(key);
+    }
+  } catch (e) {}
+}
+
+function rememberAssistantChatSessionForPrivacy(sessionId, sessionIdSource) {
+  var id = sessionId ? String(sessionId).trim() : '';
+  if (!isValidChatSessionStorageValue(id)) return;
   try {
-    if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') return null;
-    var minted = 'sess_' + crypto.randomUUID();
-    try { sessionStorage.setItem(key, minted); } catch (e4) {}
-    return minted;
-  } catch (e5) {
+    sessionStorage.setItem(
+      EPIR_LAST_CHAT_SESSION_PRIVACY_KEY,
+      JSON.stringify({ sessionId: id, sessionIdSource: 'session_storage' }),
+    );
+  } catch (e) {}
+}
+
+function readLastAssistantChatSessionForPrivacy() {
+  try {
+    var raw = sessionStorage.getItem(EPIR_LAST_CHAT_SESSION_PRIVACY_KEY);
+    if (!raw) return null;
+    var parsed = JSON.parse(raw);
+    var sid = parsed && parsed.sessionId ? String(parsed.sessionId).trim() : '';
+    if (!sid) return null;
+    var src = parsed.sessionIdSource;
+    if (src !== 'cookie' && src !== 'session_storage') src = null;
+    return { sessionId: sid, sessionIdSource: src };
+  } catch (e2) {
     return null;
   }
+}
+
+function isShopifyAnalyticsProcessingAllowed() {
+  try {
+    if (
+      typeof window === 'undefined' ||
+      !window.Shopify ||
+      !window.Shopify.customerPrivacy ||
+      typeof window.Shopify.customerPrivacy.analyticsProcessingAllowed !== 'function'
+    ) {
+      return null;
+    }
+    return window.Shopify.customerPrivacy.analyticsProcessingAllowed() === true;
+  } catch (e) {
+    return null;
+  }
+}
+
+function resolveAssistantSessionIdMeta(sessionIdKey) {
+  var key = sessionIdKey || EPIR_ASSISTANT_SESSION_KEY;
+  scrubInvalidAssistantSessionStorage(key);
+  try {
+    var stored = sessionStorage.getItem(key);
+    if (stored && isValidChatSessionStorageValue(String(stored).trim())) {
+      return {
+        sessionId: String(stored).trim(),
+        sessionIdSource: 'session_storage',
+      };
+    }
+  } catch (e3) {}
+  try {
+    if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') {
+      return { sessionId: null, sessionIdSource: null };
+    }
+    var minted = EPIR_CHAT_SESSION_STORAGE_PREFIX + crypto.randomUUID();
+    try { sessionStorage.setItem(key, minted); } catch (e4) {}
+    return {
+      sessionId: minted,
+      sessionIdSource: 'session_storage',
+    };
+  } catch (e5) {
+    return { sessionId: null, sessionIdSource: null };
+  }
+}
+
+function resolveEffectiveAssistantSessionId(sessionIdKey) {
+  var meta = resolveAssistantSessionIdMeta(sessionIdKey);
+  return meta.sessionId;
 }
 
 /** Echo `session_id` z workera nie zastępuje cookie i nie migruje rozjechanej sesji. */
 function persistAssistantSessionIdFromWorker(sessionIdKey, workerSessionId) {
   var echoed = workerSessionId ? String(workerSessionId).trim() : '';
-  if (!echoed) return;
-  var fromCookie = '';
-  try { fromCookie = resolveAnalyticsSessionIdFromCookies(); } catch (e) {}
-  if (fromCookie) return;
+  if (!echoed || !isValidChatSessionStorageValue(echoed)) return;
   var key = sessionIdKey || EPIR_ASSISTANT_SESSION_KEY;
   try {
+    scrubInvalidAssistantSessionStorage(key);
     var existing = sessionStorage.getItem(key);
     var stored = existing ? String(existing).trim() : '';
     if (stored && stored !== echoed) return;
     if (!stored) sessionStorage.setItem(key, echoed);
   } catch (e2) {}
+}
+
+function resolveAssistantSessionPrivacyUrl(chatEndpoint) {
+  if (!chatEndpoint) return '';
+  var path = String(chatEndpoint);
+  try {
+    var base = (typeof window !== 'undefined' && window.location && window.location.origin) || 'https://epir.invalid';
+    var url = new URL(path, base);
+    if (url.pathname.slice(-'/api/chat'.length) === '/api/chat') {
+      url.pathname = url.pathname.slice(0, -'/api/chat'.length) + '/api/chat-session-privacy';
+    } else if (url.pathname.slice(-'/chat'.length) === '/chat') {
+      url.pathname = url.pathname.slice(0, -'/chat'.length) + '/session-privacy';
+    } else {
+      return '';
+    }
+    if (typeof window !== 'undefined' && url.origin === window.location.origin) {
+      return url.pathname + url.search;
+    }
+    return url.toString();
+  } catch (e) {
+    if (path.slice(-'/api/chat'.length) === '/api/chat') {
+      return path.slice(0, -'/api/chat'.length) + '/api/chat-session-privacy';
+    }
+    if (path.slice(-'/chat'.length) === '/chat') {
+      return path.slice(0, -'/chat'.length) + '/session-privacy';
+    }
+    return '';
+  }
+}
+
+function postAssistantSessionPrivacyUpdate(chatEndpoint, body) {
+  var url = resolveAssistantSessionPrivacyUrl(chatEndpoint);
+  if (!url) return Promise.resolve();
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(body),
+  }).catch(function () {});
+}
+
+var epirCustomerPrivacyListenerInstalled = false;
+function installAssistantCustomerPrivacyListeners(chatEndpoint) {
+  if (epirCustomerPrivacyListenerInstalled || typeof document === 'undefined') return;
+  epirCustomerPrivacyListenerInstalled = true;
+  document.addEventListener(
+    'visitorConsentCollected',
+    function (ev) {
+      var detail = ev && ev.detail;
+      if (!detail || detail.analyticsAllowed !== false) return;
+      var remembered = readLastAssistantChatSessionForPrivacy();
+      if (!remembered || !remembered.sessionId) return;
+      postAssistantSessionPrivacyUpdate(chatEndpoint, {
+        session_id: remembered.sessionId,
+        analytics_consent: false,
+        analytics_client_id: null,
+        session_id_source: remembered.sessionIdSource || undefined,
+      });
+      scrubInvalidAssistantSessionStorage(EPIR_ASSISTANT_SESSION_KEY);
+    },
+    false,
+  );
 }
 var EPIR_ASSISTANT_TRANSCRIPT_STORAGE_PREFIX = 'epir-assistant-transcript';
 var EPIR_ASSISTANT_HISTORY_ENDPOINT = '/apps/assistant/history';
@@ -1404,6 +1495,7 @@ function initAssistantUIForSection(section) {
 }
 
 function initAllAssistantSections() {
+  installAssistantCustomerPrivacyListeners(EPIR_CHAT_WORKER_ENDPOINT);
   const sectionBlock = document.getElementById('epir-assistant-section');
   const sectionEmbed = document.getElementById('epir-assistant-embed');
 
@@ -1796,12 +1888,17 @@ async function sendMessageToWorker(
       sectionEl && sectionEl.dataset && sectionEl.dataset.productHandle
         ? String(sectionEl.dataset.productHandle).trim()
         : '';
+    var sessionMeta = resolveAssistantSessionIdMeta(sessionIdKey);
+    if (sessionMeta && sessionMeta.sessionId) {
+      rememberAssistantChatSessionForPrivacy(sessionMeta.sessionId, sessionMeta.sessionIdSource);
+    }
+    var analyticsAllowed = isShopifyAnalyticsProcessingAllowed();
     const body = {
       storefrontId: storefrontId,
       channel: channel,
       locale: locale,
       message: (text && String(text).trim()) || (attachment ? '' : ''),
-      session_id: resolveEffectiveAssistantSessionId(sessionIdKey),
+      session_id: sessionMeta.sessionId,
       cart_id: cartId,
       brand,
       stream: true,
@@ -1811,6 +1908,12 @@ async function sendMessageToWorker(
       customer_id_hint_source:
         normalizeLoggedInCustomerId(customerIdentity && customerIdentity.source) || 'none',
     };
+    if (sessionMeta.sessionIdSource) {
+      body.session_id_source = sessionMeta.sessionIdSource;
+    }
+    if (analyticsAllowed !== null) {
+      body.analytics_consent = analyticsAllowed;
+    }
     if (productHandle) {
       body.productHandle = productHandle;
     }

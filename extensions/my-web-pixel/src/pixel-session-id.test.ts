@@ -1,80 +1,52 @@
 import {describe, expect, it} from 'vitest';
-import {pickEpirPixelSessionId} from './pixel-session-id';
+import {
+  isValidChatSessionLinkId,
+  pickEpirPixelSessionId,
+} from './pixel-session-id';
 
 describe('pickEpirPixelSessionId', () => {
-  it('prefers _epir_session_id over _shopify_y, chat storage, and clientId', () => {
+  it('uses event clientId first', () => {
     expect(
       pickEpirPixelSessionId({
-        epirSessionId: ' epir-id ',
-        shopifyY: 'y-id',
-        chatSessionStorage: 'chat-id',
-        eventClientId: 'client-id',
-        initClientId: 'init-id',
-        remembered: 'remembered-id',
-      }),
-    ).toEqual({
-      sessionId: 'epir-id',
-      pinEpirCookie: false,
-      pinChatStorage: false,
-    });
+        eventClientId: 'from-event',
+        initClientId: 'from-init',
+        remembered: 'from-memory',
+      }).sessionId,
+    ).toBe('from-event');
   });
 
-  it('uses _shopify_y when the epir cookie is empty and does not adopt a different chat storage id', () => {
+  it('falls back to init then remembered', () => {
     expect(
       pickEpirPixelSessionId({
-        epirSessionId: '  ',
-        shopifyY: 'y-id',
-        chatSessionStorage: 'chat-id',
-        eventClientId: 'client-id',
-      }),
-    ).toEqual({
-      sessionId: 'y-id',
-      pinEpirCookie: true,
-      pinChatStorage: false,
-    });
-  });
-
-  it('uses the chat sessionStorage id before clientId', () => {
+        eventClientId: '',
+        initClientId: 'from-init',
+        remembered: 'from-memory',
+      }).sessionId,
+    ).toBe('from-init');
     expect(
       pickEpirPixelSessionId({
-        chatSessionStorage: 'chat-id',
-        eventClientId: 'client-id',
-      }),
-    ).toEqual({
-      sessionId: 'chat-id',
-      pinEpirCookie: true,
-      pinChatStorage: false,
-    });
+        eventClientId: '',
+        initClientId: '',
+        remembered: 'from-memory',
+      }).sessionId,
+    ).toBe('from-memory');
   });
 
-  it('uses event clientId and pins it for chat when cookies and storage are empty', () => {
-    expect(
-      pickEpirPixelSessionId({
-        eventClientId: ' client-id ',
-        initClientId: 'init-id',
-      }),
-    ).toEqual({
-      sessionId: 'client-id',
-      pinEpirCookie: true,
-      pinChatStorage: true,
-    });
+  it('returns empty when no clientId sources', () => {
+    expect(pickEpirPixelSessionId({}).sessionId).toBe('');
+  });
+});
+
+describe('isValidChatSessionLinkId', () => {
+  it('accepts sess_* chat ids', () => {
+    expect(isValidChatSessionLinkId('sess_already-stored-id-0001')).toBe(true);
+    expect(isValidChatSessionLinkId('sess_00000000-0000-4000-8000-000000000001')).toBe(true);
   });
 
-  it('uses init clientId, then a remembered id, and never mints one', () => {
-    expect(pickEpirPixelSessionId({initClientId: 'init-id', remembered: 'old'})).toEqual({
-      sessionId: 'init-id',
-      pinEpirCookie: true,
-      pinChatStorage: true,
-    });
-    expect(pickEpirPixelSessionId({remembered: 'old'})).toEqual({
-      sessionId: 'old',
-      pinEpirCookie: true,
-      pinChatStorage: true,
-    });
-    expect(pickEpirPixelSessionId({})).toEqual({
-      sessionId: '',
-      pinEpirCookie: false,
-      pinChatStorage: false,
-    });
+  it('rejects pixel client ids and empty', () => {
+    expect(isValidChatSessionLinkId('shopify-y-join-8f3c1a0b')).toBe(false);
+    expect(isValidChatSessionLinkId('epir-first-party')).toBe(false);
+    expect(isValidChatSessionLinkId('')).toBe(false);
+    expect(isValidChatSessionLinkId(null)).toBe(false);
   });
 });

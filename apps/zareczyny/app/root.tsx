@@ -381,6 +381,7 @@ function ZareczynyConsentAndChat({
           locale={analyticsConsent.language}
           sameDomainForStorefrontApi={analyticsConsent.sameDomainForStorefrontApi}
           consentGranted={consentGranted}
+          chatApiUrl={chatApiUrl}
         />
       ) : null}
       <ChatWidget

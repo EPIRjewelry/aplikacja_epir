@@ -1,8 +1,9 @@
-import {
-  EPIR_SESSION_COOKIE_NAME,
-  EPIR_SHOPIFY_Y_COOKIE_NAME,
-  resolveEpirAnalyticsSessionId,
-} from '@epir/utils';
+import {EPIR_SESSION_COOKIE_NAME} from '@epir/utils';
+
+const CHAT_SESSION_STORAGE_PREFIX = 'sess_';
+/** Id czatu w sessionStorage — ten sam wzorzec, który piksel linkuje. */
+const CHAT_SESSION_ID_RE = /^sess_[A-Za-z0-9-]{1,123}$/;
+const LAST_CHAT_SESSION_FOR_PRIVACY_KEY = 'epir-last-chat-session-for-privacy';
 
 function readNamedDocumentCookie(name: string): string | null {
   if (typeof document === 'undefined' || !name) return null;
@@ -23,73 +24,185 @@ function readNamedDocumentCookie(name: string): string | null {
   return null;
 }
 
-/** Odczyt `_epir_session_id` w przeglądarce (alias `_shopify_y`). */
+/** Odczyt `_epir_session_id` (landing / koszyk) — nie używać jako `session_id` czatu. */
 export function readEpirSessionIdFromDocumentCookie(): string | null {
   return readNamedDocumentCookie(EPIR_SESSION_COOKIE_NAME);
 }
 
-/** Shopify `_shopify_y` — ta sama wartość co Web Pixel `event.clientId`. */
+/**
+ * @deprecated Nie czytać `_shopify_y` w JS sklepu — id piksela = Web Pixels `event.clientId`.
+ */
 export function readShopifyYFromDocumentCookie(): string | null {
-  return readNamedDocumentCookie(EPIR_SHOPIFY_Y_COOKIE_NAME);
+  return null;
+}
+
+/** @deprecated Link czat↔piksel idzie przez web pixel `chat_session_linked`, nie z widżetu. */
+export function isEpirSessionCookiePixelCopy(
+  _epirSessionId?: string | null,
+  _shopifyY?: string | null,
+): boolean {
+  return false;
+}
+
+/** @deprecated Widżet nie wysyła `analytics_client_id`. */
+export function readAnalyticsClientIdForChat(_consent: boolean | null): string | null {
+  return null;
 }
 
 /**
- * Klucz joina czat↔pixel.
- * 1. `_epir_session_id` (alias `_shopify_y`, gdy snippet go skopiował)
- * 2. inaczej `_shopify_y`
- * Bez generowania UUID.
+ * @deprecated Pixel/apex SSOT — nie używać jako `session_id` czatu (Customer Privacy).
  */
 export function readBrowserAnalyticsSessionId(): string | null {
-  return resolveEpirAnalyticsSessionId({
-    epirSessionId: readEpirSessionIdFromDocumentCookie(),
-    shopifyY: readShopifyYFromDocumentCookie(),
-  }).sessionId;
+  return readEpirSessionIdFromDocumentCookie();
 }
 
-/**
- * Id sesji czatu wysyłane do workera.
- * 1. Cookie (`_epir_session_id` / `_shopify_y`) — join z pikselem, jak dziś.
- * 2. Istniejący klucz sessionStorage.
- * 3. Brak obu → `sess_${crypto.randomUUID()}`, zapis TYLKO do sessionStorage (nie cookie).
- * Wymaga nowoczesnej przeglądarki z `window.crypto.randomUUID()`; fallback poza zakresem PR E1.
- */
-export function resolveEffectiveChatSessionId(
-  sessionStorageKey = 'epir-assistant-session',
-): string | null {
+export type ChatSessionIdSource = 'cookie' | 'session_storage';
+
+export type ResolvedChatSession = {
+  sessionId: string | null;
+  sessionIdSource: ChatSessionIdSource | null;
+};
+
+/** Shopify Customer Privacy API — brak API = `null` (unknown, nie wysyłaj do workera). */
+export function readShopifyAnalyticsProcessingAllowed(): boolean | null {
   if (typeof window === 'undefined') return null;
-  const fromCookie = readBrowserAnalyticsSessionId();
-  if (fromCookie) {
-    try {
-      const existing = sessionStorage.getItem(sessionStorageKey)?.trim() ?? '';
-      if (!existing) sessionStorage.setItem(sessionStorageKey, fromCookie);
-    } catch {
-      /* tryb prywatny / zablokowany storage */
-    }
-    return fromCookie;
-  }
   try {
-    const existing = sessionStorage.getItem(sessionStorageKey)?.trim();
-    if (existing) return existing;
-  } catch {
-    /* storage niedostępny — mint poniżej tylko jeśli crypto jest */
-  }
-  // Mint lokalny: bez cookie i bez sessionStorage — żeby worker dostał session_id (ucp_cart).
-  try {
-    const minted = `sess_${crypto.randomUUID()}`;
-    try {
-      sessionStorage.setItem(sessionStorageKey, minted);
-    } catch {
-      /* nadal zwróć mint, nawet gdy zapis storage się nie udał */
-    }
-    return minted;
+    const shopify = (window as {Shopify?: {customerPrivacy?: {analyticsProcessingAllowed?: () => boolean}}})
+      .Shopify;
+    const fn = shopify?.customerPrivacy?.analyticsProcessingAllowed;
+    if (typeof fn !== 'function') return null;
+    return fn() === true;
   } catch {
     return null;
   }
 }
 
+function isValidChatSessionStorageValue(value: string): boolean {
+  return CHAT_SESSION_ID_RE.test(value);
+}
+
+export type RememberedChatSessionForPrivacy = {
+  sessionId: string;
+  sessionIdSource: ChatSessionIdSource | null;
+};
+
+/** Ostatni `session_id` wysłany w `/chat` — używany przy cofnięciu zgody (bez remintu). */
+export function rememberChatSessionIdForPrivacy(
+  sessionId: string | null | undefined,
+  sessionIdSource?: ChatSessionIdSource | null,
+): void {
+  if (typeof window === 'undefined') return;
+  const id = sessionId?.trim();
+  if (!id || !isValidChatSessionStorageValue(id)) return;
+  try {
+    sessionStorage.setItem(
+      LAST_CHAT_SESSION_FOR_PRIVACY_KEY,
+      JSON.stringify({
+        sessionId: id,
+        sessionIdSource: 'session_storage',
+      }),
+    );
+  } catch {
+    /* storage niedostępny */
+  }
+}
+
+export function readLastChatSessionIdForPrivacy(): RememberedChatSessionForPrivacy | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(LAST_CHAT_SESSION_FOR_PRIVACY_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as {
+      sessionId?: string;
+      sessionIdSource?: ChatSessionIdSource | null;
+    };
+    const id = parsed.sessionId?.trim();
+    if (!id || !isValidChatSessionStorageValue(id)) return null;
+    return {
+      sessionId: id,
+      sessionIdSource: 'session_storage',
+    };
+  } catch {
+    return null;
+  }
+}
+
+function postChatSessionPrivacyRevoke(
+  chatApiUrl: string,
+  sessionStorageKey: string,
+): void {
+  const remembered = readLastChatSessionIdForPrivacy();
+  if (!remembered?.sessionId) return;
+  void postChatSessionPrivacyUpdate(chatApiUrl, {
+    session_id: remembered.sessionId,
+    analytics_consent: false,
+    analytics_client_id: null,
+    session_id_source: 'session_storage',
+  });
+  scrubInvalidChatSessionStorage(sessionStorageKey);
+}
+
+/** Usuwa legacy wartości (np. id piksela) z sessionStorage czatu. */
+export function scrubInvalidChatSessionStorage(sessionStorageKey = 'epir-assistant-session'): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const stored = sessionStorage.getItem(sessionStorageKey)?.trim() ?? '';
+    if (stored && !isValidChatSessionStorageValue(stored)) {
+      sessionStorage.removeItem(sessionStorageKey);
+    }
+  } catch {
+    /* storage niedostępny */
+  }
+}
+
+function mintChatSessionStorageId(sessionStorageKey: string): ResolvedChatSession {
+  const minted = `${CHAT_SESSION_STORAGE_PREFIX}${crypto.randomUUID()}`;
+  try {
+    sessionStorage.setItem(sessionStorageKey, minted);
+  } catch {
+    /* nadal zwróć mint */
+  }
+  return {sessionId: minted, sessionIdSource: 'session_storage'};
+}
+
+function readOrMintChatSessionStorage(sessionStorageKey: string): ResolvedChatSession {
+  scrubInvalidChatSessionStorage(sessionStorageKey);
+  try {
+    const existing = sessionStorage.getItem(sessionStorageKey)?.trim();
+    if (existing && isValidChatSessionStorageValue(existing)) {
+      return {sessionId: existing, sessionIdSource: 'session_storage'};
+    }
+  } catch {
+    /* mint poniżej */
+  }
+  try {
+    return mintChatSessionStorageId(sessionStorageKey);
+  } catch {
+    return {sessionId: null, sessionIdSource: null};
+  }
+}
+
 /**
- * Echo `session_id` z workera nie zastępuje cookie.
- * Bez cookie: zapisuje echo tylko do pustego klucza (nie migruje już rozjechanej sesji).
+ * `session_id` czatu = wyłącznie `sess_*` w sessionStorage.
+ * Link do piksela: web pixel czyta ten klucz i wysyła `chat_session_linked` z `event.clientId`.
+ */
+export function resolveEffectiveChatSessionWithMeta(
+  sessionStorageKey = 'epir-assistant-session',
+): ResolvedChatSession {
+  if (typeof window === 'undefined') {
+    return {sessionId: null, sessionIdSource: null};
+  }
+  return readOrMintChatSessionStorage(sessionStorageKey);
+}
+
+export function resolveEffectiveChatSessionId(
+  sessionStorageKey = 'epir-assistant-session',
+): string | null {
+  return resolveEffectiveChatSessionWithMeta(sessionStorageKey).sessionId;
+}
+
+/**
+ * Echo `session_id` z workera — zapis tylko do pustego klucza (`sess_*`).
  */
 export function persistChatSessionIdFromWorker(
   workerSessionId: string | null | undefined,
@@ -97,13 +210,92 @@ export function persistChatSessionIdFromWorker(
 ): void {
   if (typeof window === 'undefined') return;
   const echoed = typeof workerSessionId === 'string' ? workerSessionId.trim() : '';
-  if (!echoed) return;
-  if (readBrowserAnalyticsSessionId()) return;
+  if (!echoed || !isValidChatSessionStorageValue(echoed)) return;
+
   try {
+    scrubInvalidChatSessionStorage(sessionStorageKey);
     const existing = sessionStorage.getItem(sessionStorageKey)?.trim() ?? '';
     if (existing && existing !== echoed) return;
     if (!existing) sessionStorage.setItem(sessionStorageKey, echoed);
   } catch {
     /* ignore */
   }
+}
+
+/** Ten sam wzorzec ścieżki co historia czatu (GE App Proxy + Hydrogen `/api/chat`). */
+export function resolveChatSessionPrivacyApiUrl(chatApiUrl: string): string | null {
+  if (!chatApiUrl?.trim()) return null;
+
+  const rewritePath = (pathname: string): string | null => {
+    if (pathname.endsWith('/api/chat')) {
+      return pathname.slice(0, -'/api/chat'.length) + '/api/chat-session-privacy';
+    }
+    if (pathname.endsWith('/chat')) {
+      return pathname.slice(0, -'/chat'.length) + '/session-privacy';
+    }
+    return null;
+  };
+
+  try {
+    const base =
+      typeof window !== 'undefined' ? window.location.origin : 'https://epir.invalid';
+    const url = new URL(chatApiUrl, base);
+    const nextPath = rewritePath(url.pathname);
+    if (!nextPath) return null;
+    url.pathname = nextPath;
+    return typeof window !== 'undefined' && url.origin === window.location.origin
+      ? `${url.pathname}${url.search}`
+      : url.toString();
+  } catch {
+    if (chatApiUrl.endsWith('/api/chat')) {
+      return chatApiUrl.replace(/\/api\/chat$/, '/api/chat-session-privacy');
+    }
+    if (chatApiUrl.endsWith('/chat')) {
+      return chatApiUrl.replace(/\/chat$/, '/session-privacy');
+    }
+    return null;
+  }
+}
+
+/** App Proxy lub Hydrogen BFF — SessionDO + D1 przez worker `/session-privacy`. */
+export async function postChatSessionPrivacyUpdate(
+  chatApiUrl: string,
+  body: Record<string, unknown>,
+): Promise<void> {
+  const url = resolveChatSessionPrivacyApiUrl(chatApiUrl);
+  if (!url) return;
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      credentials: 'include',
+      body: JSON.stringify(body),
+    });
+  } catch {
+    /* sieć / brak route — kolejna tura czatu nadal niesie analytics_consent */
+  }
+}
+
+/** Per-document — stuby testowe podmieniają `document`, więc flaga boolean blokowałaby re-install. */
+let customerPrivacyListenerDoc: Document | null = null;
+
+/**
+ * Cofnięcie zgody analitycznej w trakcie sesji → `analytics_consent: false` do workera.
+ */
+export function installShopifyCustomerPrivacyChatListeners(
+  chatApiUrl: string,
+  sessionStorageKey = 'epir-assistant-session',
+): void {
+  if (typeof document === 'undefined' || customerPrivacyListenerDoc === document) return;
+  customerPrivacyListenerDoc = document;
+
+  document.addEventListener(
+    'visitorConsentCollected',
+    (ev) => {
+      const detail = (ev as CustomEvent<{analyticsAllowed?: boolean}>).detail;
+      if (!detail || detail.analyticsAllowed !== false) return;
+      postChatSessionPrivacyRevoke(chatApiUrl, sessionStorageKey);
+    },
+    false,
+  );
 }
