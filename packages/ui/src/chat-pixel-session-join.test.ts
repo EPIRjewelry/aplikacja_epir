@@ -64,9 +64,16 @@ function memoryBag(initial: Record<string, string> = {}) {
 
 function installBrowser(cookie: string, stored: Record<string, string> = {}) {
   const memory = memoryBag(stored);
+  let mintSeq = 0;
   vi.stubGlobal('window', {});
   vi.stubGlobal('document', { cookie });
   vi.stubGlobal('sessionStorage', memory.storage);
+  vi.stubGlobal('crypto', {
+    randomUUID: () => {
+      mintSeq += 1;
+      return `00000000-0000-4000-8000-${String(mintSeq).padStart(12, '0')}`;
+    },
+  });
   return memory.bag;
 }
 
@@ -256,5 +263,40 @@ describe('chat session_id joins pixel session_id on _shopify_y', () => {
     expect(customPixelSessionId).toBe(SHARED);
     expect(extensionId).toBe(SHARED);
     expect(hydrogenSessionId).toBe(extensionId);
+  });
+
+  it('mints sess_uuid into sessionStorage when no cookie and empty storage (Hydrogen + Liquid)', () => {
+    const stored = installBrowser('');
+    const hydrogen1 = resolveEffectiveChatSessionId();
+    const hydrogen2 = resolveEffectiveChatSessionId();
+    expect(hydrogen1).toMatch(/^sess_[0-9a-f-]{36}$/i);
+    expect(hydrogen2).toBe(hydrogen1);
+    expect(stored[SESSION_KEY]).toBe(hydrogen1);
+    expect(document.cookie).not.toContain(hydrogen1!);
+
+    const liquid = loadLiquidRuntime('');
+    const resolveLiquid = liquid.sandbox.resolveEffectiveAssistantSessionId as (
+      key?: string,
+    ) => string | null;
+    const liquid1 = resolveLiquid(SESSION_KEY);
+    const liquid2 = resolveLiquid(SESSION_KEY);
+    expect(liquid1).toMatch(/^sess_/);
+    expect(liquid2).toBe(liquid1);
+    expect(liquid.bag[SESSION_KEY]).toBe(liquid1);
+    expect(liquid.minted.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('reuses existing sessionStorage without minting when no cookie', () => {
+    const existing = 'sess_already-stored-id-0001';
+    const stored = installBrowser('', {[SESSION_KEY]: existing});
+    expect(resolveEffectiveChatSessionId()).toBe(existing);
+    expect(stored[SESSION_KEY]).toBe(existing);
+
+    const liquid = loadLiquidRuntime('', {[SESSION_KEY]: existing});
+    const resolveLiquid = liquid.sandbox.resolveEffectiveAssistantSessionId as (
+      key?: string,
+    ) => string | null;
+    expect(resolveLiquid(SESSION_KEY)).toBe(existing);
+    expect(liquid.minted).toEqual([]);
   });
 });

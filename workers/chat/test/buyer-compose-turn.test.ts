@@ -191,6 +191,20 @@ describe('buyer compose turn — tools in system prompt', () => {
     expect(names).not.toContain('get_cart');
   });
 
+  it('with minted session_id ucp_cart stays available (E1 regression GE/GK/GZ)', () => {
+    const mintedId = 'sess_00000000-0000-4000-8000-000000000001';
+    const filtered = filterToolsForSession(
+      ['ucp_cart', 'get_size_table', 'search_shop_policies_and_faqs'],
+      mintedId,
+    );
+    expect(filtered).toContain('ucp_cart');
+    const defs = buildBuyerToolDefinitions(filtered);
+    const names = defs.map((d) => d.function.name);
+    expect(names).toContain('create_cart');
+    expect(names).toContain('get_cart');
+    expect(names).toContain('update_cart');
+  });
+
   it('composeBuyerAssistantReply system message follows listAvailableBuyerTools', async () => {
     vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([]);
     vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);

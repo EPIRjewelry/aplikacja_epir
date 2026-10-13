@@ -48,9 +48,10 @@ export function readBrowserAnalyticsSessionId(): string | null {
 
 /**
  * Id sesji czatu wysyłane do workera.
- * Gdy cookie istnieje, wygrywa z `epir-assistant-session` i z id zwróconym przez worker.
- * Nowa sesja (pusta sessionStorage) zapisuje wartość cookie.
- * Już zapisany, inny identyfikator nie jest nadpisywany.
+ * 1. Cookie (`_epir_session_id` / `_shopify_y`) — join z pikselem, jak dziś.
+ * 2. Istniejący klucz sessionStorage.
+ * 3. Brak obu → `sess_${crypto.randomUUID()}`, zapis TYLKO do sessionStorage (nie cookie).
+ * Wymaga nowoczesnej przeglądarki z `window.crypto.randomUUID()`; fallback poza zakresem PR E1.
  */
 export function resolveEffectiveChatSessionId(
   sessionStorageKey = 'epir-assistant-session',
@@ -68,7 +69,19 @@ export function resolveEffectiveChatSessionId(
   }
   try {
     const existing = sessionStorage.getItem(sessionStorageKey)?.trim();
-    return existing || null;
+    if (existing) return existing;
+  } catch {
+    /* storage niedostępny — mint poniżej tylko jeśli crypto jest */
+  }
+  // Mint lokalny: bez cookie i bez sessionStorage — żeby worker dostał session_id (ucp_cart).
+  try {
+    const minted = `sess_${crypto.randomUUID()}`;
+    try {
+      sessionStorage.setItem(sessionStorageKey, minted);
+    } catch {
+      /* nadal zwróć mint, nawet gdy zapis storage się nie udał */
+    }
+    return minted;
   } catch {
     return null;
   }
