@@ -1,13 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  acceptOrReplaceBuyerSessionId,
   handleBuyerTurn,
   BUYER_CLIENT_ERROR_MESSAGE,
   BUYER_UNAVAILABLE_JSON,
 } from '../src/buyer/handle-buyer-turn';
 import * as channelSwitch from '../src/buyer/channel-switch';
 import * as compose from '../src/buyer/compose-buyer-turn';
-import { extractLastUserMessage } from '../src/buyer/compose-buyer-turn';
+import {
+  extractLastUserMessage,
+  filterToolsForSession,
+} from '../src/buyer/compose-buyer-turn';
+import type { BuyerToolId } from '../src/buyer/tool-readiness';
 
 const noopCtx = { waitUntil() {} } as unknown as ExecutionContext;
 
@@ -87,20 +92,25 @@ describe('handleBuyerTurn', () => {
     expect(json.session_id).toBe('s1');
   });
 
-  it('parts-only body returns 200', async () => {
+  it('parts-only body returns 200 and always echoes session_id', async () => {
     vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('on');
     vi.spyOn(channelSwitch, 'channelIdFromBrandLock').mockReturnValue('epir-online-store');
-    vi.spyOn(compose, 'composeBuyerAssistantReply').mockResolvedValue('OK');
+    const composeSpy = vi
+      .spyOn(compose, 'composeBuyerAssistantReply')
+      .mockResolvedValue('OK');
 
     const env = {} as import('../src/config/bindings').Env;
     const body = { parts: [{ type: 'text', text: 'czesc' }] };
 
     const res = await handleBuyerTurn(postReq(body), env, buyerBrandLock(), body);
     expect(res.status).toBe(200);
-    expect((await res.json()).reply).toBe('OK');
+    const json = (await res.json()) as { reply?: string; session_id?: string };
+    expect(json.reply).toBe('OK');
+    expect(json.session_id).toMatch(/^sess_[0-9a-f-]{36}$/i);
+    expect(composeSpy.mock.calls[0]?.[4]?.sessionId).toBe(json.session_id);
   });
 
-  it('legacy messages[] returns 200', async () => {
+  it('legacy messages[] returns 200 with minted session_id when body omits it', async () => {
     vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('internal');
     vi.spyOn(channelSwitch, 'channelIdFromBrandLock').mockReturnValue('epir-online-store');
     vi.spyOn(compose, 'composeBuyerAssistantReply').mockResolvedValue('Odpowiedź testowa');
@@ -109,10 +119,60 @@ describe('handleBuyerTurn', () => {
     const body = { messages: [{ role: 'user', content: 'Szukam pierścionka' }] };
 
     const res = await handleBuyerTurn(postReq(body), env, buyerBrandLock(), body);
-    const json = await res.json();
+    const json = (await res.json()) as { type?: string; reply?: string; session_id?: string };
     expect(json.type).toBe('message');
     expect(json.reply).toBe('Odpowiedź testowa');
+    expect(json.session_id).toMatch(/^sess_/);
   });
+
+  it('rejects invalid session_id and mints sess_uuid without logging raw value', async () => {
+    vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('on');
+    vi.spyOn(channelSwitch, 'channelIdFromBrandLock').mockReturnValue('epir-online-store');
+    const composeSpy = vi
+      .spyOn(compose, 'composeBuyerAssistantReply')
+      .mockResolvedValue('OK');
+    const logSpy = vi.spyOn(console, 'log');
+
+    const env = {} as import('../src/config/bindings').Env;
+    const evil = '; DROP TABLE sessions; --';
+    const body = { message: 'czesc', session_id: evil };
+
+    const res = await handleBuyerTurn(postReq(body), env, buyerBrandLock(), body);
+    const json = (await res.json()) as { session_id?: string };
+    expect(res.status).toBe(200);
+    expect(json.session_id).toMatch(/^sess_[0-9a-f-]{36}$/i);
+    expect(json.session_id).not.toBe(evil);
+    expect(composeSpy.mock.calls[0]?.[4]?.sessionId).toBe(json.session_id);
+
+    const logged = logSpy.mock.calls.map((c) => c.map(String).join(' ')).join('\n');
+    expect(logged).not.toContain(evil);
+
+    const longId = 'x'.repeat(500);
+    const bodyLong = { message: 'czesc', session_id: longId };
+    const res2 = await handleBuyerTurn(postReq(bodyLong), env, buyerBrandLock(), bodyLong);
+    const json2 = (await res2.json()) as { session_id?: string };
+    expect(json2.session_id).toMatch(/^sess_/);
+    expect(json2.session_id).not.toBe(longId);
+    const logged2 = logSpy.mock.calls.map((c) => c.map(String).join(' ')).join('\n');
+    expect(logged2).not.toContain(longId);
+  });
+
+  it('acceptOrReplaceBuyerSessionId keeps valid ids and replaces bad ones', () => {
+    expect(acceptOrReplaceBuyerSessionId('s1')).toBe('s1');
+    expect(acceptOrReplaceBuyerSessionId('sess_abc-123')).toBe('sess_abc-123');
+    expect(acceptOrReplaceBuyerSessionId('; DROP')).toMatch(/^sess_/);
+    expect(acceptOrReplaceBuyerSessionId('x'.repeat(500))).toMatch(/^sess_/);
+    expect(acceptOrReplaceBuyerSessionId(undefined)).toMatch(/^sess_/);
+  });
+
+  it('filterToolsForSession keeps ucp_cart when minted session_id is present', () => {
+    const tools: BuyerToolId[] = ['ucp_cart', 'get_size_table'];
+    expect(filterToolsForSession(tools, undefined)).not.toContain('ucp_cart');
+    expect(
+      filterToolsForSession(tools, 'sess_00000000-0000-4000-8000-000000000001'),
+    ).toContain('ucp_cart');
+  });
+
 
   it('empty user text returns 400 with customer error field', async () => {
     vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('on');

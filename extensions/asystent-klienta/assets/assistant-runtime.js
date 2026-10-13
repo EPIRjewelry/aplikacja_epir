@@ -41,7 +41,8 @@ function resolveAnalyticsSessionIdFromCookies() {
 /**
  * Join czatu z pikselem: cookie wygrywa z `epir-assistant-session`.
  * Nowa sesja (pusta sessionStorage) bierze cookie.
- * Już zapisany, inny identyfikator nie jest nadpisywany.
+ * Brak cookie i storage → sess_ + crypto.randomUUID(), zapis TYLKO do sessionStorage (nie cookie).
+ * Wymaga nowoczesnej przeglądarki z crypto.randomUUID(); fallback poza zakresem PR E1.
  */
 function resolveEffectiveAssistantSessionId(sessionIdKey) {
   var key = sessionIdKey || EPIR_ASSISTANT_SESSION_KEY;
@@ -58,7 +59,14 @@ function resolveEffectiveAssistantSessionId(sessionIdKey) {
     var stored = sessionStorage.getItem(key);
     if (stored && String(stored).trim()) return String(stored).trim();
   } catch (e3) {}
-  return null;
+  try {
+    if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') return null;
+    var minted = 'sess_' + crypto.randomUUID();
+    try { sessionStorage.setItem(key, minted); } catch (e4) {}
+    return minted;
+  } catch (e5) {
+    return null;
+  }
 }
 
 /** Echo `session_id` z workera nie zastępuje cookie i nie migruje rozjechanej sesji. */

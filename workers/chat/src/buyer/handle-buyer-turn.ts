@@ -40,6 +40,25 @@ export const BUYER_UNAVAILABLE_JSON = {
 export const BUYER_CLIENT_ERROR_MESSAGE =
   'Przepraszam, nie udało się wysłać wiadomości. Proszę spróbować ponownie.';
 
+/** Accept-or-replace: 1–128 znaków z [A-Za-z0-9_.:-]; inaczej nowe sess_<uuid>. */
+const BUYER_SESSION_ID_RE = /^[A-Za-z0-9_.:-]{1,128}$/;
+
+function mintBuyerSessionId(): string {
+  return `sess_${crypto.randomUUID()}`;
+}
+
+/**
+ * Przyjmuje session_id z body tylko gdy spełnia charset/długość.
+ * Odrzuconej wartości nie logować w surowej postaci.
+ */
+export function acceptOrReplaceBuyerSessionId(raw: unknown): string {
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (BUYER_SESSION_ID_RE.test(trimmed)) return trimmed;
+  }
+  return mintBuyerSessionId();
+}
+
 /**
  * Kupujący: fail-closed gdy `gemma:channel:*` = off (domyślnie).
  * Tura z modelem tylko przy `internal` lub `on` (KV ustawia operator).
@@ -96,7 +115,8 @@ export async function handleBuyerTurn(
       },
     );
   }
-  const sessionId = extractSessionIdFromBody(body);
+  // Accept-or-replace: zawsze mamy session_id w turze (ucp_cart / SessionDO).
+  const sessionId = acceptOrReplaceBuyerSessionId(extractSessionIdFromBody(body));
   const productHandle = extractProductHandleFromBody(body);
 
   try {
@@ -111,8 +131,8 @@ export async function handleBuyerTurn(
       reply,
       channel_id: channelId,
       mode,
+      session_id: sessionId,
     };
-    if (sessionId) okPayload.session_id = sessionId;
     return new Response(JSON.stringify(okPayload), {
       status: 200,
       headers: buyerResponseHeaders(env, request),
