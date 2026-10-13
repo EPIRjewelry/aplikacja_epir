@@ -72,9 +72,21 @@ function readChatSessionIdFromEpirCookie(consentAllowed) {
   return epir;
 }
 
+var EPIR_CHAT_SESSION_ID_RE = /^[A-Za-z0-9_.:-]{1,128}$/;
+
+function isRememberableAssistantChatSessionId(id, sessionIdSource) {
+  if (!id || !EPIR_CHAT_SESSION_ID_RE.test(id)) return false;
+  if (sessionIdSource === 'cookie') {
+    var shopifyY = readNamedDocumentCookie(EPIR_SHOPIFY_Y_COOKIE);
+    if (isEpirSessionCookiePixelCopy(id, shopifyY)) return false;
+    return true;
+  }
+  return isValidChatSessionStorageValue(id);
+}
+
 function rememberAssistantChatSessionForPrivacy(sessionId, sessionIdSource) {
   var id = sessionId ? String(sessionId).trim() : '';
-  if (!id || !isValidChatSessionStorageValue(id)) return;
+  if (!isRememberableAssistantChatSessionId(id, sessionIdSource)) return;
   try {
     sessionStorage.setItem(
       EPIR_LAST_CHAT_SESSION_PRIVACY_KEY,

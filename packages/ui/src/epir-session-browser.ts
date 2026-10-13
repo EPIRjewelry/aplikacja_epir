@@ -105,6 +105,23 @@ function isValidChatSessionStorageValue(value: string): boolean {
   return value.startsWith(CHAT_SESSION_STORAGE_PREFIX);
 }
 
+/** Ten sam charset co buyer `acceptOrReplaceBuyerSessionId`. */
+const CHAT_SESSION_ID_RE = /^[A-Za-z0-9_.:-]{1,128}$/;
+
+function isRememberableChatSessionId(
+  id: string,
+  sessionIdSource?: ChatSessionIdSource | null,
+): boolean {
+  if (!CHAT_SESSION_ID_RE.test(id)) return false;
+  if (sessionIdSource === 'cookie') {
+    // Cookie `_epir_session_id` tylko gdy ≠ kopii `_shopify_y` (pixel clientId).
+    const shopifyY = readShopifyYFromDocumentCookie();
+    if (isEpirSessionCookiePixelCopy(id, shopifyY)) return false;
+    return true;
+  }
+  return isValidChatSessionStorageValue(id);
+}
+
 const LAST_CHAT_SESSION_FOR_PRIVACY_KEY = 'epir-last-chat-session-for-privacy';
 
 export type RememberedChatSessionForPrivacy = {
@@ -119,7 +136,7 @@ export function rememberChatSessionIdForPrivacy(
 ): void {
   if (typeof window === 'undefined') return;
   const id = sessionId?.trim();
-  if (!id || !isValidChatSessionStorageValue(id)) return;
+  if (!id || !isRememberableChatSessionId(id, sessionIdSource)) return;
   try {
     sessionStorage.setItem(
       LAST_CHAT_SESSION_FOR_PRIVACY_KEY,
@@ -319,7 +336,8 @@ export async function postChatSessionPrivacyUpdate(
   }
 }
 
-let customerPrivacyListenerInstalled = false;
+/** Per-document — stuby testowe podmieniają `document`, więc flaga boolean blokowałaby re-install. */
+let customerPrivacyListenerDoc: Document | null = null;
 
 /**
  * Cofnięcie zgody analitycznej w trakcie sesji → `analytics_consent: false` do workera.
@@ -328,8 +346,8 @@ export function installShopifyCustomerPrivacyChatListeners(
   chatApiUrl: string,
   sessionStorageKey = 'epir-assistant-session',
 ): void {
-  if (typeof document === 'undefined' || customerPrivacyListenerInstalled) return;
-  customerPrivacyListenerInstalled = true;
+  if (typeof document === 'undefined' || customerPrivacyListenerDoc === document) return;
+  customerPrivacyListenerDoc = document;
 
   document.addEventListener(
     'visitorConsentCollected',

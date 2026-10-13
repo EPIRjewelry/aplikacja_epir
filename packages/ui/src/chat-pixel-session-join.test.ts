@@ -314,11 +314,9 @@ describe('chat session_id vs pixel (Customer Privacy)', () => {
     expect(stored[SESSION_KEY]).toBe(existing);
   });
 
-  it('privacy revoke uses remembered chat session_id (not reminted after scrub)', async () => {
-    const cookie = `_shopify_y=${SHARED}`;
-    const existing = 'sess_privacy-revoke-0001';
+  function installConsentDocument(cookie: string, stored: Record<string, string> = {}) {
     const consentHandlers = new Map<string, Set<(ev: Event) => void>>();
-    const memory = memoryBag({[SESSION_KEY]: existing});
+    const memory = memoryBag(stored);
     vi.stubGlobal('window', {
       Shopify: {customerPrivacy: {analyticsProcessingAllowed: () => true}},
     });
@@ -337,30 +335,66 @@ describe('chat session_id vs pixel (Customer Privacy)', () => {
       },
     });
     vi.stubGlobal('sessionStorage', memory.storage);
-    rememberChatSessionIdForPrivacy(existing, 'session_storage');
-    installShopifyCustomerPrivacyChatListeners('/apps/assistant/chat', SESSION_KEY);
+    return memory.bag;
+  }
 
+  async function dispatchAnalyticsRevoke(): Promise<{
+    session_id: string;
+    analytics_consent: boolean;
+    analytics_client_id: null;
+    session_id_source?: string;
+  }> {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockClear();
-
     document.dispatchEvent(
       new CustomEvent('visitorConsentCollected', {detail: {analyticsAllowed: false}}),
     );
     await Promise.resolve();
-
-    const privacyCall = fetchMock.mock.calls.find((call) => {
-      const url = String(call[0]);
-      return url.includes('session-privacy');
-    });
+    const privacyCall = fetchMock.mock.calls.find((call) =>
+      String(call[0]).includes('session-privacy'),
+    );
     expect(privacyCall).toBeDefined();
-    const body = JSON.parse(String((privacyCall![1] as RequestInit).body)) as {
-      session_id: string;
-      analytics_consent: boolean;
-      analytics_client_id: null;
-    };
+    return JSON.parse(String((privacyCall![1] as RequestInit).body));
+  }
+
+  it('privacy revoke uses remembered chat session_id (not reminted after scrub)', async () => {
+    const cookie = `_shopify_y=${SHARED}`;
+    const existing = 'sess_privacy-revoke-0001';
+    installConsentDocument(cookie, {[SESSION_KEY]: existing});
+    rememberChatSessionIdForPrivacy(existing, 'session_storage');
+    installShopifyCustomerPrivacyChatListeners('/apps/assistant/chat', SESSION_KEY);
+
+    const body = await dispatchAnalyticsRevoke();
     expect(body.session_id).toBe(existing);
     expect(body.analytics_consent).toBe(false);
     expect(body.analytics_client_id).toBeNull();
     expect(readLastChatSessionIdForPrivacy()?.sessionId).toBe(existing);
+  });
+
+  it('privacy revoke remembers distinct _epir_session_id (cookie source)', async () => {
+    const cookie = `_epir_session_id=${DISTINCT_EPIR}; _shopify_y=${SHARED}`;
+    installConsentDocument(cookie, {});
+    const meta = resolveEffectiveChatSessionWithMeta(SESSION_KEY);
+    expect(meta.sessionId).toBe(DISTINCT_EPIR);
+    expect(meta.sessionIdSource).toBe('cookie');
+    rememberChatSessionIdForPrivacy(meta.sessionId, meta.sessionIdSource);
+    expect(readLastChatSessionIdForPrivacy()).toEqual({
+      sessionId: DISTINCT_EPIR,
+      sessionIdSource: 'cookie',
+    });
+    installShopifyCustomerPrivacyChatListeners('/apps/assistant/chat', SESSION_KEY);
+
+    const body = await dispatchAnalyticsRevoke();
+    expect(body.session_id).toBe(DISTINCT_EPIR);
+    expect(body.analytics_consent).toBe(false);
+    expect(body.analytics_client_id).toBeNull();
+    expect(body.session_id_source).toBe('cookie');
+  });
+
+  it('does not remember cookie session_id when it equals _shopify_y', () => {
+    const cookie = `_epir_session_id=${SHARED}; _shopify_y=${SHARED}`;
+    installConsentDocument(cookie, {});
+    rememberChatSessionIdForPrivacy(SHARED, 'cookie');
+    expect(readLastChatSessionIdForPrivacy()).toBeNull();
   });
 });
