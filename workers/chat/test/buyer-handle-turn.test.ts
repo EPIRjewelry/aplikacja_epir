@@ -13,6 +13,14 @@ import {
   filterToolsForSession,
 } from '../src/buyer/compose-buyer-turn';
 import type { BuyerToolId } from '../src/buyer/tool-readiness';
+import { SessionDO } from '../src/index';
+import type { Env } from '../src/config/bindings';
+import { makeDurableStateStub } from './helpers/session-do-sql-stub';
+import { ensureBuyerSessionContext } from '../src/buyer/session-context';
+import {
+  readSessionCartId,
+  writeSessionCartId,
+} from '../src/buyer/session-cart';
 
 const noopCtx = { waitUntil() {} } as unknown as ExecutionContext;
 
@@ -34,6 +42,50 @@ function postReq(body: Record<string, unknown>) {
     body: JSON.stringify(body),
   });
 }
+
+/** Stub SESSION_DO — ten sam wzorzec co buyer-session-context.test.ts. */
+function makeSessionNamespace() {
+  const calls: Array<{ path: string; body: unknown; doId: string }> = [];
+  const sessions = new Map<string, { instance: SessionDO }>();
+
+  const namespace = {
+    idFromName(name: string) {
+      return name;
+    },
+    get(id: string) {
+      const key = String(id);
+      let session = sessions.get(key);
+      if (!session) {
+        const durableState = makeDurableStateStub(key);
+        session = { instance: new SessionDO(durableState.state, {} as never) };
+        sessions.set(key, session);
+      }
+      return {
+        fetch(input: RequestInfo | URL, init?: RequestInit) {
+          const request =
+            input instanceof Request
+              ? input
+              : new Request(new URL(String(input), 'https://session').toString(), init);
+          const path = new URL(request.url).pathname.replace(/^\//, '');
+          if (request.method === 'POST') {
+            return request
+              .clone()
+              .json()
+              .then((body) => {
+                calls.push({ path, body, doId: key });
+                return session!.instance.fetch(request);
+              });
+          }
+          return session!.instance.fetch(request);
+        },
+      } as DurableObjectStub;
+    },
+  } as unknown as DurableObjectNamespace;
+
+  return { namespace, calls };
+}
+
+const CART_GID = 'gid://shopify/Cart/E1-TURN';
 
 describe('extractLastUserMessage', () => {
   it('prefers message string over parts and messages', () => {
@@ -125,36 +177,160 @@ describe('handleBuyerTurn', () => {
     expect(json.session_id).toMatch(/^sess_/);
   });
 
-  it('rejects invalid session_id and mints sess_uuid without logging raw value', async () => {
+  it('tura 1 bez session_id → mint; tura 2 z tym id odczytuje koszyk z SessionDO', async () => {
     vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('on');
     vi.spyOn(channelSwitch, 'channelIdFromBrandLock').mockReturnValue('epir-online-store');
-    const composeSpy = vi
-      .spyOn(compose, 'composeBuyerAssistantReply')
-      .mockResolvedValue('OK');
+
+    const { namespace, calls } = makeSessionNamespace();
+    const env = { SESSION_DO: namespace } as Env;
+
+    vi.spyOn(compose, 'composeBuyerAssistantReply').mockImplementation(
+      async (_env, channelId, userText, _req, opts) => {
+        const sid = opts?.sessionId;
+        await ensureBuyerSessionContext(_env, {
+          sessionId: sid,
+          channelId,
+          storefrontId: 'online-store',
+          bodyChannel: 'online-store',
+          userText,
+        });
+        if (userText.includes('SAVE_CART') && sid) {
+          await writeSessionCartId(_env, sid, CART_GID);
+          return 'saved';
+        }
+        if (userText.includes('READ_CART') && sid) {
+          const cart = await readSessionCartId(_env, sid);
+          return `cart:${cart ?? 'none'}`;
+        }
+        return 'ok';
+      },
+    );
+
+    const body1 = { message: 'SAVE_CART please' };
+    const res1 = await handleBuyerTurn(postReq(body1), env, buyerBrandLock(), body1);
+    const json1 = (await res1.json()) as { session_id?: string; reply?: string };
+    expect(res1.status).toBe(200);
+    expect(json1.session_id).toMatch(/^sess_[0-9a-f-]{36}$/i);
+    expect(json1.reply).toBe('saved');
+
+    const minted = json1.session_id!;
+    const setSid1 = calls.filter(
+      (c) => c.path === 'set-session-id' && c.doId === minted,
+    );
+    expect(setSid1.length).toBeGreaterThanOrEqual(1);
+    expect(
+      calls.some(
+        (c) =>
+          c.path === 'set-cart-id' &&
+          c.doId === minted &&
+          (c.body as { cart_id?: string })?.cart_id === CART_GID,
+      ),
+    ).toBe(true);
+
+    const callsBeforeTurn2 = calls.length;
+    const body2 = { message: 'READ_CART now', session_id: minted };
+    const res2 = await handleBuyerTurn(postReq(body2), env, buyerBrandLock(), body2);
+    const json2 = (await res2.json()) as { session_id?: string; reply?: string };
+    expect(res2.status).toBe(200);
+    expect(json2.session_id).toBe(minted);
+    expect(json2.reply).toBe(`cart:${CART_GID}`);
+
+    const turn2Calls = calls.slice(callsBeforeTurn2);
+    expect(
+      turn2Calls.some((c) => c.path === 'set-session-id' && c.doId === minted),
+    ).toBe(true);
+    expect(turn2Calls.every((c) => c.doId === minted || c.path === 'cart-id')).toBe(
+      true,
+    );
+    // Brak nowego UUID — wszystkie POST w turze 2 na tym samym DO id.
+    const turn2DoIds = [...new Set(turn2Calls.map((c) => c.doId))];
+    expect(turn2DoIds).toEqual([minted]);
+  });
+
+  it('rejects invalid session_id: mint trafia do SessionDO; surowa wartość poza logami', async () => {
+    vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('on');
+    vi.spyOn(channelSwitch, 'channelIdFromBrandLock').mockReturnValue('epir-online-store');
+
+    const { namespace, calls } = makeSessionNamespace();
+    const env = { SESSION_DO: namespace } as Env;
+
+    vi.spyOn(compose, 'composeBuyerAssistantReply').mockImplementation(
+      async (_env, channelId, userText, _req, opts) => {
+        const sid = opts?.sessionId;
+        await ensureBuyerSessionContext(_env, {
+          sessionId: sid,
+          channelId,
+          storefrontId: 'online-store',
+          bodyChannel: 'online-store',
+          userText,
+        });
+        if (sid) await writeSessionCartId(_env, sid, CART_GID);
+        return 'OK';
+      },
+    );
+
     const logSpy = vi.spyOn(console, 'log');
+    const warnSpy = vi.spyOn(console, 'warn');
+    const errorSpy = vi.spyOn(console, 'error');
 
-    const env = {} as import('../src/config/bindings').Env;
+    const dumpLogs = () =>
+      [...logSpy.mock.calls, ...warnSpy.mock.calls, ...errorSpy.mock.calls]
+        .map((c) => c.map(String).join(' '))
+        .join('\n');
+
     const evil = '; DROP TABLE sessions; --';
-    const body = { message: 'czesc', session_id: evil };
-
-    const res = await handleBuyerTurn(postReq(body), env, buyerBrandLock(), body);
-    const json = (await res.json()) as { session_id?: string };
-    expect(res.status).toBe(200);
-    expect(json.session_id).toMatch(/^sess_[0-9a-f-]{36}$/i);
-    expect(json.session_id).not.toBe(evil);
-    expect(composeSpy.mock.calls[0]?.[4]?.sessionId).toBe(json.session_id);
-
-    const logged = logSpy.mock.calls.map((c) => c.map(String).join(' ')).join('\n');
-    expect(logged).not.toContain(evil);
+    const bodyEvil = { message: 'czesc', session_id: evil };
+    const resEvil = await handleBuyerTurn(
+      postReq(bodyEvil),
+      env,
+      buyerBrandLock(),
+      bodyEvil,
+    );
+    const jsonEvil = (await resEvil.json()) as { session_id?: string };
+    expect(resEvil.status).toBe(200);
+    expect(jsonEvil.session_id).toMatch(/^sess_[0-9a-f-]{36}$/i);
+    expect(jsonEvil.session_id).not.toBe(evil);
+    const mintedEvil = jsonEvil.session_id!;
+    expect(
+      calls.some(
+        (c) =>
+          c.path === 'set-session-id' &&
+          c.doId === mintedEvil &&
+          (c.body as { session_id?: string })?.session_id === mintedEvil,
+      ),
+    ).toBe(true);
+    expect(
+      calls.some(
+        (c) =>
+          c.path === 'set-cart-id' &&
+          c.doId === mintedEvil &&
+          (c.body as { cart_id?: string })?.cart_id === CART_GID,
+      ),
+    ).toBe(true);
+    expect(calls.every((c) => c.doId !== evil && !JSON.stringify(c.body).includes(evil))).toBe(
+      true,
+    );
+    expect(dumpLogs()).not.toContain(evil);
 
     const longId = 'x'.repeat(500);
+    const callsBeforeLong = calls.length;
     const bodyLong = { message: 'czesc', session_id: longId };
-    const res2 = await handleBuyerTurn(postReq(bodyLong), env, buyerBrandLock(), bodyLong);
-    const json2 = (await res2.json()) as { session_id?: string };
-    expect(json2.session_id).toMatch(/^sess_/);
-    expect(json2.session_id).not.toBe(longId);
-    const logged2 = logSpy.mock.calls.map((c) => c.map(String).join(' ')).join('\n');
-    expect(logged2).not.toContain(longId);
+    const resLong = await handleBuyerTurn(
+      postReq(bodyLong),
+      env,
+      buyerBrandLock(),
+      bodyLong,
+    );
+    const jsonLong = (await resLong.json()) as { session_id?: string };
+    expect(jsonLong.session_id).toMatch(/^sess_/);
+    expect(jsonLong.session_id).not.toBe(longId);
+    const mintedLong = jsonLong.session_id!;
+    const longCalls = calls.slice(callsBeforeLong);
+    expect(
+      longCalls.some((c) => c.path === 'set-session-id' && c.doId === mintedLong),
+    ).toBe(true);
+    expect(longCalls.every((c) => c.doId === mintedLong)).toBe(true);
+    expect(dumpLogs()).not.toContain(longId);
   });
 
   it('acceptOrReplaceBuyerSessionId keeps valid ids and replaces bad ones', () => {
