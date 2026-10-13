@@ -9,7 +9,8 @@
     "tail": "wrangler tail",
     "test": "vitest run",
     "test:watch": "vitest",
-    "smoke:harmony": "tsx scripts/smoke-harmony-tool-call.ts"
+    "smoke:harmony": "tsx scripts/smoke-harmony-tool-call.ts",
+    "smoke:buyer-final-recovery": "vitest run test/buyer-final-tool-recovery-smoke.test.ts"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.10.5",

@@ -48,6 +48,21 @@ export class AiGatewayHttpError extends Error {
   }
 }
 
+/** SSE `event: error` z Groq — niesie komunikat API i opcjonalny failed_generation. */
+export class GroqStreamError extends Error {
+  readonly groqMessage: string;
+  readonly failedGeneration?: string;
+
+  constructor(groqMessage: string, failedGeneration?: string) {
+    const msg =
+      groqMessage.trim() || 'AI Gateway stream error event from Groq';
+    super(msg);
+    this.name = 'GroqStreamError';
+    this.groqMessage = groqMessage;
+    this.failedGeneration = failedGeneration;
+  }
+}
+
 export function parseRetryAfterSeconds(raw: string | null | undefined): number | null {
   const trimmed = raw?.trim();
   if (!trimmed) return null;
@@ -65,6 +80,30 @@ export type GroqToolCall = {
   name: string;
   arguments: string;
 };
+
+/** Parsuje `error.failed_generation` (name + arguments) z odpowiedzi Groq 400. */
+export function parseGroqFailedGenerationToolCall(
+  raw: string | undefined,
+): GroqToolCall | null {
+  if (!raw?.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw) as {
+      name?: string;
+      arguments?: string | Record<string, unknown>;
+    };
+    const name = typeof parsed.name === 'string' ? parsed.name.trim() : '';
+    if (!name) return null;
+    let args = '{}';
+    if (typeof parsed.arguments === 'string') {
+      args = parsed.arguments;
+    } else if (parsed.arguments && typeof parsed.arguments === 'object') {
+      args = JSON.stringify(parsed.arguments);
+    }
+    return { id: `recovered-${name}`, name, arguments: args };
+  } catch {
+    return null;
+  }
+}
 
 export type GroqToolCallDefinition = {
   type: 'function';
@@ -727,7 +766,18 @@ function createGroqStreamTransform(): TransformStream<string, GroqStreamEvent> {
       console.error('[GROQ-STREAM-ERROR]', joinedData);
       const parsedError = parseSseDataJson(joinedData);
       emitStreamErrorMetric(parsedError ?? joinedData);
-      throw new Error('AI Gateway stream error event from Groq');
+      let groqMessage = '';
+      let failedGeneration: string | undefined;
+      if (parsedError && typeof parsedError === 'object') {
+        const errObj = (parsedError as { error?: Record<string, unknown> }).error;
+        if (errObj && typeof errObj.message === 'string') {
+          groqMessage = errObj.message;
+        }
+        if (errObj && typeof errObj.failed_generation === 'string') {
+          failedGeneration = errObj.failed_generation;
+        }
+      }
+      throw new GroqStreamError(groqMessage, failedGeneration);
     }
 
     const parsed = parseSseDataJson(joinedData);

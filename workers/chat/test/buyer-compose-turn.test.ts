@@ -6,6 +6,7 @@ import {
   composeBuyerAssistantReply,
   factsContextBlock,
   filterToolsForSession,
+  FINAL_TOOL_FALLBACK_USER,
   scrubGidFromClientReply,
 } from '../src/buyer/compose-buyer-turn';
 import { buildBuyerToolDefinitions, filterModelWiredBuyerTools } from '../src/buyer/buyer-tools';
@@ -438,5 +439,137 @@ describe('buyer compose turn — tools in system prompt', () => {
     expect(warnSpy).toHaveBeenCalledWith(
       JSON.stringify({ tag: 'buyer.tool_loop_fallback', round: 'final' }),
     );
+  });
+
+  it('buyer_tool_loop_final tool_choice none + create_cart failed_generation executes cart without getGroqResponse', async () => {
+    const cartUrl = 'https://shop.example/cart/c/recovered';
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([
+      'ucp_cart',
+      'search_catalog',
+      'get_size_table',
+    ]);
+    vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
+    vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockResolvedValue([]);
+    vi.spyOn(sessionHistory, 'appendBuyerSessionMessage').mockResolvedValue();
+    const execSpy = vi.spyOn(executeBuyerToolMod, 'executeBuyerTool').mockImplementation(
+      async (input) => {
+        if (input.name === 'create_cart') {
+          return {
+            content: JSON.stringify({ continue_url: cartUrl }),
+            cartMutationSucceeded: true,
+            continueUrl: cartUrl,
+            sessionCartId: 'gid://shopify/Cart/recovered',
+          };
+        }
+        return { content: '{"products":[]}' };
+      },
+    );
+    vi.spyOn(aiClient, 'streamGroqEvents').mockImplementation(
+      async (_messages, _env, _tools, _sessionId, timingLabel) => {
+        if (timingLabel === 'buyer_tool_loop_final') {
+          throw new aiClient.GroqStreamError(
+            'Tool choice is none, but model called a tool',
+            JSON.stringify({
+              name: 'create_cart',
+              arguments: {
+                line_items: [
+                  {
+                    item: { id: SAMPLE_VARIANT_GID },
+                    quantity: 1,
+                    selected_options: [{ name: 'Rozmiar', value: '18' }],
+                  },
+                ],
+              },
+            }),
+          );
+        }
+        const round = String(timingLabel ?? '').replace('buyer_tool_loop_', '');
+        return toolCallOnlyStream('search_catalog', `call-${round}`, '{"query":"pierścionek"}');
+      },
+    );
+    const groqSpy = vi.spyOn(aiClient, 'getGroqResponse');
+
+    const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
+    const req = new Request('https://example.com/chat', { method: 'POST' });
+    const reply = await composeBuyerAssistantReply(
+      env,
+      'epir-online-store',
+      'dodaj rozmiar 18',
+      req,
+      { sessionId: 'sess-recover-cart' },
+    );
+
+    expect(groqSpy).not.toHaveBeenCalled();
+    expect(execSpy.mock.calls.some((c) => c[0].name === 'create_cart')).toBe(true);
+    expect(reply).toContain(cartUrl);
+  });
+
+  it('buyer_tool_loop_final failed_generation outside allowlist → Polish fallback without getGroqResponse', async () => {
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([
+      'search_catalog',
+      'get_size_table',
+    ]);
+    vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
+    vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockResolvedValue([]);
+    vi.spyOn(sessionHistory, 'appendBuyerSessionMessage').mockResolvedValue();
+    vi.spyOn(executeBuyerToolMod, 'executeBuyerTool').mockResolvedValue({
+      content: '{"ok":true}',
+    });
+    vi.spyOn(aiClient, 'streamGroqEvents').mockImplementation(
+      async (_messages, _env, _tools, _sessionId, timingLabel) => {
+        if (timingLabel === 'buyer_tool_loop_final') {
+          throw new aiClient.GroqStreamError(
+            'Tool choice is none, but model called a tool',
+            JSON.stringify({ name: 'unknown_admin_tool', arguments: {} }),
+          );
+        }
+        const round = String(timingLabel ?? '').replace('buyer_tool_loop_', '');
+        return toolCallOnlyStream('get_size_table', `call-${round}`);
+      },
+    );
+    const groqSpy = vi.spyOn(aiClient, 'getGroqResponse');
+
+    const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
+    const req = new Request('https://example.com/chat', { method: 'POST' });
+    const reply = await composeBuyerAssistantReply(env, 'epir-online-store', 'rozmiar', req, {
+      sessionId: 'sess-disallowed-tool',
+    });
+
+    expect(groqSpy).not.toHaveBeenCalled();
+    expect(reply).toBe(FINAL_TOOL_FALLBACK_USER);
+  });
+
+  it('buyer_tool_loop_final_fallback empty content → Polish static fallback', async () => {
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([
+      'get_size_table',
+      'search_shop_policies_and_faqs',
+    ]);
+    vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
+    vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockResolvedValue([]);
+    vi.spyOn(sessionHistory, 'appendBuyerSessionMessage').mockResolvedValue();
+    vi.spyOn(executeBuyerToolMod, 'executeBuyerTool').mockResolvedValue({
+      content: '{"ok":true}',
+    });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(aiClient, 'streamGroqEvents').mockImplementation(
+      async (_messages, _env, _tools, _sessionId, timingLabel) => {
+        if (timingLabel === 'buyer_tool_loop_final') {
+          throw new Error('AI Gateway stream error event from Groq');
+        }
+        const round = String(timingLabel ?? '').replace('buyer_tool_loop_', '');
+        return toolCallOnlyStream('get_size_table', `call-${round}`);
+      },
+    );
+    vi.spyOn(aiClient, 'getGroqResponse').mockRejectedValue(
+      new Error('AI Gateway returned empty content'),
+    );
+
+    const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
+    const req = new Request('https://example.com/chat', { method: 'POST' });
+    const reply = await composeBuyerAssistantReply(env, 'epir-online-store', 'rozmiar', req, {
+      sessionId: 'sess-empty-fallback',
+    });
+
+    expect(reply).toBe(FINAL_TOOL_FALLBACK_USER);
   });
 });

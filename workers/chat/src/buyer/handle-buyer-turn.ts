@@ -5,6 +5,7 @@ import {
   extractLastUserMessage,
   extractProductHandleFromBody,
   extractSessionIdFromBody,
+  FINAL_TOOL_FALLBACK_USER,
 } from './compose-buyer-turn';
 import {BuyerTurnOverloadError, BUYER_LLM_OVERLOAD_MESSAGE} from './buyer-llm-retry';
 import {
@@ -151,6 +152,22 @@ export async function handleBuyerTurn(
         JSON.stringify({
           type: 'message',
           reply: BUYER_LLM_OVERLOAD_MESSAGE,
+          channel_id: channelId,
+          mode,
+          session_id: sessionId,
+        }),
+        {
+          status: 200,
+          headers: buyerResponseHeaders(env, request),
+        },
+      );
+    }
+    const errMsg = e instanceof Error ? e.message : String(e);
+    if (/AI Gateway returned empty content/i.test(errMsg)) {
+      return new Response(
+        JSON.stringify({
+          type: 'message',
+          reply: FINAL_TOOL_FALLBACK_USER,
           channel_id: channelId,
           mode,
           session_id: sessionId,

@@ -1,5 +1,7 @@
 import {
   getGroqResponse,
+  GroqStreamError,
+  parseGroqFailedGenerationToolCall,
   streamGroqEvents,
   type GroqMessage,
   type GroqToolCall,
@@ -81,8 +83,15 @@ import {
 } from './tool-as-text';
 
 const MAX_TOOL_ROUNDS = 3;
-const FINAL_TOOL_FALLBACK_USER =
+export const FINAL_TOOL_FALLBACK_USER =
   'Nie udało się wykonać operacji, proszę spróbować ponownie.';
+
+const FINAL_RECOVERABLE_TOOL_NAMES = new Set([
+  'create_cart',
+  'update_cart',
+  'search_catalog',
+  'get_cart',
+]);
 
 function summarizeToolResultsForFallback(messages: GroqMessage[]): string {
   const parts: string[] = [];
@@ -181,6 +190,18 @@ function isForcedToolChoiceRejected(err: unknown): boolean {
       msg,
     )
   );
+}
+
+function isToolChoiceNoneButCalledTool(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /Tool choice is none, but model called a tool/i.test(msg);
+}
+
+function failedGenerationFromStreamError(err: unknown): string | undefined {
+  if (err instanceof GroqStreamError && err.failedGeneration) {
+    return err.failedGeneration;
+  }
+  return undefined;
 }
 
 function buyerIp(request: Request): string | undefined {
@@ -1068,11 +1089,42 @@ export async function composeBuyerAssistantReply(
     const { text: finalText } = await collectStreamRound(finalStream);
     return finishReply(finalText);
   } catch (finalErr) {
-    const finalMsg = finalErr instanceof Error ? finalErr.message : String(finalErr);
-    if (/Tool choice is none.*called a tool/i.test(finalMsg)) {
-      const deterministic = cartDeterministicReply(finalizeCtx);
-      if (deterministic) {
-        return finishReply(deterministic);
+    if (isToolChoiceNoneButCalledTool(finalErr)) {
+      const rawFg = failedGenerationFromStreamError(finalErr);
+      const recoveredCall = parseGroqFailedGenerationToolCall(rawFg);
+      if (recoveredCall && FINAL_RECOVERABLE_TOOL_NAMES.has(recoveredCall.name)) {
+        console.log(
+          JSON.stringify({
+            tag: 'buyer.final_tool_recovered',
+            tool: recoveredCall.name,
+          }),
+        );
+        await safeApplyExecutedTool(recoveredCall);
+        const afterMutation = cartDeterministicReply(finalizeCtx);
+        if (afterMutation) {
+          return finishReply(afterMutation);
+        }
+        try {
+          const recoverStream = await streamGroqEvents(
+            messages,
+            env,
+            toolDefinitions,
+            sessionId,
+            'buyer_tool_loop_final_recover',
+            { toolChoice: 'none' },
+          );
+          const { text: recoverText } = await collectStreamRound(recoverStream);
+          return finishReply(recoverText.trim() || FINAL_TOOL_FALLBACK_USER);
+        } catch {
+          const detAfterRecover = cartDeterministicReply(finalizeCtx);
+          if (detAfterRecover) {
+            return finishReply(detAfterRecover);
+          }
+          return finishReply(FINAL_TOOL_FALLBACK_USER);
+        }
+      }
+      if (recoveredCall && !FINAL_RECOVERABLE_TOOL_NAMES.has(recoveredCall.name)) {
+        return finishReply(FINAL_TOOL_FALLBACK_USER);
       }
     }
     console.warn(JSON.stringify({ tag: 'buyer.tool_loop_fallback', round: 'final' }));

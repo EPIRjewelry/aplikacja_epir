@@ -11,6 +11,7 @@ import * as compose from '../src/buyer/compose-buyer-turn';
 import {
   extractLastUserMessage,
   filterToolsForSession,
+  FINAL_TOOL_FALLBACK_USER,
 } from '../src/buyer/compose-buyer-turn';
 import type { BuyerToolId } from '../src/buyer/tool-readiness';
 import { SessionDO } from '../src/index';
@@ -362,6 +363,22 @@ describe('handleBuyerTurn', () => {
     const json = await res.json();
     expect(json.reason).toBe('missing_user_message');
     expect(json.error).toBe(BUYER_CLIENT_ERROR_MESSAGE);
+  });
+
+  it('empty AI Gateway content returns 200 with Polish fallback reply', async () => {
+    vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('on');
+    vi.spyOn(channelSwitch, 'channelIdFromBrandLock').mockReturnValue('epir-online-store');
+    vi.spyOn(compose, 'composeBuyerAssistantReply').mockRejectedValue(
+      new Error('AI Gateway returned empty content'),
+    );
+
+    const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
+    const body = { message: 'dodaj do koszyka', session_id: 'sess-empty-ai' };
+    const res = await handleBuyerTurn(postReq(body), env, buyerBrandLock(), body);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.type).toBe('message');
+    expect(json.reply).toBe(FINAL_TOOL_FALLBACK_USER);
   });
 
   it('handleChat passes parsed body once — widget payload is not 400', async () => {
