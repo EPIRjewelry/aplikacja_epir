@@ -563,9 +563,6 @@ function ChatWidgetFallback({
             ? {session_id_source: sessionMeta.sessionIdSource}
             : {}),
           ...(analyticsAllowed !== null ? {analytics_consent: analyticsAllowed} : {}),
-          ...(sessionMeta.analyticsClientId
-            ? {analytics_client_id: sessionMeta.analyticsClientId}
-            : {}),
           cart_id: cartId ?? undefined,
           brand,
           locale: locale ?? (typeof document !== 'undefined' ? document.documentElement.lang : undefined) ?? 'pl',

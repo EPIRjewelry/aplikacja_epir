@@ -1,9 +1,9 @@
-import {
-  EPIR_SESSION_COOKIE_NAME,
-  EPIR_SHOPIFY_Y_COOKIE_NAME,
-} from '@epir/utils';
+import {EPIR_SESSION_COOKIE_NAME} from '@epir/utils';
 
 const CHAT_SESSION_STORAGE_PREFIX = 'sess_';
+/** Id czatu w sessionStorage — ten sam wzorzec, który piksel linkuje. */
+const CHAT_SESSION_ID_RE = /^sess_[A-Za-z0-9-]{1,123}$/;
+const LAST_CHAT_SESSION_FOR_PRIVACY_KEY = 'epir-last-chat-session-for-privacy';
 
 function readNamedDocumentCookie(name: string): string | null {
   if (typeof document === 'undefined' || !name) return null;
@@ -24,58 +24,36 @@ function readNamedDocumentCookie(name: string): string | null {
   return null;
 }
 
-/** Odczyt `_epir_session_id` w przeglądarce. */
+/** Odczyt `_epir_session_id` (landing / koszyk) — nie używać jako `session_id` czatu. */
 export function readEpirSessionIdFromDocumentCookie(): string | null {
   return readNamedDocumentCookie(EPIR_SESSION_COOKIE_NAME);
 }
 
-/** Shopify `_shopify_y` — ta sama wartość co Web Pixel `event.clientId`. */
-export function readShopifyYFromDocumentCookie(): string | null {
-  return readNamedDocumentCookie(EPIR_SHOPIFY_Y_COOKIE_NAME);
-}
-
-/** `_epir_session_id` skopiowany z piksela (`_shopify_y`) — nie jest osobnym id czatu. */
-export function isEpirSessionCookiePixelCopy(
-  epirSessionId?: string | null,
-  shopifyY?: string | null,
-): boolean {
-  const epir = epirSessionId?.trim() || null;
-  const y = shopifyY?.trim() || null;
-  return Boolean(epir && y && epir === y);
-}
-
 /**
- * Id joina pixel (tylko przy zgodzie analitycznej) — osobne od `session_id` czatu.
- * Nie wysyłaj bez `analyticsProcessingAllowed() === true`.
+ * @deprecated Nie czytać `_shopify_y` w JS sklepu — id piksela = Web Pixels `event.clientId`.
  */
-export function readAnalyticsClientIdForChat(consent: boolean | null): string | null {
-  if (consent !== true) return null;
-  const shopifyY = readShopifyYFromDocumentCookie();
-  if (shopifyY) return shopifyY;
-  const epir = readEpirSessionIdFromDocumentCookie();
-  if (epir && !isEpirSessionCookiePixelCopy(epir, shopifyY)) return epir;
+export function readShopifyYFromDocumentCookie(): string | null {
   return null;
 }
 
-/**
- * Cookie `_epir_session_id` jako session_id czatu tylko przy zgodzie i gdy to nie kopia `_shopify_y`.
- */
-function readChatSessionIdFromEpirCookie(consent: boolean | null): string | null {
-  if (consent !== true) return null;
-  const epir = readEpirSessionIdFromDocumentCookie();
-  if (!epir) return null;
-  const shopifyY = readShopifyYFromDocumentCookie();
-  if (isEpirSessionCookiePixelCopy(epir, shopifyY)) return null;
-  return epir;
+/** @deprecated Link czat↔piksel idzie przez web pixel `chat_session_linked`, nie z widżetu. */
+export function isEpirSessionCookiePixelCopy(
+  _epirSessionId?: string | null,
+  _shopifyY?: string | null,
+): boolean {
+  return false;
+}
+
+/** @deprecated Widżet nie wysyła `analytics_client_id`. */
+export function readAnalyticsClientIdForChat(_consent: boolean | null): string | null {
+  return null;
 }
 
 /**
  * @deprecated Pixel/apex SSOT — nie używać jako `session_id` czatu (Customer Privacy).
  */
 export function readBrowserAnalyticsSessionId(): string | null {
-  const epir = readEpirSessionIdFromDocumentCookie();
-  if (epir) return epir;
-  return readShopifyYFromDocumentCookie();
+  return readEpirSessionIdFromDocumentCookie();
 }
 
 export type ChatSessionIdSource = 'cookie' | 'session_storage';
@@ -83,8 +61,6 @@ export type ChatSessionIdSource = 'cookie' | 'session_storage';
 export type ResolvedChatSession = {
   sessionId: string | null;
   sessionIdSource: ChatSessionIdSource | null;
-  /** Pixel `clientId` / `_shopify_y` — tylko przy zgodzie; nie zastępuje `sessionId`. */
-  analyticsClientId?: string | null;
 };
 
 /** Shopify Customer Privacy API — brak API = `null` (unknown, nie wysyłaj do workera). */
@@ -102,27 +78,8 @@ export function readShopifyAnalyticsProcessingAllowed(): boolean | null {
 }
 
 function isValidChatSessionStorageValue(value: string): boolean {
-  return value.startsWith(CHAT_SESSION_STORAGE_PREFIX);
+  return CHAT_SESSION_ID_RE.test(value);
 }
-
-/** Ten sam charset co buyer `acceptOrReplaceBuyerSessionId`. */
-const CHAT_SESSION_ID_RE = /^[A-Za-z0-9_.:-]{1,128}$/;
-
-function isRememberableChatSessionId(
-  id: string,
-  sessionIdSource?: ChatSessionIdSource | null,
-): boolean {
-  if (!CHAT_SESSION_ID_RE.test(id)) return false;
-  if (sessionIdSource === 'cookie') {
-    // Cookie `_epir_session_id` tylko gdy ≠ kopii `_shopify_y` (pixel clientId).
-    const shopifyY = readShopifyYFromDocumentCookie();
-    if (isEpirSessionCookiePixelCopy(id, shopifyY)) return false;
-    return true;
-  }
-  return isValidChatSessionStorageValue(id);
-}
-
-const LAST_CHAT_SESSION_FOR_PRIVACY_KEY = 'epir-last-chat-session-for-privacy';
 
 export type RememberedChatSessionForPrivacy = {
   sessionId: string;
@@ -136,13 +93,13 @@ export function rememberChatSessionIdForPrivacy(
 ): void {
   if (typeof window === 'undefined') return;
   const id = sessionId?.trim();
-  if (!id || !isRememberableChatSessionId(id, sessionIdSource)) return;
+  if (!id || !isValidChatSessionStorageValue(id)) return;
   try {
     sessionStorage.setItem(
       LAST_CHAT_SESSION_FOR_PRIVACY_KEY,
       JSON.stringify({
         sessionId: id,
-        sessionIdSource: sessionIdSource ?? null,
+        sessionIdSource: 'session_storage',
       }),
     );
   } catch {
@@ -160,13 +117,10 @@ export function readLastChatSessionIdForPrivacy(): RememberedChatSessionForPriva
       sessionIdSource?: ChatSessionIdSource | null;
     };
     const id = parsed.sessionId?.trim();
-    if (!id) return null;
+    if (!id || !isValidChatSessionStorageValue(id)) return null;
     return {
       sessionId: id,
-      sessionIdSource:
-        parsed.sessionIdSource === 'cookie' || parsed.sessionIdSource === 'session_storage'
-          ? parsed.sessionIdSource
-          : null,
+      sessionIdSource: 'session_storage',
     };
   } catch {
     return null;
@@ -183,12 +137,12 @@ function postChatSessionPrivacyRevoke(
     session_id: remembered.sessionId,
     analytics_consent: false,
     analytics_client_id: null,
-    ...(remembered.sessionIdSource ? {session_id_source: remembered.sessionIdSource} : {}),
+    session_id_source: 'session_storage',
   });
   scrubInvalidChatSessionStorage(sessionStorageKey);
 }
 
-/** Usuwa legacy wartości (np. `_shopify_y`) z sessionStorage czatu. */
+/** Usuwa legacy wartości (np. id piksela) z sessionStorage czatu. */
 export function scrubInvalidChatSessionStorage(sessionStorageKey = 'epir-assistant-session'): void {
   if (typeof window === 'undefined') return;
   try {
@@ -228,27 +182,17 @@ function readOrMintChatSessionStorage(sessionStorageKey: string): ResolvedChatSe
   }
 }
 
+/**
+ * `session_id` czatu = wyłącznie `sess_*` w sessionStorage.
+ * Link do piksela: web pixel czyta ten klucz i wysyła `chat_session_linked` z `event.clientId`.
+ */
 export function resolveEffectiveChatSessionWithMeta(
   sessionStorageKey = 'epir-assistant-session',
 ): ResolvedChatSession {
   if (typeof window === 'undefined') {
     return {sessionId: null, sessionIdSource: null};
   }
-
-  const consent = readShopifyAnalyticsProcessingAllowed();
-  const analyticsClientId = readAnalyticsClientIdForChat(consent);
-
-  const fromEpirCookie = readChatSessionIdFromEpirCookie(consent);
-  if (fromEpirCookie) {
-    return {
-      sessionId: fromEpirCookie,
-      sessionIdSource: 'cookie',
-      analyticsClientId,
-    };
-  }
-
-  const fromStorage = readOrMintChatSessionStorage(sessionStorageKey);
-  return {...fromStorage, analyticsClientId};
+  return readOrMintChatSessionStorage(sessionStorageKey);
 }
 
 export function resolveEffectiveChatSessionId(
@@ -258,8 +202,7 @@ export function resolveEffectiveChatSessionId(
 }
 
 /**
- * Echo `session_id` z workera nie zastępuje cookie.
- * Zapisuje echo tylko do pustego klucza (wartości muszą mieć prefiks `sess_`).
+ * Echo `session_id` z workera — zapis tylko do pustego klucza (`sess_*`).
  */
 export function persistChatSessionIdFromWorker(
   workerSessionId: string | null | undefined,
@@ -268,9 +211,6 @@ export function persistChatSessionIdFromWorker(
   if (typeof window === 'undefined') return;
   const echoed = typeof workerSessionId === 'string' ? workerSessionId.trim() : '';
   if (!echoed || !isValidChatSessionStorageValue(echoed)) return;
-
-  const consent = readShopifyAnalyticsProcessingAllowed();
-  if (readChatSessionIdFromEpirCookie(consent)) return;
 
   try {
     scrubInvalidChatSessionStorage(sessionStorageKey);

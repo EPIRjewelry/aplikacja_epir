@@ -140,6 +140,100 @@ export function extractAnalyticsClientIdFromBody(
   return trimmed || null;
 }
 
+const CHAT_SESSION_LINK_ID_RE = /^sess_[A-Za-z0-9-]{1,123}$/;
+
+/**
+ * Pixel `chat_session_linked`: zapisz `analytics_client_id` tylko gdy sesja istnieje
+ * i `analytics_consent = 1`. Bez tworzenia sesji. Logi bez surowych id.
+ */
+export async function handleChatSessionLinkedFromPixel(
+  env: Env,
+  payload: unknown,
+): Promise<'linked' | 'ignored'> {
+  if (!payload || typeof payload !== 'object') return 'ignored';
+  const data = (payload as {data?: unknown}).data;
+  const rec =
+    data && typeof data === 'object'
+      ? (data as Record<string, unknown>)
+      : (payload as Record<string, unknown>);
+  const chatSessionId =
+    typeof rec.chat_session_id === 'string' ? rec.chat_session_id.trim() : '';
+  const clientId = typeof rec.client_id === 'string' ? rec.client_id.trim() : '';
+  if (!CHAT_SESSION_LINK_ID_RE.test(chatSessionId) || !clientId) {
+    return 'ignored';
+  }
+
+  const known = await isBuyerChatSessionKnown(env, chatSessionId);
+  if (!known) {
+    console.log(
+      JSON.stringify({
+        tag: 'buyer.chat_session_linked',
+        result: 'ignored_unknown',
+        sid: chatSessionId.slice(0, 8),
+      }),
+    );
+    return 'ignored';
+  }
+
+  let consent: number | null = null;
+  if (env.DB_CHATBOT) {
+    try {
+      const row = await env.DB_CHATBOT
+        .prepare(
+          'SELECT analytics_consent FROM sessions WHERE session_id = ? LIMIT 1',
+        )
+        .bind(chatSessionId)
+        .first<{analytics_consent: number | null}>();
+      consent =
+        typeof row?.analytics_consent === 'number' ? row.analytics_consent : null;
+    } catch (error) {
+      console.warn(
+        JSON.stringify({
+          tag: 'buyer.chat_session_linked.d1_failed',
+          sid: chatSessionId.slice(0, 8),
+          error: String((error as Error).message).slice(0, 120),
+        }),
+      );
+      return 'ignored';
+    }
+  }
+  if (consent !== 1) {
+    console.log(
+      JSON.stringify({
+        tag: 'buyer.chat_session_linked',
+        result: 'ignored_no_consent',
+        sid: chatSessionId.slice(0, 8),
+      }),
+    );
+    return 'ignored';
+  }
+
+  try {
+    await postBuyerSessionPrivacy(env, chatSessionId, {
+      analyticsConsent: 1,
+      analyticsClientId: clientId,
+    });
+    console.log(
+      JSON.stringify({
+        tag: 'buyer.chat_session_linked',
+        result: 'linked',
+        sid: chatSessionId.slice(0, 8),
+      }),
+    );
+    return 'linked';
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        tag: 'buyer.chat_session_linked',
+        result: 'error',
+        sid: chatSessionId.slice(0, 8),
+        error: String((error as Error).message).slice(0, 120),
+      }),
+    );
+    return 'ignored';
+  }
+}
+
 export function extractSessionIdFromPrivacyBody(body: unknown): string | null {
   if (!body || typeof body !== 'object') return null;
   const raw = (body as {session_id?: unknown}).session_id;
@@ -234,7 +328,6 @@ export async function ensureBuyerSessionContext(
     userText: string;
     analyticsConsent?: 0 | 1;
     sessionIdSource?: 'cookie' | 'session_storage';
-    analyticsClientId?: string | null;
   },
 ): Promise<void> {
   const sid = input.sessionId?.trim();
@@ -267,20 +360,11 @@ export async function ensureBuyerSessionContext(
         channel,
       });
     }
-    if (
-      input.analyticsConsent !== undefined ||
-      input.sessionIdSource ||
-      input.analyticsClientId !== undefined
-    ) {
+    if (input.analyticsConsent !== undefined || input.sessionIdSource) {
       await postBuyerSessionPrivacy(env, sid, {
         analyticsConsent: input.analyticsConsent,
         sessionIdSource: input.sessionIdSource,
-        analyticsClientId:
-          input.analyticsConsent === 0
-            ? null
-            : input.analyticsConsent === 1
-              ? input.analyticsClientId
-              : undefined,
+        analyticsClientId: input.analyticsConsent === 0 ? null : undefined,
       });
     }
   } catch (e) {

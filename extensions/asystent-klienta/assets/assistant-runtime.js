@@ -9,39 +9,11 @@ var EPIR_LOGGED_IN_CUSTOMER_PREFLIGHT_ATTEMPTS = 3;
 var EPIR_LOGGED_IN_CUSTOMER_PREFLIGHT_DELAY_MS = 75;
 var EPIR_ASSISTANT_SESSION_KEY = 'epir-assistant-session';
 var EPIR_LAST_CHAT_SESSION_PRIVACY_KEY = 'epir-last-chat-session-for-privacy';
-var EPIR_ANALYTICS_SESSION_COOKIE = '_epir_session_id';
-var EPIR_SHOPIFY_Y_COOKIE = '_shopify_y';
-
-function readNamedDocumentCookie(name) {
-  try {
-    var parts = String(document.cookie || '').split(';');
-    for (var i = 0; i < parts.length; i++) {
-      var t = parts[i].trim();
-      var eq = t.indexOf('=');
-      if (eq === -1) continue;
-      if (t.slice(0, eq).trim() !== name) continue;
-      var raw = t.slice(eq + 1).trim();
-      if (!raw) return '';
-      try { return decodeURIComponent(raw).trim(); } catch (e) { return raw; }
-    }
-  } catch (e2) {}
-  return '';
-}
-
-function readEpirAnalyticsSessionCookie() {
-  return readNamedDocumentCookie(EPIR_ANALYTICS_SESSION_COOKIE);
-}
-
 var EPIR_CHAT_SESSION_STORAGE_PREFIX = 'sess_';
-
-function isEpirSessionCookiePixelCopy(epir, shopifyY) {
-  var e = epir ? String(epir).trim() : '';
-  var y = shopifyY ? String(shopifyY).trim() : '';
-  return Boolean(e && y && e === y);
-}
+var EPIR_CHAT_SESSION_ID_RE = /^sess_[A-Za-z0-9-]{1,123}$/;
 
 function isValidChatSessionStorageValue(value) {
-  return Boolean(value && String(value).indexOf(EPIR_CHAT_SESSION_STORAGE_PREFIX) === 0);
+  return Boolean(value && EPIR_CHAT_SESSION_ID_RE.test(String(value).trim()));
 }
 
 function scrubInvalidAssistantSessionStorage(sessionIdKey) {
@@ -54,43 +26,13 @@ function scrubInvalidAssistantSessionStorage(sessionIdKey) {
   } catch (e) {}
 }
 
-function readAnalyticsClientIdForAssistant(consentAllowed) {
-  if (consentAllowed !== true) return '';
-  var shopifyY = readNamedDocumentCookie(EPIR_SHOPIFY_Y_COOKIE);
-  if (shopifyY) return shopifyY;
-  var epir = readEpirAnalyticsSessionCookie();
-  if (epir && !isEpirSessionCookiePixelCopy(epir, shopifyY)) return epir;
-  return '';
-}
-
-function readChatSessionIdFromEpirCookie(consentAllowed) {
-  if (consentAllowed !== true) return '';
-  var epir = readEpirAnalyticsSessionCookie();
-  if (!epir) return '';
-  var shopifyY = readNamedDocumentCookie(EPIR_SHOPIFY_Y_COOKIE);
-  if (isEpirSessionCookiePixelCopy(epir, shopifyY)) return '';
-  return epir;
-}
-
-var EPIR_CHAT_SESSION_ID_RE = /^[A-Za-z0-9_.:-]{1,128}$/;
-
-function isRememberableAssistantChatSessionId(id, sessionIdSource) {
-  if (!id || !EPIR_CHAT_SESSION_ID_RE.test(id)) return false;
-  if (sessionIdSource === 'cookie') {
-    var shopifyY = readNamedDocumentCookie(EPIR_SHOPIFY_Y_COOKIE);
-    if (isEpirSessionCookiePixelCopy(id, shopifyY)) return false;
-    return true;
-  }
-  return isValidChatSessionStorageValue(id);
-}
-
 function rememberAssistantChatSessionForPrivacy(sessionId, sessionIdSource) {
   var id = sessionId ? String(sessionId).trim() : '';
-  if (!isRememberableAssistantChatSessionId(id, sessionIdSource)) return;
+  if (!isValidChatSessionStorageValue(id)) return;
   try {
     sessionStorage.setItem(
       EPIR_LAST_CHAT_SESSION_PRIVACY_KEY,
-      JSON.stringify({ sessionId: id, sessionIdSource: sessionIdSource || null }),
+      JSON.stringify({ sessionId: id, sessionIdSource: 'session_storage' }),
     );
   } catch (e) {}
 }
@@ -128,17 +70,6 @@ function isShopifyAnalyticsProcessingAllowed() {
 
 function resolveAssistantSessionIdMeta(sessionIdKey) {
   var key = sessionIdKey || EPIR_ASSISTANT_SESSION_KEY;
-  var consentAllowed = isShopifyAnalyticsProcessingAllowed();
-  var analyticsClientId = readAnalyticsClientIdForAssistant(consentAllowed);
-  var fromEpirCookie = '';
-  try { fromEpirCookie = readChatSessionIdFromEpirCookie(consentAllowed); } catch (e) {}
-  if (fromEpirCookie) {
-    return {
-      sessionId: fromEpirCookie,
-      sessionIdSource: 'cookie',
-      analyticsClientId: analyticsClientId || null,
-    };
-  }
   scrubInvalidAssistantSessionStorage(key);
   try {
     var stored = sessionStorage.getItem(key);
@@ -146,23 +77,21 @@ function resolveAssistantSessionIdMeta(sessionIdKey) {
       return {
         sessionId: String(stored).trim(),
         sessionIdSource: 'session_storage',
-        analyticsClientId: analyticsClientId || null,
       };
     }
   } catch (e3) {}
   try {
     if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') {
-      return { sessionId: null, sessionIdSource: null, analyticsClientId: null };
+      return { sessionId: null, sessionIdSource: null };
     }
     var minted = EPIR_CHAT_SESSION_STORAGE_PREFIX + crypto.randomUUID();
     try { sessionStorage.setItem(key, minted); } catch (e4) {}
     return {
       sessionId: minted,
       sessionIdSource: 'session_storage',
-      analyticsClientId: analyticsClientId || null,
     };
   } catch (e5) {
-    return { sessionId: null, sessionIdSource: null, analyticsClientId: null };
+    return { sessionId: null, sessionIdSource: null };
   }
 }
 
@@ -175,10 +104,6 @@ function resolveEffectiveAssistantSessionId(sessionIdKey) {
 function persistAssistantSessionIdFromWorker(sessionIdKey, workerSessionId) {
   var echoed = workerSessionId ? String(workerSessionId).trim() : '';
   if (!echoed || !isValidChatSessionStorageValue(echoed)) return;
-  var consentAllowed = isShopifyAnalyticsProcessingAllowed();
-  var fromEpirCookie = '';
-  try { fromEpirCookie = readChatSessionIdFromEpirCookie(consentAllowed); } catch (e) {}
-  if (fromEpirCookie) return;
   var key = sessionIdKey || EPIR_ASSISTANT_SESSION_KEY;
   try {
     scrubInvalidAssistantSessionStorage(key);
@@ -1988,9 +1913,6 @@ async function sendMessageToWorker(
     }
     if (analyticsAllowed !== null) {
       body.analytics_consent = analyticsAllowed;
-    }
-    if (sessionMeta.analyticsClientId) {
-      body.analytics_client_id = sessionMeta.analyticsClientId;
     }
     if (productHandle) {
       body.productHandle = productHandle;

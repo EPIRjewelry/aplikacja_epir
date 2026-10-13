@@ -438,7 +438,6 @@ export type ComposeBuyerTurnOptions = {
   bodyChannel?: string;
   analyticsConsent?: 0 | 1;
   sessionIdSource?: 'cookie' | 'session_storage';
-  analyticsClientId?: string | null;
 };
 
 type FinalizeReplyContext = {
@@ -607,7 +606,6 @@ export async function composeBuyerAssistantReply(
     userText,
     analyticsConsent: opts?.analyticsConsent,
     sessionIdSource: opts?.sessionIdSource,
-    analyticsClientId: opts?.analyticsClientId,
   });
 
   const turnStartedAt = Date.now();

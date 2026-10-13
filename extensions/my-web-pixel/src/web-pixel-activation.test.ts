@@ -14,11 +14,12 @@ describe('web pixel ships with the app, not a Customer Events paste', () => {
 
   it('loads on analytics consent without also requiring marketing or data sale', () => {
     const toml = readFileSync(join(root, 'extensions/my-web-pixel/shopify.extension.toml'), 'utf8');
+    const privacyBlock = toml.match(/\[customer_privacy\][\s\S]*?(?=\n\[|$)/)?.[0] ?? '';
     expect(toml).toMatch(/runtime_context\s*=\s*"strict"/);
-    expect(toml).toMatch(/analytics\s*=\s*true/);
-    expect(toml).not.toMatch(/analytics\s*=\s*false/);
-    expect(toml).toMatch(/marketing\s*=\s*false/);
-    expect(toml).toMatch(/sale_of_data\s*=\s*"disabled"/);
+    expect(privacyBlock).toMatch(/analytics\s*=\s*true/);
+    expect(privacyBlock).not.toMatch(/analytics\s*=\s*false/);
+    expect(privacyBlock).toMatch(/marketing\s*=\s*false/);
+    expect(privacyBlock).toMatch(/sale_of_data\s*=\s*"disabled"/);
   });
 
   it('activation script creates the web pixel record and does not subscribe like a paste', () => {

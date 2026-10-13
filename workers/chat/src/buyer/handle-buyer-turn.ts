@@ -7,7 +7,6 @@ import {
   extractSessionIdFromBody,
 } from './compose-buyer-turn';
 import {
-  extractAnalyticsClientIdFromBody,
   extractAnalyticsConsentFromBody,
   extractChannelFromBody,
   extractSessionIdSourceFromBody,
@@ -133,7 +132,6 @@ export async function handleBuyerTurn(
       bodyChannel: extractChannelFromBody(body),
       analyticsConsent: extractAnalyticsConsentFromBody(body),
       sessionIdSource: extractSessionIdSourceFromBody(body),
-      analyticsClientId: extractAnalyticsClientIdFromBody(body),
     });
     const okPayload: Record<string, unknown> = {
       type: 'message',

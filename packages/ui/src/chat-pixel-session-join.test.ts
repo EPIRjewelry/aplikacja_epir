@@ -5,19 +5,18 @@ import vm from 'node:vm';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {buildCustomPixelPostBody} from '../../../extensions/my-web-pixel/src/custom-pixel-payload';
 import {
+  installShopifyCustomerPrivacyChatListeners,
   persistChatSessionIdFromWorker,
   readAnalyticsClientIdForChat,
+  readLastChatSessionIdForPrivacy,
+  rememberChatSessionIdForPrivacy,
   resolveChatSessionPrivacyApiUrl,
   resolveEffectiveChatSessionId,
-  installShopifyCustomerPrivacyChatListeners,
-  rememberChatSessionIdForPrivacy,
-  readLastChatSessionIdForPrivacy,
   resolveEffectiveChatSessionWithMeta,
   scrubInvalidChatSessionStorage,
 } from './epir-session-browser';
 
 const SHARED = 'shopify-y-join-8f3c1a0b';
-const DISTINCT_EPIR = 'epir-first-party-session-id-9a2b';
 const DIVERGED = 'epir-assistant-session-diverged-uuid';
 const WORKER_MINTED = 'worker-minted-session-uuid';
 const SESSION_KEY = 'epir-assistant-session';
@@ -212,14 +211,15 @@ describe('chat session_id vs pixel (Customer Privacy)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('without analytics consent: chat uses sess_* and not _shopify_y; pixel still uses clientId', async () => {
+  it('chat uses sess_* only; never _shopify_y; pixel uses clientId', async () => {
     const cookie = `_epir_session_id=${SHARED}; _shopify_y=${SHARED}`;
     const stored = installBrowser(cookie, {[SESSION_KEY]: DIVERGED}, false);
 
     const meta = resolveEffectiveChatSessionWithMeta(SESSION_KEY);
     expect(meta.sessionId).toMatch(/^sess_/);
     expect(meta.sessionId).not.toBe(SHARED);
-    expect(meta.analyticsClientId).toBeNull();
+    expect(meta.sessionIdSource).toBe('session_storage');
+    expect(readAnalyticsClientIdForChat(true)).toBeNull();
     expect(stored[SESSION_KEY]).toMatch(/^sess_/);
     expect(stored[SESSION_KEY]).not.toBe(DIVERGED);
 
@@ -245,25 +245,21 @@ describe('chat session_id vs pixel (Customer Privacy)', () => {
     expect(meta.sessionId).not.toBe(extensionSessionId);
   });
 
-  it('with consent: pixel copy cookies → sess_* chat id + analytics_client_id for join', () => {
-    const cookie = `_shopify_y=${encodeURIComponent(SHARED)}`;
-    installBrowser(cookie, {}, true);
-
+  it('does not put analytics_client_id on resolved chat meta', () => {
+    installBrowser(`_shopify_y=${SHARED}`, {}, true);
     const meta = resolveEffectiveChatSessionWithMeta(SESSION_KEY);
     expect(meta.sessionId).toMatch(/^sess_/);
-    expect(meta.sessionId).not.toBe(SHARED);
-    expect(readAnalyticsClientIdForChat(true)).toBe(SHARED);
-    expect(meta.analyticsClientId).toBe(SHARED);
+    expect(meta).not.toHaveProperty('analyticsClientId');
+    expect(readAnalyticsClientIdForChat(true)).toBeNull();
   });
 
-  it('with consent: distinct _epir_session_id becomes chat session_id (cookie source)', () => {
-    const cookie = `_epir_session_id=${DISTINCT_EPIR}; _shopify_y=${SHARED}`;
+  it('ignores distinct _epir_session_id for chat session_id', () => {
+    const cookie = `_epir_session_id=epir-first-party-session-id-9a2b; _shopify_y=${SHARED}`;
     installBrowser(cookie, {}, true);
-
     const meta = resolveEffectiveChatSessionWithMeta(SESSION_KEY);
-    expect(meta.sessionId).toBe(DISTINCT_EPIR);
-    expect(meta.sessionIdSource).toBe('cookie');
-    expect(meta.analyticsClientId).toBe(SHARED);
+    expect(meta.sessionId).toMatch(/^sess_/);
+    expect(meta.sessionId).not.toBe('epir-first-party-session-id-9a2b');
+    expect(meta.sessionIdSource).toBe('session_storage');
   });
 
   it('rejects legacy sessionStorage (non sess_*) and mints sess_*', () => {
@@ -274,15 +270,6 @@ describe('chat session_id vs pixel (Customer Privacy)', () => {
     const id = resolveEffectiveChatSessionId(SESSION_KEY);
     expect(id).toMatch(/^sess_/);
     expect(stored[SESSION_KEY]).toBe(id);
-  });
-
-  it('after consent revoke reload: stale _shopify_y in storage is not reused', () => {
-    const cookie = `_shopify_y=${SHARED}`;
-    const stored = installBrowser(cookie, {[SESSION_KEY]: SHARED}, false);
-    const id = resolveEffectiveChatSessionId(SESSION_KEY);
-    expect(id).toMatch(/^sess_/);
-    expect(stored[SESSION_KEY]).toBe(id);
-    expect(stored[SESSION_KEY]).not.toBe(SHARED);
   });
 
   it('mints sess_uuid when no cookie and empty storage', () => {
@@ -301,13 +288,15 @@ describe('chat session_id vs pixel (Customer Privacy)', () => {
     expect(liquid1).toMatch(/^sess_/);
   });
 
-  it('persistChatSessionIdFromWorker ignores non-sess_ echo and keeps cookie path', () => {
-    installBrowser(`_epir_session_id=${DISTINCT_EPIR}`, {}, true);
+  it('persistChatSessionIdFromWorker ignores non-sess_ echo', () => {
+    const stored = installBrowser('', {}, true);
     persistChatSessionIdFromWorker(WORKER_MINTED, SESSION_KEY);
-    expect(resolveEffectiveChatSessionId(SESSION_KEY)).toBe(DISTINCT_EPIR);
+    expect(stored[SESSION_KEY]).toBeUndefined();
+    persistChatSessionIdFromWorker('sess_from-worker-ok', SESSION_KEY);
+    expect(resolveEffectiveChatSessionId(SESSION_KEY)).toBe('sess_from-worker-ok');
   });
 
-  it('reuses valid sess_* in sessionStorage when no eligible cookie', () => {
+  it('reuses valid sess_* in sessionStorage', () => {
     const existing = 'sess_already-stored-id-0001';
     const stored = installBrowser('', {[SESSION_KEY]: existing}, false);
     expect(resolveEffectiveChatSessionId()).toBe(existing);
@@ -342,7 +331,6 @@ describe('chat session_id vs pixel (Customer Privacy)', () => {
     session_id: string;
     analytics_consent: boolean;
     analytics_client_id: null;
-    session_id_source?: string;
   }> {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockClear();
@@ -357,10 +345,9 @@ describe('chat session_id vs pixel (Customer Privacy)', () => {
     return JSON.parse(String((privacyCall![1] as RequestInit).body));
   }
 
-  it('privacy revoke uses remembered chat session_id (not reminted after scrub)', async () => {
-    const cookie = `_shopify_y=${SHARED}`;
+  it('privacy revoke uses remembered sess_* session_id', async () => {
     const existing = 'sess_privacy-revoke-0001';
-    installConsentDocument(cookie, {[SESSION_KEY]: existing});
+    installConsentDocument('', {[SESSION_KEY]: existing});
     rememberChatSessionIdForPrivacy(existing, 'session_storage');
     installShopifyCustomerPrivacyChatListeners('/apps/assistant/chat', SESSION_KEY);
 
@@ -371,29 +358,8 @@ describe('chat session_id vs pixel (Customer Privacy)', () => {
     expect(readLastChatSessionIdForPrivacy()?.sessionId).toBe(existing);
   });
 
-  it('privacy revoke remembers distinct _epir_session_id (cookie source)', async () => {
-    const cookie = `_epir_session_id=${DISTINCT_EPIR}; _shopify_y=${SHARED}`;
-    installConsentDocument(cookie, {});
-    const meta = resolveEffectiveChatSessionWithMeta(SESSION_KEY);
-    expect(meta.sessionId).toBe(DISTINCT_EPIR);
-    expect(meta.sessionIdSource).toBe('cookie');
-    rememberChatSessionIdForPrivacy(meta.sessionId, meta.sessionIdSource);
-    expect(readLastChatSessionIdForPrivacy()).toEqual({
-      sessionId: DISTINCT_EPIR,
-      sessionIdSource: 'cookie',
-    });
-    installShopifyCustomerPrivacyChatListeners('/apps/assistant/chat', SESSION_KEY);
-
-    const body = await dispatchAnalyticsRevoke();
-    expect(body.session_id).toBe(DISTINCT_EPIR);
-    expect(body.analytics_consent).toBe(false);
-    expect(body.analytics_client_id).toBeNull();
-    expect(body.session_id_source).toBe('cookie');
-  });
-
-  it('does not remember cookie session_id when it equals _shopify_y', () => {
-    const cookie = `_epir_session_id=${SHARED}; _shopify_y=${SHARED}`;
-    installConsentDocument(cookie, {});
+  it('does not remember non-sess_* values for privacy revoke', () => {
+    installConsentDocument(`_epir_session_id=${SHARED}; _shopify_y=${SHARED}`, {});
     rememberChatSessionIdForPrivacy(SHARED, 'cookie');
     expect(readLastChatSessionIdForPrivacy()).toBeNull();
   });

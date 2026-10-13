@@ -165,7 +165,10 @@ import {
 
 // Importy Klienta Shopify (używane przez mcp_server, ale nie tutaj)
 import {handleBuyerTurn} from './buyer/handle-buyer-turn';
-import {handleBuyerSessionPrivacyRequest} from './buyer/session-context';
+import {
+  handleBuyerSessionPrivacyRequest,
+  handleChatSessionLinkedFromPixel,
+} from './buyer/session-context';
 
 // Typy sesji i żądań
 type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
@@ -5389,6 +5392,25 @@ export default {
               status: 502,
               headers: withCorsHeaders({ 'Content-Type': 'application/json' }, env, request),
             });
+          }
+        }
+
+        // chat_session_linked: zapisz analytics_client_id w DB_CHATBOT (przed proxy).
+        if (method === 'POST' && (pathname === '/pixel' || pathname === '/pixel/events')) {
+          try {
+            const peek = (await request.clone().json().catch(() => null)) as {
+              type?: unknown;
+            } | null;
+            if (peek && peek.type === 'chat_session_linked') {
+              await handleChatSessionLinkedFromPixel(env, peek);
+            }
+          } catch (linkErr) {
+            console.warn(
+              JSON.stringify({
+                tag: 'buyer.chat_session_linked.intercept',
+                error: String((linkErr as Error)?.message ?? linkErr).slice(0, 120),
+              }),
+            );
           }
         }
 
