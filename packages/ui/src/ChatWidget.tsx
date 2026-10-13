@@ -16,7 +16,9 @@ import {parseChatPathContext} from './chat-path-context';
 import {resolveShopAuthTokenForChat} from './commerce/shop-sign-in';
 import {
   persistChatSessionIdFromWorker,
+  readShopifyAnalyticsProcessingAllowed,
   resolveEffectiveChatSessionId,
+  resolveEffectiveChatSessionWithMeta,
 } from './epir-session-browser';
 
 /** Global Shopify (Customer Account UI extensions / App Bridge) — opcjonalnie. */
@@ -523,8 +525,12 @@ function ChatWidgetFallback({
       setIsLoading(true);
       setErrorMessage(null);
 
-      const sessionId =
-        typeof window !== 'undefined' ? resolveEffectiveChatSessionId(SESSION_ID_KEY) : null;
+      const sessionMeta =
+        typeof window !== 'undefined'
+          ? resolveEffectiveChatSessionWithMeta(SESSION_ID_KEY)
+          : {sessionId: null, sessionIdSource: null};
+      const sessionId = sessionMeta.sessionId;
+      const analyticsAllowed = readShopifyAnalyticsProcessingAllowed();
 
       try {
         const parts: ChatRequestPart[] = [];
@@ -548,6 +554,10 @@ function ChatWidgetFallback({
           channel: channel ?? '',
           message: trimmed || (attachment ? '' : ''),
           session_id: sessionId || undefined,
+          ...(sessionMeta.sessionIdSource
+            ? {session_id_source: sessionMeta.sessionIdSource}
+            : {}),
+          ...(analyticsAllowed !== null ? {analytics_consent: analyticsAllowed} : {}),
           cart_id: cartId ?? undefined,
           brand,
           locale: locale ?? (typeof document !== 'undefined' ? document.documentElement.lang : undefined) ?? 'pl',

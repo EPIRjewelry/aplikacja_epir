@@ -16,6 +16,9 @@ function base(overrides: Partial<Parameters<typeof computeEdogVerdict>[0]> = {})
     pixel_null_session_rate_24h: 0,
     chat_pixel_session_match_rate: 1,
     chat_sessions_24h: 0,
+    chat_sessions_total: 0,
+    chat_sessions_consented: 0,
+    chat_sessions_matched: 0,
     warehouse_q1_row_count: 3,
     warehouse_q1_skipped: false,
     warehouse_pixel_sessions: 50,
@@ -71,6 +74,33 @@ describe('computeEdogVerdict', () => {
     );
     expect(r.verdict).toBe('FAIL');
     expect(r.reasons).toContain('warehouse_pixel_empty');
+  });
+
+  it('does not FAIL chat match when storefront sessions exist but none consented', () => {
+    const r = computeEdogVerdict(
+      base({
+        chat_sessions_24h: 4,
+        chat_sessions_total: 4,
+        chat_sessions_consented: 0,
+        chat_sessions_matched: 0,
+        chat_pixel_session_match_rate: null,
+      }),
+    );
+    expect(r.reasons).not.toContain('chat_pixel_session_mismatch');
+  });
+
+  it('FAIL chat match when consented sessions have zero match rate', () => {
+    const r = computeEdogVerdict(
+      base({
+        chat_sessions_24h: 2,
+        chat_sessions_total: 2,
+        chat_sessions_consented: 2,
+        chat_sessions_matched: 0,
+        chat_pixel_session_match_rate: 0,
+      }),
+    );
+    expect(r.verdict).toBe('FAIL');
+    expect(r.reasons).toContain('chat_pixel_session_mismatch');
   });
 });
 

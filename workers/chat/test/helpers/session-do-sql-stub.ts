@@ -4,6 +4,8 @@ type SessionContextRow = {
   session_id: string | null;
   storefront_id: string | null;
   channel: string | null;
+  analytics_consent: number | null;
+  session_id_source: string | null;
 };
 
 type SessionCustomerRow = {
@@ -80,6 +82,8 @@ function emptySessionContext(): SessionContextRow {
     session_id: null,
     storefront_id: null,
     channel: null,
+    analytics_consent: null,
+    session_id_source: null,
   };
 }
 
@@ -168,12 +172,34 @@ class SessionDoSqlStore {
       return new FakeSqlCursor<Record<string, unknown>>([]);
     }
 
+    if (
+      normalized === 'alter table session_context add column analytics_consent integer' ||
+      normalized === 'alter table session_context add column session_id_source text'
+    ) {
+      return new FakeSqlCursor<Record<string, unknown>>([]);
+    }
+
     if (normalized === 'update session_context set cart_id = ?, session_id = ?, storefront_id = ?, channel = ? where id = 1') {
       const sessionContext = this.ensureSessionContext();
       sessionContext.cart_id = toNullableString(args[0]);
       sessionContext.session_id = toNullableString(args[1]);
       sessionContext.storefront_id = toNullableString(args[2]);
       sessionContext.channel = toNullableString(args[3]);
+      return new FakeSqlCursor<Record<string, unknown>>([]);
+    }
+
+    if (
+      normalized ===
+      'update session_context set cart_id = ?, session_id = ?, storefront_id = ?, channel = ?, analytics_consent = ?, session_id_source = ? where id = 1'
+    ) {
+      const sessionContext = this.ensureSessionContext();
+      sessionContext.cart_id = toNullableString(args[0]);
+      sessionContext.session_id = toNullableString(args[1]);
+      sessionContext.storefront_id = toNullableString(args[2]);
+      sessionContext.channel = toNullableString(args[3]);
+      sessionContext.analytics_consent =
+        args[4] === null || args[4] === undefined ? null : toNumber(args[4]);
+      sessionContext.session_id_source = toNullableString(args[5]);
       return new FakeSqlCursor<Record<string, unknown>>([]);
     }
 
@@ -185,6 +211,23 @@ class SessionDoSqlStore {
           session_id: sessionContext.session_id,
           storefront_id: sessionContext.storefront_id,
           channel: sessionContext.channel,
+        },
+      ]);
+    }
+
+    if (
+      normalized ===
+      'select cart_id, session_id, storefront_id, channel, analytics_consent, session_id_source from session_context where id = 1'
+    ) {
+      const sessionContext = this.ensureSessionContext();
+      return new FakeSqlCursor<Record<string, unknown>>([
+        {
+          cart_id: sessionContext.cart_id,
+          session_id: sessionContext.session_id,
+          storefront_id: sessionContext.storefront_id,
+          channel: sessionContext.channel,
+          analytics_consent: sessionContext.analytics_consent,
+          session_id_source: sessionContext.session_id_source,
         },
       ]);
     }

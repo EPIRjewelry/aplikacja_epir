@@ -62,6 +62,10 @@ export {
   readEpirSessionIdFromDocumentCookie,
   readShopifyYFromDocumentCookie,
   resolveEffectiveChatSessionId,
+  resolveEffectiveChatSessionWithMeta,
+  readShopifyAnalyticsProcessingAllowed,
+  type ChatSessionIdSource,
+  type ResolvedChatSession,
 } from './epir-session-browser';
 export {
   type ConsentPayload,

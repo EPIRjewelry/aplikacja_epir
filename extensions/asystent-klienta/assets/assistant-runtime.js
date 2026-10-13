@@ -44,7 +44,23 @@ function resolveAnalyticsSessionIdFromCookies() {
  * Brak cookie i storage → sess_ + crypto.randomUUID(), zapis TYLKO do sessionStorage (nie cookie).
  * Wymaga nowoczesnej przeglądarki z crypto.randomUUID(); fallback poza zakresem PR E1.
  */
-function resolveEffectiveAssistantSessionId(sessionIdKey) {
+function isShopifyAnalyticsProcessingAllowed() {
+  try {
+    if (
+      typeof window === 'undefined' ||
+      !window.Shopify ||
+      !window.Shopify.customerPrivacy ||
+      typeof window.Shopify.customerPrivacy.analyticsProcessingAllowed !== 'function'
+    ) {
+      return null;
+    }
+    return window.Shopify.customerPrivacy.analyticsProcessingAllowed() === true;
+  } catch (e) {
+    return null;
+  }
+}
+
+function resolveAssistantSessionIdMeta(sessionIdKey) {
   var key = sessionIdKey || EPIR_ASSISTANT_SESSION_KEY;
   var fromCookie = '';
   try { fromCookie = resolveAnalyticsSessionIdFromCookies(); } catch (e) {}
@@ -53,20 +69,29 @@ function resolveEffectiveAssistantSessionId(sessionIdKey) {
       var existing = sessionStorage.getItem(key);
       if (!existing || !String(existing).trim()) sessionStorage.setItem(key, fromCookie);
     } catch (e2) {}
-    return fromCookie;
+    return { sessionId: fromCookie, sessionIdSource: 'cookie' };
   }
   try {
     var stored = sessionStorage.getItem(key);
-    if (stored && String(stored).trim()) return String(stored).trim();
+    if (stored && String(stored).trim()) {
+      return { sessionId: String(stored).trim(), sessionIdSource: 'session_storage' };
+    }
   } catch (e3) {}
   try {
-    if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') return null;
+    if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') {
+      return { sessionId: null, sessionIdSource: null };
+    }
     var minted = 'sess_' + crypto.randomUUID();
     try { sessionStorage.setItem(key, minted); } catch (e4) {}
-    return minted;
+    return { sessionId: minted, sessionIdSource: 'session_storage' };
   } catch (e5) {
-    return null;
+    return { sessionId: null, sessionIdSource: null };
   }
+}
+
+function resolveEffectiveAssistantSessionId(sessionIdKey) {
+  var meta = resolveAssistantSessionIdMeta(sessionIdKey);
+  return meta.sessionId;
 }
 
 /** Echo `session_id` z workera nie zastępuje cookie i nie migruje rozjechanej sesji. */
@@ -1796,12 +1821,14 @@ async function sendMessageToWorker(
       sectionEl && sectionEl.dataset && sectionEl.dataset.productHandle
         ? String(sectionEl.dataset.productHandle).trim()
         : '';
+    var sessionMeta = resolveAssistantSessionIdMeta(sessionIdKey);
+    var analyticsAllowed = isShopifyAnalyticsProcessingAllowed();
     const body = {
       storefrontId: storefrontId,
       channel: channel,
       locale: locale,
       message: (text && String(text).trim()) || (attachment ? '' : ''),
-      session_id: resolveEffectiveAssistantSessionId(sessionIdKey),
+      session_id: sessionMeta.sessionId,
       cart_id: cartId,
       brand,
       stream: true,
@@ -1811,6 +1838,12 @@ async function sendMessageToWorker(
       customer_id_hint_source:
         normalizeLoggedInCustomerId(customerIdentity && customerIdentity.source) || 'none',
     };
+    if (sessionMeta.sessionIdSource) {
+      body.session_id_source = sessionMeta.sessionIdSource;
+    }
+    if (analyticsAllowed !== null) {
+      body.analytics_consent = analyticsAllowed;
+    }
     if (productHandle) {
       body.productHandle = productHandle;
     }

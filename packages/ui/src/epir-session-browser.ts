@@ -53,10 +53,33 @@ export function readBrowserAnalyticsSessionId(): string | null {
  * 3. Brak obu → `sess_${crypto.randomUUID()}`, zapis TYLKO do sessionStorage (nie cookie).
  * Wymaga nowoczesnej przeglądarki z `window.crypto.randomUUID()`; fallback poza zakresem PR E1.
  */
-export function resolveEffectiveChatSessionId(
-  sessionStorageKey = 'epir-assistant-session',
-): string | null {
+export type ChatSessionIdSource = 'cookie' | 'session_storage';
+
+export type ResolvedChatSession = {
+  sessionId: string | null;
+  sessionIdSource: ChatSessionIdSource | null;
+};
+
+/** Shopify Customer Privacy API — brak API = `null` (unknown, nie wysyłaj do workera). */
+export function readShopifyAnalyticsProcessingAllowed(): boolean | null {
   if (typeof window === 'undefined') return null;
+  try {
+    const shopify = (window as {Shopify?: {customerPrivacy?: {analyticsProcessingAllowed?: () => boolean}}})
+      .Shopify;
+    const fn = shopify?.customerPrivacy?.analyticsProcessingAllowed;
+    if (typeof fn !== 'function') return null;
+    return fn() === true;
+  } catch {
+    return null;
+  }
+}
+
+export function resolveEffectiveChatSessionWithMeta(
+  sessionStorageKey = 'epir-assistant-session',
+): ResolvedChatSession {
+  if (typeof window === 'undefined') {
+    return {sessionId: null, sessionIdSource: null};
+  }
   const fromCookie = readBrowserAnalyticsSessionId();
   if (fromCookie) {
     try {
@@ -65,15 +88,14 @@ export function resolveEffectiveChatSessionId(
     } catch {
       /* tryb prywatny / zablokowany storage */
     }
-    return fromCookie;
+    return {sessionId: fromCookie, sessionIdSource: 'cookie'};
   }
   try {
     const existing = sessionStorage.getItem(sessionStorageKey)?.trim();
-    if (existing) return existing;
+    if (existing) return {sessionId: existing, sessionIdSource: 'session_storage'};
   } catch {
     /* storage niedostępny — mint poniżej tylko jeśli crypto jest */
   }
-  // Mint lokalny: bez cookie i bez sessionStorage — żeby worker dostał session_id (ucp_cart).
   try {
     const minted = `sess_${crypto.randomUUID()}`;
     try {
@@ -81,10 +103,16 @@ export function resolveEffectiveChatSessionId(
     } catch {
       /* nadal zwróć mint, nawet gdy zapis storage się nie udał */
     }
-    return minted;
+    return {sessionId: minted, sessionIdSource: 'session_storage'};
   } catch {
-    return null;
+    return {sessionId: null, sessionIdSource: null};
   }
+}
+
+export function resolveEffectiveChatSessionId(
+  sessionStorageKey = 'epir-assistant-session',
+): string | null {
+  return resolveEffectiveChatSessionWithMeta(sessionStorageKey).sessionId;
 }
 
 /**

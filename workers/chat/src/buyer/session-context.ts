@@ -43,6 +43,24 @@ export function extractChannelFromBody(body: unknown): string | undefined {
   return trimmed || undefined;
 }
 
+/** `true`/`false` z klienta; brak pola = unknown (NULL w D1). */
+export function extractAnalyticsConsentFromBody(body: unknown): 0 | 1 | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const raw = (body as {analytics_consent?: unknown}).analytics_consent;
+  if (raw === true) return 1;
+  if (raw === false) return 0;
+  return undefined;
+}
+
+export function extractSessionIdSourceFromBody(
+  body: unknown,
+): 'cookie' | 'session_storage' | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const raw = (body as {session_id_source?: unknown}).session_id_source;
+  if (raw === 'cookie' || raw === 'session_storage') return raw;
+  return undefined;
+}
+
 /** Każda tura z session_id: kanoniczny session_id i storefront w SessionDO (join z pixel). */
 export async function ensureBuyerSessionContext(
   env: Env,
@@ -52,6 +70,8 @@ export async function ensureBuyerSessionContext(
     storefrontId?: string;
     bodyChannel?: string;
     userText: string;
+    analyticsConsent?: 0 | 1;
+    sessionIdSource?: 'cookie' | 'session_storage';
   },
 ): Promise<void> {
   const sid = input.sessionId?.trim();
@@ -83,6 +103,16 @@ export async function ensureBuyerSessionContext(
         storefront_id: input.storefrontId?.trim() ?? null,
         channel,
       });
+    }
+    if (input.analyticsConsent !== undefined || input.sessionIdSource) {
+      const privacyBody: Record<string, unknown> = {};
+      if (input.analyticsConsent !== undefined) {
+        privacyBody.analytics_consent = input.analyticsConsent;
+      }
+      if (input.sessionIdSource) {
+        privacyBody.session_id_source = input.sessionIdSource;
+      }
+      await postSession(env, sid, 'set-session-privacy', privacyBody);
     }
   } catch (e) {
     console.warn('[buyer.session_context] ensure failed', e);

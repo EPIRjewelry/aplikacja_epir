@@ -453,6 +453,7 @@ function isSessionChatRoute(pathname: string): boolean {
     pathname.endsWith('/customer') ||
     pathname.endsWith('/set-session-id') ||
     pathname.endsWith('/set-storefront-context') ||
+    pathname.endsWith('/set-session-privacy') ||
     pathname.endsWith('/replace-last-user-text') ||
     pathname.endsWith('/persist-usage') ||
     pathname.endsWith('/persist-tool-call') ||
@@ -1335,6 +1336,8 @@ type SessionContextRow = {
   session_id: string | null;
   storefront_id: string | null;
   channel: string | null;
+  analytics_consent: number | null;
+  session_id_source: string | null;
 };
 
 type SessionCustomerRow = {
@@ -1394,6 +1397,8 @@ function emptySessionContext(): SessionContextRow {
     session_id: null,
     storefront_id: null,
     channel: null,
+    analytics_consent: null,
+    session_id_source: null,
   };
 }
 
@@ -1508,6 +1513,8 @@ export class SessionDO {
       )
     `);
     this.execIgnoreDuplicateColumn('ALTER TABLE messages ADD COLUMN message_uid TEXT');
+    this.execIgnoreDuplicateColumn('ALTER TABLE session_context ADD COLUMN analytics_consent INTEGER');
+    this.execIgnoreDuplicateColumn('ALTER TABLE session_context ADD COLUMN session_id_source TEXT');
     this.sql.exec(`
       CREATE INDEX IF NOT EXISTS idx_session_messages_ts
       ON messages(ts ASC, id ASC)
@@ -1692,6 +1699,32 @@ export class SessionDO {
       if (payload && (typeof payload.storefront_id === 'string' || typeof payload.channel === 'string')) {
         this.setStorefrontContext(payload.storefront_id, payload.channel);
         await this.persistSessionRecord({ lastActivity: now() });
+      }
+      return new Response('ok');
+    }
+
+    // POST /set-session-privacy — analytics consent + session id source (EDOG match denominator)
+    if (method === 'POST' && pathname.endsWith('/set-session-privacy')) {
+      const payload = (await request.json().catch(() => null)) as {
+        analytics_consent?: number | boolean;
+        session_id_source?: string;
+      } | null;
+      if (payload) {
+        const patch: Partial<Omit<SessionContextRow, 'id'>> = {};
+        if (payload.analytics_consent === 0 || payload.analytics_consent === 1) {
+          patch.analytics_consent = payload.analytics_consent;
+        } else if (payload.analytics_consent === true) {
+          patch.analytics_consent = 1;
+        } else if (payload.analytics_consent === false) {
+          patch.analytics_consent = 0;
+        }
+        if (payload.session_id_source === 'cookie' || payload.session_id_source === 'session_storage') {
+          patch.session_id_source = payload.session_id_source;
+        }
+        if (Object.keys(patch).length > 0) {
+          this.updateSessionContext(patch);
+          await this.persistSessionRecord({ lastActivity: now() });
+        }
       }
       return new Response('ok');
     }
@@ -1886,7 +1919,7 @@ export class SessionDO {
 
   private getSessionContext(): SessionContextRow {
     const row = this.sql.exec(
-      'SELECT cart_id, session_id, storefront_id, channel FROM session_context WHERE id = 1',
+      'SELECT cart_id, session_id, storefront_id, channel, analytics_consent, session_id_source FROM session_context WHERE id = 1',
     ).one() as Omit<SessionContextRow, 'id'> | null;
 
     return {
@@ -1897,11 +1930,13 @@ export class SessionDO {
 
   private writeSessionContext(next: SessionContextRow): void {
     this.sql.exec(
-      'UPDATE session_context SET cart_id = ?, session_id = ?, storefront_id = ?, channel = ? WHERE id = 1',
+      'UPDATE session_context SET cart_id = ?, session_id = ?, storefront_id = ?, channel = ?, analytics_consent = ?, session_id_source = ? WHERE id = 1',
       next.cart_id,
       next.session_id,
       next.storefront_id,
       next.channel,
+      next.analytics_consent,
+      next.session_id_source,
     );
   }
 
@@ -1913,6 +1948,10 @@ export class SessionDO {
       session_id: patch.session_id !== undefined ? patch.session_id : current.session_id,
       storefront_id: patch.storefront_id !== undefined ? patch.storefront_id : current.storefront_id,
       channel: patch.channel !== undefined ? patch.channel : current.channel,
+      analytics_consent:
+        patch.analytics_consent !== undefined ? patch.analytics_consent : current.analytics_consent,
+      session_id_source:
+        patch.session_id_source !== undefined ? patch.session_id_source : current.session_id_source,
     });
   }
 
@@ -2185,6 +2224,8 @@ export class SessionDO {
       message_count: meta.message_seq,
       storefront_id: sessionContext.storefront_id ?? null,
       channel: sessionContext.channel ?? null,
+      analytics_consent: sessionContext.analytics_consent ?? null,
+      session_id_source: sessionContext.session_id_source ?? null,
     };
   }
 
@@ -2203,9 +2244,10 @@ export class SessionDO {
           `INSERT INTO sessions (
             session_id, customer_id, first_name, last_name, cart_id,
             created_at, last_activity, archived_at, message_count,
-            storefront_id, channel, persist_status, last_persist_error, last_persist_error_at
+            storefront_id, channel, persist_status, last_persist_error, last_persist_error_at,
+            analytics_consent, session_id_source
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(session_id) DO UPDATE SET
             customer_id = excluded.customer_id,
             first_name = excluded.first_name,
@@ -2218,7 +2260,9 @@ export class SessionDO {
             channel = excluded.channel,
             persist_status = excluded.persist_status,
             last_persist_error = excluded.last_persist_error,
-            last_persist_error_at = excluded.last_persist_error_at`
+            last_persist_error_at = excluded.last_persist_error_at,
+            analytics_consent = COALESCE(excluded.analytics_consent, sessions.analytics_consent),
+            session_id_source = COALESCE(excluded.session_id_source, sessions.session_id_source)`
         )
         .bind(
           snapshot.session_id,
@@ -2235,6 +2279,8 @@ export class SessionDO {
           options?.persistStatus ?? 'ok',
           options?.lastPersistError ?? null,
           options?.lastPersistErrorAt ?? null,
+          snapshot.analytics_consent,
+          snapshot.session_id_source,
         )
         .run();
     } catch (error) {
