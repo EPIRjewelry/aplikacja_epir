@@ -421,7 +421,44 @@ describe('resolveVariantSwapFromCart', () => {
       [{ name: 'Rozmiar', value: '99' }],
       [],
     );
-    expect(resolved.status).toBe('variant_unavailable');
+    expect(resolved.status).toBe('option_value_out_of_range');
+  });
+
+  it('maps Rozmiar to Ring size for swap (GZ)', () => {
+    const variants: VariantFacts[] = [];
+    for (const size of ['9', '16', '18', '25']) {
+      variants.push({
+        variantId: `gid://shopify/ProductVariant/${size}`,
+        title: size,
+        image: null,
+        sku: null,
+        price: { minor: 10000, currency: 'PLN' },
+        compareAtPrice: null,
+        available: true,
+        selectedOptions: [{ name: 'Ring size', value: size }],
+        metal: null,
+        size,
+        stoneOrigin: 'unknown',
+        originEvidence: [],
+      });
+    }
+    const product: ProductFacts = {
+      ...ringProduct(),
+      options: [{ name: 'Ring size', values: ['9', '16', '18', '25'] }],
+      variants,
+    };
+    const index = createVariantOptionIndex();
+    mergeProductFactsIntoIndex(index, product);
+    const resolved = resolveVariantSwapFromCart(
+      index,
+      [{ lineId: 'li1', variantId: 'gid://shopify/ProductVariant/18' }],
+      [{ name: 'Rozmiar', value: '16' }],
+      [],
+    );
+    expect(resolved.status).toBe('ok');
+    if (resolved.status === 'ok') {
+      expect(resolved.targetVariantId).toBe('gid://shopify/ProductVariant/16');
+    }
   });
 
   it('findVariantIdBySelectedOptions resolves like variantBySelectedOptions', () => {

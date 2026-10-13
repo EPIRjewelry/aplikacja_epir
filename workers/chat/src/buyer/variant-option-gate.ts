@@ -19,6 +19,8 @@ export type VariantOptionEntry = {
   /** Kanoniczne nazwy opcji → wartości z katalogu. */
   optionValuesByName: Map<string, string[]>;
   requiresOptionChoice: boolean;
+  /** Storefront availableForSale; null = brak danych (nie traktuj jako niedostępny). */
+  availableForSale: boolean | null;
   /** Cena wariantu (minor) — do potwierdzenia po mutacji. */
   priceMinor?: number | null;
   priceCurrency?: string | null;
@@ -30,8 +32,78 @@ export function createVariantOptionIndex(): VariantOptionIndex {
   return new Map();
 }
 
+function stripDiacritics(s: string): string {
+  return s.normalize('NFD').replace(/\p{M}/gu, '');
+}
+
 export function normalizeOptKey(name: string): string {
-  return name.trim().toLowerCase();
+  return stripDiacritics(name.trim()).toLowerCase();
+}
+
+const SIZE_OPTION_KEYS = new Set([
+  'rozmiar',
+  'size',
+  'ring size',
+  'ringsize',
+  'obwod',
+  'obwód',
+]);
+
+function isSizeOptionSynonym(normalizedName: string): boolean {
+  if (SIZE_OPTION_KEYS.has(normalizedName)) return true;
+  return normalizedName.includes('ring size') || normalizedName.endsWith(' size');
+}
+
+function listCatalogOptionNames(optionValuesByName: Map<string, string[]>): string[] {
+  return [...optionValuesByName.keys()].filter((n) => normalizeOptKey(n) !== 'title');
+}
+
+function findSizeOptionNames(optionValuesByName: Map<string, string[]>): string[] {
+  return listCatalogOptionNames(optionValuesByName).filter((name) =>
+    isSizeOptionSynonym(normalizeOptKey(name)),
+  );
+}
+
+function soleMultiValueOptionContainingValue(
+  optionValuesByName: Map<string, string[]>,
+  value: string,
+): string | null {
+  const vk = normalizeOptKey(value);
+  const candidates: string[] = [];
+  for (const [name, vals] of optionValuesByName) {
+    if (normalizeOptKey(name) === 'title') continue;
+    if (vals.length <= 1) continue;
+    if (vals.some((v) => normalizeOptKey(v) === vk)) candidates.push(name);
+  }
+  if (candidates.length === 1) return candidates[0];
+  return null;
+}
+
+/**
+ * Mapuje nazwę opcji od modelu na kanoniczną nazwę produktu (bez zgadywania wartości).
+ */
+export function mapModelOptionNameToCanonical(
+  modelName: string,
+  modelValue: string,
+  optionValuesByName: Map<string, string[]>,
+): string | null | 'ambiguous' {
+  const looked = lookupOptionValues(optionValuesByName, modelName);
+  if (looked) return looked.canonicalName;
+
+  const nk = normalizeOptKey(modelName);
+  if (isSizeOptionSynonym(nk)) {
+    const sizeOpts = findSizeOptionNames(optionValuesByName);
+    if (sizeOpts.length === 1) return sizeOpts[0];
+    if (sizeOpts.length > 1) return 'ambiguous';
+  }
+
+  const sole = soleMultiValueOptionContainingValue(optionValuesByName, modelValue);
+  if (sole) return sole;
+  return null;
+}
+
+function formatOptionList(names: string[]): string {
+  return names.map((n) => `„${n}”`).join(', ');
 }
 
 function isDefaultTitleOnly(product: ProductFacts, variants: VariantFacts[]): boolean {
@@ -120,6 +192,7 @@ export function mergeProductFactsIntoIndex(
       })),
       optionValuesByName,
       requiresOptionChoice: needsChoice,
+      availableForSale: typeof v.available === 'boolean' ? v.available : null,
       priceMinor: v.price?.minor ?? null,
       priceCurrency: v.price?.currency ?? null,
     });
@@ -381,6 +454,9 @@ export type ResolveSwapResult =
       choices: Array<{ title: string; optionsLine: string; lineHint: string }>;
     }
   | { status: 'variant_unavailable'; notice: string }
+  | { status: 'option_name_unknown'; notice: string }
+  | { status: 'option_value_out_of_range'; notice: string }
+  | { status: 'variant_not_for_sale'; notice: string }
   | { status: 'no_cart_line'; notice: string };
 
 /**
@@ -426,7 +502,14 @@ export function resolveVariantSwapFromCart(
     const relevant = candidates.filter((line) => {
       const entry = index.get(line.variantId);
       if (!entry) return false;
-      return partialOptions.every((sel) => lookupOptionValues(entry.optionValuesByName, sel.name));
+      return partialOptions.every((sel) => {
+        const mapped = mapModelOptionNameToCanonical(
+          sel.name,
+          sel.value,
+          entry.optionValuesByName,
+        );
+        return mapped !== null && mapped !== 'ambiguous';
+      });
     });
     const productIds = new Set(
       relevant.map((l) => index.get(l.variantId)?.productId).filter(Boolean) as string[],
@@ -496,12 +579,32 @@ export function resolveVariantSwapFromCart(
     merged.set(normalizeOptKey(o.name), { name: o.name, value: o.value });
   }
   for (const sel of partialOptions) {
-    const looked = lookupOptionValues(base.optionValuesByName, sel.name);
-    const canonicalName = looked?.canonicalName ?? sel.name;
-    const canonicalValue =
-      looked?.values.find((v) => normalizeOptKey(v) === normalizeOptKey(sel.value)) ?? sel.value;
-    merged.set(normalizeOptKey(canonicalName), {
-      name: canonicalName,
+    const mapped = mapModelOptionNameToCanonical(
+      sel.name,
+      sel.value,
+      base.optionValuesByName,
+    );
+    if (mapped === 'ambiguous' || mapped === null) {
+      const available = listCatalogOptionNames(base.optionValuesByName);
+      return {
+        status: 'option_name_unknown',
+        notice: mapped === 'ambiguous'
+          ? 'Proszę doprecyzować, którą opcję produktu Pan/Pani chce zmienić.'
+          : `Ten produkt nie ma opcji „${sel.name.trim()}”. Dostępne opcje to: ${formatOptionList(available)}. Którą z nich chce Pan/Pani zmienić?`,
+      };
+    }
+    const looked = lookupOptionValues(base.optionValuesByName, mapped);
+    const values = looked?.values ?? base.optionValuesByName.get(mapped) ?? [];
+    const canonicalValue = values.find((v) => normalizeOptKey(v) === normalizeOptKey(sel.value));
+    if (!canonicalValue) {
+      const sorted = [...values].sort((a, b) => a.localeCompare(b, 'pl'));
+      return {
+        status: 'option_value_out_of_range',
+        notice: `Rozmiar ${sel.value.trim()} nie występuje w tym modelu. Dostępne wartości: ${sorted.join(', ')}.`,
+      };
+    }
+    merged.set(normalizeOptKey(mapped), {
+      name: mapped,
       value: canonicalValue,
     });
   }
@@ -509,12 +612,22 @@ export function resolveVariantSwapFromCart(
   const targetId = findVariantIdBySelectedOptions(index, base.productId, fullOptions);
   if (!targetId) {
     return {
-      status: 'variant_unavailable',
+      status: 'option_value_out_of_range',
       notice:
-        'Ten wariant nie jest dostępny w ofercie (opcje nie odpowiadają żadnemu wariantowi sklepu).',
+        'Podane opcje nie odpowiadają żadnemu wariantowi w katalogu. Proszę wybrać wartość z listy dostępnych opcji.',
     };
   }
   const target = index.get(targetId)!;
+  if (target.availableForSale === false) {
+    const optsLine = target.selectedOptions
+      .filter((o) => o.value !== 'Default Title')
+      .map((o) => `${o.name} ${o.value}`)
+      .join(', ');
+    return {
+      status: 'variant_not_for_sale',
+      notice: `Wariant ${optsLine || target.variantTitle} jest obecnie niedostępny.`,
+    };
+  }
   return {
     status: 'ok',
     targetVariantId: targetId,

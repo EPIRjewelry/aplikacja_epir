@@ -19,6 +19,26 @@ export const REPLY_LINK_REJECTED_NEUTRAL_MESSAGE =
 export const REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE =
   'Koszyk jest zaktualizowany. Nie mogę teraz bezpiecznie podać linku — napisz, jeśli mam go powtórzyć.';
 
+/** Brak mutacji koszyka w turze — zamiast fałszywego CTA z odrzuconego linku. */
+export const REPLY_NOT_YET_IN_CART_MESSAGE =
+  'Produkt nie został jeszcze dodany do koszyka. Proszę potwierdzić wariant, a dodam go.';
+
+/** Zamknięta lista fraz CTA koszyka/kasy z naszych szablonów (nie regex „sensu”). */
+export const CART_CHECKOUT_CTA_PHRASES: readonly string[] = [
+  'Zobacz koszyk i przejdź do kasy',
+  'Przejdź do koszyka',
+  'Link do koszyka',
+  'Przejdź do kasy',
+  'Zobacz koszyk',
+];
+
+export function containsCartCheckoutCtaPhrase(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  const lower = t.toLowerCase();
+  return CART_CHECKOUT_CTA_PHRASES.some((phrase) => lower.includes(phrase.toLowerCase()));
+}
+
 /** Tylko po sukcesie create/update w bieżącej turze — nie samo sessionCartId. */
 export function applyCartMutationHistoryOverride(
   guarded: string,
@@ -132,6 +152,26 @@ function isAllowedDest(
 
 const LOOSE_PLACEHOLDER_RE = /\{\{[^{}]+\}\}/g;
 
+/** Cel linku koszyka/kasy/placeholder — usuń cały markdown link wraz z etykietą. */
+export function isCartCheckoutOrPlaceholderDest(dest: string): boolean {
+  const d = dest.trim();
+  if (!d) return false;
+  if (d.includes('{{')) return true;
+  const lower = d.toLowerCase();
+  if (lower.includes('/cart/') || lower.includes('/cart?')) return true;
+  if (lower.includes('checkout')) return true;
+  if (d.startsWith('/') && lower.includes('cart')) return true;
+  try {
+    const u = new URL(d);
+    const path = u.pathname.toLowerCase();
+    if (path.includes('/cart')) return true;
+    if (path.includes('checkout')) return true;
+  } catch {
+    /* relative or non-URL */
+  }
+  return false;
+}
+
 /** Usuwa luźne {{...}} poza składnią linku Markdown (nie podstawia URL). */
 export function stripLoosePlaceholders(text: string): string {
   if (!text.includes('{{')) return text;
@@ -181,6 +221,9 @@ export function sanitizeMarkdownLinks(
           destPattern: dest.includes('{{') ? 'placeholder' : 'non_http_or_foreign',
         }),
       );
+      if (isCartCheckoutOrPlaceholderDest(dest)) {
+        return '';
+      }
       return trimmedLabel || '';
     },
   );

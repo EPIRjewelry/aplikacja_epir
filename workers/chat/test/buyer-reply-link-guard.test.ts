@@ -19,7 +19,7 @@ describe('reply-link-guard', () => {
         '[k](https://shop.myshopify.com/cart/c/BAD?key=abc)',
         allowed,
       ),
-    ).toBe('k');
+    ).toBe('');
     expect(
       foreignHostsInReply(
         '[k](https://shop.myshopify.com/cart/c/BAD?key=abc)',
@@ -31,7 +31,7 @@ describe('reply-link-guard', () => {
         '[k](https://shop.myshopify.com/cart/c/GOOD?key=evil)',
         allowed,
       ),
-    ).toBe('k');
+    ).toBe('');
   });
 
   it('passes reply when link host is on allowlist', () => {
@@ -171,7 +171,7 @@ describe('reply-link-guard', () => {
       allowed,
       {channelId: 'kazka-hydrogen', shopDomain},
     );
-    expect(out).toBe('x');
+    expect(out).toBe('');
     expect(out).not.toContain('/cart/c/');
   });
 });

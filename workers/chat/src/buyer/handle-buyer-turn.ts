@@ -6,12 +6,17 @@ import {
   extractProductHandleFromBody,
   extractSessionIdFromBody,
 } from './compose-buyer-turn';
+<<<<<<< HEAD
 import {
   extractAnalyticsConsentFromBody,
   extractChannelFromBody,
   extractSessionIdSourceFromBody,
   extractStorefrontIdFromBody,
 } from './session-context';
+=======
+import { BuyerTurnOverloadError, BUYER_LLM_OVERLOAD_MESSAGE } from './buyer-llm-retry';
+import {extractChannelFromBody, extractStorefrontIdFromBody} from './session-context';
+>>>>>>> ad4bf2b (fix(buyer): PR F — cart CTA, opcje wariantu, 429, linki GZ)
 import {channelIdFromBrandLock, readChannelMode} from './channel-switch';
 
 function buyerResponseHeaders(env: Env, request: Request): Record<string, string> {
@@ -145,6 +150,21 @@ export async function handleBuyerTurn(
       headers: buyerResponseHeaders(env, request),
     });
   } catch (e) {
+    if (e instanceof BuyerTurnOverloadError) {
+      return new Response(
+        JSON.stringify({
+          type: 'message',
+          reply: BUYER_LLM_OVERLOAD_MESSAGE,
+          channel_id: channelId,
+          mode,
+          session_id: sessionId,
+        }),
+        {
+          status: 200,
+          headers: buyerResponseHeaders(env, request),
+        },
+      );
+    }
     console.error('[buyer.handle_turn] failed', e);
     return new Response(
       JSON.stringify({

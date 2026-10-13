@@ -118,7 +118,7 @@ describe('buildCartContinueReply line summaries', () => {
 });
 
 describe('sanitizeMarkdownLinks placeholders', () => {
-  it('strips {{continue_url}} link, keeps label', () => {
+  it('strips {{continue_url}} cart CTA without leaving label', () => {
     const allowed = collectAllowedUrls([
       'https://shop.myshopify.com/cart/c/REAL',
     ]);
@@ -127,7 +127,7 @@ describe('sanitizeMarkdownLinks placeholders', () => {
       allowed,
     );
     expect(out).not.toContain('{{');
-    expect(out).toContain('Zakończ zamówienie');
+    expect(out).not.toContain('Zakończ zamówienie');
     expect(out).toContain('https://shop.myshopify.com/cart/c/REAL');
   });
 
@@ -145,7 +145,7 @@ describe('sanitizeMarkdownLinks placeholders', () => {
       '[x](https://shop.myshopify.com/cart/c/TOKEN)',
       allowed,
     );
-    expect(out).toBe('x');
+    expect(out).toBe('');
     expect(out).not.toContain('TOKEN');
   });
 
@@ -157,13 +157,13 @@ describe('sanitizeMarkdownLinks placeholders', () => {
       '[koszyk](https://shop.myshopify.com/cart/c/OTHERTOKEN?key=abc)',
       allowed,
     );
-    expect(otherToken).toBe('koszyk');
+    expect(otherToken).toBe('');
     expect(otherToken).not.toContain('OTHERTOKEN');
     const otherKey = sanitizeMarkdownLinks(
       '[koszyk](https://shop.myshopify.com/cart/c/GOODTOKEN?key=evil)',
       allowed,
     );
-    expect(otherKey).toBe('koszyk');
+    expect(otherKey).toBe('');
     expect(otherKey).not.toContain('key=evil');
   });
 });
