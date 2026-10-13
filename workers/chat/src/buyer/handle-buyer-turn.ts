@@ -6,17 +6,13 @@ import {
   extractProductHandleFromBody,
   extractSessionIdFromBody,
 } from './compose-buyer-turn';
-<<<<<<< HEAD
+import {BuyerTurnOverloadError, BUYER_LLM_OVERLOAD_MESSAGE} from './buyer-llm-retry';
 import {
   extractAnalyticsConsentFromBody,
   extractChannelFromBody,
   extractSessionIdSourceFromBody,
   extractStorefrontIdFromBody,
 } from './session-context';
-=======
-import { BuyerTurnOverloadError, BUYER_LLM_OVERLOAD_MESSAGE } from './buyer-llm-retry';
-import {extractChannelFromBody, extractStorefrontIdFromBody} from './session-context';
->>>>>>> ad4bf2b (fix(buyer): PR F — cart CTA, opcje wariantu, 429, linki GZ)
 import {channelIdFromBrandLock, readChannelMode} from './channel-switch';
 
 function buyerResponseHeaders(env: Env, request: Request): Record<string, string> {

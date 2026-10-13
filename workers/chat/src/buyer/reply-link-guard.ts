@@ -17,7 +17,7 @@ export const REPLY_LINK_REJECTED_NEUTRAL_MESSAGE =
  * Preferuj buildCartContinueReply gdy jest exact continue_url.
  */
 export const REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE =
-  'Koszyk jest zaktualizowany. Nie mogę teraz bezpiecznie podać linku — napisz, jeśli mam go powtórzyć.';
+  'Koszyk jest zaktualizowany. Nie mogę teraz bezpiecznie podać linku — proszę napisać, jeśli mam go powtórzyć.';
 
 /** Brak mutacji koszyka w turze — zamiast fałszywego CTA z odrzuconego linku. */
 export const REPLY_NOT_YET_IN_CART_MESSAGE =
