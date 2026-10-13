@@ -1,25 +1,30 @@
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import {readFileSync} from 'node:fs';
+import {dirname, join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import vm from 'node:vm';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildCustomPixelPostBody } from '../../../extensions/my-web-pixel/src/custom-pixel-payload';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {buildCustomPixelPostBody} from '../../../extensions/my-web-pixel/src/custom-pixel-payload';
 import {
   persistChatSessionIdFromWorker,
+  readAnalyticsClientIdForChat,
+  resolveChatSessionPrivacyApiUrl,
   resolveEffectiveChatSessionId,
+  resolveEffectiveChatSessionWithMeta,
+  scrubInvalidChatSessionStorage,
 } from './epir-session-browser';
 
 const SHARED = 'shopify-y-join-8f3c1a0b';
+const DISTINCT_EPIR = 'epir-first-party-session-id-9a2b';
 const DIVERGED = 'epir-assistant-session-diverged-uuid';
 const WORKER_MINTED = 'worker-minted-session-uuid';
 const SESSION_KEY = 'epir-assistant-session';
 
 type PixelApi = {
-  analytics: { subscribe: (name: string, handler: (event: unknown) => void) => void };
-  init: { data?: { customer?: { id: string } | null } };
-  settings: { pixelEndpoint?: string };
+  analytics: {subscribe: (name: string, handler: (event: unknown) => void) => void};
+  init: {data?: {customer?: {id: string} | null}};
+  settings: {pixelEndpoint?: string};
   browser: {
-    cookie?: { get: (name: string) => Promise<string | null> };
+    cookie?: {get: (name: string) => Promise<string | null>};
     sessionStorage: {
       getItem: (key: string) => Promise<string | null>;
       setItem: (key: string, value: string) => Promise<void>;
@@ -45,7 +50,7 @@ const runtimePath = join(
 );
 
 function memoryBag(initial: Record<string, string> = {}) {
-  const bag: Record<string, string> = { ...initial };
+  const bag: Record<string, string> = {...initial};
   return {
     bag,
     storage: {
@@ -62,11 +67,21 @@ function memoryBag(initial: Record<string, string> = {}) {
   };
 }
 
-function installBrowser(cookie: string, stored: Record<string, string> = {}) {
+function installBrowser(
+  cookie: string,
+  stored: Record<string, string> = {},
+  analyticsAllowed: boolean | null = null,
+) {
   const memory = memoryBag(stored);
   let mintSeq = 0;
-  vi.stubGlobal('window', {});
-  vi.stubGlobal('document', { cookie });
+  const shopify: Record<string, unknown> = {};
+  if (analyticsAllowed !== null) {
+    shopify.customerPrivacy = {
+      analyticsProcessingAllowed: () => analyticsAllowed === true,
+    };
+  }
+  vi.stubGlobal('window', {Shopify: shopify});
+  vi.stubGlobal('document', {cookie});
   vi.stubGlobal('sessionStorage', memory.storage);
   vi.stubGlobal('crypto', {
     randomUUID: () => {
@@ -77,9 +92,19 @@ function installBrowser(cookie: string, stored: Record<string, string> = {}) {
   return memory.bag;
 }
 
-function loadLiquidRuntime(cookie: string, stored: Record<string, string> = {}) {
+function loadLiquidRuntime(
+  cookie: string,
+  stored: Record<string, string> = {},
+  analyticsAllowed: boolean | null = null,
+) {
   const memory = memoryBag(stored);
   const minted: string[] = [];
+  const shopify: Record<string, unknown> = {};
+  if (analyticsAllowed !== null) {
+    shopify.customerPrivacy = {
+      analyticsProcessingAllowed: () => analyticsAllowed === true,
+    };
+  }
   const sandbox: Record<string, unknown> = {
     document: {
       cookie,
@@ -87,9 +112,9 @@ function loadLiquidRuntime(cookie: string, stored: Record<string, string> = {}) 
       addEventListener() {},
     },
     sessionStorage: memory.storage,
-    window: {},
+    window: {Shopify: shopify},
     console,
-    fetch: () => Promise.resolve({ ok: true, json: async () => ({}), text: async () => '' }),
+    fetch: () => Promise.resolve({ok: true, json: async () => ({}), text: async () => ''}),
     crypto: {
       randomUUID: () => {
         const id = `consent-only-${minted.length + 1}`;
@@ -102,7 +127,7 @@ function loadLiquidRuntime(cookie: string, stored: Record<string, string> = {}) 
     URL,
     URLSearchParams,
     AbortController,
-    performance: { now: () => 0 },
+    performance: {now: () => 0},
     Date,
     JSON,
     Math,
@@ -116,7 +141,7 @@ function loadLiquidRuntime(cookie: string, stored: Record<string, string> = {}) 
   vm.runInNewContext(readFileSync(runtimePath, 'utf8'), sandbox, {
     filename: 'assistant-runtime.js',
   });
-  return { sandbox, bag: memory.bag, minted };
+  return {sandbox, bag: memory.bag, minted};
 }
 
 async function extensionPixelSessionId(options: {
@@ -130,8 +155,8 @@ async function extensionPixelSessionId(options: {
         subscriptions.set(name, handler);
       },
     },
-    init: { data: { customer: null } },
-    settings: { pixelEndpoint: 'https://test-pixel.example.com' },
+    init: {data: {customer: null}},
+    settings: {pixelEndpoint: 'https://test-pixel.example.com'},
     browser: {
       cookie: {
         get: async (name: string) =>
@@ -149,22 +174,33 @@ async function extensionPixelSessionId(options: {
   if (!handler) throw new Error('page_viewed handler missing');
   await handler({
     clientId: options.clientId,
-    context: { customerPrivacy: { analyticsProcessingAllowed: true } },
+    context: {customerPrivacy: {analyticsProcessingAllowed: true}},
   });
   const call = vi.mocked(fetch).mock.calls.at(-1);
   if (!call) throw new Error('pixel did not fetch');
   const init = call[1] as RequestInit;
-  const body = JSON.parse(String(init.body)) as { data: { session_id: string } };
+  const body = JSON.parse(String(init.body)) as {data: {session_id: string}};
   return body.data.session_id;
 }
 
-describe('chat session_id joins pixel session_id on _shopify_y', () => {
+describe('resolveChatSessionPrivacyApiUrl', () => {
+  it('maps Hydrogen /api/chat and GE /apps/assistant/chat', () => {
+    vi.stubGlobal('window', {location: {origin: 'https://shop.example'}});
+    expect(resolveChatSessionPrivacyApiUrl('/api/chat')).toBe('/api/chat-session-privacy');
+    expect(resolveChatSessionPrivacyApiUrl('/apps/assistant/chat')).toBe(
+      '/apps/assistant/session-privacy',
+    );
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('chat session_id vs pixel (Customer Privacy)', () => {
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
         ok: true,
-        json: vi.fn().mockResolvedValue({ ok: true, activate_chat: false }),
+        json: vi.fn().mockResolvedValue({ok: true, activate_chat: false}),
       }),
     );
   });
@@ -173,130 +209,105 @@ describe('chat session_id joins pixel session_id on _shopify_y', () => {
     vi.unstubAllGlobals();
   });
 
-  it('uses the same _shopify_y cookie for the chat session_id and the pixel session_id', async () => {
+  it('without analytics consent: chat uses sess_* and not _shopify_y; pixel still uses clientId', async () => {
     const cookie = `_epir_session_id=${SHARED}; _shopify_y=${SHARED}`;
-    const stored = installBrowser(cookie, { [SESSION_KEY]: DIVERGED });
+    const stored = installBrowser(cookie, {[SESSION_KEY]: DIVERGED}, false);
 
-    const hydrogenSessionId = resolveEffectiveChatSessionId();
-    persistChatSessionIdFromWorker(WORKER_MINTED);
-    const hydrogenAfterWorker = resolveEffectiveChatSessionId();
+    const meta = resolveEffectiveChatSessionWithMeta(SESSION_KEY);
+    expect(meta.sessionId).toMatch(/^sess_/);
+    expect(meta.sessionId).not.toBe(SHARED);
+    expect(meta.analyticsClientId).toBeNull();
+    expect(stored[SESSION_KEY]).toMatch(/^sess_/);
+    expect(stored[SESSION_KEY]).not.toBe(DIVERGED);
 
-    const liquid = loadLiquidRuntime(cookie, { [SESSION_KEY]: DIVERGED });
+    const liquid = loadLiquidRuntime(cookie, {[SESSION_KEY]: DIVERGED}, false);
     const resolveLiquid = liquid.sandbox.resolveEffectiveAssistantSessionId as (
       key?: string,
     ) => string | null;
-    const persistLiquid = liquid.sandbox.persistAssistantSessionIdFromWorker as (
-      key: string,
-      id: string,
-    ) => void;
-    const buildConsent = liquid.sandbox.buildConsentEvent as (section: {
-      dataset: Record<string, string>;
-    }) => { sessionId: string; anonymousId: string };
     const liquidSessionId = resolveLiquid(SESSION_KEY);
-    persistLiquid(SESSION_KEY, WORKER_MINTED);
-    const consent = buildConsent({ dataset: {} });
+    expect(liquidSessionId).toMatch(/^sess_/);
+    expect(liquidSessionId).not.toBe(SHARED);
 
     const customPixelSessionId = buildCustomPixelPostBody({
       name: 'page_viewed',
       clientId: SHARED,
       data: {},
     }).data.session_id;
-
     const extensionSessionId = await extensionPixelSessionId({
       clientId: SHARED,
       epirCookie: SHARED,
     });
-
-    expect(hydrogenSessionId).toBe(SHARED);
-    expect(hydrogenAfterWorker).toBe(SHARED);
-    expect(liquidSessionId).toBe(SHARED);
     expect(customPixelSessionId).toBe(SHARED);
     expect(extensionSessionId).toBe(SHARED);
-    expect(hydrogenSessionId).toBe(customPixelSessionId);
-    expect(hydrogenSessionId).toBe(extensionSessionId);
-    expect(liquidSessionId).toBe(extensionSessionId);
-
-    expect(stored[SESSION_KEY]).toBe(DIVERGED);
-    expect(liquid.bag[SESSION_KEY]).toBe(DIVERGED);
-    expect(consent.sessionId).toBe(SHARED);
-    expect(consent.anonymousId).not.toBe(SHARED);
-    expect(liquid.bag['epir-chat-anonymous-id']).toBe(consent.anonymousId);
-    expect(liquid.minted).not.toContain(SHARED);
+    expect(meta.sessionId).not.toBe(extensionSessionId);
   });
 
-  it('adopts _shopify_y for a new session and does not mint a second id', async () => {
+  it('with consent: pixel copy cookies → sess_* chat id + analytics_client_id for join', () => {
     const cookie = `_shopify_y=${encodeURIComponent(SHARED)}`;
-    const stored = installBrowser(cookie);
+    installBrowser(cookie, {}, true);
 
-    const hydrogenSessionId = resolveEffectiveChatSessionId();
-    persistChatSessionIdFromWorker(WORKER_MINTED);
-
-    const liquid = loadLiquidRuntime(cookie);
-    const resolveLiquid = liquid.sandbox.resolveEffectiveAssistantSessionId as (
-      key?: string,
-    ) => string | null;
-    const persistLiquid = liquid.sandbox.persistAssistantSessionIdFromWorker as (
-      key: string,
-      id: string,
-    ) => void;
-    const liquidSessionId = resolveLiquid();
-    persistLiquid(SESSION_KEY, WORKER_MINTED);
-
-    const customPixelSessionId = buildCustomPixelPostBody({
-      name: 'product_viewed',
-      clientId: SHARED,
-      data: {},
-    }).data.session_id;
-    const extensionId = await extensionPixelSessionId({
-      clientId: SHARED,
-      epirCookie: null,
-    });
-
-    expect(hydrogenSessionId).toBe(SHARED);
-    expect(resolveEffectiveChatSessionId()).toBe(SHARED);
-    expect(stored[SESSION_KEY]).toBe(SHARED);
-    expect(stored[SESSION_KEY]).not.toBe(WORKER_MINTED);
-    expect(liquidSessionId).toBe(SHARED);
-    expect(liquid.bag[SESSION_KEY]).toBe(SHARED);
-    expect(liquid.bag[SESSION_KEY]).not.toBe(WORKER_MINTED);
-    expect(liquid.minted).toEqual([]);
-    expect(customPixelSessionId).toBe(SHARED);
-    expect(extensionId).toBe(SHARED);
-    expect(hydrogenSessionId).toBe(extensionId);
+    const meta = resolveEffectiveChatSessionWithMeta(SESSION_KEY);
+    expect(meta.sessionId).toMatch(/^sess_/);
+    expect(meta.sessionId).not.toBe(SHARED);
+    expect(readAnalyticsClientIdForChat(true)).toBe(SHARED);
+    expect(meta.analyticsClientId).toBe(SHARED);
   });
 
-  it('mints sess_uuid into sessionStorage when no cookie and empty storage (Hydrogen + Liquid)', () => {
-    const stored = installBrowser('');
+  it('with consent: distinct _epir_session_id becomes chat session_id (cookie source)', () => {
+    const cookie = `_epir_session_id=${DISTINCT_EPIR}; _shopify_y=${SHARED}`;
+    installBrowser(cookie, {}, true);
+
+    const meta = resolveEffectiveChatSessionWithMeta(SESSION_KEY);
+    expect(meta.sessionId).toBe(DISTINCT_EPIR);
+    expect(meta.sessionIdSource).toBe('cookie');
+    expect(meta.analyticsClientId).toBe(SHARED);
+  });
+
+  it('rejects legacy sessionStorage (non sess_*) and mints sess_*', () => {
+    const cookie = `_shopify_y=${SHARED}`;
+    const stored = installBrowser(cookie, {[SESSION_KEY]: SHARED}, false);
+    scrubInvalidChatSessionStorage(SESSION_KEY);
+    expect(stored[SESSION_KEY]).toBeUndefined();
+    const id = resolveEffectiveChatSessionId(SESSION_KEY);
+    expect(id).toMatch(/^sess_/);
+    expect(stored[SESSION_KEY]).toBe(id);
+  });
+
+  it('after consent revoke reload: stale _shopify_y in storage is not reused', () => {
+    const cookie = `_shopify_y=${SHARED}`;
+    const stored = installBrowser(cookie, {[SESSION_KEY]: SHARED}, false);
+    const id = resolveEffectiveChatSessionId(SESSION_KEY);
+    expect(id).toMatch(/^sess_/);
+    expect(stored[SESSION_KEY]).toBe(id);
+    expect(stored[SESSION_KEY]).not.toBe(SHARED);
+  });
+
+  it('mints sess_uuid when no cookie and empty storage', () => {
+    const stored = installBrowser('', {}, false);
     const hydrogen1 = resolveEffectiveChatSessionId();
     const hydrogen2 = resolveEffectiveChatSessionId();
     expect(hydrogen1).toMatch(/^sess_[0-9a-f-]{36}$/i);
     expect(hydrogen2).toBe(hydrogen1);
     expect(stored[SESSION_KEY]).toBe(hydrogen1);
-    expect(document.cookie).not.toContain(hydrogen1!);
 
-    const liquid = loadLiquidRuntime('');
+    const liquid = loadLiquidRuntime('', {}, false);
     const resolveLiquid = liquid.sandbox.resolveEffectiveAssistantSessionId as (
       key?: string,
     ) => string | null;
     const liquid1 = resolveLiquid(SESSION_KEY);
-    const liquid2 = resolveLiquid(SESSION_KEY);
     expect(liquid1).toMatch(/^sess_/);
-    expect(liquid2).toBe(liquid1);
-    expect(liquid.bag[SESSION_KEY]).toBe(liquid1);
-    expect(liquid.minted.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('reuses existing sessionStorage without minting when no cookie', () => {
+  it('persistChatSessionIdFromWorker ignores non-sess_ echo and keeps cookie path', () => {
+    installBrowser(`_epir_session_id=${DISTINCT_EPIR}`, {}, true);
+    persistChatSessionIdFromWorker(WORKER_MINTED, SESSION_KEY);
+    expect(resolveEffectiveChatSessionId(SESSION_KEY)).toBe(DISTINCT_EPIR);
+  });
+
+  it('reuses valid sess_* in sessionStorage when no eligible cookie', () => {
     const existing = 'sess_already-stored-id-0001';
-    const stored = installBrowser('', {[SESSION_KEY]: existing});
+    const stored = installBrowser('', {[SESSION_KEY]: existing}, false);
     expect(resolveEffectiveChatSessionId()).toBe(existing);
     expect(stored[SESSION_KEY]).toBe(existing);
-
-    const liquid = loadLiquidRuntime('', {[SESSION_KEY]: existing});
-    const resolveLiquid = liquid.sandbox.resolveEffectiveAssistantSessionId as (
-      key?: string,
-    ) => string | null;
-    expect(resolveLiquid(SESSION_KEY)).toBe(existing);
-    expect(liquid.minted).toEqual([]);
   });
 });

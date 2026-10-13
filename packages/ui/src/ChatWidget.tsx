@@ -15,6 +15,7 @@ import {
 import {parseChatPathContext} from './chat-path-context';
 import {resolveShopAuthTokenForChat} from './commerce/shop-sign-in';
 import {
+  installShopifyCustomerPrivacyChatListeners,
   persistChatSessionIdFromWorker,
   readShopifyAnalyticsProcessingAllowed,
   resolveEffectiveChatSessionId,
@@ -558,6 +559,9 @@ function ChatWidgetFallback({
             ? {session_id_source: sessionMeta.sessionIdSource}
             : {}),
           ...(analyticsAllowed !== null ? {analytics_consent: analyticsAllowed} : {}),
+          ...(sessionMeta.analyticsClientId
+            ? {analytics_client_id: sessionMeta.analyticsClientId}
+            : {}),
           cart_id: cartId ?? undefined,
           brand,
           locale: locale ?? (typeof document !== 'undefined' ? document.documentElement.lang : undefined) ?? 'pl',
@@ -893,6 +897,7 @@ export function ChatWidget({
   // otwiera stronę w tym samym tabie i zapisuje flagę `epir-assistant-ui-open`).
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    installShopifyCustomerPrivacyChatListeners(chatApiUrl, SESSION_ID_KEY);
     try {
       if (sessionStorage.getItem(UI_OPEN_KEY) === '1') {
         setIsOpen(true);
@@ -900,7 +905,7 @@ export function ChatWidget({
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [chatApiUrl]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

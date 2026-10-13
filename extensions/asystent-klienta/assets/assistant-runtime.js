@@ -31,19 +31,46 @@ function readEpirAnalyticsSessionCookie() {
   return readNamedDocumentCookie(EPIR_ANALYTICS_SESSION_COOKIE);
 }
 
-/** `_epir_session_id`, inaczej `_shopify_y` (Web Pixel `event.clientId`). Bez UUID. */
-function resolveAnalyticsSessionIdFromCookies() {
-  var epir = readEpirAnalyticsSessionCookie();
-  if (epir) return epir;
-  return readNamedDocumentCookie(EPIR_SHOPIFY_Y_COOKIE);
+var EPIR_CHAT_SESSION_STORAGE_PREFIX = 'sess_';
+
+function isEpirSessionCookiePixelCopy(epir, shopifyY) {
+  var e = epir ? String(epir).trim() : '';
+  var y = shopifyY ? String(shopifyY).trim() : '';
+  return Boolean(e && y && e === y);
 }
 
-/**
- * Join czatu z pikselem: cookie wygrywa z `epir-assistant-session`.
- * Nowa sesja (pusta sessionStorage) bierze cookie.
- * Brak cookie i storage → sess_ + crypto.randomUUID(), zapis TYLKO do sessionStorage (nie cookie).
- * Wymaga nowoczesnej przeglądarki z crypto.randomUUID(); fallback poza zakresem PR E1.
- */
+function isValidChatSessionStorageValue(value) {
+  return Boolean(value && String(value).indexOf(EPIR_CHAT_SESSION_STORAGE_PREFIX) === 0);
+}
+
+function scrubInvalidAssistantSessionStorage(sessionIdKey) {
+  var key = sessionIdKey || EPIR_ASSISTANT_SESSION_KEY;
+  try {
+    var stored = sessionStorage.getItem(key);
+    if (stored && !isValidChatSessionStorageValue(String(stored).trim())) {
+      sessionStorage.removeItem(key);
+    }
+  } catch (e) {}
+}
+
+function readAnalyticsClientIdForAssistant(consentAllowed) {
+  if (consentAllowed !== true) return '';
+  var shopifyY = readNamedDocumentCookie(EPIR_SHOPIFY_Y_COOKIE);
+  if (shopifyY) return shopifyY;
+  var epir = readEpirAnalyticsSessionCookie();
+  if (epir && !isEpirSessionCookiePixelCopy(epir, shopifyY)) return epir;
+  return '';
+}
+
+function readChatSessionIdFromEpirCookie(consentAllowed) {
+  if (consentAllowed !== true) return '';
+  var epir = readEpirAnalyticsSessionCookie();
+  if (!epir) return '';
+  var shopifyY = readNamedDocumentCookie(EPIR_SHOPIFY_Y_COOKIE);
+  if (isEpirSessionCookiePixelCopy(epir, shopifyY)) return '';
+  return epir;
+}
+
 function isShopifyAnalyticsProcessingAllowed() {
   try {
     if (
@@ -62,30 +89,41 @@ function isShopifyAnalyticsProcessingAllowed() {
 
 function resolveAssistantSessionIdMeta(sessionIdKey) {
   var key = sessionIdKey || EPIR_ASSISTANT_SESSION_KEY;
-  var fromCookie = '';
-  try { fromCookie = resolveAnalyticsSessionIdFromCookies(); } catch (e) {}
-  if (fromCookie) {
-    try {
-      var existing = sessionStorage.getItem(key);
-      if (!existing || !String(existing).trim()) sessionStorage.setItem(key, fromCookie);
-    } catch (e2) {}
-    return { sessionId: fromCookie, sessionIdSource: 'cookie' };
+  var consentAllowed = isShopifyAnalyticsProcessingAllowed();
+  var analyticsClientId = readAnalyticsClientIdForAssistant(consentAllowed);
+  var fromEpirCookie = '';
+  try { fromEpirCookie = readChatSessionIdFromEpirCookie(consentAllowed); } catch (e) {}
+  if (fromEpirCookie) {
+    return {
+      sessionId: fromEpirCookie,
+      sessionIdSource: 'cookie',
+      analyticsClientId: analyticsClientId || null,
+    };
   }
+  scrubInvalidAssistantSessionStorage(key);
   try {
     var stored = sessionStorage.getItem(key);
-    if (stored && String(stored).trim()) {
-      return { sessionId: String(stored).trim(), sessionIdSource: 'session_storage' };
+    if (stored && isValidChatSessionStorageValue(String(stored).trim())) {
+      return {
+        sessionId: String(stored).trim(),
+        sessionIdSource: 'session_storage',
+        analyticsClientId: analyticsClientId || null,
+      };
     }
   } catch (e3) {}
   try {
     if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') {
-      return { sessionId: null, sessionIdSource: null };
+      return { sessionId: null, sessionIdSource: null, analyticsClientId: null };
     }
-    var minted = 'sess_' + crypto.randomUUID();
+    var minted = EPIR_CHAT_SESSION_STORAGE_PREFIX + crypto.randomUUID();
     try { sessionStorage.setItem(key, minted); } catch (e4) {}
-    return { sessionId: minted, sessionIdSource: 'session_storage' };
+    return {
+      sessionId: minted,
+      sessionIdSource: 'session_storage',
+      analyticsClientId: analyticsClientId || null,
+    };
   } catch (e5) {
-    return { sessionId: null, sessionIdSource: null };
+    return { sessionId: null, sessionIdSource: null, analyticsClientId: null };
   }
 }
 
@@ -97,17 +135,80 @@ function resolveEffectiveAssistantSessionId(sessionIdKey) {
 /** Echo `session_id` z workera nie zastępuje cookie i nie migruje rozjechanej sesji. */
 function persistAssistantSessionIdFromWorker(sessionIdKey, workerSessionId) {
   var echoed = workerSessionId ? String(workerSessionId).trim() : '';
-  if (!echoed) return;
-  var fromCookie = '';
-  try { fromCookie = resolveAnalyticsSessionIdFromCookies(); } catch (e) {}
-  if (fromCookie) return;
+  if (!echoed || !isValidChatSessionStorageValue(echoed)) return;
+  var consentAllowed = isShopifyAnalyticsProcessingAllowed();
+  var fromEpirCookie = '';
+  try { fromEpirCookie = readChatSessionIdFromEpirCookie(consentAllowed); } catch (e) {}
+  if (fromEpirCookie) return;
   var key = sessionIdKey || EPIR_ASSISTANT_SESSION_KEY;
   try {
+    scrubInvalidAssistantSessionStorage(key);
     var existing = sessionStorage.getItem(key);
     var stored = existing ? String(existing).trim() : '';
     if (stored && stored !== echoed) return;
     if (!stored) sessionStorage.setItem(key, echoed);
   } catch (e2) {}
+}
+
+function resolveAssistantSessionPrivacyUrl(chatEndpoint) {
+  if (!chatEndpoint) return '';
+  var path = String(chatEndpoint);
+  try {
+    var base = (typeof window !== 'undefined' && window.location && window.location.origin) || 'https://epir.invalid';
+    var url = new URL(path, base);
+    if (url.pathname.slice(-'/api/chat'.length) === '/api/chat') {
+      url.pathname = url.pathname.slice(0, -'/api/chat'.length) + '/api/chat-session-privacy';
+    } else if (url.pathname.slice(-'/chat'.length) === '/chat') {
+      url.pathname = url.pathname.slice(0, -'/chat'.length) + '/session-privacy';
+    } else {
+      return '';
+    }
+    if (typeof window !== 'undefined' && url.origin === window.location.origin) {
+      return url.pathname + url.search;
+    }
+    return url.toString();
+  } catch (e) {
+    if (path.slice(-'/api/chat'.length) === '/api/chat') {
+      return path.slice(0, -'/api/chat'.length) + '/api/chat-session-privacy';
+    }
+    if (path.slice(-'/chat'.length) === '/chat') {
+      return path.slice(0, -'/chat'.length) + '/session-privacy';
+    }
+    return '';
+  }
+}
+
+function postAssistantSessionPrivacyUpdate(chatEndpoint, body) {
+  var url = resolveAssistantSessionPrivacyUrl(chatEndpoint);
+  if (!url) return Promise.resolve();
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(body),
+  }).catch(function () {});
+}
+
+var epirCustomerPrivacyListenerInstalled = false;
+function installAssistantCustomerPrivacyListeners(chatEndpoint) {
+  if (epirCustomerPrivacyListenerInstalled || typeof document === 'undefined') return;
+  epirCustomerPrivacyListenerInstalled = true;
+  document.addEventListener(
+    'visitorConsentCollected',
+    function (ev) {
+      var detail = ev && ev.detail;
+      if (!detail || detail.analyticsAllowed !== false) return;
+      scrubInvalidAssistantSessionStorage(EPIR_ASSISTANT_SESSION_KEY);
+      var meta = resolveAssistantSessionIdMeta(EPIR_ASSISTANT_SESSION_KEY);
+      if (!meta || !meta.sessionId) return;
+      postAssistantSessionPrivacyUpdate(chatEndpoint, {
+        session_id: meta.sessionId,
+        analytics_consent: false,
+        session_id_source: meta.sessionIdSource || undefined,
+      });
+    },
+    false,
+  );
 }
 var EPIR_ASSISTANT_TRANSCRIPT_STORAGE_PREFIX = 'epir-assistant-transcript';
 var EPIR_ASSISTANT_HISTORY_ENDPOINT = '/apps/assistant/history';
@@ -1429,6 +1530,7 @@ function initAssistantUIForSection(section) {
 }
 
 function initAllAssistantSections() {
+  installAssistantCustomerPrivacyListeners(EPIR_CHAT_WORKER_ENDPOINT);
   const sectionBlock = document.getElementById('epir-assistant-section');
   const sectionEmbed = document.getElementById('epir-assistant-embed');
 
@@ -1843,6 +1945,9 @@ async function sendMessageToWorker(
     }
     if (analyticsAllowed !== null) {
       body.analytics_consent = analyticsAllowed;
+    }
+    if (sessionMeta.analyticsClientId) {
+      body.analytics_client_id = sessionMeta.analyticsClientId;
     }
     if (productHandle) {
       body.productHandle = productHandle;

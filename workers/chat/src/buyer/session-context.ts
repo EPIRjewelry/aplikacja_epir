@@ -8,6 +8,27 @@ function sessionStub(env: Env, sessionId: string) {
   return env.SESSION_DO.get(env.SESSION_DO.idFromName(sid));
 }
 
+export async function postBuyerSessionPrivacy(
+  env: Env,
+  sessionId: string,
+  patch: {
+    analyticsConsent?: 0 | 1;
+    sessionIdSource?: 'cookie' | 'session_storage';
+  },
+): Promise<void> {
+  const sid = sessionId.trim();
+  if (!sid || !env.SESSION_DO) return;
+  const privacyBody: Record<string, unknown> = {};
+  if (patch.analyticsConsent !== undefined) {
+    privacyBody.analytics_consent = patch.analyticsConsent;
+  }
+  if (patch.sessionIdSource) {
+    privacyBody.session_id_source = patch.sessionIdSource;
+  }
+  if (Object.keys(privacyBody).length === 0) return;
+  await postSession(env, sid, 'set-session-privacy', privacyBody);
+}
+
 async function postSession(
   env: Env,
   sessionId: string,
@@ -23,6 +44,45 @@ async function postSession(
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
     throw new Error(`${path} HTTP ${res.status}: ${txt.slice(0, 200)}`);
+  }
+}
+
+/** Sesja „znana” = wiersz w D1 `sessions` lub stan SessionDO po turze kupującego (bez tworzenia nowej). */
+export async function isBuyerChatSessionKnown(
+  env: Env,
+  sessionId: string,
+): Promise<boolean> {
+  const sid = sessionId.trim();
+  if (!sid) return false;
+
+  if (env.DB_CHATBOT) {
+    try {
+      const row = await env.DB_CHATBOT
+        .prepare('SELECT session_id FROM sessions WHERE session_id = ? LIMIT 1')
+        .bind(sid)
+        .first<{session_id: string}>();
+      if (row?.session_id) return true;
+    } catch (error) {
+      console.warn(
+        JSON.stringify({
+          tag: 'buyer.session_privacy.d1_probe_failed',
+          sid: sid.slice(0, 8),
+          error: String((error as Error).message).slice(0, 120),
+        }),
+      );
+    }
+  }
+
+  if (!env.SESSION_DO) return false;
+
+  try {
+    const stub = sessionStub(env, sid);
+    const res = await stub.fetch('https://session/buyer-session-known');
+    if (!res.ok) return false;
+    const payload = (await res.json().catch(() => null)) as {known?: boolean} | null;
+    return payload?.known === true;
+  } catch {
+    return false;
   }
 }
 
@@ -59,6 +119,78 @@ export function extractSessionIdSourceFromBody(
   const raw = (body as {session_id_source?: unknown}).session_id_source;
   if (raw === 'cookie' || raw === 'session_storage') return raw;
   return undefined;
+}
+
+export function extractSessionIdFromPrivacyBody(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null;
+  const raw = (body as {session_id?: unknown}).session_id;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return trimmed || null;
+}
+
+/**
+ * App Proxy `/apps/assistant/session-privacy` lub S2S `/session-privacy` (Hydrogen BFF).
+ * Tylko session_id + zgoda — bez treści czatu; nie tworzy nowej sesji.
+ */
+export async function handleBuyerSessionPrivacyRequest(
+  request: Request,
+  env: Env,
+  responseHeaders: Record<string, string> = {},
+): Promise<Response> {
+  if (request.method !== 'POST') {
+    return new Response('Method Not Allowed', {status: 405, headers: responseHeaders});
+  }
+
+  const contentType = request.headers.get('Content-Type') ?? '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    return new Response('Bad Request: Content-Type application/json required', {
+      status: 400,
+      headers: responseHeaders,
+    });
+  }
+
+  const raw = await request.json().catch(() => null);
+  const sessionId = extractSessionIdFromPrivacyBody(raw);
+  if (!sessionId) {
+    return new Response('Bad Request: session_id required', {
+      status: 400,
+      headers: responseHeaders,
+    });
+  }
+
+  if (!env.SESSION_DO) {
+    return new Response('Service Unavailable', {status: 503, headers: responseHeaders});
+  }
+
+  const analyticsConsent = extractAnalyticsConsentFromBody(raw);
+  const sessionIdSource = extractSessionIdSourceFromBody(raw);
+  if (analyticsConsent === undefined && !sessionIdSource) {
+    return new Response(null, {status: 204, headers: responseHeaders});
+  }
+
+  const known = await isBuyerChatSessionKnown(env, sessionId);
+  if (!known) {
+    return new Response(null, {status: 204, headers: responseHeaders});
+  }
+
+  try {
+    await postBuyerSessionPrivacy(env, sessionId, {
+      analyticsConsent,
+      sessionIdSource,
+    });
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        tag: 'buyer.session_privacy',
+        sid: sessionId.slice(0, 8),
+        error: String((error as Error).message).slice(0, 120),
+      }),
+    );
+    return new Response('Internal Server Error', {status: 500, headers: responseHeaders});
+  }
+
+  return new Response(null, {status: 204, headers: responseHeaders});
 }
 
 /** Każda tura z session_id: kanoniczny session_id i storefront w SessionDO (join z pixel). */
@@ -105,14 +237,10 @@ export async function ensureBuyerSessionContext(
       });
     }
     if (input.analyticsConsent !== undefined || input.sessionIdSource) {
-      const privacyBody: Record<string, unknown> = {};
-      if (input.analyticsConsent !== undefined) {
-        privacyBody.analytics_consent = input.analyticsConsent;
-      }
-      if (input.sessionIdSource) {
-        privacyBody.session_id_source = input.sessionIdSource;
-      }
-      await postSession(env, sid, 'set-session-privacy', privacyBody);
+      await postBuyerSessionPrivacy(env, sid, {
+        analyticsConsent: input.analyticsConsent,
+        sessionIdSource: input.sessionIdSource,
+      });
     }
   } catch (e) {
     console.warn('[buyer.session_context] ensure failed', e);

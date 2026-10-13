@@ -165,6 +165,7 @@ import {
 
 // Importy Klienta Shopify (używane przez mcp_server, ale nie tutaj)
 import {handleBuyerTurn} from './buyer/handle-buyer-turn';
+import {handleBuyerSessionPrivacyRequest} from './buyer/session-context';
 
 // Typy sesji i żądań
 type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
@@ -454,6 +455,7 @@ function isSessionChatRoute(pathname: string): boolean {
     pathname.endsWith('/set-session-id') ||
     pathname.endsWith('/set-storefront-context') ||
     pathname.endsWith('/set-session-privacy') ||
+    pathname.endsWith('/buyer-session-known') ||
     pathname.endsWith('/replace-last-user-text') ||
     pathname.endsWith('/persist-usage') ||
     pathname.endsWith('/persist-tool-call') ||
@@ -1701,6 +1703,18 @@ export class SessionDO {
         await this.persistSessionRecord({ lastActivity: now() });
       }
       return new Response('ok');
+    }
+
+    // GET /buyer-session-known — read-only; czy sesja była już zainicjowana turą kupującego
+    if (method === 'GET' && pathname.endsWith('/buyer-session-known')) {
+      const meta = this.getSessionMeta();
+      const ctx = this.getSessionContext();
+      const known =
+        meta.message_seq > 0 ||
+        Boolean(ctx.storefront_id?.trim() && ctx.channel?.trim());
+      return new Response(JSON.stringify({known}), {
+        headers: {'Content-Type': 'application/json'},
+      });
     }
 
     // POST /set-session-privacy — analytics consent + session id source (EDOG match denominator)
@@ -5485,6 +5499,10 @@ export default {
       return handleHistoryRequest(request, env, {appProxyVerified: true});
     }
 
+    if (url.pathname === '/apps/assistant/session-privacy' && request.method === 'POST') {
+      return handleBuyerSessionPrivacyRequest(request, env, cors(env, request));
+    }
+
     // Endpoint czatu headless / BFF – zabezpieczony shared secret + headers kontekstowe.
     // Uwaga: Shopify App Proxy przekazuje /apps/assistant/chat jako /chat do backendu
     // i dodaje podpis HMAC w query/headerach.
@@ -5520,6 +5538,22 @@ export default {
         return s2sHistory.response;
       }
       return handleHistoryRequest(request, env, {contextOverride: s2sHistory.contextOverride});
+    }
+
+    if (url.pathname === '/session-privacy' && request.method === 'POST') {
+      if (hasAppProxySignature(request, url)) {
+        const appProxyAuthError = await authorizeAppProxyRequest(request, env);
+        if (appProxyAuthError) {
+          return appProxyAuthError;
+        }
+        return handleBuyerSessionPrivacyRequest(request, env, cors(env, request));
+      }
+
+      const s2sPrivacy = verifyS2SChatRequest(request, env);
+      if (!s2sPrivacy.ok) {
+        return s2sPrivacy.response;
+      }
+      return handleBuyerSessionPrivacyRequest(request, env, cors(env, request));
     }
 
     // Consent Gate (S2S jak /chat — ten sam kontrakt nagłówków)
