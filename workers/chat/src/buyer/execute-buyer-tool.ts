@@ -480,7 +480,13 @@ export async function executeBuyerTool(
             }),
           };
         }
-        if (resolved.status === 'variant_unavailable' || resolved.status === 'no_cart_line') {
+        if (
+          resolved.status === 'variant_unavailable' ||
+          resolved.status === 'no_cart_line' ||
+          resolved.status === 'option_name_unknown' ||
+          resolved.status === 'option_value_out_of_range' ||
+          resolved.status === 'variant_not_for_sale'
+        ) {
           logBuyerToolCall(input.name, input.channelId, false);
           return {
             content: JSON.stringify({

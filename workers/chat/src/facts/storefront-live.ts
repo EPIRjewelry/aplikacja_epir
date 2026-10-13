@@ -77,6 +77,14 @@ function buyerIpFrom(options?: FetchStorefrontLiveOptions): string | undefined {
   return ip || undefined;
 }
 
+function resolveZareczynyChannelAuth(env: Env): StorefrontAuth | null {
+  const privateToken = env.PRIVATE_STOREFRONT_API_TOKEN_ZARECZYNY?.trim();
+  if (privateToken) return {token: privateToken, mode: 'private'};
+  const publicToken = env.PUBLIC_STOREFRONT_API_TOKEN_ZARECZYNY?.trim();
+  if (publicToken) return {token: publicToken, mode: 'public'};
+  return null;
+}
+
 function resolveAuth(env: Env, channel: BuyerChannelId): StorefrontAuth | null {
   if (channel === 'kazka-hydrogen') {
     const token = env.PRIVATE_STOREFRONT_API_TOKEN_KAZKA?.trim();
@@ -247,17 +255,15 @@ function enrichFactsFromMetafields(
   }
 }
 
-async function storefrontGraphql(
+async function storefrontGraphqlWithAuth(
   env: Env,
-  channel: BuyerChannelId,
+  auth: StorefrontAuth,
   query: string,
   variables: Record<string, unknown>,
   options?: FetchStorefrontLiveOptions,
 ): Promise<Record<string, unknown>> {
   const shop = env.SHOP_DOMAIN?.trim();
-  const auth = resolveAuth(env, channel);
   if (!shop) throw new Error('SHOP_DOMAIN missing');
-  if (!auth) throw new Error('no_token');
 
   const endpoint = `https://${shop}/api/${SHOPIFY_STOREFRONT_API_VERSION}/graphql.json`;
   const headers: Record<string, string> = {
@@ -292,6 +298,54 @@ async function storefrontGraphql(
     throw new Error(`Storefront GraphQL errors: ${msg.slice(0, 400)}`);
   }
   return json.data ?? {};
+}
+
+async function storefrontGraphql(
+  env: Env,
+  channel: BuyerChannelId,
+  query: string,
+  variables: Record<string, unknown>,
+  options?: FetchStorefrontLiveOptions,
+): Promise<Record<string, unknown>> {
+  const auth = resolveAuth(env, channel);
+  if (!auth) throw new Error('no_token');
+  return storefrontGraphqlWithAuth(env, auth, query, variables, options);
+}
+
+/** Produkty widoczne w kanale Hydrogen Zaręczyny (token kanału, nie online-store). */
+async function productIdsPublishedOnZareczynyChannel(
+  env: Env,
+  productIds: string[],
+  options?: FetchStorefrontLiveOptions,
+): Promise<Set<string>> {
+  const auth = resolveZareczynyChannelAuth(env);
+  const out = new Set<string>();
+  if (!auth || !productIds.length) return out;
+  const query = `
+    query ZareczynyChannelProducts($ids: [ID!]!) {
+      nodes(ids: $ids) {
+        id
+      }
+    }
+  `;
+  try {
+    const data = await storefrontGraphqlWithAuth(env, auth, query, {ids: productIds}, options);
+    const nodes = data.nodes as Array<{id?: string} | null> | null;
+    for (const node of nodes ?? []) {
+      if (node && typeof node.id === 'string' && node.id.trim()) {
+        out.add(node.id.trim());
+      }
+    }
+  } catch (err) {
+    console.log(
+      JSON.stringify({
+        tag: 'facts.zareczyny_channel_publish_check_failed',
+        count: productIds.length,
+        reason: err instanceof Error ? err.message.slice(0, 80) : 'error',
+      }),
+    );
+  }
+  return out;
 }
 
 async function storefrontGraphqlRetry(
@@ -437,6 +491,11 @@ export async function fetchProductFactsLive(
 
   const fetchedAt = new Date().toISOString();
   const {urlTemplate, normalizeChannel} = resolveProductUrlContext(channel, options);
+  const urlChannel = options?.urlChannel ?? channel;
+  const zareczynyPublished =
+    urlChannel === 'epir-zareczyny' && urlTemplate
+      ? await productIdsPublishedOnZareczynyChannel(env, productIds, options)
+      : null;
   const byId = new Map<string, ProductFacts>();
 
   for (let i = 0; i < productIds.length; i += PAGE_SIZE) {
@@ -477,9 +536,14 @@ export async function fetchProductFactsLive(
       delete (merged as Record<string, unknown>).jewelryMaterialMeta;
       delete (merged as Record<string, unknown>).stoneEducationMeta;
 
+      const perProductUrlTemplate = zareczynyUrlForProduct(
+        zareczynyPublished,
+        productId,
+        urlTemplate,
+      );
       const facts = normalizeProduct(merged, {
         channel: normalizeChannel,
-        urlTemplate,
+        urlTemplate: perProductUrlTemplate,
         fetchedAt,
       });
       if (!facts) continue;
@@ -496,6 +560,16 @@ export async function fetchProductFactsLive(
   return out;
 }
 
+function zareczynyUrlForProduct(
+  published: Set<string> | null,
+  productId: string,
+  template: string | undefined,
+): string | undefined {
+  if (!template) return undefined;
+  if (!published) return template;
+  return published.has(productId) ? template : undefined;
+}
+
 async function productNodeToFacts(
   env: Env,
   channel: BuyerChannelId,
@@ -504,6 +578,7 @@ async function productNodeToFacts(
 ): Promise<ProductFacts | null> {
   const fetchedAt = new Date().toISOString();
   const {urlTemplate, normalizeChannel} = resolveProductUrlContext(channel, options);
+  const urlChannel = options?.urlChannel ?? channel;
   const productId = typeof raw.id === 'string' ? raw.id : '';
   if (!productId) return null;
 
@@ -536,9 +611,14 @@ async function productNodeToFacts(
   delete (merged as Record<string, unknown>).jewelryMaterialMeta;
   delete (merged as Record<string, unknown>).stoneEducationMeta;
 
+  let publishedOnZareczyny: Set<string> | null = null;
+  if (urlChannel === 'epir-zareczyny' && urlTemplate) {
+    publishedOnZareczyny = await productIdsPublishedOnZareczynyChannel(env, [productId], options);
+  }
+
   const facts = normalizeProduct(merged, {
     channel: normalizeChannel,
-    urlTemplate,
+    urlTemplate: zareczynyUrlForProduct(publishedOnZareczyny, productId, urlTemplate),
     fetchedAt,
   });
   if (!facts) return null;

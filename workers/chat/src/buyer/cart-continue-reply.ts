@@ -397,6 +397,17 @@ export function stripBrokenMarkdownLinkPrefix(text: string): string {
   return out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+/** Po usunięciu linków koszyka: sieroty `)`, `](`, resztki etykiet. */
+export function stripCartLinkOrphans(text: string): string {
+  if (!text) return text;
+  let out = text;
+  out = out.replace(/\]\(\s*\)?/g, '');
+  out = out.replace(/^\s*\)\s*$/gm, '');
+  out = out.replace(/\(\s*\)/g, '');
+  out = out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  return out;
+}
+
 export type BuildCartContinueReplyInput = {
   continueUrl: string;
   notices?: string[];
@@ -493,6 +504,7 @@ export function mergeModelTextWithCartBlock(
   let stripped = stripAllCartContinueLinks(modelText);
   stripped = stripContinueUrlFromModelText(stripped, continueUrl);
   stripped = stripBrokenMarkdownLinkPrefix(stripped);
+  stripped = stripCartLinkOrphans(stripped);
   if (!stripped.trim()) return cartBlock;
   return `${stripped}\n\n${cartBlock}`;
 }

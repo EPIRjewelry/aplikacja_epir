@@ -27,6 +27,39 @@ import {
 } from './openrouter-params';
 import { sanitizeHarmonyHistory } from './utils/sanitizeHarmonyHistory';
 
+/** HTTP błąd AI Gateway — status + opcjonalny Retry-After (sekundy). */
+export class AiGatewayHttpError extends Error {
+  readonly status: number;
+  readonly retryAfterSec: number | null;
+
+  constructor(
+    status: number,
+    retryAfterSec: number | null,
+    kind: 'stream' | 'response' = 'stream',
+  ) {
+    super(
+      kind === 'response'
+        ? `AI Gateway error: ${status}`
+        : `AI Gateway streaming error: ${status}`,
+    );
+    this.name = 'AiGatewayHttpError';
+    this.status = status;
+    this.retryAfterSec = retryAfterSec;
+  }
+}
+
+export function parseRetryAfterSeconds(raw: string | null | undefined): number | null {
+  const trimmed = raw?.trim();
+  if (!trimmed) return null;
+  const asNum = Number(trimmed);
+  if (Number.isFinite(asNum) && asNum >= 0) return asNum;
+  const asDate = Date.parse(trimmed);
+  if (Number.isFinite(asDate)) {
+    return Math.max(0, Math.ceil((asDate - Date.now()) / 1000));
+  }
+  return null;
+}
+
 export type GroqToolCall = {
   id: string;
   name: string;
@@ -1014,7 +1047,7 @@ export async function streamGroqEventsViaGateway(
     console.error(
       `[AI Gateway] streamGroqEventsViaGateway http_error status=${res.status} body=${text}`,
     );
-    throw new Error(`AI Gateway streaming error: ${res.status}`);
+    throw new AiGatewayHttpError(res.status, parseRetryAfterSeconds(res.headers.get('Retry-After')));
   }
 
   return (res.body as ReadableStream<Uint8Array>)
@@ -1511,7 +1544,7 @@ export async function getGroqResponseViaGateway(
     console.error(
       `[AI Gateway] getGroqResponseViaGateway http_error status=${res.status} body=${text}`,
     );
-    throw new Error(`AI Gateway error: ${res.status}`);
+    throw new AiGatewayHttpError(res.status, parseRetryAfterSeconds(res.headers.get('Retry-After')), 'response');
   }
 
   type CompatChoice = {

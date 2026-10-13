@@ -41,12 +41,15 @@ import {
   applyCartMutationHistoryOverride,
   collectAllowedUrls,
   collectOriginalUrlByNorm,
+  containsCartCheckoutCtaPhrase,
   guardBuyerReplyLinks,
   sanitizeMarkdownLinks,
   REPLY_CART_LINK_REJECTED_AFTER_MUTATION_MESSAGE,
   REPLY_LINK_REJECTED_CATALOG_MESSAGE,
   REPLY_LINK_REJECTED_NEUTRAL_MESSAGE,
+  REPLY_NOT_YET_IN_CART_MESSAGE,
 } from './reply-link-guard';
+import { withLlmRound0Retry } from './buyer-llm-retry';
 import {urlsFromToolResult} from './urls-from-tool-result';
 import { readSessionCartId } from './session-cart';
 import {
@@ -456,6 +459,7 @@ type FinalizeReplyContext = {
   variantOptionIndex?: VariantOptionIndex;
   /** messages type=error z create/update — treść klientowi, bez continue_url. */
   cartClientErrors?: string[];
+  hadGetCartThisTurn?: boolean;
 };
 
 function cartDeterministicReply(ctx: FinalizeReplyContext): string | null {
@@ -570,6 +574,13 @@ async function finalizeBuyerReply(
   } else {
     // Bez mutacji: nie zostawiaj broken „[…”; link koszyka tylko jeśli był z get_cart tej tury (allowlista).
     guarded = stripBrokenMarkdownLinkPrefix(guarded);
+    if (
+      !ctx.cartMutatedSuccessfullyThisTurn &&
+      !ctx.hadGetCartThisTurn &&
+      containsCartCheckoutCtaPhrase(guarded)
+    ) {
+      guarded = REPLY_NOT_YET_IN_CART_MESSAGE;
+    }
   }
 
   if (sessionId?.trim()) {
@@ -776,10 +787,12 @@ export async function composeBuyerAssistantReply(
   };
 
   if (toolDefinitions.length === 0) {
-    const reply = await getGroqResponse(messages, env, {
-      timingLabel: 'buyer_turn',
-      sessionId,
-    });
+    const reply = await withLlmRound0Retry(0, () =>
+      getGroqResponse(messages, env, {
+        timingLabel: 'buyer_turn',
+        sessionId,
+      }),
+    );
     return finishReply(reply);
   }
 
@@ -812,6 +825,7 @@ export async function composeBuyerAssistantReply(
       finalizeCtx.cartClientErrors = executed.cartClientErrors;
     }
     if (call.name === 'get_cart') {
+      finalizeCtx.hadGetCartThisTurn = true;
       // Link koszyka bez mutacji: tylko continue_url z get_cart tej tury (nie z preloadu sesji).
       const fromTool = continueUrlFromCartPayload(
         normalizeCartPayloadForParsing(
@@ -868,6 +882,26 @@ export async function composeBuyerAssistantReply(
     });
   };
 
+  const safeApplyExecutedTool = async (call: GroqToolCall): Promise<void> => {
+    try {
+      await applyExecutedTool(call);
+    } catch (toolErr) {
+      console.warn(
+        JSON.stringify({
+          tag: 'buyer.tool_exec_failed',
+          tool: call.name,
+          reason: toolErr instanceof Error ? toolErr.message.slice(0, 120) : 'error',
+        }),
+      );
+      messages.push({
+        role: 'tool',
+        tool_call_id: call.id,
+        name: call.name,
+        content: JSON.stringify({ error: 'tool_failed' }),
+      });
+    }
+  };
+
   /**
    * Named tool_choice tylko: (a) get_cart po intencji odczytu;
    * (b) tool-as-text create/update gdy warianty na allowliście katalogu.
@@ -906,12 +940,14 @@ export async function composeBuyerAssistantReply(
     let text: string;
     let toolCalls: GroqToolCall[];
     try {
-      const stream = await streamGroqEvents(
-        messages,
-        env,
-        toolDefinitions,
-        sessionId,
-        `buyer_tool_loop_${round}`,
+      const stream = await withLlmRound0Retry(round, () =>
+        streamGroqEvents(
+          messages,
+          env,
+          toolDefinitions,
+          sessionId,
+          `buyer_tool_loop_${round}`,
+        ),
       );
       ({ text, toolCalls } = await collectStreamRound(stream));
     } catch (err) {
@@ -974,7 +1010,7 @@ export async function composeBuyerAssistantReply(
             })),
           });
           for (const call of forced.toolCalls) {
-            await applyExecutedTool(call);
+            await safeApplyExecutedTool(call);
           }
           continue;
         } catch (forceErr) {
@@ -1014,22 +1050,31 @@ export async function composeBuyerAssistantReply(
     });
 
     for (const call of toolCalls) {
-      await applyExecutedTool(call);
+      await safeApplyExecutedTool(call);
     }
   }
 
   try {
-    const finalStream = await streamGroqEvents(
-      messages,
-      env,
-      toolDefinitions,
-      sessionId,
-      'buyer_tool_loop_final',
-      { toolChoice: 'none' },
+    const finalStream = await withLlmRound0Retry(MAX_TOOL_ROUNDS, () =>
+      streamGroqEvents(
+        messages,
+        env,
+        toolDefinitions,
+        sessionId,
+        'buyer_tool_loop_final',
+        { toolChoice: 'none' },
+      ),
     );
     const { text: finalText } = await collectStreamRound(finalStream);
     return finishReply(finalText);
-  } catch {
+  } catch (finalErr) {
+    const finalMsg = finalErr instanceof Error ? finalErr.message : String(finalErr);
+    if (/Tool choice is none.*called a tool/i.test(finalMsg)) {
+      const deterministic = cartDeterministicReply(finalizeCtx);
+      if (deterministic) {
+        return finishReply(deterministic);
+      }
+    }
     console.warn(JSON.stringify({ tag: 'buyer.tool_loop_fallback', round: 'final' }));
     const fallbackMessages = buildFinalRoundFallbackMessages(
       systemParts,

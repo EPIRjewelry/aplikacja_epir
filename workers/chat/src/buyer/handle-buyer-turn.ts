@@ -6,6 +6,7 @@ import {
   extractProductHandleFromBody,
   extractSessionIdFromBody,
 } from './compose-buyer-turn';
+import {BuyerTurnOverloadError, BUYER_LLM_OVERLOAD_MESSAGE} from './buyer-llm-retry';
 import {
   extractAnalyticsConsentFromBody,
   extractChannelFromBody,
@@ -145,6 +146,21 @@ export async function handleBuyerTurn(
       headers: buyerResponseHeaders(env, request),
     });
   } catch (e) {
+    if (e instanceof BuyerTurnOverloadError) {
+      return new Response(
+        JSON.stringify({
+          type: 'message',
+          reply: BUYER_LLM_OVERLOAD_MESSAGE,
+          channel_id: channelId,
+          mode,
+          session_id: sessionId,
+        }),
+        {
+          status: 200,
+          headers: buyerResponseHeaders(env, request),
+        },
+      );
+    }
     console.error('[buyer.handle_turn] failed', e);
     return new Response(
       JSON.stringify({
