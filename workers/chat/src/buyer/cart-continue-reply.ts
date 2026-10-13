@@ -12,6 +12,10 @@ import {
   type VariantOptionIndex,
 } from './variant-option-gate';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 /** Pełny tekst komunikatu — bez skracania (UCP MUST display). */
 export function cartMessageFullText(rec: Record<string, unknown>): string {
   if (typeof rec.content === 'string' && rec.content.trim()) return rec.content.trim();
@@ -384,17 +388,59 @@ export function stripAllCartContinueLinks(text: string): string {
 }
 
 /**
- * Walidacja składni Markdown: usuwaj „[…” bez „](” w dowolnym miejscu tekstu
- * (np. degeneracja modelu). Nie rusza poprawnych [label](url). Nie ocenia sensu.
+ * Usuwa tylko linie zaczynające się od urwany Markdown link (`[` bez domknięcia `](`).
+ * Nie wycina akapitu, gdy `[…]` jest w środku zdania.
  */
 export function stripBrokenMarkdownLinkPrefix(text: string): string {
   if (!text) return text;
-  let out = text;
-  // [label] nie poprzedzające ( — nie jest poprawnym linkiem Markdown.
-  out = out.replace(/\[[^\]]*\](?!\()/g, '');
-  // Niezamknięte [… do końca linii (brak ]).
-  out = out.replace(/\[[^\]\n]+(?=\n|$)/gm, '');
-  return out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  const lines = text.split('\n');
+  const kept = lines.filter((line) => {
+    const t = line.trimStart();
+    if (!t.startsWith('[')) return true;
+    // Pełny link Markdown na linii — zostaw.
+    if (/\[[^\]]*\]\([^)]*\)/.test(t)) return true;
+    // Linia zaczyna się od [ i nie ma poprawnego ]( — urwany link.
+    return false;
+  });
+  return kept.join('\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** CTA / nagłówek sekcji koszyka w prozie modelu — od tego ucinamy końcówkę przy merge. */
+const MODEL_CART_SECTION_MARKERS: readonly string[] = [
+  'Stan koszyka',
+  'Przejdź do koszyka',
+  'Zobacz koszyk i przejdź do kasy',
+  'Link do koszyka',
+  'Zobacz koszyk',
+  'Przejdź do kasy',
+];
+
+/**
+ * Ucina końcową sekcję koszyka z tekstu modelu (nagłówek lub CTA).
+ * Zostawia wstęp nad pierwszym markerem.
+ */
+export function stripTrailingModelCartSection(text: string): string {
+  if (!text.trim()) return text;
+  const lower = text.toLowerCase();
+  let cutAt = -1;
+  for (const marker of MODEL_CART_SECTION_MARKERS) {
+    const idx = lower.lastIndexOf(marker.toLowerCase());
+    if (idx >= 0 && (cutAt < 0 || idx < cutAt)) cutAt = idx;
+  }
+  if (cutAt < 0) return text;
+  return text.slice(0, cutAt).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
+ * Usuwa zdania modelu deklarujące stan koszyka — autorytatywny opis jest w bloku serwera.
+ */
+export function stripModelCartStateClaims(text: string): string {
+  if (!text.trim()) return text;
+  const claimRe =
+    /[^.!?\n]*(?:dodał(?:am|em)?\s+do\s+koszyka|dodano\s+do\s+koszyka|koszyk\s+jest\s+(?:pusty|zaktualizowany)|koszyk\s+został\s+zaktualizowany)[^.!?\n]*[.!?]?/gi;
+  let out = text.replace(claimRe, '');
+  out = out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  return out;
 }
 
 /** Po usunięciu linków koszyka: sieroty `)`, `](`, resztki etykiet. */
@@ -430,11 +476,19 @@ export function buildCartContinueReply(
   const parts: string[] = [];
   let disclosuresByLineIndex = new Map<number, string[]>();
   let globalFromPayload: string[] = [];
+  /** null = brak payloadu / brak tablicy; [] = jawnie pusty koszyk. */
+  let rawLineItems: unknown[] | null = null;
 
   if (input.cartPayload != null) {
     const normalized = normalizeCartPayloadForParsing(input.cartPayload);
     const cart = extractCartObject(normalized);
-    const rawLines = cart && Array.isArray(cart.line_items) ? cart.line_items : [];
+    if (cart && Array.isArray(cart.line_items)) {
+      rawLineItems = cart.line_items;
+    } else if (isRecord(input.cartPayload) && Array.isArray(input.cartPayload.line_items)) {
+      // Płaski payload { line_items: [] } — extractCartObject może zwrócić null.
+      rawLineItems = input.cartPayload.line_items;
+    }
+    const rawLines = rawLineItems ?? [];
     const messages = cart?.messages;
     const partitioned = partitionCartMessages(messages, rawLines);
     disclosuresByLineIndex = partitioned.disclosuresByLineIndex;
@@ -467,6 +521,8 @@ export function buildCartContinueReply(
   parts.push('Stan koszyka (dane sklepu)');
   if (lineSummaries.length) {
     parts.push(...lineSummaries);
+  } else if (rawLineItems && rawLineItems.length === 0) {
+    parts.push('Koszyk jest pusty.');
   } else {
     parts.push('Koszyk jest zaktualizowany.');
   }
@@ -503,6 +559,8 @@ export function mergeModelTextWithCartBlock(
   // Najpierw wszystkie /cart/c/ (stary+nowy), potem exact continue_url, potem broken [.
   let stripped = stripAllCartContinueLinks(modelText);
   stripped = stripContinueUrlFromModelText(stripped, continueUrl);
+  stripped = stripTrailingModelCartSection(stripped);
+  stripped = stripModelCartStateClaims(stripped);
   stripped = stripBrokenMarkdownLinkPrefix(stripped);
   stripped = stripCartLinkOrphans(stripped);
   if (!stripped.trim()) return cartBlock;

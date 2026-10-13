@@ -108,7 +108,7 @@ describe('buildCartContinueReply / appendExactContinueUrlIfMissing', () => {
     expect(stripped).toContain('Stary');
   });
 
-  it('stripBrokenMarkdownLinkPrefix removes degenerate [… without closed link', () => {
+  it('stripBrokenMarkdownLinkPrefix removes line starting with broken […', () => {
     const text =
       '[Link do konta koszyka z dodanym pierścion z tą rozmi rozmi rozmi?]\n\nDalej tekst.';
     const out = stripBrokenMarkdownLinkPrefix(text);
@@ -116,20 +116,18 @@ describe('buildCartContinueReply / appendExactContinueUrlIfMissing', () => {
     expect(out).not.toContain('[');
   });
 
-  it('stripBrokenMarkdownLinkPrefix removes mid-text [… without ]( ; keeps valid links', () => {
+  it('stripBrokenMarkdownLinkPrefix keeps mid-sentence [brackets] and valid links', () => {
     const mid = stripBrokenMarkdownLinkPrefix(
       'Przed [Link do koszyka z rozmi rozmi?] po',
     );
-    expect(mid).toMatch(/Przed/);
-    expect(mid).toMatch(/po/);
-    expect(mid).not.toContain('[');
-    expect(mid).not.toContain('Link do koszyka');
+    expect(mid).toContain('Przed [Link do koszyka z rozmi rozmi?] po');
 
     const mixed = stripBrokenMarkdownLinkPrefix(
       '[ok](https://example.com/x) i [zepsute?]',
     );
     expect(mixed).toContain('[ok](https://example.com/x)');
-    expect(mixed).not.toContain('zepsute');
+    // Linia zaczyna się od poprawnego linku — nie usuwamy całej linii.
+    expect(mixed).toContain('[ok](https://example.com/x)');
   });
 
   it('mergeModelTextWithCartBlock keeps only block continue_url after mutation', () => {
@@ -144,6 +142,50 @@ describe('buildCartContinueReply / appendExactContinueUrlIfMissing', () => {
     expect(merged).toContain(newUrl);
     expect(merged).not.toContain(oldUrl);
     expect(merged.match(/\/cart\/c\//g)?.length).toBe(1);
+  });
+
+  it('mergeModelTextWithCartBlock drops model cart section — one Stan koszyka header', () => {
+    const url = 'https://shop.myshopify.com/cart/c/ONE';
+    const block = buildCartContinueReply(url, [], null);
+    const model = [
+      'Proszę, pierścionek jest w koszyku.',
+      '',
+      'Stan koszyka (dane sklepu)',
+      '• Ring — 16',
+      '',
+      `[Przejdź do koszyka](${url})`,
+    ].join('\n');
+    const merged = mergeModelTextWithCartBlock(model, block, url);
+    expect(merged.match(/Stan koszyka \(dane sklepu\)/g)?.length).toBe(1);
+    expect(merged.match(/\/cart\/c\//g)?.length).toBe(1);
+    expect(merged.startsWith('Proszę, pierścionek jest w koszyku.')).toBe(true);
+  });
+
+  it('buildCartContinueReply empty line_items → Koszyk jest pusty.', () => {
+    const url = 'https://shop.myshopify.com/cart/c/EMPTY';
+    const reply = buildCartContinueReply({
+      continueUrl: url,
+      cartPayload: { line_items: [], continue_url: url },
+    });
+    expect(reply).toContain('Koszyk jest pusty.');
+    expect(reply).not.toContain('Koszyk jest zaktualizowany.');
+  });
+
+  it('merge strips model cart-state claims before server block', () => {
+    const url = 'https://shop.myshopify.com/cart/c/CLAIM';
+    const block = buildCartContinueReply({
+      continueUrl: url,
+      cartPayload: { line_items: [], continue_url: url },
+    });
+    const merged = mergeModelTextWithCartBlock(
+      'Dodałam do koszyka. Koszyk jest zaktualizowany. Proszę sprawdzić rozmiar.',
+      block,
+      url,
+    );
+    expect(merged).toContain('Proszę sprawdzić rozmiar.');
+    expect(merged.match(/Koszyk jest pusty\./g)?.length).toBe(1);
+    expect(merged).not.toMatch(/Dodałam do koszyka/i);
+    expect(merged).not.toMatch(/Koszyk jest zaktualizowany/i);
   });
 
   it('formatCartLineSummaries shows full options and price from catalog index', () => {

@@ -441,29 +441,30 @@ describe('buyer compose turn — tools in system prompt', () => {
     );
   });
 
-  it('buyer_tool_loop_final tool_choice none + create_cart failed_generation executes cart without getGroqResponse', async () => {
-    const cartUrl = 'https://shop.example/cart/c/recovered';
+  it('final_tool_recovered keeps prior assistant prose above cart block', async () => {
+    const cartUrl = 'https://shop.example/cart/c/recovered-lead';
+    const leadProse = 'Ten pierścionek leży lekko na dłoni.';
     vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([
       'ucp_cart',
       'search_catalog',
-      'get_size_table',
     ]);
     vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
     vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockResolvedValue([]);
     vi.spyOn(sessionHistory, 'appendBuyerSessionMessage').mockResolvedValue();
-    const execSpy = vi.spyOn(executeBuyerToolMod, 'executeBuyerTool').mockImplementation(
-      async (input) => {
-        if (input.name === 'create_cart') {
-          return {
-            content: JSON.stringify({ continue_url: cartUrl }),
-            cartMutationSucceeded: true,
-            continueUrl: cartUrl,
-            sessionCartId: 'gid://shopify/Cart/recovered',
-          };
-        }
-        return { content: '{"products":[]}' };
-      },
-    );
+    vi.spyOn(executeBuyerToolMod, 'executeBuyerTool').mockImplementation(async (input) => {
+      if (input.name === 'create_cart') {
+        return {
+          content: JSON.stringify({ continue_url: cartUrl, line_items: [] }),
+          cartMutationSucceeded: true,
+          continueUrl: cartUrl,
+          sessionCartId: 'gid://shopify/Cart/lead',
+          cartMutationPayload: { continue_url: cartUrl, line_items: [] },
+        };
+      }
+      return { content: '{"products":[]}' };
+    });
+
+    let round0Done = false;
     vi.spyOn(aiClient, 'streamGroqEvents').mockImplementation(
       async (_messages, _env, _tools, _sessionId, timingLabel) => {
         if (timingLabel === 'buyer_tool_loop_final') {
@@ -472,36 +473,48 @@ describe('buyer compose turn — tools in system prompt', () => {
             JSON.stringify({
               name: 'create_cart',
               arguments: {
-                line_items: [
-                  {
-                    item: { id: SAMPLE_VARIANT_GID },
-                    quantity: 1,
-                    selected_options: [{ name: 'Rozmiar', value: '18' }],
-                  },
-                ],
+                line_items: [{ item: { id: SAMPLE_VARIANT_GID }, quantity: 1 }],
               },
             }),
           );
         }
+        // Runda 0: tekst + tool (tool pushuje assistant z tool_calls; tekst osobno w content).
+        if (timingLabel === 'buyer_tool_loop_0' && !round0Done) {
+          round0Done = true;
+          return new ReadableStream({
+            start(controller) {
+              controller.enqueue({ type: 'text', delta: leadProse });
+              controller.enqueue({
+                type: 'tool_call',
+                call: {
+                  id: 'c-search',
+                  name: 'search_catalog',
+                  arguments: '{"query":"pierścionek"}',
+                },
+              });
+              controller.close();
+            },
+          });
+        }
         const round = String(timingLabel ?? '').replace('buyer_tool_loop_', '');
-        return toolCallOnlyStream('search_catalog', `call-${round}`, '{"query":"pierścionek"}');
+        return toolCallOnlyStream('search_catalog', `call-${round}`, '{"query":"x"}');
       },
     );
-    const groqSpy = vi.spyOn(aiClient, 'getGroqResponse');
 
     const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
     const req = new Request('https://example.com/chat', { method: 'POST' });
     const reply = await composeBuyerAssistantReply(
       env,
-      'epir-online-store',
-      'dodaj rozmiar 18',
+      'epir-zareczyny',
+      'dodaj proszę',
       req,
-      { sessionId: 'sess-recover-cart' },
+      { sessionId: 'sess-recover-lead' },
     );
 
-    expect(groqSpy).not.toHaveBeenCalled();
-    expect(execSpy.mock.calls.some((c) => c[0].name === 'create_cart')).toBe(true);
+    expect(reply).toContain(leadProse);
+    expect(reply).toContain('Stan koszyka (dane sklepu)');
     expect(reply).toContain(cartUrl);
+    expect(reply.indexOf(leadProse)).toBeLessThan(reply.indexOf('Stan koszyka'));
   });
 
   it('buyer_tool_loop_final failed_generation outside allowlist → Polish fallback without getGroqResponse', async () => {

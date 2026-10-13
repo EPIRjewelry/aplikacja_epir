@@ -1102,7 +1102,18 @@ export async function composeBuyerAssistantReply(
         await safeApplyExecutedTool(recoveredCall);
         const afterMutation = cartDeterministicReply(finalizeCtx);
         if (afterMutation) {
-          return finishReply(afterMutation);
+          // Ostatnia niepusta proza assistant (także gdy w tej samej turze były tool_calls).
+          let lead = '';
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i];
+            if (m.role !== 'assistant') continue;
+            const c = typeof m.content === 'string' ? m.content.trim() : '';
+            if (c) {
+              lead = c;
+              break;
+            }
+          }
+          return finishReply(lead || afterMutation);
         }
         try {
           const recoverStream = await streamGroqEvents(
