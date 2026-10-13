@@ -9,6 +9,9 @@ import {
   readAnalyticsClientIdForChat,
   resolveChatSessionPrivacyApiUrl,
   resolveEffectiveChatSessionId,
+  installShopifyCustomerPrivacyChatListeners,
+  rememberChatSessionIdForPrivacy,
+  readLastChatSessionIdForPrivacy,
   resolveEffectiveChatSessionWithMeta,
   scrubInvalidChatSessionStorage,
 } from './epir-session-browser';
@@ -309,5 +312,55 @@ describe('chat session_id vs pixel (Customer Privacy)', () => {
     const stored = installBrowser('', {[SESSION_KEY]: existing}, false);
     expect(resolveEffectiveChatSessionId()).toBe(existing);
     expect(stored[SESSION_KEY]).toBe(existing);
+  });
+
+  it('privacy revoke uses remembered chat session_id (not reminted after scrub)', async () => {
+    const cookie = `_shopify_y=${SHARED}`;
+    const existing = 'sess_privacy-revoke-0001';
+    const consentHandlers = new Map<string, Set<(ev: Event) => void>>();
+    const memory = memoryBag({[SESSION_KEY]: existing});
+    vi.stubGlobal('window', {
+      Shopify: {customerPrivacy: {analyticsProcessingAllowed: () => true}},
+    });
+    vi.stubGlobal('document', {
+      cookie,
+      addEventListener(type: string, fn: (ev: Event) => void) {
+        if (!consentHandlers.has(type)) consentHandlers.set(type, new Set());
+        consentHandlers.get(type)!.add(fn);
+      },
+      removeEventListener(type: string, fn: (ev: Event) => void) {
+        consentHandlers.get(type)?.delete(fn);
+      },
+      dispatchEvent(ev: Event) {
+        consentHandlers.get(ev.type)?.forEach((fn) => fn(ev));
+        return true;
+      },
+    });
+    vi.stubGlobal('sessionStorage', memory.storage);
+    rememberChatSessionIdForPrivacy(existing, 'session_storage');
+    installShopifyCustomerPrivacyChatListeners('/apps/assistant/chat', SESSION_KEY);
+
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockClear();
+
+    document.dispatchEvent(
+      new CustomEvent('visitorConsentCollected', {detail: {analyticsAllowed: false}}),
+    );
+    await Promise.resolve();
+
+    const privacyCall = fetchMock.mock.calls.find((call) => {
+      const url = String(call[0]);
+      return url.includes('session-privacy');
+    });
+    expect(privacyCall).toBeDefined();
+    const body = JSON.parse(String((privacyCall![1] as RequestInit).body)) as {
+      session_id: string;
+      analytics_consent: boolean;
+      analytics_client_id: null;
+    };
+    expect(body.session_id).toBe(existing);
+    expect(body.analytics_consent).toBe(false);
+    expect(body.analytics_client_id).toBeNull();
+    expect(readLastChatSessionIdForPrivacy()?.sessionId).toBe(existing);
   });
 });

@@ -108,6 +108,37 @@ describe('SessionDO POST /set-session-privacy', () => {
     expect(sessionConsentFromD1Writes(writes)).toBe(0);
   });
 
+  it('analytics_consent true + analytics_client_id → D1 bind includes client id', async () => {
+    const {db, writes} = makeD1Capture();
+    const {state} = makeDurableStateStub(sid);
+    const doStub = new SessionDO(state, {DB_CHATBOT: db} as Env);
+
+    await doStub.fetch(
+      new Request('https://session/set-session-id', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({session_id: sid}),
+      }),
+    );
+    await doStub.fetch(
+      new Request('https://session/set-session-privacy', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          analytics_consent: true,
+          analytics_client_id: 'pixel-client-abc',
+        }),
+      }),
+    );
+    writes.length = 0;
+    await flushPrivacyToD1(doStub);
+
+    const sessionUpsert = writes
+      .filter((w) => w.sql.includes('INSERT INTO sessions') && w.sql.includes('analytics_client_id'))
+      .at(-1);
+    expect(sessionUpsert?.args[16]).toBe('pixel-client-abc');
+  });
+
   it('brak pola analytics_consent → COALESCE zachowuje poprzednią wartość w D1', async () => {
     const {db, writes} = makeD1Capture();
     const {state} = makeDurableStateStub(sid);
@@ -187,6 +218,6 @@ describe('postBuyerSessionPrivacy', () => {
 
     expect(calls.some((c) => c.path === 'set-session-privacy')).toBe(true);
     const privacy = calls.find((c) => c.path === 'set-session-privacy');
-    expect(privacy?.body).toMatchObject({analytics_consent: 0});
+    expect(privacy?.body).toMatchObject({analytics_consent: 0, analytics_client_id: null});
   });
 });

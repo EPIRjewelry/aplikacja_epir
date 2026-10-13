@@ -14,13 +14,20 @@ export async function postBuyerSessionPrivacy(
   patch: {
     analyticsConsent?: 0 | 1;
     sessionIdSource?: 'cookie' | 'session_storage';
+    analyticsClientId?: string | null;
   },
 ): Promise<void> {
   const sid = sessionId.trim();
   if (!sid || !env.SESSION_DO) return;
   const privacyBody: Record<string, unknown> = {};
-  if (patch.analyticsConsent !== undefined) {
-    privacyBody.analytics_consent = patch.analyticsConsent;
+  if (patch.analyticsConsent === 0) {
+    privacyBody.analytics_consent = 0;
+    privacyBody.analytics_client_id = null;
+  } else if (patch.analyticsConsent === 1) {
+    privacyBody.analytics_consent = 1;
+    if (patch.analyticsClientId !== undefined) {
+      privacyBody.analytics_client_id = patch.analyticsClientId;
+    }
   }
   if (patch.sessionIdSource) {
     privacyBody.session_id_source = patch.sessionIdSource;
@@ -121,6 +128,18 @@ export function extractSessionIdSourceFromBody(
   return undefined;
 }
 
+/** Pixel `clientId` / `_shopify_y` — tylko przy `analytics_consent: true`. */
+export function extractAnalyticsClientIdFromBody(
+  body: unknown,
+): string | null | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const raw = (body as {analytics_client_id?: unknown}).analytics_client_id;
+  if (raw === null) return null;
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  return trimmed || null;
+}
+
 export function extractSessionIdFromPrivacyBody(body: unknown): string | null {
   if (!body || typeof body !== 'object') return null;
   const raw = (body as {session_id?: unknown}).session_id;
@@ -165,7 +184,12 @@ export async function handleBuyerSessionPrivacyRequest(
 
   const analyticsConsent = extractAnalyticsConsentFromBody(raw);
   const sessionIdSource = extractSessionIdSourceFromBody(raw);
-  if (analyticsConsent === undefined && !sessionIdSource) {
+  const analyticsClientId = extractAnalyticsClientIdFromBody(raw);
+  if (
+    analyticsConsent === undefined &&
+    !sessionIdSource &&
+    analyticsClientId === undefined
+  ) {
     return new Response(null, {status: 204, headers: responseHeaders});
   }
 
@@ -178,6 +202,12 @@ export async function handleBuyerSessionPrivacyRequest(
     await postBuyerSessionPrivacy(env, sessionId, {
       analyticsConsent,
       sessionIdSource,
+      analyticsClientId:
+        analyticsConsent === 0
+          ? null
+          : analyticsConsent === 1
+            ? analyticsClientId
+            : undefined,
     });
   } catch (error) {
     console.warn(
@@ -204,6 +234,7 @@ export async function ensureBuyerSessionContext(
     userText: string;
     analyticsConsent?: 0 | 1;
     sessionIdSource?: 'cookie' | 'session_storage';
+    analyticsClientId?: string | null;
   },
 ): Promise<void> {
   const sid = input.sessionId?.trim();
@@ -236,10 +267,20 @@ export async function ensureBuyerSessionContext(
         channel,
       });
     }
-    if (input.analyticsConsent !== undefined || input.sessionIdSource) {
+    if (
+      input.analyticsConsent !== undefined ||
+      input.sessionIdSource ||
+      input.analyticsClientId !== undefined
+    ) {
       await postBuyerSessionPrivacy(env, sid, {
         analyticsConsent: input.analyticsConsent,
         sessionIdSource: input.sessionIdSource,
+        analyticsClientId:
+          input.analyticsConsent === 0
+            ? null
+            : input.analyticsConsent === 1
+              ? input.analyticsClientId
+              : undefined,
       });
     }
   } catch (e) {

@@ -16,6 +16,7 @@ import {parseChatPathContext} from './chat-path-context';
 import {resolveShopAuthTokenForChat} from './commerce/shop-sign-in';
 import {
   installShopifyCustomerPrivacyChatListeners,
+  rememberChatSessionIdForPrivacy,
   persistChatSessionIdFromWorker,
   readShopifyAnalyticsProcessingAllowed,
   resolveEffectiveChatSessionId,
@@ -531,6 +532,9 @@ function ChatWidgetFallback({
           ? resolveEffectiveChatSessionWithMeta(SESSION_ID_KEY)
           : {sessionId: null, sessionIdSource: null};
       const sessionId = sessionMeta.sessionId;
+      if (sessionId) {
+        rememberChatSessionIdForPrivacy(sessionId, sessionMeta.sessionIdSource);
+      }
       const analyticsAllowed = readShopifyAnalyticsProcessingAllowed();
 
       try {

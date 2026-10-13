@@ -105,6 +105,72 @@ function isValidChatSessionStorageValue(value: string): boolean {
   return value.startsWith(CHAT_SESSION_STORAGE_PREFIX);
 }
 
+const LAST_CHAT_SESSION_FOR_PRIVACY_KEY = 'epir-last-chat-session-for-privacy';
+
+export type RememberedChatSessionForPrivacy = {
+  sessionId: string;
+  sessionIdSource: ChatSessionIdSource | null;
+};
+
+/** Ostatni `session_id` wysłany w `/chat` — używany przy cofnięciu zgody (bez remintu). */
+export function rememberChatSessionIdForPrivacy(
+  sessionId: string | null | undefined,
+  sessionIdSource?: ChatSessionIdSource | null,
+): void {
+  if (typeof window === 'undefined') return;
+  const id = sessionId?.trim();
+  if (!id || !isValidChatSessionStorageValue(id)) return;
+  try {
+    sessionStorage.setItem(
+      LAST_CHAT_SESSION_FOR_PRIVACY_KEY,
+      JSON.stringify({
+        sessionId: id,
+        sessionIdSource: sessionIdSource ?? null,
+      }),
+    );
+  } catch {
+    /* storage niedostępny */
+  }
+}
+
+export function readLastChatSessionIdForPrivacy(): RememberedChatSessionForPrivacy | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(LAST_CHAT_SESSION_FOR_PRIVACY_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as {
+      sessionId?: string;
+      sessionIdSource?: ChatSessionIdSource | null;
+    };
+    const id = parsed.sessionId?.trim();
+    if (!id) return null;
+    return {
+      sessionId: id,
+      sessionIdSource:
+        parsed.sessionIdSource === 'cookie' || parsed.sessionIdSource === 'session_storage'
+          ? parsed.sessionIdSource
+          : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function postChatSessionPrivacyRevoke(
+  chatApiUrl: string,
+  sessionStorageKey: string,
+): void {
+  const remembered = readLastChatSessionIdForPrivacy();
+  if (!remembered?.sessionId) return;
+  void postChatSessionPrivacyUpdate(chatApiUrl, {
+    session_id: remembered.sessionId,
+    analytics_consent: false,
+    analytics_client_id: null,
+    ...(remembered.sessionIdSource ? {session_id_source: remembered.sessionIdSource} : {}),
+  });
+  scrubInvalidChatSessionStorage(sessionStorageKey);
+}
+
 /** Usuwa legacy wartości (np. `_shopify_y`) z sessionStorage czatu. */
 export function scrubInvalidChatSessionStorage(sessionStorageKey = 'epir-assistant-session'): void {
   if (typeof window === 'undefined') return;
@@ -270,16 +336,7 @@ export function installShopifyCustomerPrivacyChatListeners(
     (ev) => {
       const detail = (ev as CustomEvent<{analyticsAllowed?: boolean}>).detail;
       if (!detail || detail.analyticsAllowed !== false) return;
-
-      scrubInvalidChatSessionStorage(sessionStorageKey);
-      const meta = resolveEffectiveChatSessionWithMeta(sessionStorageKey);
-      if (!meta.sessionId) return;
-
-      void postChatSessionPrivacyUpdate(chatApiUrl, {
-        session_id: meta.sessionId,
-        analytics_consent: false,
-        ...(meta.sessionIdSource ? {session_id_source: meta.sessionIdSource} : {}),
-      });
+      postChatSessionPrivacyRevoke(chatApiUrl, sessionStorageKey);
     },
     false,
   );

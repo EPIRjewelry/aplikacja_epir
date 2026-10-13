@@ -199,12 +199,7 @@
     if (typeof window === 'undefined' || !window.Shopify || typeof window.Shopify.loadFeatures !== 'function') {
       return;
     }
-    window.Shopify.loadFeatures(
-      [{ name: 'consent-tracking-api', version: '0.1' }],
-      function () {
-        window.Shopify.loadFeatures([{ name: 'customer-privacy-api', version: '0.1' }], function () {});
-      },
-    );
+    window.Shopify.loadFeatures([{ name: 'consent-tracking-api', version: '0.1' }], function () {});
   })();
 </script>
 <script src="{{ 'assistant.js' | asset_url }}" defer></script>

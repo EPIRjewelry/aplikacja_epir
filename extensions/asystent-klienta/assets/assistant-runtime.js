@@ -8,6 +8,7 @@ var EPIR_LOGGED_IN_CUSTOMER_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 var EPIR_LOGGED_IN_CUSTOMER_PREFLIGHT_ATTEMPTS = 3;
 var EPIR_LOGGED_IN_CUSTOMER_PREFLIGHT_DELAY_MS = 75;
 var EPIR_ASSISTANT_SESSION_KEY = 'epir-assistant-session';
+var EPIR_LAST_CHAT_SESSION_PRIVACY_KEY = 'epir-last-chat-session-for-privacy';
 var EPIR_ANALYTICS_SESSION_COOKIE = '_epir_session_id';
 var EPIR_SHOPIFY_Y_COOKIE = '_shopify_y';
 
@@ -69,6 +70,32 @@ function readChatSessionIdFromEpirCookie(consentAllowed) {
   var shopifyY = readNamedDocumentCookie(EPIR_SHOPIFY_Y_COOKIE);
   if (isEpirSessionCookiePixelCopy(epir, shopifyY)) return '';
   return epir;
+}
+
+function rememberAssistantChatSessionForPrivacy(sessionId, sessionIdSource) {
+  var id = sessionId ? String(sessionId).trim() : '';
+  if (!id || !isValidChatSessionStorageValue(id)) return;
+  try {
+    sessionStorage.setItem(
+      EPIR_LAST_CHAT_SESSION_PRIVACY_KEY,
+      JSON.stringify({ sessionId: id, sessionIdSource: sessionIdSource || null }),
+    );
+  } catch (e) {}
+}
+
+function readLastAssistantChatSessionForPrivacy() {
+  try {
+    var raw = sessionStorage.getItem(EPIR_LAST_CHAT_SESSION_PRIVACY_KEY);
+    if (!raw) return null;
+    var parsed = JSON.parse(raw);
+    var sid = parsed && parsed.sessionId ? String(parsed.sessionId).trim() : '';
+    if (!sid) return null;
+    var src = parsed.sessionIdSource;
+    if (src !== 'cookie' && src !== 'session_storage') src = null;
+    return { sessionId: sid, sessionIdSource: src };
+  } catch (e2) {
+    return null;
+  }
 }
 
 function isShopifyAnalyticsProcessingAllowed() {
@@ -198,14 +225,15 @@ function installAssistantCustomerPrivacyListeners(chatEndpoint) {
     function (ev) {
       var detail = ev && ev.detail;
       if (!detail || detail.analyticsAllowed !== false) return;
-      scrubInvalidAssistantSessionStorage(EPIR_ASSISTANT_SESSION_KEY);
-      var meta = resolveAssistantSessionIdMeta(EPIR_ASSISTANT_SESSION_KEY);
-      if (!meta || !meta.sessionId) return;
+      var remembered = readLastAssistantChatSessionForPrivacy();
+      if (!remembered || !remembered.sessionId) return;
       postAssistantSessionPrivacyUpdate(chatEndpoint, {
-        session_id: meta.sessionId,
+        session_id: remembered.sessionId,
         analytics_consent: false,
-        session_id_source: meta.sessionIdSource || undefined,
+        analytics_client_id: null,
+        session_id_source: remembered.sessionIdSource || undefined,
       });
+      scrubInvalidAssistantSessionStorage(EPIR_ASSISTANT_SESSION_KEY);
     },
     false,
   );
@@ -1924,6 +1952,9 @@ async function sendMessageToWorker(
         ? String(sectionEl.dataset.productHandle).trim()
         : '';
     var sessionMeta = resolveAssistantSessionIdMeta(sessionIdKey);
+    if (sessionMeta && sessionMeta.sessionId) {
+      rememberAssistantChatSessionForPrivacy(sessionMeta.sessionId, sessionMeta.sessionIdSource);
+    }
     var analyticsAllowed = isShopifyAnalyticsProcessingAllowed();
     const body = {
       storefrontId: storefrontId,

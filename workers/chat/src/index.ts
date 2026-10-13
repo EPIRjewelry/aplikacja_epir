@@ -1340,6 +1340,7 @@ type SessionContextRow = {
   channel: string | null;
   analytics_consent: number | null;
   session_id_source: string | null;
+  analytics_client_id: string | null;
 };
 
 type SessionCustomerRow = {
@@ -1401,6 +1402,7 @@ function emptySessionContext(): SessionContextRow {
     channel: null,
     analytics_consent: null,
     session_id_source: null,
+    analytics_client_id: null,
   };
 }
 
@@ -1517,6 +1519,7 @@ export class SessionDO {
     this.execIgnoreDuplicateColumn('ALTER TABLE messages ADD COLUMN message_uid TEXT');
     this.execIgnoreDuplicateColumn('ALTER TABLE session_context ADD COLUMN analytics_consent INTEGER');
     this.execIgnoreDuplicateColumn('ALTER TABLE session_context ADD COLUMN session_id_source TEXT');
+    this.execIgnoreDuplicateColumn('ALTER TABLE session_context ADD COLUMN analytics_client_id TEXT');
     this.sql.exec(`
       CREATE INDEX IF NOT EXISTS idx_session_messages_ts
       ON messages(ts ASC, id ASC)
@@ -1722,6 +1725,7 @@ export class SessionDO {
       const payload = (await request.json().catch(() => null)) as {
         analytics_consent?: number | boolean;
         session_id_source?: string;
+        analytics_client_id?: string | null;
       } | null;
       if (payload) {
         const patch: Partial<Omit<SessionContextRow, 'id'>> = {};
@@ -1734,6 +1738,16 @@ export class SessionDO {
         }
         if (payload.session_id_source === 'cookie' || payload.session_id_source === 'session_storage') {
           patch.session_id_source = payload.session_id_source;
+        }
+        if (patch.analytics_consent === 0) {
+          patch.analytics_client_id = null;
+        } else if (patch.analytics_consent === 1) {
+          const rawClient = payload.analytics_client_id;
+          if (typeof rawClient === 'string' && rawClient.trim()) {
+            patch.analytics_client_id = rawClient.trim();
+          } else if (rawClient === null) {
+            patch.analytics_client_id = null;
+          }
         }
         if (Object.keys(patch).length > 0) {
           this.updateSessionContext(patch);
@@ -1933,7 +1947,7 @@ export class SessionDO {
 
   private getSessionContext(): SessionContextRow {
     const row = this.sql.exec(
-      'SELECT cart_id, session_id, storefront_id, channel, analytics_consent, session_id_source FROM session_context WHERE id = 1',
+      'SELECT cart_id, session_id, storefront_id, channel, analytics_consent, session_id_source, analytics_client_id FROM session_context WHERE id = 1',
     ).one() as Omit<SessionContextRow, 'id'> | null;
 
     return {
@@ -1944,13 +1958,14 @@ export class SessionDO {
 
   private writeSessionContext(next: SessionContextRow): void {
     this.sql.exec(
-      'UPDATE session_context SET cart_id = ?, session_id = ?, storefront_id = ?, channel = ?, analytics_consent = ?, session_id_source = ? WHERE id = 1',
+      'UPDATE session_context SET cart_id = ?, session_id = ?, storefront_id = ?, channel = ?, analytics_consent = ?, session_id_source = ?, analytics_client_id = ? WHERE id = 1',
       next.cart_id,
       next.session_id,
       next.storefront_id,
       next.channel,
       next.analytics_consent,
       next.session_id_source,
+      next.analytics_client_id,
     );
   }
 
@@ -1966,6 +1981,10 @@ export class SessionDO {
         patch.analytics_consent !== undefined ? patch.analytics_consent : current.analytics_consent,
       session_id_source:
         patch.session_id_source !== undefined ? patch.session_id_source : current.session_id_source,
+      analytics_client_id:
+        patch.analytics_client_id !== undefined
+          ? patch.analytics_client_id
+          : current.analytics_client_id,
     });
   }
 
@@ -2240,6 +2259,7 @@ export class SessionDO {
       channel: sessionContext.channel ?? null,
       analytics_consent: sessionContext.analytics_consent ?? null,
       session_id_source: sessionContext.session_id_source ?? null,
+      analytics_client_id: sessionContext.analytics_client_id ?? null,
     };
   }
 
@@ -2259,9 +2279,9 @@ export class SessionDO {
             session_id, customer_id, first_name, last_name, cart_id,
             created_at, last_activity, archived_at, message_count,
             storefront_id, channel, persist_status, last_persist_error, last_persist_error_at,
-            analytics_consent, session_id_source
+            analytics_consent, session_id_source, analytics_client_id
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(session_id) DO UPDATE SET
             customer_id = excluded.customer_id,
             first_name = excluded.first_name,
@@ -2276,7 +2296,12 @@ export class SessionDO {
             last_persist_error = excluded.last_persist_error,
             last_persist_error_at = excluded.last_persist_error_at,
             analytics_consent = COALESCE(excluded.analytics_consent, sessions.analytics_consent),
-            session_id_source = COALESCE(excluded.session_id_source, sessions.session_id_source)`
+            session_id_source = COALESCE(excluded.session_id_source, sessions.session_id_source),
+            analytics_client_id = CASE
+              WHEN excluded.analytics_consent = 0 THEN NULL
+              WHEN excluded.analytics_client_id IS NOT NULL THEN excluded.analytics_client_id
+              ELSE sessions.analytics_client_id
+            END`
         )
         .bind(
           snapshot.session_id,
@@ -2295,6 +2320,7 @@ export class SessionDO {
           options?.lastPersistErrorAt ?? null,
           snapshot.analytics_consent,
           snapshot.session_id_source,
+          snapshot.analytics_client_id,
         )
         .run();
     } catch (error) {

@@ -67,6 +67,8 @@ export {
   readShopifyAnalyticsProcessingAllowed,
   scrubInvalidChatSessionStorage,
   installShopifyCustomerPrivacyChatListeners,
+  rememberChatSessionIdForPrivacy,
+  readLastChatSessionIdForPrivacy,
   postChatSessionPrivacyUpdate,
   resolveChatSessionPrivacyApiUrl,
   isEpirSessionCookiePixelCopy,

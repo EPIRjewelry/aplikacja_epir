@@ -370,6 +370,7 @@ function KazkaConsentAndChat({
           locale={analyticsConsent.language}
           sameDomainForStorefrontApi={analyticsConsent.sameDomainForStorefrontApi}
           consentGranted={consentGranted}
+          chatApiUrl={chatApiUrl}
         />
       ) : null}
       <div className="kazka-chat-shell">
