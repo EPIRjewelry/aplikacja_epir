@@ -101,6 +101,27 @@ describe('buyer compose turn — tools in system prompt', () => {
     expect(system).not.toContain('get_size_table');
   });
 
+  it('buildBuyerTurnSystemPrompt injects Kazka store facts only on kazka-hydrogen', () => {
+    const modelTools = filterModelWiredBuyerTools(['search_shop_policies_and_faqs']);
+    const epir = buildBuyerTurnSystemPrompt({
+      modelTools,
+      profilePrompt: '',
+      factsBlock: '',
+      channelId: 'epir-online-store',
+    });
+    expect(epir).not.toContain('Przyjmujemy zamówienia indywidualne');
+    expect(epir).not.toContain('srebrnego asortymentu Kazka');
+
+    const kazka = buildBuyerTurnSystemPrompt({
+      modelTools,
+      profilePrompt: '',
+      factsBlock: '',
+      channelId: 'kazka-hydrogen',
+    });
+    expect(kazka).toContain('Przyjmujemy zamówienia indywidualne');
+    expect(kazka).toContain('Fakty sklepu Kazka');
+  });
+
   it('(e) search_catalog in prompt and defs when in modelTools (readiness passed)', () => {
     const modelTools = filterModelWiredBuyerTools([
       'search_catalog',

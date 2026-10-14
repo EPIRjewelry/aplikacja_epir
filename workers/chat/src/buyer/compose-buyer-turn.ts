@@ -16,7 +16,7 @@ import {
 import type { ProductFacts, VariantFacts } from '../facts/types';
 import { buildAIProfilePrompt, fetchAIProfileByHandle } from '../ai-profile';
 import { callMcpToolDirect } from '../mcp_server';
-import { LUXURY_SYSTEM_PROMPT } from '../prompts/luxury-system-prompt';
+import { KAZKA_BUYER_STORE_FACTS, LUXURY_SYSTEM_PROMPT } from '../prompts/luxury-system-prompt';
 import { buildBuyerToolDefinitions, filterModelWiredBuyerTools } from './buyer-tools';
 import type { BuyerChannelId } from './channel-switch';
 import { catalogSnapshotChannel } from './channel-switch';
@@ -418,15 +418,18 @@ export function buildBuyerTurnSystemPrompt(parts: {
   modelTools: BuyerToolId[];
   profilePrompt: string;
   factsBlock: string;
+  channelId?: BuyerChannelId;
 }): string {
   const base = scrubBuyerPromptForAvailableTools(LUXURY_SYSTEM_PROMPT, parts.modelTools);
+  const kazkaStoreFacts =
+    parts.channelId === 'kazka-hydrogen' ? KAZKA_BUYER_STORE_FACTS : '';
   const toolsBlock = buildBuyerToolsPrompt(parts.modelTools);
   const hardRules = [
     HARD_RULES_PAN_PANI,
     HARD_RULES_PRECEDENCE,
     catalogFactsGuidance(parts.modelTools),
   ].join('\n');
-  return [base, parts.profilePrompt, hardRules, toolsBlock, parts.factsBlock]
+  return [base, kazkaStoreFacts, parts.profilePrompt, hardRules, toolsBlock, parts.factsBlock]
     .filter(Boolean)
     .join('\n\n');
 }
@@ -773,6 +776,7 @@ export async function composeBuyerAssistantReply(
     modelTools,
     profilePrompt,
     factsBlock,
+    channelId,
   });
   allowedUrlSeeds.push(...collectUrlsFromFactsBlocks(contextBlocks));
   const allowedUrls = collectAllowedUrls(allowedUrlSeeds);

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { LUXURY_SYSTEM_PROMPT, KAZKA_HEADLESS_PERSONA_ADDON } from '../src/prompts/luxury-system-prompt';
+import {
+  KAZKA_BUYER_STORE_FACTS,
+  KAZKA_HEADLESS_PERSONA_ADDON,
+  LUXURY_SYSTEM_PROMPT,
+} from '../src/prompts/luxury-system-prompt';
 
 describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
   it('requires catalog-backed PLN amounts for buyer-facing pricing', () => {
@@ -65,13 +69,19 @@ describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('geometryczny spokój');
   });
 
-  it('forbids hallucinated Kazka contact details', () => {
+  it('routes Kazka contact through KB, not hardcoded phone', () => {
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('Zakaz zmyślonych numerów');
-    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('+48 696 55 33 46');
-    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('epir@epirbizuteria.pl');
-    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('wyłącznie numerem +48 696 55 33 46');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).not.toContain('+48 696 55 33 46');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).not.toContain('epir@epirbizuteria.pl');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('search_shop_policies_and_faqs');
+    expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('answer i sources');
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('000 000 000');
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('nie podawaj zmyślonych danych kontaktowych');
+  });
+
+  it('documents Storefront MCP endpoint in base prompt', () => {
+    expect(LUXURY_SYSTEM_PROMPT).toContain('{shop_domain}/api/mcp');
+    expect(LUXURY_SYSTEM_PROMPT).not.toContain('/apps/mcp');
   });
 
   it('locks page product block and KB for store facts', () => {
@@ -82,6 +92,13 @@ describe('LUXURY_SYSTEM_PROMPT continuity guardrails', () => {
     expect(LUXURY_SYSTEM_PROMPT).toContain('opis produktu tego nie podaje');
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('search_shop_policies_and_faqs');
     expect(KAZKA_HEADLESS_PERSONA_ADDON).toContain('Nie obiecuj darmowej zmiany rozmiaru');
+  });
+
+  it('keeps Kazka store-facts bullet out of base prompt (buyer injects per channel)', () => {
+    expect(LUXURY_SYSTEM_PROMPT).not.toContain('Przyjmujemy zamówienia indywidualne');
+    expect(LUXURY_SYSTEM_PROMPT).not.toContain('srebrnego asortymentu Kazka');
+    expect(KAZKA_BUYER_STORE_FACTS).toContain('Przyjmujemy zamówienia indywidualne');
+    expect(KAZKA_BUYER_STORE_FACTS).toContain('srebrnego asortymentu Kazka');
   });
 
   it('sends an EPIR custom design to the cocreate page, not the Kazka block', () => {

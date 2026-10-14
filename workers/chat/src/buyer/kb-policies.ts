@@ -44,15 +44,89 @@ function normalizeSources(raw: unknown): PolicySource[] {
   return out;
 }
 
+function policySourceFromEntry(entry: Record<string, unknown>, fallbackTitle: string): PolicySource | null {
+  const source = entry.source;
+  if (!source || typeof source !== 'object') return null;
+  const url =
+    typeof (source as { url?: unknown }).url === 'string'
+      ? (source as { url: string }).url.trim()
+      : '';
+  if (!url) return null;
+  const title = fallbackTitle.trim() || url;
+  return { title, url };
+}
+
+/** Kontrakt §8–11: policies first (binding), then faqs. */
+function composeAnswerFromPoliciesAndFaqs(parsed: Record<string, unknown>): {
+  answer: string;
+  sources: PolicySource[];
+} {
+  const parts: string[] = [];
+  const sources: PolicySource[] = [];
+
+  const policies = parsed.policies;
+  if (Array.isArray(policies)) {
+    for (const entry of policies) {
+      if (!entry || typeof entry !== 'object') continue;
+      const row = entry as Record<string, unknown>;
+      const title = typeof row.title === 'string' ? row.title.trim() : '';
+      const summary = typeof row.summary === 'string' ? row.summary.trim() : '';
+      const body = typeof row.body === 'string' ? row.body.trim() : '';
+      const text = summary || body;
+      if (!title && !text) continue;
+      if (title && text) parts.push(`${title}: ${text}`);
+      else parts.push(title || text);
+      const src = policySourceFromEntry(row, title);
+      if (src) sources.push(src);
+    }
+  }
+
+  const faqs = parsed.faqs;
+  if (Array.isArray(faqs)) {
+    for (const entry of faqs) {
+      if (!entry || typeof entry !== 'object') continue;
+      const row = entry as Record<string, unknown>;
+      const question = typeof row.question === 'string' ? row.question.trim() : '';
+      const answer = typeof row.answer === 'string' ? row.answer.trim() : '';
+      if (!question && !answer) continue;
+      if (question && answer) parts.push(`${question}\n${answer}`);
+      else parts.push(question || answer);
+      const src = policySourceFromEntry(row, question || 'FAQ');
+      if (src) sources.push(src);
+    }
+  }
+
+  const extra = normalizeSources(parsed.sources);
+  return { answer: parts.join('\n\n'), sources: [...sources, ...extra] };
+}
+
+function extractFromRecord(parsed: Record<string, unknown>): { answer: string; sources: PolicySource[] } {
+  if (typeof parsed.answer === 'string' && parsed.answer.trim()) {
+    return {
+      answer: parsed.answer.trim(),
+      sources: normalizeSources(parsed.sources),
+    };
+  }
+
+  const composed = composeAnswerFromPoliciesAndFaqs(parsed);
+  if (composed.answer) return composed;
+
+  // Legacy: sources/results without answer — treat body as unavailable for quoting
+  if (Array.isArray(parsed.sources) || Array.isArray(parsed.results)) {
+    return { answer: '', sources: normalizeSources(parsed.sources ?? parsed.results) };
+  }
+
+  return { answer: '', sources: [] };
+}
+
 function extractAnswerAndSources(payload: unknown): { answer: string; sources: PolicySource[] } {
   if (!payload || typeof payload !== 'object') return { answer: '', sources: [] };
   const root = payload as Record<string, unknown>;
 
   if (root.structuredContent && typeof root.structuredContent === 'object') {
     const sc = root.structuredContent as Record<string, unknown>;
-    const answer = typeof sc.answer === 'string' ? sc.answer.trim() : '';
-    const sources = normalizeSources(sc.sources);
-    if (answer) return { answer, sources };
+    const fromSc = extractFromRecord(sc);
+    if (fromSc.answer) return fromSc;
   }
 
   const content = root.content;
@@ -65,16 +139,9 @@ function extractAnswerAndSources(payload: unknown): { answer: string; sources: P
       if (!text) continue;
       try {
         const parsed = JSON.parse(text) as Record<string, unknown>;
-        if (typeof parsed.answer === 'string' && parsed.answer.trim()) {
-          return {
-            answer: parsed.answer.trim(),
-            sources: normalizeSources(parsed.sources),
-          };
-        }
-        // Legacy: sources/results without answer — treat body as unavailable for quoting
-        if (Array.isArray(parsed.sources) || Array.isArray(parsed.results)) {
-          return { answer: '', sources: normalizeSources(parsed.sources ?? parsed.results) };
-        }
+        const fromJson = extractFromRecord(parsed);
+        if (fromJson.answer) return fromJson;
+        if (fromJson.sources.length > 0) return fromJson;
       } catch {
         // Plain text body from MCP — use as answer only when non-empty
         return { answer: text, sources: [] };
@@ -82,9 +149,8 @@ function extractAnswerAndSources(payload: unknown): { answer: string; sources: P
     }
   }
 
-  if (typeof root.answer === 'string' && root.answer.trim()) {
-    return { answer: root.answer.trim(), sources: normalizeSources(root.sources) };
-  }
+  const fromRoot = extractFromRecord(root);
+  if (fromRoot.answer || fromRoot.sources.length > 0) return fromRoot;
 
   return { answer: '', sources: [] };
 }
