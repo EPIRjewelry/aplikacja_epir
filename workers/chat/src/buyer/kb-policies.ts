@@ -100,6 +100,36 @@ function composeAnswerFromPoliciesAndFaqs(parsed: Record<string, unknown>): {
   return { answer: parts.join('\n\n'), sources: [...sources, ...extra] };
 }
 
+/** Shopify KB live shape: content[].text is a JSON array of { question, answer }. */
+function composeAnswerFromQaArray(rows: unknown[]): { answer: string; sources: PolicySource[] } {
+  const parts: string[] = [];
+  const sources: PolicySource[] = [];
+  for (const entry of rows) {
+    if (!entry || typeof entry !== 'object') continue;
+    const row = entry as Record<string, unknown>;
+    const question = typeof row.question === 'string' ? row.question.trim() : '';
+    const answer = typeof row.answer === 'string' ? row.answer.trim() : '';
+    if (!question && !answer) continue;
+    if (question && answer) parts.push(`${question}\n${answer}`);
+    else parts.push(question || answer);
+    const src = policySourceFromEntry(row, question || 'FAQ');
+    if (src) sources.push(src);
+  }
+  return { answer: parts.join('\n\n'), sources };
+}
+
+function extractFromParsedJson(parsed: unknown): { answer: string; sources: PolicySource[] } {
+  if (Array.isArray(parsed)) {
+    const composed = composeAnswerFromQaArray(parsed);
+    if (composed.answer) return composed;
+    return { answer: '', sources: [] };
+  }
+  if (parsed && typeof parsed === 'object') {
+    return extractFromRecord(parsed as Record<string, unknown>);
+  }
+  return { answer: '', sources: [] };
+}
+
 function extractFromRecord(parsed: Record<string, unknown>): { answer: string; sources: PolicySource[] } {
   if (typeof parsed.answer === 'string' && parsed.answer.trim()) {
     return {
@@ -138,8 +168,8 @@ function extractAnswerAndSources(payload: unknown): { answer: string; sources: P
         : '';
       if (!text) continue;
       try {
-        const parsed = JSON.parse(text) as Record<string, unknown>;
-        const fromJson = extractFromRecord(parsed);
+        const parsed = JSON.parse(text) as unknown;
+        const fromJson = extractFromParsedJson(parsed);
         if (fromJson.answer) return fromJson;
         if (fromJson.sources.length > 0) return fromJson;
       } catch {

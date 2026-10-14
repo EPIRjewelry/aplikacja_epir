@@ -140,4 +140,53 @@ describe('buyer kb-policies', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe('empty');
   });
+
+  it('parses live MCP JSON array of question/answer (address)', async () => {
+    const qa = [
+      {
+        question: 'Jaki jest adres Pracowni EPIR',
+        answer:
+          'Pracownia znajduje się na Przedmieściu Oławskim, zabytkowej i pięknej części miasta, na I piętrze secesyjnej kamienicy. Adres: 50-419 Wrocław, ul. Traugutta 123/5. ',
+      },
+    ];
+    vi.spyOn(mcp, 'callMcpToolDirect').mockResolvedValue({
+      result: {
+        content: [{ type: 'text', mimeType: 'application/json', text: JSON.stringify(qa) }],
+      },
+    });
+    const r = await searchShopPoliciesViaMcp({} as import('../src/config/bindings').Env, 'adres');
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.answer).toContain('Traugutta 123/5');
+      expect(r.answer).toContain('Jaki jest adres Pracowni EPIR');
+    }
+  });
+
+  it('parses live MCP JSON array of question/answer (free shipping threshold)', async () => {
+    const qa = [
+      {
+        question: 'od jakiej kwoty obowiązuje darmowa dostawa',
+        answer: 'Darmowa dostawa obowiązuje od kwoty 500 zł.',
+      },
+    ];
+    vi.spyOn(mcp, 'callMcpToolDirect').mockResolvedValue({
+      result: {
+        content: [{ type: 'text', mimeType: 'application/json', text: JSON.stringify(qa) }],
+      },
+    });
+    const r = await searchShopPoliciesViaMcp({} as import('../src/config/bindings').Env, 'dostawa');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.answer).toContain('500 zł');
+  });
+
+  it('empty JSON array in content ⇒ empty reason', async () => {
+    vi.spyOn(mcp, 'callMcpToolDirect').mockResolvedValue({
+      result: {
+        content: [{ type: 'text', mimeType: 'application/json', text: '[]' }],
+      },
+    });
+    const r = await searchShopPoliciesViaMcp({} as import('../src/config/bindings').Env, 'x');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('empty');
+  });
 });
