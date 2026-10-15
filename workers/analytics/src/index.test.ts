@@ -458,6 +458,16 @@ describe('Analytics Worker - /pixel endpoint', () => {
                         document: {
                             location: {
                                 href: 'https://epirbizuteria.pl/pages/zaprojektuj-swoj-model?utm_source=google&email=secret@example.com',
+                                search: '?email=secret@example.com',
+                                hash: '#email=secret@example.com',
+                            },
+                            referrer: 'https://evil.example/?email=secret@example.com',
+                        },
+                        window: {
+                            location: {
+                                href: 'https://epirbizuteria.pl/pages/zaprojektuj-swoj-model?email=secret@example.com#email=secret@example.com',
+                                search: '?email=secret@example.com',
+                                hash: '#email=secret@example.com',
                             },
                         },
                     },
@@ -488,7 +498,22 @@ describe('Analytics Worker - /pixel endpoint', () => {
         expect(event?.page_url).toContain('utm_source=google');
         expect(event?.page_url).not.toContain('secret@example.com');
         expect(event?.raw_data).not.toContain('secret@example.com');
+        expect(event?.raw_data).not.toContain('?email=');
         expect(event?.raw_data).not.toContain('+48111222333');
+        const raw = JSON.parse(event?.raw_data ?? '{}') as {
+            data?: {
+                context?: {
+                    document?: {location?: {search?: string; hash?: string}; referrer?: string};
+                    window?: {location?: {href?: string; search?: string; hash?: string}};
+                };
+            };
+        };
+        expect(raw.data?.context?.document?.location?.search).toBe('?utm_source=google');
+        expect(raw.data?.context?.document?.location?.hash).toBe('');
+        expect(raw.data?.context?.document?.referrer).not.toContain('email');
+        expect(raw.data?.context?.window?.location?.search).toBe('?utm_source=google');
+        expect(raw.data?.context?.window?.location?.hash).toBe('');
+        expect(raw.data?.context?.window?.location?.href).not.toContain('email');
         expect(event?.session_id).toBe('client-form-1');
     });
 

@@ -612,10 +612,12 @@
                   analyticsAllowed = false;
                 }
                 if (analyticsAllowed) {
-                  window.Shopify.analytics.publish('epir:cocreate_submitted', {
-                    reference_id: result.data.referenceId,
-                    form_id: 'cocreate-form'
-                  });
+                  try {
+                    window.Shopify.analytics.publish('epir:cocreate_submitted', {
+                      reference_id: result.data.referenceId,
+                      form_id: 'cocreate-form'
+                    });
+                  } catch (e) {}
                 }
               }
               form.hidden = true;

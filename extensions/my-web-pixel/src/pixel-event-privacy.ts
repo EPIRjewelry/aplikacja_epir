@@ -73,24 +73,64 @@ function redactFormHolder(eventType: string, holder: Record<string, unknown>): v
   }
 }
 
-/** Replace document.location.href with the canonical page URL so raw query cannot carry field values. */
+function queryFromPageUrl(pageUrl: string): string {
+  const q = pageUrl.indexOf('?');
+  if (q === -1) return '';
+  return pageUrl.slice(q);
+}
+
+function rewriteLocation(loc: Record<string, unknown>, pageUrl: string): Record<string, unknown> {
+  return {
+    ...loc,
+    href: pageUrl,
+    search: queryFromPageUrl(pageUrl),
+    hash: '',
+  };
+}
+
+/** href/search/hash na document i window oraz referrer — tylko kanoniczny adres (UTM/click-id). */
 export function withCanonicalPageLocation(eventData: unknown, pageUrl: string | null): unknown {
   if (!pageUrl || !eventData || typeof eventData !== 'object') return eventData;
   const rec = eventData as Record<string, unknown>;
   const ctx = rec.context;
   if (!ctx || typeof ctx !== 'object') return eventData;
-  const doc = (ctx as Record<string, unknown>).document;
-  if (!doc || typeof doc !== 'object') return eventData;
-  const loc = (doc as Record<string, unknown>).location;
-  if (!loc || typeof loc !== 'object') return eventData;
+  const ctxRec = ctx as Record<string, unknown>;
+
+  let documentOut: Record<string, unknown> | undefined;
+  const doc = ctxRec.document;
+  if (doc && typeof doc === 'object') {
+    const docRec = doc as Record<string, unknown>;
+    documentOut = {...docRec};
+    const loc = docRec.location;
+    if (loc && typeof loc === 'object') {
+      documentOut.location = rewriteLocation(loc as Record<string, unknown>, pageUrl);
+    }
+    if (typeof docRec.referrer === 'string') {
+      const referrer = canonicalAnalyticsPageUrl(docRec.referrer);
+      if (referrer) documentOut.referrer = referrer;
+    }
+  }
+
+  let windowOut: Record<string, unknown> | undefined;
+  const win = ctxRec.window;
+  if (win && typeof win === 'object') {
+    const winRec = win as Record<string, unknown>;
+    const loc = winRec.location;
+    if (loc && typeof loc === 'object') {
+      windowOut = {
+        ...winRec,
+        location: rewriteLocation(loc as Record<string, unknown>, pageUrl),
+      };
+    }
+  }
+
+  if (!documentOut && !windowOut) return eventData;
   return {
     ...rec,
     context: {
-      ...(ctx as Record<string, unknown>),
-      document: {
-        ...(doc as Record<string, unknown>),
-        location: {...(loc as Record<string, unknown>), href: pageUrl},
-      },
+      ...ctxRec,
+      ...(documentOut ? {document: documentOut} : {}),
+      ...(windowOut ? {window: windowOut} : {}),
     },
   };
 }

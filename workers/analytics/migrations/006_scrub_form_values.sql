@@ -20,4 +20,5 @@ WHERE event_type IN (
   'input_focused',
   'input_blurred',
   'input_changed'
-);
+)
+AND json_valid(raw_data);
