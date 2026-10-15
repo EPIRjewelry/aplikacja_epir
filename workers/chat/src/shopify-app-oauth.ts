@@ -10,7 +10,7 @@ import { SHOPIFY_ADMIN_API_VERSION } from './config/shopify-api-version';
 import { reconcileEpirWebPixel } from '../../../scripts/shopify/epir-web-pixel-record.mjs';
 
 const EPIR_AI_OAUTH_SCOPES =
-  'customer_read_customers,customer_read_orders,customer_read_store_credit_accounts,unauthenticated_read_product_listings,read_reports,read_metaobjects,write_metaobjects,write_pixels,read_customer_events';
+  'customer_read_customers,customer_read_orders,customer_read_store_credit_accounts,unauthenticated_read_product_listings,read_reports,read_metaobjects,write_metaobjects,write_pixels,read_customer_events,read_orders';
 const EPIR_AI_CLIENT_ID = '80a9878cfb29c901c987bf0046a36238';
 
 export type ShopifyAppOAuthEnv = {
