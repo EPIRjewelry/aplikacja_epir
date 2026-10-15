@@ -6,6 +6,13 @@ import type { WarehouseCqrsEnv } from './cqrs/types';
 import { handleWarehouseChartsGet } from './cqrs/serving-charts';
 import { isDirectLikeSource, parseAttribution } from '@epir/ham-core';
 import { maybeSendMetaCapiPurchaseForOrder } from './meta-capi';
+import {
+  actionWithoutQuery,
+  canonicalAnalyticsPageUrl,
+  formElementRecord,
+  sanitizeFormEventData,
+  withCanonicalPageLocation,
+} from './form-event-privacy';
 
 // ============================================================================
 // ANALYTICS WORKER - Shopify Web Pixel Event Tracking
@@ -258,6 +265,12 @@ async function ensurePixelTable(db: D1Database): Promise<void> {
   } catch (_) { /* column may already exist */ }
   try {
     await db.prepare('ALTER TABLE pixel_events ADD COLUMN product_handle TEXT').run();
+  } catch (_) { /* column may already exist */ }
+  try {
+    await db.prepare('ALTER TABLE pixel_events ADD COLUMN form_action TEXT').run();
+  } catch (_) { /* column may already exist */ }
+  try {
+    await db.prepare('ALTER TABLE pixel_events ADD COLUMN link_type TEXT').run();
   } catch (_) { /* column may already exist */ }
 
   console.log('[ANALYTICS_WORKER] 🔧 Creating indexes...');
@@ -1247,32 +1260,29 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
         }
       }
       
-      // Page viewed event (Shopify Web Pixels API: data.context.document.*)
-      if (eventType === 'page_viewed') {
-        if (data.context && typeof data.context === 'object') {
-          const context = data.context as Record<string, unknown>;
-          if (context.document && typeof context.document === 'object') {
-            const doc = context.document as Record<string, unknown>;
-            const location = doc.location as Record<string, unknown> | undefined;
-            pageUrl = String(location?.href || doc.url || '');
-            pageTitle = String(doc.title || '');
-            if (doc.referrer && typeof doc.referrer === 'string') {
-              referrer = doc.referrer;
-            }
+      // Web Pixels context.document.location for every event type (not only page_viewed).
+      if (data.context && typeof data.context === 'object') {
+        const context = data.context as Record<string, unknown>;
+        if (context.document && typeof context.document === 'object') {
+          const doc = context.document as Record<string, unknown>;
+          const href = locationHrefFromUnknown(doc.location) || (typeof doc.url === 'string' ? doc.url : '');
+          if (href) pageUrl = href;
+          if (!pageTitle && typeof doc.title === 'string') pageTitle = doc.title;
+          if (doc.referrer && typeof doc.referrer === 'string') {
+            referrer = doc.referrer;
           }
         }
       }
 
-      // Fallback URL/title from custom payload (TAE custom events)
-      // Support multiple field naming conventions for page URL
-      if (!pageUrl && typeof data.url === 'string') {
-        pageUrl = data.url;
-      }
+      // Fallback URL/title. page_url from the pixel (canonical) wins over tracking.js `url` (pathname only).
       if (!pageUrl && typeof data.pageUrl === 'string') {
         pageUrl = data.pageUrl;
       }
       if (!pageUrl && typeof data.page_url === 'string') {
         pageUrl = data.page_url;
+      }
+      if (!pageUrl && typeof data.url === 'string') {
+        pageUrl = data.url;
       }
       if (!pageUrl && typeof data.href === 'string') {
         pageUrl = data.href;
@@ -1372,6 +1382,7 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
         }
       }
 
+      pageUrl = canonicalAnalyticsPageUrl(pageUrl) ?? (pageUrl || null);
       const attribution = parseAttribution(data, pageUrl, referrer);
       trafficSource = attribution.source;
       trafficMedium = attribution.medium;
@@ -1396,6 +1407,8 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
     let elementClass: string | null = null;
     let inputName: string | null = null;
     let formId: string | null = null;
+    let formAction: string | null = null;
+    let linkType: string | null = null;
     let searchQuery: string | null = null;
     let collectionId: string | null = null;
     let collectionHandle: string | null = null;
@@ -1419,6 +1432,9 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
         elementTag = typeof data.element === 'string' ? data.element : null;
         elementId = typeof data.id === 'string' ? data.id : null;
         elementClass = typeof data.className === 'string' ? data.className : null;
+        if (data.link_type === 'tel' || data.link_type === 'mailto') {
+          linkType = data.link_type;
+        }
         if (data.viewport && typeof data.viewport === 'object') {
           const vp = data.viewport as Record<string, unknown>;
           viewportW = typeof vp.w === 'number' ? vp.w : null;
@@ -1450,16 +1466,31 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
         }
       }
       
-      // Form and input events
-      if (eventType === 'form_submitted' && data.form && typeof data.form === 'object') {
-        const form = data.form as Record<string, unknown>;
-        formId = typeof form.id === 'string' ? form.id : null;
+      // Form and input events (Web Pixels: data.element / data.data.element; legacy fallback data.form / data.input)
+      if (eventType === 'form_submitted') {
+        const element = formElementRecord(data);
+        if (element) {
+          formId = typeof element.id === 'string' ? element.id : null;
+          formAction = typeof element.action === 'string' ? actionWithoutQuery(element.action) : null;
+        }
+        if (!formId && data.form && typeof data.form === 'object') {
+          const form = data.form as Record<string, unknown>;
+          formId = typeof form.id === 'string' ? form.id : null;
+        }
       }
       if (['input_focused', 'input_blurred', 'input_changed'].includes(eventType)) {
-        if (data.input && typeof data.input === 'object') {
-          const input = data.input as Record<string, unknown>;
+        const element = formElementRecord(data);
+        const input =
+          element ??
+          (data.input && typeof data.input === 'object' ? (data.input as Record<string, unknown>) : null);
+        if (input) {
           inputName = typeof input.name === 'string' ? input.name : null;
-          elementTag = typeof input.type === 'string' ? input.type : null;
+          elementTag =
+            typeof input.type === 'string'
+              ? input.type
+              : typeof input.tagName === 'string'
+                ? input.tagName
+                : null;
         }
       }
       
@@ -1525,8 +1556,12 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
       }
     }
     
-    // Store full event as JSON for debugging
-    const rawData = JSON.stringify({ event: eventType, data: eventData, timestamp });
+    // Store full event as JSON for debugging (form field values stripped)
+    const rawData = JSON.stringify({
+      event: eventType,
+      data: withCanonicalPageLocation(sanitizeFormEventData(eventType, eventData), pageUrl),
+      timestamp,
+    });
 
     const normalizedCustomerId = customerId ?? 'anonymous';
     const normalizedSessionId =
@@ -1606,7 +1641,7 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
         click_x, click_y, viewport_w, viewport_h,
         scroll_depth_percent, time_on_page_seconds,
         element_tag, element_id, element_class,
-        input_name, form_id,
+        input_name, form_id, form_action, link_type,
         search_query, collection_id, collection_handle,
         checkout_token, order_id, order_value,
         alert_type, alert_message,
@@ -1624,14 +1659,14 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
         ?21, ?22, ?23, ?24,
         ?25, ?26,
         ?27, ?28, ?29,
-        ?30, ?31,
-        ?32, ?33, ?34,
-        ?35, ?36, ?37,
-        ?38, ?39,
+        ?30, ?31, ?32, ?33,
+        ?34, ?35, ?36,
+        ?37, ?38, ?39,
         ?40, ?41,
         ?42, ?43,
-        ?44, ?45, ?46, ?47, ?48,
-        ?49, ?50, ?51
+        ?44, ?45,
+        ?46, ?47, ?48, ?49, ?50,
+        ?51, ?52, ?53
       )`
     )
     .bind(
@@ -1645,7 +1680,7 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
       clickX, clickY, viewportW, viewportH,
       scrollDepth, timeOnPage,
       elementTag, elementId, elementClass,
-      inputName, formId,
+      inputName, formId, formAction, linkType,
       searchQuery, collectionId, collectionHandle,
       checkoutToken, orderId, orderValue,
       alertType, alertMessage,

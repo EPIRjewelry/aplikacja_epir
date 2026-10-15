@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   aggregateChatPixelSessionMatch,
   computeChatPixelSessionMatch,
+  countPixelNullSessions24h,
 } from './edog-chat-pixel-match';
 import { gemmaCustomerMessagesSql } from './gemma-channel-filter';
 
@@ -127,5 +128,17 @@ describe('computeChatPixelSessionMatch', () => {
     );
     expect(pixelBindArgs.flat()).not.toContain('pixel-stale');
     expect(pixelBindArgs.flat().some((v) => String(v).startsWith('sess_'))).toBe(false);
+  });
+});
+
+describe('countPixelNullSessions24h', () => {
+  it('excludes server cocreate_form_submitted from the null-session count', async () => {
+    const sqls: string[] = [];
+    const db = capturePrepareDb(sqls);
+    await countPixelNullSessions24h(db, 1);
+    expect(sqls.length).toBe(2);
+    for (const sql of sqls) {
+      expect(sql).toContain("event_type != 'cocreate_form_submitted'");
+    }
   });
 });

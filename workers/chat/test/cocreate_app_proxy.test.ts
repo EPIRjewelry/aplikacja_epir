@@ -259,4 +259,49 @@ describe('App Proxy ingress POST /apps/assistant/cocreate', () => {
 
     vi.unstubAllGlobals();
   });
+
+  it('S2S from Kazka stores kazka and emits server_cocreate', async () => {
+    const pixelBodies: string[] = [];
+    const { env, inserts } = makeEnv({
+      EPIR_CHAT_SHARED_SECRET: 's2s-test',
+      ANALYTICS_WORKER: {
+        async fetch(_input: RequestInfo, init?: RequestInit) {
+          pixelBodies.push(String(init?.body ?? ''));
+          return new Response('{"ok":true}', { status: 200 });
+        },
+      },
+    } as Partial<Env>);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"id":"msg_1"}', { status: 200 })));
+
+    const pending: Promise<unknown>[] = [];
+    const ctx = { waitUntil(p: Promise<unknown>) { pending.push(p); } } as ExecutionContext;
+
+    const form = new FormData();
+    form.set('name', 'Anna');
+    form.set('email', 'anna@example.com');
+    form.set('vision', 'Pierścionek z szafirem');
+    form.set('consent_project', '1');
+
+    const res = await worker.fetch(
+      new Request('https://asystent.epirbizuteria.pl/cocreate', {
+        method: 'POST',
+        headers: {
+          'X-EPIR-SHARED-SECRET': 's2s-test',
+          'X-EPIR-STOREFRONT-ID': 'kazka',
+          'X-EPIR-CHANNEL': 'hydrogen-kazka',
+        },
+        body: form,
+      }),
+      env,
+      ctx,
+    );
+    expect(res.status).toBe(201);
+    await Promise.all(pending);
+    expect(inserts[0].args[2]).toBe('kazka');
+    expect(inserts[0].args[3]).toBe('hydrogen-kazka');
+    expect(pixelBodies.join('\n')).toContain('"pixel_sender":"server_cocreate"');
+    expect(pixelBodies.join('\n')).not.toContain('anna@example.com');
+
+    vi.unstubAllGlobals();
+  });
 });

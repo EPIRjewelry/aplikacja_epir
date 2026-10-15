@@ -16,7 +16,7 @@ Bazy:
 ### A. Capture piksela
 
 1. **Skąd:** Web Pixel `extensions/my-web-pixel`. Toml ma `analytics = true` i `runtime_context = "strict"` — Shopify nie ładuje sandboxa przed zgodą analityczną. POST wychodzi tylko gdy `init.customerPrivacy.analyticsProcessingAllowed === true` (Web Pixels API) albo to samo pole na evencie. Jawne `false` albo brak flagi = cichy `return` (bez fetch).
-2. **Tożsamość:** cookie `_epir_session_id`, a gdy puste — `clientId` z eventu. Puste oba → `session_id: ""` w body; worker zapisuje **`NULL`** w D1 (bez losowego `session_*`), log `console.error`. Wklejka Customer Events (`extensions/my-web-pixel/storefront-custom-pixel.js`) nie czyta ciasteczka: gdy `event.clientId` jest puste, bierze `init.clientId`, potem `init.data.clientId`, i wpisuje wartość w `data.sessionId`, `data.session_id` oraz `data.clientId`. Worker czyta te pola w tej kolejności i **nie** czyta nagłówka `Cookie`.
+2. **Tożsamość:** klucz piksela to wyłącznie Web Pixels `clientId` (`pixel_events.session_id`). Puste `clientId` → worker zapisuje **`NULL`** (bez losowego `session_*`), log `console.error`. Nie używamy `_epir_session_id` ani `_shopify_y` jako klucza piksela. Czat łączy się z pikselem przez `sessions.analytics_client_id`, ustawiane zdarzeniem `chat_session_linked` (`client_id` + `session_id` = ten sam `clientId`).
 3. **HTTP:** `POST {pixelEndpoint}/pixel` z body `{ type, data }` (`session_id`, `customerId`, `storefront_id`, `channel`, atrybucja).
 4. **Przyjmuje:** `epir-art-jewellery-worker` (`workers/chat`). Każdy `/pixel*` idzie service bindingiem `ANALYTICS_WORKER` na `https://analytics.internal/pixel…`. Brak bindingu → HTTP 503 `pixel_proxy_not_configured`.
 5. **Zapisuje:** `epir-analityc-worker` `POST /pixel` i `POST /pixel/events` → `handlePixelPost`.
@@ -40,7 +40,7 @@ Tabele w `jewelry-analytics-db` (jedno zdarzenie, trzy zapisy):
 3. **Archiwum:** `persistMessageRow` → D1 `ai-assistant-sessions-db.messages`. Wiersz **nie jest zapisywany**, gdy brak `DB_CHATBOT` albo brak `message_uid` (cichy `return`).
 4. Snapshot sesji: `sessions` (`session_id` TEXT PK) z `customer_id`, `storefront_id`, `channel`.
 
-Join hurtowni Q1 zakłada ten sam `session_id` (`_epir_session_id`). EDOG liczy **chat↔pixel match rate** (24 h); brak zgodności → FAIL.
+EDOG łączy czat z pikselem po `sessions.analytics_client_id` = `pixel_events.session_id` (Web Pixels `clientId`), tylko przy `analytics_consent = 1`. Zdarzenie `chat_session_linked` niesie `chat_session_id` (`sess_*`) i `client_id`. `cocreate_submitted` (piksel, po zgodzie) niesie `reference_id` do złączenia z `cocreate_briefs`; serwerowe `cocreate_form_submitted` (`pixel_sender = server_cocreate`) jest licznikiem prawdy i nie wchodzi do `pixel_null_session`. Kolumny D1 `form_action` (action bez query) i `link_type` (`tel` / `mailto`) zostają w `pixel_events`, nie w streamie.
 
 ### C. Zamówienie
 

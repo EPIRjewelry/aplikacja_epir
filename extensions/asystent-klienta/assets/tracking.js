@@ -122,7 +122,7 @@
   document.addEventListener('click', function (e) {
     try {
       var target = e.target;
-      var el = target && typeof target === 'object' ? target : {};
+      var el = target && target.nodeType === 1 ? target : (target && target.parentElement) || {};
       var payload = {
         x: e.clientX,
         y: e.clientY,
@@ -136,6 +136,14 @@
           h: window.innerHeight,
         },
       };
+      var anchor = el.closest ? el.closest('a[href]') : null;
+      if (anchor && anchor.getAttribute) {
+        var hrefAttr = anchor.getAttribute('href') || '';
+        var scheme = hrefAttr.split(':')[0].toLowerCase();
+        if (scheme === 'tel' || scheme === 'mailto') {
+          payload.link_type = scheme;
+        }
+      }
 
       gatedPublish('epir:click_with_position', payload);
     } catch (err) {

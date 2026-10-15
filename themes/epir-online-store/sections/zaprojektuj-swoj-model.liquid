@@ -602,6 +602,22 @@
                 if (submitBtn) submitBtn.disabled = false;
                 return;
               }
+              if (result.data.referenceId && window.Shopify && window.Shopify.analytics && typeof window.Shopify.analytics.publish === 'function') {
+                var analyticsAllowed = false;
+                try {
+                  analyticsAllowed = !!(window.Shopify.customerPrivacy &&
+                    typeof window.Shopify.customerPrivacy.analyticsProcessingAllowed === 'function' &&
+                    window.Shopify.customerPrivacy.analyticsProcessingAllowed() === true);
+                } catch (consentErr) {
+                  analyticsAllowed = false;
+                }
+                if (analyticsAllowed) {
+                  window.Shopify.analytics.publish('epir:cocreate_submitted', {
+                    reference_id: result.data.referenceId,
+                    form_id: 'cocreate-form'
+                  });
+                }
+              }
               form.hidden = true;
               successPanel.hidden = false;
               if (successReference && result.data.referenceId) {
