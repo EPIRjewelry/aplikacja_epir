@@ -142,15 +142,36 @@ export function extractAnalyticsClientIdFromBody(
 
 const CHAT_SESSION_LINK_ID_RE = /^sess_[A-Za-z0-9-]{1,123}$/;
 
+/** Wynik `chat_session_linked`; tylko `linked` oznacza zapisany `sessions.analytics_client_id`. */
+export type ChatSessionLinkResult =
+  | 'linked'
+  | 'invalid'
+  | 'unknown_session'
+  | 'no_consent'
+  | 'error';
+
+function logChatSessionLinked(result: string, chatSessionId: string, error?: unknown): void {
+  const entry: Record<string, unknown> = {
+    tag: 'buyer.chat_session_linked',
+    result,
+    sid: chatSessionId.slice(0, 8),
+  };
+  if (error !== undefined) {
+    entry.error = String((error as Error)?.message ?? error).slice(0, 120);
+  }
+  console.log(JSON.stringify(entry));
+}
+
 /**
  * Pixel `chat_session_linked`: zapisz `analytics_client_id` tylko gdy sesja istnieje
- * i `analytics_consent = 1`. Bez tworzenia sesji. Logi bez surowych id.
+ * i `analytics_consent = 1`. Bez tworzenia sesji. Idempotentne: ta sama para nie zapisuje drugi raz.
+ * `linked` dopiero gdy D1 `sessions.analytics_client_id` = `client_id`. Logi bez surowych id.
  */
 export async function handleChatSessionLinkedFromPixel(
   env: Env,
   payload: unknown,
-): Promise<'linked' | 'ignored'> {
-  if (!payload || typeof payload !== 'object') return 'ignored';
+): Promise<ChatSessionLinkResult> {
+  if (!payload || typeof payload !== 'object') return 'invalid';
   const data = (payload as {data?: unknown}).data;
   const rec =
     data && typeof data === 'object'
@@ -160,52 +181,48 @@ export async function handleChatSessionLinkedFromPixel(
     typeof rec.chat_session_id === 'string' ? rec.chat_session_id.trim() : '';
   const clientId = typeof rec.client_id === 'string' ? rec.client_id.trim() : '';
   if (!CHAT_SESSION_LINK_ID_RE.test(chatSessionId) || !clientId) {
-    return 'ignored';
+    return 'invalid';
   }
 
   const known = await isBuyerChatSessionKnown(env, chatSessionId);
   if (!known) {
-    console.log(
-      JSON.stringify({
-        tag: 'buyer.chat_session_linked',
-        result: 'ignored_unknown',
-        sid: chatSessionId.slice(0, 8),
-      }),
-    );
-    return 'ignored';
+    logChatSessionLinked('ignored_unknown', chatSessionId);
+    return 'unknown_session';
   }
 
-  let consent: number | null = null;
-  if (env.DB_CHATBOT) {
-    try {
-      const row = await env.DB_CHATBOT
-        .prepare(
-          'SELECT analytics_consent FROM sessions WHERE session_id = ? LIMIT 1',
-        )
-        .bind(chatSessionId)
-        .first<{analytics_consent: number | null}>();
-      consent =
-        typeof row?.analytics_consent === 'number' ? row.analytics_consent : null;
-    } catch (error) {
-      console.warn(
-        JSON.stringify({
-          tag: 'buyer.chat_session_linked.d1_failed',
-          sid: chatSessionId.slice(0, 8),
-          error: String((error as Error).message).slice(0, 120),
-        }),
-      );
-      return 'ignored';
-    }
+  if (!env.DB_CHATBOT) {
+    logChatSessionLinked('ignored_no_consent', chatSessionId);
+    return 'no_consent';
   }
-  if (consent !== 1) {
-    console.log(
+
+  const readRow = () =>
+    env.DB_CHATBOT!
+      .prepare(
+        'SELECT analytics_consent, analytics_client_id FROM sessions WHERE session_id = ? LIMIT 1',
+      )
+      .bind(chatSessionId)
+      .first<{analytics_consent: number | null; analytics_client_id: string | null}>();
+
+  let row: {analytics_consent: number | null; analytics_client_id: string | null} | null;
+  try {
+    row = await readRow();
+  } catch (error) {
+    console.warn(
       JSON.stringify({
-        tag: 'buyer.chat_session_linked',
-        result: 'ignored_no_consent',
+        tag: 'buyer.chat_session_linked.d1_failed',
         sid: chatSessionId.slice(0, 8),
+        error: String((error as Error).message).slice(0, 120),
       }),
     );
-    return 'ignored';
+    return 'error';
+  }
+  if (row?.analytics_consent !== 1) {
+    logChatSessionLinked('ignored_no_consent', chatSessionId);
+    return 'no_consent';
+  }
+  if (row.analytics_client_id === clientId) {
+    logChatSessionLinked('already_linked', chatSessionId);
+    return 'linked';
   }
 
   try {
@@ -213,24 +230,17 @@ export async function handleChatSessionLinkedFromPixel(
       analyticsConsent: 1,
       analyticsClientId: clientId,
     });
-    console.log(
-      JSON.stringify({
-        tag: 'buyer.chat_session_linked',
-        result: 'linked',
-        sid: chatSessionId.slice(0, 8),
-      }),
-    );
+    // SessionDO zapisuje D1 best-effort (błąd tylko w logu), więc potwierdzamy odczytem.
+    const after = await readRow();
+    if (after?.analytics_client_id !== clientId) {
+      logChatSessionLinked('error', chatSessionId, 'analytics_client_id not persisted');
+      return 'error';
+    }
+    logChatSessionLinked('linked', chatSessionId);
     return 'linked';
   } catch (error) {
-    console.warn(
-      JSON.stringify({
-        tag: 'buyer.chat_session_linked',
-        result: 'error',
-        sid: chatSessionId.slice(0, 8),
-        error: String((error as Error).message).slice(0, 120),
-      }),
-    );
-    return 'ignored';
+    logChatSessionLinked('error', chatSessionId, error);
+    return 'error';
   }
 }
 

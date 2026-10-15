@@ -10,8 +10,12 @@ import {
   pickEpirPixelSessionId,
 } from "./pixel-session-id";
 
-/** Pary (chat_session_id, clientId) już wysłane w tej sesji przeglądarki. API piksela, nie window. */
+/** Pary (chat_session_id, clientId) potwierdzone przez czat (`linked: true`) w tej sesji przeglądarki. API piksela, nie window. */
 const CHAT_LINKED_PAIRS_STORAGE_KEY = '_epir_chat_linked_pairs';
+/** Niepotwierdzona para: kolejna próba najwcześniej po tym czasie (przy następnym zdarzeniu piksela). */
+const CHAT_LINK_RETRY_INTERVAL_MS = 30_000;
+/** Limit prób na parę w jednym uruchomieniu piksela (jedna strona), bez pętli i timerów. */
+const CHAT_LINK_MAX_ATTEMPTS_PER_PAGE = 20;
 
 // Zmienić przed deployem – fallback gdy brak ustawienia w extension settings
 const DEFAULT_PIXEL_ENDPOINT = 'https://asystent.epirbizuteria.pl';
@@ -167,8 +171,10 @@ register(async (api) => {
 
     const browserApi = browser as PixelBrowser;
     const sessionMemory: {id: string} = {id: ''};
-    /** Raz na parę (chat_session_id, client_id) w tym runtime piksela. */
+    /** Pary potwierdzone (`linked: true`) w tym runtime piksela. */
     const linkedChatPairs = new Set<string>();
+    /** Próby dla niepotwierdzonych par w tym runtime: limit i odstęp, bez timerów. */
+    const chatLinkAttempts = new Map<string, {count: number; lastAt: number; inFlight: boolean}>();
 
     async function readLinkedPairKeys(): Promise<string[]> {
       try {
@@ -192,13 +198,30 @@ register(async (api) => {
       }
     }
 
+    /** Czat potwierdza link tylko `{linked: true}` (sesja istnieje, zgoda 1, analytics_client_id zapisany). */
+    async function isChatLinkAcknowledged(response: Response): Promise<boolean> {
+      if (!response.ok) return false;
+      try {
+        const body = (await response.json()) as unknown;
+        return (
+          typeof body === 'object' &&
+          body !== null &&
+          (body as {linked?: unknown}).linked === true
+        );
+      } catch (_) {
+        return false;
+      }
+    }
+
     /**
      * Przy zgodzie: odczyt `sess_*` z top-frame sessionStorage → `chat_session_linked`.
      * Bez zgody: nie czytaj storage czatu.
-     * Dedup pary przez browser.sessionStorage (zapis dopiero po response.ok).
+     * Para trafia do browser.sessionStorage dopiero po `{linked: true}` z czatu.
+     * Inaczej kolejna próba przy następnym zdarzeniu piksela, najwcześniej po CHAT_LINK_RETRY_INTERVAL_MS,
+     * maks. CHAT_LINK_MAX_ATTEMPTS_PER_PAGE na stronę (np. sesja czatu powstaje dopiero po pierwszej wiadomości).
      */
     async function maybeEmitChatSessionLinked(pixelEvent: unknown): Promise<void> {
-      let pairKey = '';
+      let attempt: {count: number; lastAt: number; inFlight: boolean} | undefined;
       try {
         if (!isAnalyticsProcessingExplicitlyAllowed(pixelEvent, init, apiPrivacy)) return;
         const clientId =
@@ -209,14 +232,26 @@ register(async (api) => {
         if (!clientId) return;
         const chatSessionId = await readChatSessionStorage(browserApi);
         if (!isValidChatSessionLinkId(chatSessionId)) return;
-        pairKey = `${chatSessionId}\0${clientId}`;
+        const pairKey = `${chatSessionId}\0${clientId}`;
         if (linkedChatPairs.has(pairKey)) return;
         const stored = await readLinkedPairKeys();
         if (stored.includes(pairKey)) {
           linkedChatPairs.add(pairKey);
           return;
         }
-        linkedChatPairs.add(pairKey);
+        const now = Date.now();
+        attempt = chatLinkAttempts.get(pairKey);
+        if (attempt) {
+          if (attempt.inFlight) return;
+          if (attempt.count >= CHAT_LINK_MAX_ATTEMPTS_PER_PAGE) return;
+          if (now - attempt.lastAt < CHAT_LINK_RETRY_INTERVAL_MS) return;
+        } else {
+          attempt = {count: 0, lastAt: 0, inFlight: false};
+          chatLinkAttempts.set(pairKey, attempt);
+        }
+        attempt.count += 1;
+        attempt.lastAt = now;
+        attempt.inFlight = true;
 
         const baseUrl = (settings?.pixelEndpoint || DEFAULT_PIXEL_ENDPOINT).replace(/\/$/, '');
         const response = await fetch(`${baseUrl}/pixel`, {
@@ -232,13 +267,15 @@ register(async (api) => {
             },
           }),
         });
-        if (response.ok) {
+        if (await isChatLinkAcknowledged(response)) {
+          linkedChatPairs.add(pairKey);
+          chatLinkAttempts.delete(pairKey);
           await persistLinkedPair(pairKey);
-        } else {
-          linkedChatPairs.delete(pairKey);
         }
       } catch (_) {
-        if (pairKey) linkedChatPairs.delete(pairKey);
+        /* silent — kolejna próba po odstępie */
+      } finally {
+        if (attempt) attempt.inFlight = false;
       }
     }
 
