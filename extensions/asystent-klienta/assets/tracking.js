@@ -9,6 +9,8 @@
  * - page_exit: Shopify.analytics.publish → Web Pixel → POST /pixel only when allowed.
  */
 (function () {
+  if (window.__epirTrackingInit) return;
+  window.__epirTrackingInit = true;
   if (typeof Shopify === 'undefined' || !Shopify.analytics || !Shopify.analytics.publish) {
     console.warn('[EPIR Tracking] Shopify.analytics.publish not available');
     return;
@@ -127,8 +129,7 @@
         element: (el.tagName || '').toLowerCase(),
         id: el.id || null,
         className: el.className || null,
-        text: (el.innerText && el.innerText.substring && el.innerText.substring(0, 100)) || null,
-        url: window.location.href,
+        url: window.location.pathname,
         timestamp: Date.now(),
         viewport: {
           w: window.innerWidth,

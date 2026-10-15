@@ -4,6 +4,14 @@ This block injects the tracking script asset into storefront pages.
 App embed block (target=body) – Shopify loads javascript automatically when present in schema.
 {%- endcomment -%}
 
+<script>
+  (function () {
+    if (!window.Shopify || typeof window.Shopify.loadFeatures !== 'function') return;
+    window.Shopify.loadFeatures([{ name: 'consent-tracking-api', version: '0.1' }], function () {});
+  })();
+</script>
+<script src="{{ 'tracking.js' | asset_url }}" defer></script>
+
 {% schema %}
 {
   "name": "EPIR Tracking",
