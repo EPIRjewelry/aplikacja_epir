@@ -58,6 +58,7 @@ interface MockWebPixelAPI {
 // Import index.ts to trigger register() call
 // ============================================================================
 import './index';
+import { PII, checkoutFixture } from './__checkout-fixture';
 
 /** Mock Web Pixel event: jawna zgoda analytics na evencie (zgodnie z modelem Shopify). */
 function withAnalyticsConsent(eventLike: Record<string, unknown> = {}): Record<string, unknown> {
@@ -995,5 +996,22 @@ describe('form and cocreate privacy', () => {
             .map((call) => JSON.parse(call[1].body))
             .filter((b) => b.type === 'chat_session_linked');
         expect(linked).toHaveLength(0);
+    });
+});
+
+describe('checkout PII allowlist – wiring', () => {
+    beforeEach(() => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue({ ok: true }) }));
+    });
+    afterEach(() => { vi.unstubAllGlobals(); });
+    it('checkout_completed body has no PII and keeps token at data.data.checkout', async () => {
+        const { subscriptions } = await invokePixelCallback();
+        await subscriptions.get('checkout_completed')!(withAnalyticsConsent({ clientId: 'pixel-client-1', name: 'checkout_completed', data: { checkout: checkoutFixture() } }));
+        const bodies = (fetch as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[1].body)).filter((b) => b.type === 'checkout_completed');
+        expect(bodies).toHaveLength(1);
+        const s = JSON.stringify(bodies[0]);
+        for (const p of PII) expect(s).not.toContain(p);
+        expect(bodies[0].data.data.checkout.token).toBe('chk-token-1');
+        expect(bodies[0].data.session_id).toBe('pixel-client-1');
     });
 });

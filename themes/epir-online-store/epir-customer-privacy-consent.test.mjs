@@ -382,6 +382,7 @@ test('the theme renders this Polish banner and does not render the Minimog cooki
   assert.match(banner, /Marketingowe \(reklamy\)/);
   assert.match(banner, /Preferencje/);
   assert.match(banner, /Rozmowa z doradcą w czacie/);
+  assert.doesNotMatch(banner, /data-epir-purpose="[^"]+"[^>]*\bchecked\b/);
   assert.match(banner, /data-epir-consent="accept-all"/);
   assert.match(banner, /data-epir-consent="necessary"/);
   assert.match(banner, /data-epir-consent="customize"/);
