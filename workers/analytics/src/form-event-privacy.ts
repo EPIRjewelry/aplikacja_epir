@@ -163,3 +163,152 @@ export function sanitizeFormEventData(eventType: string, eventData: unknown): un
   }
   return clone;
 }
+
+/**
+ * Shopify Web Pixels standard events z obiektem `checkout` (shopify.dev → web-pixels-api/standard-events).
+ * Do D1 trafia tylko biała lista pól poniżej; e-mail, telefon, adresy, atrybuty i properties pozycji nigdy.
+ */
+const CHECKOUT_EVENT_TYPES = new Set([
+  'checkout_started',
+  'checkout_contact_info_submitted',
+  'checkout_address_info_submitted',
+  'checkout_shipping_info_submitted',
+  'payment_info_submitted',
+  'checkout_completed',
+]);
+
+type Rec = Record<string, unknown>;
+
+function isRec(value: unknown): value is Rec {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function pickScalars(src: Rec, keys: readonly string[]): Rec {
+  const out: Rec = {};
+  for (const key of keys) {
+    const v = src[key];
+    if (v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+      out[key] = v;
+    }
+  }
+  return out;
+}
+
+function pickMoney(value: unknown): Rec | undefined {
+  return isRec(value) ? pickScalars(value, ['amount', 'currencyCode']) : undefined;
+}
+
+function setIf(out: Rec, key: string, value: unknown): void {
+  if (value !== undefined) out[key] = value;
+}
+
+function pickArray(value: unknown, pick: (item: Rec) => Rec): Rec[] | undefined {
+  return Array.isArray(value) ? value.filter(isRec).map(pick) : undefined;
+}
+
+function pickProduct(p: Rec): Rec {
+  return pickScalars(p, ['id', 'title', 'type', 'vendor', 'url']);
+}
+
+function pickVariant(v: Rec): Rec {
+  const out = pickScalars(v, ['id', 'title', 'sku']);
+  setIf(out, 'price', pickMoney(v.price));
+  if (isRec(v.product)) out.product = pickProduct(v.product);
+  return out;
+}
+
+function pickLineItem(li: Rec): Rec {
+  const out = pickScalars(li, ['id', 'quantity', 'title']);
+  setIf(out, 'finalLinePrice', pickMoney(li.finalLinePrice));
+  if (isRec(li.variant)) out.variant = pickVariant(li.variant);
+  return out;
+}
+
+function pickDiscountApplication(d: Rec): Rec {
+  const out = pickScalars(d, ['type', 'title', 'allocationMethod', 'targetSelection', 'targetType']);
+  if (isRec(d.value)) out.value = pickScalars(d.value, ['amount', 'currencyCode', 'percentage']);
+  return out;
+}
+
+function pickDeliveryOption(o: Rec): Rec {
+  const out = pickScalars(o, ['type', 'title']);
+  setIf(out, 'cost', pickMoney(o.cost));
+  setIf(out, 'costAfterDiscounts', pickMoney(o.costAfterDiscounts));
+  return out;
+}
+
+function pickTransaction(t: Rec): Rec {
+  const out = pickScalars(t, ['gateway']);
+  setIf(out, 'amount', pickMoney(t.amount));
+  if (isRec(t.paymentMethod)) out.paymentMethod = pickScalars(t.paymentMethod, ['type', 'name']);
+  return out;
+}
+
+export function allowlistCheckout(checkout: Rec): Rec {
+  const out = pickScalars(checkout, ['token', 'currencyCode']);
+  for (const key of ['totalPrice', 'subtotalPrice', 'totalTax', 'discountsAmount']) {
+    setIf(out, key, pickMoney(checkout[key]));
+  }
+  setIf(out, 'lineItems', pickArray(checkout.lineItems, pickLineItem));
+  setIf(out, 'discountApplications', pickArray(checkout.discountApplications, pickDiscountApplication));
+  if (isRec(checkout.shippingLine)) {
+    out.shippingLine = {};
+    setIf(out.shippingLine as Rec, 'price', pickMoney(checkout.shippingLine.price));
+  }
+  if (isRec(checkout.delivery)) {
+    out.delivery = {};
+    setIf(out.delivery as Rec, 'selectedDeliveryOptions', pickArray(checkout.delivery.selectedDeliveryOptions, pickDeliveryOption));
+  }
+  if (isRec(checkout.localization)) {
+    const l = checkout.localization;
+    const loc: Rec = {};
+    if (isRec(l.country)) loc.country = pickScalars(l.country, ['isoCode']);
+    if (isRec(l.language)) loc.language = pickScalars(l.language, ['isoCode']);
+    if (isRec(l.market)) loc.market = pickScalars(l.market, ['id', 'handle']);
+    out.localization = loc;
+  }
+  if (isRec(checkout.order)) {
+    const order = pickScalars(checkout.order, ['id']);
+    if (isRec(checkout.order.customer)) order.customer = pickScalars(checkout.order.customer, ['isFirstOrder']);
+    out.order = order;
+  }
+  setIf(out, 'transactions', pickArray(checkout.transactions, pickTransaction));
+  return out;
+}
+
+function allowlistAlert(alert: Rec): Rec {
+  return pickScalars(alert, ['type', 'message', 'target']);
+}
+
+function allowlistCommerceHolder(eventType: string, holder: Rec): void {
+  if (CHECKOUT_EVENT_TYPES.has(eventType) && 'checkout' in holder) {
+    if (isRec(holder.checkout)) holder.checkout = allowlistCheckout(holder.checkout);
+    else delete holder.checkout;
+  }
+  if (eventType === 'alert_displayed' && 'alert' in holder) {
+    if (isRec(holder.alert)) holder.alert = allowlistAlert(holder.alert);
+    else delete holder.alert;
+  }
+}
+
+/** Formularze (bez wartości pól) + checkout/alert (biała lista). Jedyne wejście przed wysyłką / INSERT. */
+export function sanitizePixelEventData(eventType: string, eventData: unknown): unknown {
+  const formSafe = sanitizeFormEventData(eventType, eventData);
+  const isCommerce = CHECKOUT_EVENT_TYPES.has(eventType) || eventType === 'alert_displayed';
+  if (!isCommerce || !isRec(formSafe)) return formSafe;
+  let clone: Rec;
+  try {
+    clone = JSON.parse(JSON.stringify(formSafe)) as Rec;
+  } catch {
+    return {};
+  }
+  allowlistCommerceHolder(eventType, clone);
+  if (isRec(clone.data)) {
+    // Shopify `event.data` ma tylko `checkout` albo `alert` — każdy inny klucz odpada.
+    const key = eventType === 'alert_displayed' ? 'alert' : 'checkout';
+    const inner = clone.data;
+    clone.data = key in inner ? {[key]: inner[key]} : {};
+    allowlistCommerceHolder(eventType, clone.data as Rec);
+  }
+  return clone;
+}

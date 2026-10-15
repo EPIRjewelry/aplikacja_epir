@@ -10,7 +10,7 @@ import {
   actionWithoutQuery,
   canonicalAnalyticsPageUrl,
   formElementRecord,
-  sanitizeFormEventData,
+  sanitizePixelEventData,
   withCanonicalPageLocation,
 } from './form-event-privacy';
 
@@ -1559,7 +1559,7 @@ async function handlePixelPost(request: Request, env: Env, ctx?: ExecutionContex
     // Store full event as JSON for debugging (form field values stripped)
     const rawData = JSON.stringify({
       event: eventType,
-      data: withCanonicalPageLocation(sanitizeFormEventData(eventType, eventData), pageUrl),
+      data: withCanonicalPageLocation(sanitizePixelEventData(eventType, eventData), pageUrl),
       timestamp,
     });
 

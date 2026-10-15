@@ -1,7 +1,7 @@
 import {register} from "@shopify/web-pixels-extension";
 import {
   canonicalAnalyticsPageUrl,
-  sanitizeFormEventData,
+  sanitizePixelEventData,
   withCanonicalPageLocation,
 } from "./pixel-event-privacy";
 import {
@@ -552,7 +552,7 @@ register(async (api) => {
         await maybeEmitChatSessionLinked(pixelEvent);
         const storefront = await getStorefrontForEvent(pixelEvent);
         const attribution = await getAttributionForEvent(pixelEvent);
-        const safeEventData = sanitizeFormEventData(eventType, eventData);
+        const safeEventData = sanitizePixelEventData(eventType, eventData);
         let pageHref: string | null = null;
         if (pixelEvent && typeof pixelEvent === 'object' && 'context' in pixelEvent) {
           const ctx = (pixelEvent as {context?: {document?: {location?: unknown; url?: unknown}}}).context;
