@@ -28,7 +28,7 @@ uri = "https://asystent.epirbizuteria.pl/webhooks/metaobjects/ai_profile"
 # read_metaobjects, write_metaobjects: campaign landing ($app:campaign_landing) + shop.metafields.app.campaign_mapping
 # write_pixels + read_customer_events: webPixelCreate dla extensions/my-web-pixel.
 # Po dodaniu scope aplikacja wymaga ponownej autoryzacji. To nie jest wklejka Customer Events.
-scopes = "customer_read_customers,customer_read_orders,customer_read_store_credit_accounts,unauthenticated_read_product_listings,read_reports,read_metaobjects,write_metaobjects,write_pixels,read_customer_events"
+scopes = "customer_read_customers,customer_read_orders,customer_read_store_credit_accounts,unauthenticated_read_product_listings,read_reports,read_metaobjects,write_metaobjects,write_pixels,read_customer_events,read_orders"
 
 [metaobjects.app.campaign_landing]
 name = "Campaign Landing"
