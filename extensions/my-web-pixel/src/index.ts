@@ -1,9 +1,17 @@
 import {register} from "@shopify/web-pixels-extension";
 import {
+  canonicalAnalyticsPageUrl,
+  sanitizeFormEventData,
+  withCanonicalPageLocation,
+} from "./pixel-event-privacy";
+import {
   EPIR_CHAT_SESSION_STORAGE_KEY,
   isValidChatSessionLinkId,
   pickEpirPixelSessionId,
 } from "./pixel-session-id";
+
+/** Pary (chat_session_id, clientId) już wysłane w tej sesji przeglądarki. API piksela, nie window. */
+const CHAT_LINKED_PAIRS_STORAGE_KEY = '_epir_chat_linked_pairs';
 
 // Zmienić przed deployem – fallback gdy brak ustawienia w extension settings
 const DEFAULT_PIXEL_ENDPOINT = 'https://asystent.epirbizuteria.pl';
@@ -162,11 +170,35 @@ register(async (api) => {
     /** Raz na parę (chat_session_id, client_id) w tym runtime piksela. */
     const linkedChatPairs = new Set<string>();
 
+    async function readLinkedPairKeys(): Promise<string[]> {
+      try {
+        const raw = await browser.sessionStorage.getItem(CHAT_LINKED_PAIRS_STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw) as unknown;
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter((item): item is string => typeof item === 'string' && item.length > 0);
+      } catch (_) {
+        return [];
+      }
+    }
+
+    async function persistLinkedPair(pairKey: string): Promise<void> {
+      try {
+        const keys = await readLinkedPairKeys();
+        if (!keys.includes(pairKey)) keys.push(pairKey);
+        await browser.sessionStorage.setItem(CHAT_LINKED_PAIRS_STORAGE_KEY, JSON.stringify(keys));
+      } catch (_) {
+        /* silent */
+      }
+    }
+
     /**
      * Przy zgodzie: odczyt `sess_*` z top-frame sessionStorage → `chat_session_linked`.
      * Bez zgody: nie czytaj storage czatu.
+     * Dedup pary przez browser.sessionStorage (zapis dopiero po response.ok).
      */
     async function maybeEmitChatSessionLinked(pixelEvent: unknown): Promise<void> {
+      let pairKey = '';
       try {
         if (!isAnalyticsProcessingExplicitlyAllowed(pixelEvent, init, apiPrivacy)) return;
         const clientId =
@@ -177,12 +209,17 @@ register(async (api) => {
         if (!clientId) return;
         const chatSessionId = await readChatSessionStorage(browserApi);
         if (!isValidChatSessionLinkId(chatSessionId)) return;
-        const pairKey = `${chatSessionId}\0${clientId}`;
+        pairKey = `${chatSessionId}\0${clientId}`;
         if (linkedChatPairs.has(pairKey)) return;
+        const stored = await readLinkedPairKeys();
+        if (stored.includes(pairKey)) {
+          linkedChatPairs.add(pairKey);
+          return;
+        }
         linkedChatPairs.add(pairKey);
 
         const baseUrl = (settings?.pixelEndpoint || DEFAULT_PIXEL_ENDPOINT).replace(/\/$/, '');
-        await fetch(`${baseUrl}/pixel`, {
+        const response = await fetch(`${baseUrl}/pixel`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
@@ -190,12 +227,18 @@ register(async (api) => {
             data: {
               chat_session_id: chatSessionId,
               client_id: clientId,
+              session_id: clientId,
               pixel_sender: 'web_pixel_extension',
             },
           }),
         });
+        if (response.ok) {
+          await persistLinkedPair(pairKey);
+        } else {
+          linkedChatPairs.delete(pairKey);
+        }
       } catch (_) {
-        /* silent */
+        if (pairKey) linkedChatPairs.delete(pairKey);
       }
     }
 
@@ -509,16 +552,30 @@ register(async (api) => {
         await maybeEmitChatSessionLinked(pixelEvent);
         const storefront = await getStorefrontForEvent(pixelEvent);
         const attribution = await getAttributionForEvent(pixelEvent);
+        const safeEventData = sanitizeFormEventData(eventType, eventData);
+        let pageHref: string | null = null;
+        if (pixelEvent && typeof pixelEvent === 'object' && 'context' in pixelEvent) {
+          const ctx = (pixelEvent as {context?: {document?: {location?: unknown; url?: unknown}}}).context;
+          pageHref =
+            locationHrefFromUnknown(ctx?.document?.location) ??
+            (typeof ctx?.document?.url === 'string' ? ctx.document.url : null);
+        }
+        if (!pageHref && init?.context?.document?.location) {
+          pageHref = locationHrefFromUnknown(init.context.document.location);
+        }
+        const pageUrl = canonicalAnalyticsPageUrl(pageHref);
+        const outbound = withCanonicalPageLocation(safeEventData, pageUrl);
         // Enrich: session_id = Shopify clientId (EDOG join key po stronie pixel_events)
         const enrichedData = {
-          ...(typeof eventData === 'object' && eventData !== null ? eventData : {}),
-          ...flattenCommerceFields(eventData),
+          ...(typeof outbound === 'object' && outbound !== null ? outbound : {}),
+          ...flattenCommerceFields(outbound),
           customerId: customerId,
           sessionId: resolvedSessionId,
           session_id: resolvedSessionId,
           pixel_sender: 'web_pixel_extension',
           storefront_id: storefront.storefront_id,
           channel: storefront.channel,
+          ...(pageUrl ? {page_url: pageUrl} : {}),
           ...attribution,
         };
         
@@ -686,5 +743,10 @@ register(async (api) => {
     analytics.subscribe('epir:mouse_sample', async (event: unknown) => {
       const ev = event as {customData?: unknown};
       await emitCustomPixelEvent('mouse_sample', event, ev.customData ?? event);
+    });
+
+    analytics.subscribe('epir:cocreate_submitted', async (event: unknown) => {
+      const ev = event as {customData?: unknown};
+      await emitCustomPixelEvent('cocreate_submitted', event, ev.customData ?? event);
     });
 });

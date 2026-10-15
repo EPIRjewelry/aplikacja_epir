@@ -127,14 +127,17 @@ export async function countPixelNullSessions24h(db: D1Database, sinceMs: number)
   nullCount: number;
   rate: number | null;
 }> {
+  const serverCocreate = `event_type != 'cocreate_form_submitted'`;
   const totalRow = await db
-    .prepare(`SELECT COUNT(*) AS cnt FROM pixel_events WHERE ${PIXEL_CREATED_AT_MS_SQL} >= ?1`)
+    .prepare(
+      `SELECT COUNT(*) AS cnt FROM pixel_events WHERE ${PIXEL_CREATED_AT_MS_SQL} >= ?1 AND ${serverCocreate}`,
+    )
     .bind(sinceMs)
     .first<{ cnt: number }>();
   const nullRow = await db
     .prepare(
       `SELECT COUNT(*) AS cnt FROM pixel_events
-       WHERE ${PIXEL_CREATED_AT_MS_SQL} >= ?1 AND (session_id IS NULL OR TRIM(session_id) = '')`,
+       WHERE ${PIXEL_CREATED_AT_MS_SQL} >= ?1 AND ${serverCocreate} AND (session_id IS NULL OR TRIM(session_id) = '')`,
     )
     .bind(sinceMs)
     .first<{ cnt: number }>();

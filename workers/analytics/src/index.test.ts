@@ -446,6 +446,158 @@ describe('Analytics Worker - /pixel endpoint', () => {
         expect(event?.element_id).toBe('add-to-cart-btn');
     });
 
+    it('strips form field values and stores form_id plus form_action without query', async () => {
+        const response = await SELF.fetch('https://example.com/pixel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'form_submitted',
+                data: {
+                    sessionId: 'client-form-1',
+                    context: {
+                        document: {
+                            location: {
+                                href: 'https://epirbizuteria.pl/pages/zaprojektuj-swoj-model?utm_source=google&email=secret@example.com',
+                                search: '?email=secret@example.com',
+                                hash: '#email=secret@example.com',
+                            },
+                            referrer: 'https://evil.example/?email=secret@example.com',
+                        },
+                        window: {
+                            location: {
+                                href: 'https://epirbizuteria.pl/pages/zaprojektuj-swoj-model?email=secret@example.com#email=secret@example.com',
+                                search: '?email=secret@example.com',
+                                hash: '#email=secret@example.com',
+                            },
+                        },
+                    },
+                    data: {
+                        element: {
+                            id: 'cocreate-form',
+                            action: 'https://epirbizuteria.pl/apps/assistant/cocreate?shop=secret',
+                            elements: [
+                                { name: 'email', type: 'email', value: 'secret@example.com' },
+                                { name: 'phone', type: 'tel', value: '+48111222333' },
+                            ],
+                        },
+                    },
+                },
+            }),
+        });
+
+        expect(response.status).toBe(200);
+        const event = await env.DB.prepare(
+            'SELECT form_id, form_action, page_url, raw_data, session_id FROM pixel_events WHERE event_type = ?',
+        )
+            .bind('form_submitted')
+            .first<{ form_id: string; form_action: string; page_url: string; raw_data: string; session_id: string }>();
+
+        expect(event?.form_id).toBe('cocreate-form');
+        expect(event?.form_action).toBe('https://epirbizuteria.pl/apps/assistant/cocreate');
+        expect(event?.page_url).toContain('/pages/zaprojektuj-swoj-model');
+        expect(event?.page_url).toContain('utm_source=google');
+        expect(event?.page_url).not.toContain('secret@example.com');
+        expect(event?.raw_data).not.toContain('secret@example.com');
+        expect(event?.raw_data).not.toContain('?email=');
+        expect(event?.raw_data).not.toContain('+48111222333');
+        const raw = JSON.parse(event?.raw_data ?? '{}') as {
+            data?: {
+                context?: {
+                    document?: {location?: {search?: string; hash?: string}; referrer?: string};
+                    window?: {location?: {href?: string; search?: string; hash?: string}};
+                };
+            };
+        };
+        expect(raw.data?.context?.document?.location?.search).toBe('?utm_source=google');
+        expect(raw.data?.context?.document?.location?.hash).toBe('');
+        expect(raw.data?.context?.document?.referrer).not.toContain('email');
+        expect(raw.data?.context?.window?.location?.search).toBe('?utm_source=google');
+        expect(raw.data?.context?.window?.location?.hash).toBe('');
+        expect(raw.data?.context?.window?.location?.href).not.toContain('email');
+        expect(event?.session_id).toBe('client-form-1');
+    });
+
+    it('stores link_type tel without the phone number', async () => {
+        const response = await SELF.fetch('https://example.com/pixel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'click_with_position',
+                data: {
+                    sessionId: 'client-click-1',
+                    x: 1,
+                    y: 2,
+                    element: 'a',
+                    link_type: 'tel',
+                    url: '/pages/kontakt',
+                },
+            }),
+        });
+        expect(response.status).toBe(200);
+        const event = await env.DB.prepare(
+            'SELECT link_type, raw_data, page_url FROM pixel_events WHERE session_id = ?',
+        )
+            .bind('client-click-1')
+            .first<{ link_type: string; raw_data: string; page_url: string }>();
+        expect(event?.link_type).toBe('tel');
+        expect(event?.raw_data).not.toContain('tel:');
+        expect(event?.raw_data).not.toContain('href');
+        expect(event?.page_url).toBe('/pages/kontakt');
+    });
+
+    it('stores cocreate_submitted page_url and reference_id', async () => {
+        const response = await SELF.fetch('https://example.com/pixel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'cocreate_submitted',
+                data: {
+                    sessionId: 'client-cocreate-1',
+                    reference_id: 'EPIR-2026-ABCDEF01',
+                    form_id: 'cocreate-form',
+                    context: {
+                        document: {
+                            location: {
+                                href: 'https://epirbizuteria.pl/pages/zaprojektuj-swoj-model?foo=1',
+                            },
+                        },
+                    },
+                },
+            }),
+        });
+        expect(response.status).toBe(200);
+        const event = await env.DB.prepare(
+            'SELECT page_url, session_id, raw_data FROM pixel_events WHERE event_type = ?',
+        )
+            .bind('cocreate_submitted')
+            .first<{ page_url: string; session_id: string; raw_data: string }>();
+        expect(event?.session_id).toBe('client-cocreate-1');
+        expect(event?.page_url).toBe('https://epirbizuteria.pl/pages/zaprojektuj-swoj-model');
+        expect(event?.raw_data).toContain('EPIR-2026-ABCDEF01');
+    });
+
+    it('stores chat_session_linked session_id from session_id field', async () => {
+        const response = await SELF.fetch('https://example.com/pixel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'chat_session_linked',
+                data: {
+                    chat_session_id: 'sess_abc',
+                    client_id: 'pixel-client-9',
+                    session_id: 'pixel-client-9',
+                },
+            }),
+        });
+        expect(response.status).toBe(200);
+        const event = await env.DB.prepare(
+            'SELECT session_id FROM pixel_events WHERE event_type = ?',
+        )
+            .bind('chat_session_linked')
+            .first<{ session_id: string }>();
+        expect(event?.session_id).toBe('pixel-client-9');
+    });
+
     it('should reject invalid payload with missing type', async () => {
         const response = await SELF.fetch('https://example.com/pixel', {
             method: 'POST',

@@ -5539,7 +5539,12 @@ export default {
       if (!s2sCocreate.ok) {
         return s2sCocreate.response;
       }
-      return handleCocreateAppProxy(request, env, ctx);
+      const s2sStorefront = request.headers.get(EPIR_STOREFRONT_HEADER)?.trim().toLowerCase();
+      const cocreateStorefront =
+        s2sStorefront === 'kazka'
+          ? { storefrontId: 'kazka', channel: 'hydrogen-kazka' }
+          : { storefrontId: 'online-store', channel: 'online-store' };
+      return handleCocreateAppProxy(request, env, ctx, cocreateStorefront);
     }
 
     // Historia czatu storefrontu (App Proxy)

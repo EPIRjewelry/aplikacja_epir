@@ -74,7 +74,7 @@ Vars produkcyjne: [`workers/bigquery-batch/wrangler.toml`](../workers/bigquery-b
 | **D-02** | W zapytaniach odczytu **zakaz** kolumn stream-only `url`, `payload` na tabeli Iceberg pixel. |
 | **D-03** | **Zakaz** w SQL whitelist: `SELECT DISTINCT`, `COUNT(DISTINCT …)`; wymóg `GROUP BY` i `approx_distinct()` zgodnie z [R2 SQL limitations](https://developers.cloudflare.com/r2-sql/reference/limitations-best-practices/). |
 | **D-04** | Każdy `queryId` (`Q1`–`Q10`) musi być zgodny z macierzą sekcji 5. |
-| **D-05** | `session_id` w pixel i messages oznacza tę samą sesję lejka (`_epir_session_id` / atrybuty koszyka po stronie Shopify). |
+| **D-05** | `pixel_events.session_id` to Web Pixels `clientId`. Czat łączy się przez `sessions.analytics_client_id` (zdarzenie `chat_session_linked`: `client_id` zostaje, `session_id` = ten sam `clientId`). To nie jest `_epir_session_id`. |
 | **D-06** | Zmiana mapowania w Cloudflare Pipelines **musi** być odzwierciedlona w repo: `pixel-pipeline-production.example.sql` i/lub tabela mapowania w tym dokumencie. |
 | **D-07** | `analytics/dbt` i BigQuery są **legacy read path** — nie są źródłem prawdy dla `run_analytics_query`. |
 | **D-08** | Nowa kolumna w Iceberg lub nowe pole w eksporcie batch wymaga aktualizacji tego dokumentu + CI `validate-data-contract.py`. |
@@ -94,7 +94,9 @@ Vars produkcyjne: [`workers/bigquery-batch/wrangler.toml`](../workers/bigquery-b
 | `event_name` | TEXT | Nazwa szczegółowa | W `payload` |
 | `created_at` | **INTEGER (ms epoch)** lub TEXT (ISO) | Czas zdarzenia | Tak → stream `created_at` (batch normalizuje do ISO); eksport przyrostowy: `CAST(created_at AS INTEGER) > watermark` |
 | `customer_id` | TEXT | Shopify customer | Tak → stream |
-| `session_id` | TEXT | Sesja lejka | Tak → stream |
+| `session_id` | TEXT | Web Pixels `clientId` | Tak → stream |
+| `form_action` | TEXT | Action formularza bez query (`form_submitted`) | W `payload` |
+| `link_type` | TEXT | `tel` albo `mailto` na `click_with_position`; bez numeru i bez href | W `payload` |
 | `storefront_id` | TEXT | np. kazka / zareczyny | Tak → stream |
 | `channel` | TEXT | np. hydrogen-kazka | Tak → stream |
 | `page_url` | TEXT | URL strony | Tak → stream jako **`url`**; puste w D1 → placeholder `https://epir.local/unknown` (schemat ingest wymaga non-empty `url`) |
@@ -104,7 +106,9 @@ Vars produkcyjne: [`workers/bigquery-batch/wrangler.toml`](../workers/bigquery-b
 | `product_title` | TEXT | Tytuł produktu | W `payload` |
 | `raw_data` | TEXT | JSON surowy | W `payload` |
 
-Pozostałe kolumny (heatmap, scroll, cart, order, …) istnieją w D1 i trafiają do **`payload`** w eksporcie batch (`JSON.stringify` całego wiersza).
+Pozostałe kolumny (heatmap, scroll, cart, order, `form_action`, `link_type`, …) istnieją w D1 i trafiają do **`payload`** w eksporcie batch (`JSON.stringify` całego wiersza).
+
+Zdarzenia łączące: `chat_session_linked` zapisuje parę czat↔`clientId`; `cocreate_submitted` niesie `reference_id` do złączenia z `cocreate_briefs`. Serwerowe `cocreate_form_submitted` nie wchodzi do licznika `pixel_null_session`.
 
 ---
 

@@ -18,6 +18,11 @@ import {
 const APP_PROXY_STOREFRONT_ID = 'online-store';
 const APP_PROXY_CHANNEL = 'online-store';
 
+export type CocreateStorefront = {
+  storefrontId: string;
+  channel: string;
+};
+
 function cocreateCors(env: Env, request?: Request): Record<string, string> {
   const requestOrigin = request?.headers.get('Origin');
   const allowedOrigins = (env.ALLOWED_ORIGINS || env.ALLOWED_ORIGIN || '')
@@ -56,7 +61,15 @@ function jsonResponse(
   });
 }
 
-export async function handleCocreateAppProxy(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+export async function handleCocreateAppProxy(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  storefront: CocreateStorefront = {
+    storefrontId: APP_PROXY_STOREFRONT_ID,
+    channel: APP_PROXY_CHANNEL,
+  },
+): Promise<Response> {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: cocreateCors(env, request) });
   }
@@ -139,7 +152,7 @@ export async function handleCocreateAppProxy(request: Request, env: Env, ctx: Ex
 
   if (uploadBytes && uploadContentType && env.COCREATE_UPLOADS) {
     r2Key = buildR2Key({
-      storefrontId: APP_PROXY_STOREFRONT_ID,
+      storefrontId: storefront.storefrontId,
       referenceId,
       fileName: uploadFileName,
       contentType: uploadContentType,
@@ -153,8 +166,8 @@ export async function handleCocreateAppProxy(request: Request, env: Env, ctx: Ex
     ...fields,
     referenceId,
     createdAt,
-    storefrontId: APP_PROXY_STOREFRONT_ID,
-    channel: APP_PROXY_CHANNEL,
+    storefrontId: storefront.storefrontId,
+    channel: storefront.channel,
     shopDomain: shop,
     emailHash: await sha256Hex(fields.email),
     briefJson,

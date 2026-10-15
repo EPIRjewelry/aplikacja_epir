@@ -22,6 +22,7 @@ export async function emitCocreateSubmittedEvent(
         type: 'cocreate_form_submitted',
         data: {
           reference_id: row.referenceId,
+          pixel_sender: 'server_cocreate',
           storefront_id: row.storefrontId,
           channel: row.channel,
           has_attachment: Boolean(row.r2Key),

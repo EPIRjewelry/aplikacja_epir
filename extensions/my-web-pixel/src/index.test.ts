@@ -256,6 +256,7 @@ describe('web-pixel extension – identity resolution (clientId only)', () => {
         expect(linked[0].data).toMatchObject({
             chat_session_id: 'sess_link-me-0001',
             client_id: 'pixel-client-1',
+            session_id: 'pixel-client-1',
         });
         expect(getItem).toHaveBeenCalledWith('epir-assistant-session');
     });
@@ -678,6 +679,7 @@ describe('web-pixel extension – event subscriptions coverage', () => {
         'epir:scroll_depth',
         'epir:page_exit',
         'epir:mouse_sample',
+        'epir:cocreate_submitted',
     ];
 
     it.each(standardEvents)('subscribes to %s event', async (eventName) => {
@@ -885,5 +887,113 @@ describe('web-pixel extension – customer privacy gate', () => {
         vi.mocked(fetch).mockClear();
         await handler!({});
         expect(fetch).not.toHaveBeenCalled();
+    });
+});
+
+describe('form and cocreate privacy', () => {
+    beforeEach(() => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: vi.fn().mockResolvedValue({ ok: true, activate_chat: false }),
+        }));
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('form_submitted drops field values and keeps id plus action without query', async () => {
+        const { subscriptions } = await invokePixelCallback();
+        const handler = subscriptions.get('form_submitted');
+        await handler!(withAnalyticsConsent({
+            clientId: 'pixel-client-1',
+            context: {
+                document: {
+                    location: {
+                        href: 'https://epirbizuteria.pl/pages/zaprojektuj-swoj-model?utm_source=google&email=secret@example.com',
+                    },
+                },
+            },
+            data: {
+                element: {
+                    id: 'cocreate-form',
+                    action: 'https://epirbizuteria.pl/apps/assistant/cocreate?shop=secret',
+                    elements: [
+                        { name: 'email', type: 'email', value: 'secret@example.com' },
+                        { name: 'phone', type: 'tel', value: '+48111222333' },
+                    ],
+                },
+            },
+        }));
+
+        const bodies = (fetch as ReturnType<typeof vi.fn>).mock.calls
+            .map((call) => JSON.parse(call[1].body))
+            .filter((b) => b.type === 'form_submitted');
+        expect(bodies).toHaveLength(1);
+        const payload = JSON.stringify(bodies[0].data);
+        expect(payload).not.toContain('secret@example.com');
+        expect(payload).not.toContain('+48111222333');
+        expect(bodies[0].data.data.element).toEqual({
+            id: 'cocreate-form',
+            action: 'https://epirbizuteria.pl/apps/assistant/cocreate',
+        });
+        expect(bodies[0].data.session_id).toBe('pixel-client-1');
+        expect(bodies[0].data.page_url).toContain('/pages/zaprojektuj-swoj-model');
+        expect(bodies[0].data.page_url).not.toContain('secret@example.com');
+    });
+
+    it('cocreate_submitted carries reference_id and clientId, and is dropped without consent', async () => {
+        const { subscriptions } = await invokePixelCallback();
+        const handler = subscriptions.get('epir:cocreate_submitted');
+        await handler!(withAnalyticsConsent({
+            clientId: 'pixel-client-1',
+            customData: { reference_id: 'EPIR-2026-ABCDEF01', form_id: 'cocreate-form' },
+            context: {
+                document: {
+                    location: { href: 'https://epirbizuteria.pl/pages/zaprojektuj-swoj-model' },
+                },
+            },
+        }));
+        const sent = (fetch as ReturnType<typeof vi.fn>).mock.calls
+            .map((call) => JSON.parse(call[1].body))
+            .filter((b) => b.type === 'cocreate_submitted');
+        expect(sent).toHaveLength(1);
+        expect(sent[0].data.reference_id).toBe('EPIR-2026-ABCDEF01');
+        expect(sent[0].data.session_id).toBe('pixel-client-1');
+        expect(sent[0].data.page_url).toContain('/pages/zaprojektuj-swoj-model');
+
+        vi.mocked(fetch).mockClear();
+        await handler!({
+            clientId: 'pixel-client-1',
+            customData: { reference_id: 'EPIR-2026-ABCDEF01', form_id: 'cocreate-form' },
+        });
+        expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('does not send a second chat_session_linked when the pair is already in sessionStorage', async () => {
+        const store = new Map<string, string>([
+            ['_epir_chat_linked_pairs', JSON.stringify(['sess_link-me-0001\0pixel-client-1'])],
+        ]);
+        const { subscriptions } = await invokePixelCallback({
+            browser: {
+                cookie: { get: vi.fn().mockResolvedValue(null), set: vi.fn() },
+                sessionStorage: {
+                    getItem: vi.fn((key: string) => {
+                        if (key === 'epir-assistant-session') return Promise.resolve('sess_link-me-0001');
+                        return Promise.resolve(store.get(key) ?? null);
+                    }),
+                    setItem: vi.fn((key: string, value: string) => {
+                        store.set(key, value);
+                        return Promise.resolve();
+                    }),
+                },
+            },
+        });
+        const handler = subscriptions.get('page_viewed');
+        await handler!(withAnalyticsConsent({ clientId: 'pixel-client-1' }));
+        const linked = (fetch as ReturnType<typeof vi.fn>).mock.calls
+            .map((call) => JSON.parse(call[1].body))
+            .filter((b) => b.type === 'chat_session_linked');
+        expect(linked).toHaveLength(0);
     });
 });
