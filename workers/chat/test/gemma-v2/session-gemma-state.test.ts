@@ -3,6 +3,7 @@
  * - **M-E3-1** — usuń POST po turze → STATE-1 / COMPOSE-1 FAIL
  * - **M-E3-5** — nie zapisuj slots → STATE-2 / COMPOSE-3 FAIL
  * - **M-E3-6** — GET zawsze {} → COMPOSE-3 / SALES-2 FAIL
+ * - **M-E5-9** — brak walidacji zagnieżdżonej → T-E5-STATE-1/2 FAIL
  */
 import {describe, expect, it} from 'vitest';
 import {SessionDO} from '../../src/index';
@@ -59,6 +60,30 @@ describe('E3 gemma-state SessionDO', () => {
     const after = await readGemmaState(env, sid);
     expect(after.turn).toBe(1);
     expect(after.slots.budget).toBe('fikcyjny');
+  });
+
+  it('T-E5-STATE-1: POST rejects nested invalid slots', async () => {
+    const {env} = makeEnv('sess_e5_state_1');
+    const stub = env.SESSION_DO!.get(env.SESSION_DO!.idFromName('sess_e5_state_1'));
+    const res = await stub.fetch('https://session/gemma-state', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({slots: {evil: 1}}),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('T-E5-STATE-2: POST rejects shown item with extra keys', async () => {
+    const {env} = makeEnv('sess_e5_state_2');
+    const stub = env.SESSION_DO!.get(env.SESSION_DO!.idFromName('sess_e5_state_2'));
+    const res = await stub.fetch('https://session/gemma-state', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        shown: [{ref: 'g1', productId: 'p', handle: 'h', variantIds: [], url: '/x', extra: 1}],
+      }),
+    });
+    expect(res.status).toBe(400);
   });
 
   it('T-E3-STATE-3: POST rejects disallowed keys', async () => {

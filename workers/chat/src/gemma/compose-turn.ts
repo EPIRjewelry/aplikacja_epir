@@ -1,6 +1,7 @@
 import type {Env} from '../config/bindings';
 import type {BuyerChannelId} from '../buyer/channel-switch';
 import type {ComposeBuyerTurnOptions} from '../buyer/compose-buyer-turn';
+import {BuyerTurnOverloadError} from '../buyer/buyer-llm-retry';
 import {appendBuyerSessionMessage, readBuyerSessionHistory} from '../buyer/session-history';
 import {detectJailbreakOrHarmIntent} from '../intent/jailbreak-prefilter';
 import {extractGemmaIntent} from './intent/extract-intent';
@@ -14,6 +15,8 @@ import {withBuyerTurnGate} from './turn-gate';
 import {gemmaV2EmergencyReply} from './fallback';
 import type {GemmaIntent} from './intent/schema';
 import {buildEpirDeterministicReply} from './profiles/epir';
+import {GemmaTurnError} from './errors';
+import {maybeFormulateReply} from './formulation/run-formulation';
 
 function cartNeedsConsent(intent: GemmaIntent): boolean {
   if (!intent.cart_action || intent.cart_action === 'show') return false;
@@ -26,8 +29,127 @@ function applyFormOfAddress(prev: GemmaSessionState, userText: string): GemmaSes
   return {...prev, form_of_address: detected};
 }
 
-function _requestFromOpts(opts: ComposeBuyerTurnOptions | undefined): Request {
-  return new Request('https://gemma-v2/buyer-turn');
+async function runInsideGate(
+  env: Env,
+  channelId: BuyerChannelId,
+  userText: string,
+  opts: ComposeBuyerTurnOptions | undefined,
+  clientRequest?: Request,
+): Promise<string> {
+  const sessionId = opts?.sessionId?.trim() ?? '';
+
+  if (detectJailbreakOrHarmIntent(userText).match) {
+    const prev = await readGemmaState(env, sessionId);
+    const next: GemmaSessionState = {
+      ...prev,
+      state: 'odmowa',
+      turn: prev.turn + 1,
+    };
+    const reply = buildEpirDeterministicReply({
+      channelId,
+      state: 'odmowa',
+    });
+    if (sessionId) {
+      try {
+        await appendBuyerSessionMessage(env, sessionId, 'user', userText);
+        await appendBuyerSessionMessage(env, sessionId, 'assistant', reply);
+        await writeGemmaState(env, sessionId, next);
+      } catch (e) {
+        console.warn('[gemma.compose_turn] session persist failed', e);
+      }
+    }
+    return reply;
+  }
+
+  const history = sessionId ? await readBuyerSessionHistory(env, sessionId) : [];
+  const intentResult = await extractGemmaIntent({
+    env,
+    userText,
+    history,
+    sessionId,
+  });
+
+  if (!intentResult.ok) {
+    const emergency = gemmaV2EmergencyReply(channelId);
+    if (sessionId) {
+      try {
+        await appendBuyerSessionMessage(env, sessionId, 'user', userText);
+        await appendBuyerSessionMessage(env, sessionId, 'assistant', emergency);
+      } catch (e) {
+        console.warn('[gemma.compose_turn] session persist failed', e);
+      }
+    }
+    return emergency;
+  }
+
+  let prev = await readGemmaState(env, sessionId);
+  prev = applyFormOfAddress(prev, userText);
+
+  const transitioned = transitionGemmaState(prev, intentResult.intent);
+  const userCorpus = [
+    userText,
+    ...history.filter((h) => h.role === 'user').map((h) => h.content),
+  ].join('\n');
+
+  const actionOutcome = await runGemmaAllowedActions({
+    env,
+    channelId,
+    request: clientRequest ?? new Request('https://gemma-v2/buyer-turn'),
+    sessionId,
+    userText,
+    userCorpus,
+    intent: intentResult.intent,
+    prev,
+    transitioned,
+    productHandle: opts?.productHandle,
+  });
+
+  const next: GemmaSessionState = {
+    ...prev,
+    state: transitioned.nextState,
+    slots: transitioned.slots,
+    shown: actionOutcome.shown,
+    selected: actionOutcome.selected,
+    turn: prev.turn + 1,
+  };
+
+  const deterministic = buildEpirActionReply({
+    channelId,
+    state: transitioned.nextState,
+    missingSlot: transitioned.missingSlot,
+    cartNeedsConsent: cartNeedsConsent(intentResult.intent),
+    intent: intentResult.intent,
+    outcome: actionOutcome,
+  });
+
+  const reply = await maybeFormulateReply({
+    env,
+    channelId,
+    userText,
+    sessionId,
+    state: transitioned.nextState,
+    missingSlot: transitioned.missingSlot,
+    outcome: actionOutcome,
+    deterministicReply: deterministic,
+  });
+
+  if (sessionId) {
+    try {
+      await appendBuyerSessionMessage(env, sessionId, 'user', userText);
+      await appendBuyerSessionMessage(env, sessionId, 'assistant', reply);
+      await writeGemmaState(env, sessionId, next);
+    } catch (e) {
+      console.warn('[gemma.compose_turn] session persist failed', e);
+    }
+  }
+
+  return reply;
+}
+
+function wrapTurnError(e: unknown): never {
+  if (e instanceof BuyerTurnOverloadError) throw e;
+  if (e instanceof GemmaTurnError) throw e;
+  throw new GemmaTurnError('unexpected', e);
 }
 
 export async function runGemmaV2Turn(
@@ -40,107 +162,21 @@ export async function runGemmaV2Turn(
   const sessionId = opts?.sessionId?.trim() ?? '';
   const turnId = crypto.randomUUID();
 
-  const runInsideGate = async (): Promise<string> => {
-    if (detectJailbreakOrHarmIntent(userText).match) {
-      const prev = await readGemmaState(env, sessionId);
-      const next: GemmaSessionState = {
-        ...prev,
-        state: 'odmowa',
-        turn: prev.turn + 1,
-      };
-      const reply = buildEpirDeterministicReply({
-        channelId,
-        state: 'odmowa',
-      });
-      if (sessionId) {
-        try {
-          await appendBuyerSessionMessage(env, sessionId, 'user', userText);
-          await appendBuyerSessionMessage(env, sessionId, 'assistant', reply);
-          await writeGemmaState(env, sessionId, next);
-        } catch (e) {
-          console.warn('[gemma.compose_turn] session persist failed', e);
-        }
-      }
-      return reply;
+  const execute = async (): Promise<string> => {
+    try {
+      return await runInsideGate(env, channelId, userText, opts, clientRequest);
+    } catch (e) {
+      wrapTurnError(e);
     }
-
-    const history = sessionId ? await readBuyerSessionHistory(env, sessionId) : [];
-    const intentResult = await extractGemmaIntent({
-      env,
-      userText,
-      history,
-      sessionId,
-    });
-
-    if (!intentResult.ok) {
-      const emergency = gemmaV2EmergencyReply(channelId);
-      if (sessionId) {
-        try {
-          await appendBuyerSessionMessage(env, sessionId, 'user', userText);
-          await appendBuyerSessionMessage(env, sessionId, 'assistant', emergency);
-        } catch (e) {
-          console.warn('[gemma.compose_turn] session persist failed', e);
-        }
-      }
-      return emergency;
-    }
-
-    let prev = await readGemmaState(env, sessionId);
-    prev = applyFormOfAddress(prev, userText);
-
-    const transitioned = transitionGemmaState(prev, intentResult.intent);
-    const userCorpus = [
-      userText,
-      ...history.filter((h) => h.role === 'user').map((h) => h.content),
-    ].join('\n');
-
-    const actionOutcome = await runGemmaAllowedActions({
-      env,
-      channelId,
-      request: clientRequest ?? _requestFromOpts(opts),
-      sessionId,
-      userText,
-      userCorpus,
-      intent: intentResult.intent,
-      prev,
-      transitioned,
-      productHandle: opts?.productHandle,
-    });
-
-    const next: GemmaSessionState = {
-      ...prev,
-      state: transitioned.nextState,
-      slots: transitioned.slots,
-      shown: actionOutcome.shown,
-      selected: actionOutcome.selected,
-      turn: prev.turn + 1,
-    };
-
-    const reply = buildEpirActionReply({
-      channelId,
-      state: transitioned.nextState,
-      missingSlot: transitioned.missingSlot,
-      cartNeedsConsent: cartNeedsConsent(intentResult.intent),
-      intent: intentResult.intent,
-      outcome: actionOutcome,
-    });
-
-    if (sessionId) {
-      try {
-        await appendBuyerSessionMessage(env, sessionId, 'user', userText);
-        await appendBuyerSessionMessage(env, sessionId, 'assistant', reply);
-        await writeGemmaState(env, sessionId, next);
-      } catch (e) {
-        console.warn('[gemma.compose_turn] session persist failed', e);
-      }
-    }
-
-    return reply;
   };
 
   if (!sessionId) {
-    return {reply: await runInsideGate()};
+    return {reply: await execute()};
   }
 
-  return {reply: await withBuyerTurnGate(env, sessionId, turnId, runInsideGate)};
+  try {
+    return {reply: await withBuyerTurnGate(env, sessionId, turnId, execute)};
+  } catch (e) {
+    wrapTurnError(e);
+  }
 }

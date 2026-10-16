@@ -6,6 +6,7 @@
  * - **M-E2-2** — Remove `ensureBuyerSessionContext` from v2 → `channel`/`storefront_id` null.
  * - **M-E2-3** — Append tylko `user`, bez `assistant` → T-PARITY-1 / T-PARITY-2 FAIL.
  * - **M-E2-4** — `appendBuyerSessionMessage` reject bez try/catch w v2 → T-PARITY-3 FAIL.
+ * - **M-E5-20** — T-PARITY-3 (E5-D10) → reply_fail !== reply_ok.
  * - **M-E2-5** — Zła para channel/storefront (np. operator) → OPERATOR_STUDIO_CHANNELS / asercje GE/GZ FAIL.
  */
 import {beforeEach, describe, expect, it, vi} from 'vitest';
@@ -178,21 +179,26 @@ describe('E2 buyer turn D1 parity — legacy vs v2', () => {
     expect(appendRoles).toEqual(['user', 'assistant']);
   });
 
-  it('T-PARITY-3 v2: append failure still returns assistant reply', async () => {
+  it('T-PARITY-3 v2 (E5-D10): append failure returns same reply as success path', async () => {
     await stubGemmaIntentJson({slots: {recipient: 'fikcyjny odbiorca'}});
+    const userText = 'Fikcyjne pytanie append fail parity';
+    const opts = {
+      sessionId: 'sess_e2_append_fail_v2',
+      storefrontId: 'online-store',
+      bodyChannel: 'online-store',
+    };
+    const {db: dbOk} = makeFakeD1Chatbot();
+    const {env: envOk} = makeSessionDoEnv(dbOk, 'sess_e2_append_fail_v2');
+    const replyOk = await composeGemmaReply(envOk, 'epir-online-store', userText, postReq({}), opts);
+
     vi.spyOn(sessionHistory, 'appendBuyerSessionMessage').mockRejectedValue(
       new Error('do down'),
     );
     const {db, messageInserts} = makeFakeD1Chatbot();
     const {env} = makeSessionDoEnv(db, 'sess_e2_append_fail_v2');
-    const userText = 'Fikcyjne pytanie append fail';
-    const reply = await composeGemmaReply(env, 'epir-online-store', userText, postReq({}), {
-      sessionId: 'sess_e2_append_fail_v2',
-      storefrontId: 'online-store',
-      bodyChannel: 'online-store',
-    });
-    expect(reply).not.toBe(gemmaV2EmergencyReply('epir-online-store'));
-    expect(reply.length).toBeGreaterThan(0);
+    const replyFail = await composeGemmaReply(env, 'epir-online-store', userText, postReq({}), opts);
+    expect(replyFail).toBe(replyOk);
+    expect(replyOk).not.toBe(gemmaV2EmergencyReply('epir-online-store'));
     expect(messageInserts.length).toBe(0);
   });
 

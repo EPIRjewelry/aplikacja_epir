@@ -6,7 +6,7 @@ import type {GemmaConversationState, GemmaSlots, FormOfAddress} from '../state/t
 const CONTACT_PAGE_PATH = '/pages/kontakt';
 
 const TY_GRID =
-  /\b(ty|tobie|twój|twoja|twoje|cię|ciebie|napisz|szukasz|chcesz|możesz|wolisz)\b/i;
+  /(?<!\p{L})(ty|tobie|twój|twoja|twoje|cię|ciebie|napisz|szukasz|chcesz|możesz|wolisz)(?!\p{L})/iu;
 
 export function contactPageUrl(channelId: BuyerChannelId): string {
   return (
@@ -16,11 +16,11 @@ export function contactPageUrl(channelId: BuyerChannelId): string {
   );
 }
 
-export function epirRefusalReply(_channelId: BuyerChannelId): string {
+export function epirRefusalReply(channelId: BuyerChannelId): string {
   return (
     'Nie mogę pomóc w tej prośbie. ' +
     'Proszę Pana/Panią o kontakt przez stronę kontaktu: ' +
-    CONTACT_PAGE_PATH +
+    contactPageUrl(channelId) +
     '.'
   );
 }
@@ -126,6 +126,19 @@ export function epirVariantQuestionReply(channelId: BuyerChannelId, productUrl?:
   );
 }
 
+export function epirCartShowEmptyReply(channelId: BuyerChannelId): string {
+  return (
+    'Proszę Pana/Panią — koszyk jest pusty. ' +
+    'Kontakt: ' +
+    contactPageUrl(channelId) +
+    '.'
+  );
+}
+
+export function epirCartShowLinesReply(body: string): string {
+  return 'Proszę Pana/Panią — zawartość koszyka:\n' + body;
+}
+
 export function buildEpirDeterministicReply(params: {
   channelId: BuyerChannelId;
   state: GemmaConversationState;
@@ -172,6 +185,8 @@ export function listEpirTemplateStrings(channelId: BuyerChannelId): string[] {
     epirCartConsentWithProductLink(channelId, '/products/fikcyjny-parity'),
     epirVariantQuestionReply(channelId, '/products/fikcyjny-parity'),
     epirDetailsPricesReply('fikcyjna lista wariantów'),
+    epirCartShowEmptyReply(channelId),
+    epirCartShowLinesReply('fikcyjna linia koszyka'),
   ];
 }
 

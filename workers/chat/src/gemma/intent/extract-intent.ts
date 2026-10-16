@@ -4,6 +4,7 @@ import {withLlmRound0Retry} from '../../buyer/buyer-llm-retry';
 import type {BuyerHistoryEntry} from '../../buyer/session-history';
 import {parseIntentJson, type ParseIntentResult} from './parse-intent';
 import type {GemmaIntent} from './schema';
+import {GemmaTurnError} from '../errors';
 
 const INTENT_SYSTEM = `Jesteś parserem intencji Gemma v2. Odpowiadasz WYŁĄCZNIE jednym obiektem JSON (bez markdown).
 Pola (wszystkie wymagane): state, slots, product_ref, variant_choice, cart_action, cart_consent, policy_query, safety.
@@ -58,13 +59,23 @@ export async function extractGemmaIntent(params: {
   sessionId?: string;
 }): Promise<ExtractIntentResult> {
   const messages = buildIntentMessages(params.userText, params.history);
-  const firstRaw = await callIntentModel(params.env, messages, params.sessionId);
+  let firstRaw: string;
+  try {
+    firstRaw = await callIntentModel(params.env, messages, params.sessionId);
+  } catch (e) {
+    throw new GemmaTurnError('intent_transport', e);
+  }
   const first = parseIntentJson(firstRaw);
   if (first.ok) {
     return {ok: true, intent: first.intent};
   }
 
   console.log(JSON.stringify({tag: 'gemma.intent.parse_retry'}));
-  const retryRaw = await callIntentModel(params.env, messages, params.sessionId);
+  let retryRaw: string;
+  try {
+    retryRaw = await callIntentModel(params.env, messages, params.sessionId);
+  } catch (e) {
+    throw new GemmaTurnError('intent_transport', e);
+  }
   return unwrapParse(parseIntentJson(retryRaw));
 }

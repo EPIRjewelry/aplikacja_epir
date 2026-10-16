@@ -1,6 +1,12 @@
 import {catalogSnapshotChannel} from '../../buyer/channel-switch';
 import {filterToolsForSession} from '../../buyer/compose-buyer-turn';
-import {buildCartContinueReply} from '../../buyer/cart-continue-reply';
+import {
+  buildCartContinueReply,
+  formatCartLineSummaries,
+  formatCartTotalsNote,
+} from '../../buyer/cart-continue-reply';
+import {normalizeCartPayloadForParsing} from '../../buyer/cart-payload-normalize';
+import {extractCartObject} from '../../cart/ucp-cart';
 import {executeBuyerTool} from '../../buyer/execute-buyer-tool';
 import {fetchProductFactsByHandle} from '../../facts';
 import {readSessionCartId} from '../../buyer/session-cart';
@@ -212,4 +218,29 @@ export function formatCartMutationReply(facts: GemmaCartFacts): string | null {
     cartPayload: undefined,
     catalogIndex: undefined,
   });
+}
+
+/** Treść klienta dla cart_action=show (E5-D5) — bez cartSummaryBlock / GID. */
+export function formatCartShowBodyFromToolContent(content: string): string | null {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(content);
+  } catch {
+    return null;
+  }
+  const normalized = normalizeCartPayloadForParsing(payload);
+  const lines = formatCartLineSummaries(normalized);
+  if (!lines.length) return null;
+  const cart = extractCartObject(normalized);
+  const currency =
+    cart && typeof cart === 'object' && !Array.isArray(cart)
+      ? (cart as {currency?: string}).currency
+      : undefined;
+  const totals =
+    cart && typeof cart === 'object' && !Array.isArray(cart)
+      ? (cart as {totals?: unknown}).totals
+      : undefined;
+  const totalsNote = formatCartTotalsNote(totals, currency ?? null);
+  const body = totalsNote ? [...lines, totalsNote].join('\n') : lines.join('\n');
+  return body.trim() || null;
 }

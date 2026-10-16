@@ -3,15 +3,19 @@ import type {GemmaSlots} from '../state/types';
 import type {GemmaCatalogSearchFilters} from '../facts/types';
 
 /** Cyfry ze slotu budżetu muszą wystąpić w korpusie usera (D1). */
+function corpusNumberSet(userCorpus: string): Set<string> {
+  return new Set(
+    (userCorpus.match(/\d(?:[\d ]*\d)?/g) ?? []).map((n) => n.replace(/\s/g, '')),
+  );
+}
+
+/** Cyfry ze slotu budżetu muszą wystąpić w korpusie usera (D1). */
 export function budgetMinorFromSlots(slots: GemmaSlots, userCorpus: string): number | undefined {
   const raw = slots.budget?.trim();
   if (!raw) return undefined;
   const digitRuns = raw.match(/\d[\d\s]*/g);
   if (!digitRuns?.length) return undefined;
-  // Pełna liczba z tekstu klienta (nie podciąg: „15” z „rozmiar 15” ≠ „1500”).
-  const corpusNumbers = new Set(
-    (userCorpus.match(/\d(?:[\d ]*\d)?/g) ?? []).map((n) => n.replace(/\s/g, '')),
-  );
+  const corpusNumbers = corpusNumberSet(userCorpus);
   for (const run of digitRuns) {
     const digits = run.replace(/\s/g, '');
     if (!digits) continue;
@@ -23,6 +27,64 @@ export function budgetMinorFromSlots(slots: GemmaSlots, userCorpus: string): num
   return undefined;
 }
 
+function parseRangeBounds(
+  userCorpus: string,
+  corpusNumbers: Set<string>,
+): {minMinor: number; maxMinor: number} | null {
+  const patterns = [
+    /od\s+(\d[\d\s]*)\s+do\s+(\d[\d\s]*)/giu,
+    /(\d[\d\s]*)\s*[–-]\s*(\d[\d\s]*)/gu,
+    /między\s+(\d[\d\s]*)\s+a\s+(\d[\d\s]*)/giu,
+  ];
+  for (const re of patterns) {
+    let m;
+    while ((m = re.exec(userCorpus)) !== null) {
+      const a = m[1].replace(/\s/g, '');
+      const b = m[2].replace(/\s/g, '');
+      if (!corpusNumbers.has(a) || !corpusNumbers.has(b)) continue;
+      const plnA = Number(a);
+      const plnB = Number(b);
+      if (!Number.isFinite(plnA) || !Number.isFinite(plnB) || plnA <= 0 || plnB <= 0) continue;
+      const lo = Math.min(plnA, plnB) * 100;
+      const hi = Math.max(plnA, plnB) * 100;
+      return {minMinor: lo, maxMinor: hi};
+    }
+  }
+  return null;
+}
+
+function isMinBudgetMarkerBeforeNumber(userCorpus: string, digits: string): boolean {
+  const spaced = digits.split('').join('\\s*');
+  const re = new RegExp(
+    `(?:od|powyżej|ponad|minimum|co najmniej|nie mniej niż)\\s+${spaced}(?:\\s*zł)?`,
+    'iu',
+  );
+  return re.test(userCorpus);
+}
+
+export function budgetPriceBoundsFromSlots(
+  slots: GemmaSlots,
+  userCorpus: string,
+): {priceMin?: ReturnType<typeof moneyFromMinor>; priceMax?: ReturnType<typeof moneyFromMinor>} {
+  const corpusNumbers = corpusNumberSet(userCorpus);
+  const range = parseRangeBounds(userCorpus, corpusNumbers);
+  if (range) {
+    return {
+      priceMin: moneyFromMinor(range.minMinor),
+      priceMax: moneyFromMinor(range.maxMinor),
+    };
+  }
+
+  const minor = budgetMinorFromSlots(slots, userCorpus);
+  if (minor === undefined) return {};
+
+  const digits = String(minor / 100);
+  if (isMinBudgetMarkerBeforeNumber(userCorpus, digits)) {
+    return {priceMin: moneyFromMinor(minor)};
+  }
+  return {priceMax: moneyFromMinor(minor)};
+}
+
 export function slotsToCatalogFilters(
   slots: GemmaSlots,
   userCorpus: string,
@@ -31,13 +93,12 @@ export function slotsToCatalogFilters(
     .map((s) => s?.trim())
     .filter(Boolean);
   const text = parts.join(' ').trim();
-  const priceMaxMinor = budgetMinorFromSlots(slots, userCorpus);
+  const bounds = budgetPriceBoundsFromSlots(slots, userCorpus);
   const filters: GemmaCatalogSearchFilters = {text: text || undefined};
   if (slots.metal?.trim()) filters.metal = [slots.metal.trim()];
   if (slots.stone?.trim()) filters.stone = [slots.stone.trim()];
-  if (priceMaxMinor !== undefined) {
-    filters.priceMax = moneyFromMinor(priceMaxMinor);
-  }
+  if (bounds.priceMin !== undefined) filters.priceMin = bounds.priceMin;
+  if (bounds.priceMax !== undefined) filters.priceMax = bounds.priceMax;
   return filters;
 }
 

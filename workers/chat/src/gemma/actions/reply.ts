@@ -9,8 +9,10 @@ import {
   epirKbAnswerReply,
   epirKbUnavailableReply,
   epirVariantQuestionReply,
+  epirCartShowEmptyReply,
+  epirCartShowLinesReply,
 } from '../profiles/epir';
-import {formatCartMutationReply} from './cart';
+import {formatCartMutationReply, formatCartShowBodyFromToolContent} from './cart';
 import type {GemmaActionOutcome} from './types';
 import type {BuyerChannelId} from '../../buyer/channel-switch';
 import type {GemmaConversationState} from '../state/types';
@@ -25,6 +27,19 @@ export function buildEpirActionReply(params: {
   outcome: GemmaActionOutcome;
 }): string {
   const {channelId, state, outcome, intent} = params;
+
+  if (intent.cart_action === 'show' && outcome.cart) {
+    if (outcome.cart.cartFailed) {
+      return epirCartErrorReply(channelId, outcome.cart.clientErrors ?? []);
+    }
+    const summary = outcome.cart.cartShowSummary;
+    if (summary) {
+      const body = formatCartShowBodyFromToolContent(summary);
+      if (body) return epirCartShowLinesReply(body);
+      return epirCartShowEmptyReply(channelId);
+    }
+    return epirCartShowEmptyReply(channelId);
+  }
 
   if (outcome.cart?.continueUrl) {
     const cartText = formatCartMutationReply(outcome.cart);

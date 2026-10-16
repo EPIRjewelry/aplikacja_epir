@@ -6,6 +6,9 @@ export async function stubGemmaIntentJson(overrides: Partial<GemmaIntent> = {}) 
   const ai = await import('../../../src/ai-client');
   const payload = fictionalGemmaIntentJson(overrides);
   vi.spyOn(ai, 'getGroqResponse').mockImplementation(async (_messages, _env, options) => {
+    if (options?.timingLabel === 'buyer_gemma_formulation') {
+      return JSON.stringify({text: 'Proszę Pana/Panią — fikcyjna odpowiedź.', product_refs: []});
+    }
     if (options?.timingLabel === 'buyer_gemma_intent') {
       return payload;
     }
