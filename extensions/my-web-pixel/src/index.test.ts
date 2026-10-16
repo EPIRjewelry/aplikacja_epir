@@ -1015,3 +1015,117 @@ describe('checkout PII allowlist – wiring', () => {
         expect(bodies[0].data.session_id).toBe('pixel-client-1');
     });
 });
+
+describe('chat_session_linked – ack from chat worker (linked: true only)', () => {
+    const PAIRS_KEY = '_epir_chat_linked_pairs';
+    const PAIR = 'sess_link-me-0001\0pixel-client-1';
+    let linkReply: Record<string, unknown>;
+    let nowMs: number;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        nowMs = 1_800_000_000_000;
+        vi.spyOn(Date, 'now').mockImplementation(() => nowMs);
+        linkReply = { ok: true, linked: false, reason: 'unknown_session' };
+        vi.stubGlobal('fetch', vi.fn(async (_url: string, init: { body: string }) => {
+            const body = JSON.parse(init.body);
+            const payload = body.type === 'chat_session_linked' ? linkReply : { ok: true };
+            return { ok: true, json: vi.fn().mockResolvedValue(payload) };
+        }));
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+    });
+
+    async function setup() {
+        const store = new Map<string, string>();
+        const setItem = vi.fn((key: string, value: string) => {
+            store.set(key, value);
+            return Promise.resolve();
+        });
+        const { subscriptions } = await invokePixelCallback({
+            browser: {
+                cookie: { get: vi.fn().mockResolvedValue(null), set: vi.fn() },
+                sessionStorage: {
+                    getItem: vi.fn((key: string) => {
+                        if (key === 'epir-assistant-session') return Promise.resolve('sess_link-me-0001');
+                        return Promise.resolve(store.get(key) ?? null);
+                    }),
+                    setItem,
+                },
+            },
+        });
+        const fire = (name = 'page_viewed') =>
+            subscriptions.get(name)!(withAnalyticsConsent({ clientId: 'pixel-client-1' }));
+        const linkPosts = () =>
+            (fetch as ReturnType<typeof vi.fn>).mock.calls
+                .map((call) => JSON.parse(call[1].body))
+                .filter((b) => b.type === 'chat_session_linked');
+        return { store, setItem, fire, linkPosts };
+    }
+
+    it('linked:false (unknown session) -> pair is not stored in sessionStorage', async () => {
+        const { store, setItem, fire, linkPosts } = await setup();
+        await fire();
+        expect(linkPosts()).toHaveLength(1);
+        expect(store.has(PAIRS_KEY)).toBe(false);
+        expect(setItem.mock.calls.some((c) => c[0] === PAIRS_KEY)).toBe(false);
+    });
+
+    it('ok:true without linked (old proxy reply) -> pair is not stored', async () => {
+        linkReply = { ok: true };
+        const { store, fire } = await setup();
+        await fire();
+        expect(store.has(PAIRS_KEY)).toBe(false);
+    });
+
+    it('retries on a later pixel event only after the interval (no flood)', async () => {
+        const { fire, linkPosts } = await setup();
+        await fire();
+        nowMs += 5_000;
+        await fire('epir:mouse_sample');
+        await fire('epir:scroll_depth');
+        expect(linkPosts()).toHaveLength(1);
+        nowMs += 30_000;
+        await fire('epir:mouse_sample');
+        expect(linkPosts()).toHaveLength(2);
+    });
+
+    it('after the first chat message the retry gets linked:true -> stored, no further posts', async () => {
+        const { store, fire, linkPosts } = await setup();
+        await fire();
+        linkReply = { ok: true, linked: true };
+        nowMs += 30_000;
+        await fire();
+        expect(linkPosts()).toHaveLength(2);
+        expect(JSON.parse(store.get(PAIRS_KEY) ?? '[]')).toEqual([PAIR]);
+        nowMs += 120_000;
+        await fire();
+        expect(linkPosts()).toHaveLength(2);
+    });
+
+    it('caps attempts per page runtime', async () => {
+        const { fire, linkPosts } = await setup();
+        for (let i = 0; i < 30; i++) {
+            await fire();
+            nowMs += 31_000;
+        }
+        expect(linkPosts()).toHaveLength(20);
+    });
+
+    it('network error -> not stored, retried after the interval', async () => {
+        const { store, fire, linkPosts } = await setup();
+        (fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+            throw new Error('offline');
+        });
+        await fire();
+        expect(store.has(PAIRS_KEY)).toBe(false);
+        linkReply = { ok: true, linked: true };
+        nowMs += 30_000;
+        await fire();
+        expect(linkPosts()).toHaveLength(2);
+        expect(JSON.parse(store.get(PAIRS_KEY) ?? '[]')).toEqual([PAIR]);
+    });
+});

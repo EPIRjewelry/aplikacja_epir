@@ -1,79 +1,93 @@
-import {describe, expect, it, vi} from 'vitest';
-import {SessionDO} from '../src/index';
+import {describe, expect, it} from 'vitest';
+import worker, {SessionDO} from '../src/index';
 import type {Env} from '../src/config/bindings';
-import {handleChatSessionLinkedFromPixel} from '../src/buyer/session-context';
+import {
+  ensureBuyerSessionContext,
+  handleChatSessionLinkedFromPixel,
+} from '../src/buyer/session-context';
 import {makeDurableStateStub} from './helpers/session-do-sql-stub';
 
-function makeEnvWithSession(sid: string, d1Consent: number | null) {
-  const sessions = new Map<string, {instance: SessionDO}>();
-  const {db, writes} = (() => {
-    const writes: Array<{sql: string; args: unknown[]}> = [];
-    const db = {
-      prepare(sql: string) {
-        return {
-          bind(...args: unknown[]) {
-            return {
-              async first() {
-                if (sql.includes('FROM sessions') && sql.includes('analytics_consent')) {
-                  return {analytics_consent: d1Consent};
-                }
-                if (sql.includes('SELECT session_id FROM sessions')) {
-                  return d1Consent === null && !sql.includes('analytics')
-                    ? null
-                    : {session_id: sid};
-                }
-                return null;
-              },
-              async run() {
-                writes.push({sql, args});
-                return {success: true, meta: {}};
-              },
-            };
-          },
-        };
-      },
-    } as unknown as D1Database;
-    return {db, writes};
-  })();
+const noopCtx = {waitUntil() {}} as unknown as ExecutionContext;
 
-  // Known session: SELECT session_id always finds row when we want known
-  const dbKnown = {
+type SessionRow = {
+  session_id: string;
+  analytics_consent: number | null;
+  analytics_client_id: string | null;
+};
+
+/**
+ * D1 `sessions` w pamięci: upsert z `SessionDO.persistSessionRecord`
+ * (args[0] = session_id, args[14] = analytics_consent, args[16] = analytics_client_id)
+ * z tą samą semantyką COALESCE/CASE co SQL w produkcji.
+ */
+function makeSessionsD1(options: {failSessionWrites?: boolean} = {}) {
+  const rows = new Map<string, SessionRow>();
+  const sessionWrites: unknown[][] = [];
+  const db = {
     prepare(sql: string) {
       return {
         bind(...args: unknown[]) {
           return {
             async first() {
+              const sid = String(args[0]);
+              const row = rows.get(sid);
+              if (!row) return null;
               if (sql.includes('SELECT session_id FROM sessions')) {
-                return {session_id: sid};
+                return {session_id: row.session_id};
               }
-              if (sql.includes('analytics_consent')) {
-                return {analytics_consent: d1Consent};
+              if (sql.includes('analytics_client_id') && sql.includes('FROM sessions')) {
+                return {
+                  analytics_consent: row.analytics_consent,
+                  analytics_client_id: row.analytics_client_id,
+                };
+              }
+              if (sql.includes('analytics_consent') && sql.includes('FROM sessions')) {
+                return {analytics_consent: row.analytics_consent};
               }
               return null;
             },
             async run() {
-              writes.push({sql, args});
+              if (sql.includes('INSERT INTO sessions')) {
+                if (options.failSessionWrites) throw new Error('D1 unavailable');
+                sessionWrites.push(args);
+                const sid = String(args[0]);
+                const consent = args[14] as number | null;
+                const client = args[16] as string | null;
+                const prev = rows.get(sid);
+                rows.set(sid, {
+                  session_id: sid,
+                  analytics_consent: consent ?? prev?.analytics_consent ?? null,
+                  analytics_client_id:
+                    consent === 0 ? null : client ?? prev?.analytics_client_id ?? null,
+                });
+              }
               return {success: true, meta: {}};
+            },
+            async all() {
+              return {results: []};
             },
           };
         },
       };
     },
   } as unknown as D1Database;
+  return {db, rows, sessionWrites};
+}
 
+function makeEnv(options: {failSessionWrites?: boolean} = {}) {
+  const d1 = makeSessionsD1(options);
+  const instances = new Map<string, SessionDO>();
+  const proxied: string[] = [];
   const namespace = {
     idFromName(name: string) {
       return name;
     },
     get(id: string) {
       const key = String(id);
-      let session = sessions.get(key);
-      if (!session) {
-        const durableState = makeDurableStateStub(key);
-        session = {
-          instance: new SessionDO(durableState.state, {DB_CHATBOT: dbKnown} as Env),
-        };
-        sessions.set(key, session);
+      let instance = instances.get(key);
+      if (!instance) {
+        instance = new SessionDO(makeDurableStateStub(key).state, {DB_CHATBOT: d1.db} as Env);
+        instances.set(key, instance);
       }
       return {
         fetch(input: RequestInfo | URL, init?: RequestInit) {
@@ -81,81 +95,162 @@ function makeEnvWithSession(sid: string, d1Consent: number | null) {
             input instanceof Request
               ? input
               : new Request(new URL(String(input), 'https://session').toString(), init);
-          return session!.instance.fetch(request);
+          return instance!.fetch(request);
         },
       } as DurableObjectStub;
     },
   } as unknown as DurableObjectNamespace;
+  const env = {
+    SESSION_DO: namespace,
+    DB_CHATBOT: d1.db,
+    ANALYTICS_WORKER: {
+      async fetch(input: RequestInfo | URL, init?: RequestInit) {
+        const req = input instanceof Request ? input : new Request(String(input), init);
+        proxied.push(await req.text());
+        return new Response('{"ok":true}', {status: 200});
+      },
+    },
+  } as unknown as Env;
+  return {env, ...d1, proxied};
+}
 
+/** Pierwsza wiadomość klienta: ta sama ścieżka co tura czatu (handle-buyer-turn → ensureBuyerSessionContext). */
+async function firstBuyerMessage(env: Env, sid: string, analyticsConsent: 0 | 1) {
+  await ensureBuyerSessionContext(env, {
+    sessionId: sid,
+    channelId: 'online-store' as never,
+    storefrontId: 'epir-liquid',
+    bodyChannel: 'online-store',
+    userText: 'Dzień dobry',
+    analyticsConsent,
+    sessionIdSource: 'session_storage',
+  });
+}
+
+function linkPayload(sid: string, clientId = 'pixel-client-xyz') {
   return {
-    env: {SESSION_DO: namespace, DB_CHATBOT: dbKnown} as Env,
-    writes,
-    getDo: () => sessions.get(sid)?.instance,
+    type: 'chat_session_linked',
+    data: {
+      chat_session_id: sid,
+      client_id: clientId,
+      session_id: clientId,
+      pixel_sender: 'web_pixel_extension',
+    },
   };
+}
+
+async function postPixel(env: Env, body: unknown) {
+  const res = await worker.fetch(
+    new Request('https://asystent.epirbizuteria.pl/pixel', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    }),
+    env,
+    noopCtx,
+  );
+  return {status: res.status, json: (await res.json()) as Record<string, unknown>};
 }
 
 describe('handleChatSessionLinkedFromPixel', () => {
   const sid = 'sess_link-known-0001';
 
-  it('links analytics_client_id when session known and consent=1', async () => {
-    const {env, writes} = makeEnvWithSession(sid, 1);
-    const doStub = (
-      env.SESSION_DO as unknown as {
-        get: (id: string) => {fetch: (r: Request) => Promise<Response>};
-      }
-    ).get(sid);
+  it('unknown session (widget minted sess_*, no message yet) -> unknown_session, nothing written', async () => {
+    const {env, rows, sessionWrites} = makeEnv();
+    const result = await handleChatSessionLinkedFromPixel(env, linkPayload(sid));
+    expect(result).toBe('unknown_session');
+    expect(rows.size).toBe(0);
+    expect(sessionWrites).toHaveLength(0);
+  });
 
-    await doStub.fetch(
-      new Request('https://session/set-session-id', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({session_id: sid}),
-      }),
-    );
-    await doStub.fetch(
-      new Request('https://session/set-session-privacy', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({analytics_consent: true}),
-      }),
-    );
-    writes.length = 0;
+  it('existing consented session -> linked and D1 sessions.analytics_client_id written', async () => {
+    const {env, rows} = makeEnv();
+    await firstBuyerMessage(env, sid, 1);
+    expect(rows.get(sid)).toMatchObject({analytics_consent: 1, analytics_client_id: null});
 
-    const result = await handleChatSessionLinkedFromPixel(env, {
-      type: 'chat_session_linked',
-      data: {chat_session_id: sid, client_id: 'pixel-client-xyz'},
-    });
+    const result = await handleChatSessionLinkedFromPixel(env, linkPayload(sid));
     expect(result).toBe('linked');
-
-    await doStub.fetch(
-      new Request('https://session/set-storefront-context', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({storefront_id: 'epir-liquid', channel: 'online-store'}),
-      }),
-    );
-
-    const upsert = writes
-      .filter((w) => w.sql.includes('INSERT INTO sessions') && w.sql.includes('analytics_client_id'))
-      .at(-1);
-    expect(upsert?.args[16]).toBe('pixel-client-xyz');
+    expect(rows.get(sid)?.analytics_client_id).toBe('pixel-client-xyz');
   });
 
-  it('ignores when consent is not 1', async () => {
-    const {env} = makeEnvWithSession(sid, 0);
-    const result = await handleChatSessionLinkedFromPixel(env, {
-      type: 'chat_session_linked',
-      data: {chat_session_id: sid, client_id: 'pixel-client-xyz'},
-    });
-    expect(result).toBe('ignored');
+  it('repeat of the same pair is idempotent (linked, no second write)', async () => {
+    const {env, rows, sessionWrites} = makeEnv();
+    await firstBuyerMessage(env, sid, 1);
+    expect(await handleChatSessionLinkedFromPixel(env, linkPayload(sid))).toBe('linked');
+    const writesAfterFirst = sessionWrites.length;
+
+    expect(await handleChatSessionLinkedFromPixel(env, linkPayload(sid))).toBe('linked');
+    expect(sessionWrites.length).toBe(writesAfterFirst);
+    expect(rows.get(sid)?.analytics_client_id).toBe('pixel-client-xyz');
   });
 
-  it('ignores invalid chat_session_id', async () => {
-    const {env} = makeEnvWithSession(sid, 1);
-    const result = await handleChatSessionLinkedFromPixel(env, {
-      type: 'chat_session_linked',
-      data: {chat_session_id: 'not-sess', client_id: 'pixel-client-xyz'},
-    });
-    expect(result).toBe('ignored');
+  it('link survives later buyer turns (they do not clear analytics_client_id)', async () => {
+    const {env, rows} = makeEnv();
+    await firstBuyerMessage(env, sid, 1);
+    await handleChatSessionLinkedFromPixel(env, linkPayload(sid));
+    await firstBuyerMessage(env, sid, 1);
+    expect(rows.get(sid)?.analytics_client_id).toBe('pixel-client-xyz');
+  });
+
+  it('root cause path: link before first message is not final; retry after message links', async () => {
+    const {env, rows} = makeEnv();
+    expect(await handleChatSessionLinkedFromPixel(env, linkPayload(sid))).toBe('unknown_session');
+    await firstBuyerMessage(env, sid, 1);
+    expect(await handleChatSessionLinkedFromPixel(env, linkPayload(sid))).toBe('linked');
+    expect(rows.get(sid)?.analytics_client_id).toBe('pixel-client-xyz');
+  });
+
+  it('consent 0 -> no_consent, analytics_client_id stays null', async () => {
+    const {env, rows} = makeEnv();
+    await firstBuyerMessage(env, sid, 0);
+    expect(await handleChatSessionLinkedFromPixel(env, linkPayload(sid))).toBe('no_consent');
+    expect(rows.get(sid)?.analytics_client_id).toBeNull();
+  });
+
+  it('invalid chat_session_id or missing client_id -> invalid', async () => {
+    const {env} = makeEnv();
+    expect(await handleChatSessionLinkedFromPixel(env, linkPayload('not-sess'))).toBe('invalid');
+    expect(await handleChatSessionLinkedFromPixel(env, linkPayload(sid, ''))).toBe('invalid');
+  });
+});
+
+describe('POST /pixel chat_session_linked (ack, no proxy)', () => {
+  const sid = 'sess_link-route-0001';
+
+  it('unknown session -> 200 {ok, linked:false, reason} and not proxied to analytics', async () => {
+    const {env, proxied} = makeEnv();
+    const {status, json} = await postPixel(env, linkPayload(sid));
+    expect(status).toBe(200);
+    expect(json).toEqual({ok: true, linked: false, reason: 'unknown_session'});
+    expect(proxied).toHaveLength(0);
+  });
+
+  it('consented session -> 200 {ok, linked:true}, written, not proxied; repeat idempotent', async () => {
+    const {env, rows, proxied} = makeEnv();
+    await firstBuyerMessage(env, sid, 1);
+    expect((await postPixel(env, linkPayload(sid))).json).toEqual({ok: true, linked: true});
+    expect((await postPixel(env, linkPayload(sid))).json).toEqual({ok: true, linked: true});
+    expect(rows.get(sid)?.analytics_client_id).toBe('pixel-client-xyz');
+    expect(proxied).toHaveLength(0);
+  });
+
+  it('D1 write of analytics_client_id not confirmed -> linked:false reason error', async () => {
+    const control = {failSessionWrites: false};
+    const {env, rows} = makeEnv(control);
+    await firstBuyerMessage(env, sid, 1);
+    // SessionDO łapie błąd D1 tylko w logu, więc ack musi wynikać z odczytu, nie z HTTP 200 z DO.
+    control.failSessionWrites = true;
+    const {json} = await postPixel(env, linkPayload(sid));
+    expect(json).toEqual({ok: true, linked: false, reason: 'error'});
+    expect(rows.get(sid)?.analytics_client_id).toBeNull();
+  });
+
+  it('other pixel events are still proxied to analytics unchanged', async () => {
+    const {env, proxied} = makeEnv();
+    const body = {type: 'page_viewed', data: {session_id: 'pixel-client-xyz'}};
+    const {status} = await postPixel(env, body);
+    expect(status).toBe(200);
+    expect(proxied).toHaveLength(1);
+    expect(JSON.parse(proxied[0])).toEqual(body);
   });
 });

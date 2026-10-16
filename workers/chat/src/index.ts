@@ -5395,22 +5395,32 @@ export default {
           }
         }
 
-        // chat_session_linked: zapisz analytics_client_id w DB_CHATBOT (przed proxy).
+        // chat_session_linked: komunikat sterujący piksela, obsłużony tu (bez proxy do analytics).
+        // `linked: true` tylko gdy sessions.analytics_client_id zapisany; piksel ponawia przy `linked: false`.
         if (method === 'POST' && (pathname === '/pixel' || pathname === '/pixel/events')) {
-          try {
-            const peek = (await request.clone().json().catch(() => null)) as {
-              type?: unknown;
-            } | null;
-            if (peek && peek.type === 'chat_session_linked') {
-              await handleChatSessionLinkedFromPixel(env, peek);
+          const peek = (await request.clone().json().catch(() => null)) as {
+            type?: unknown;
+          } | null;
+          if (peek && peek.type === 'chat_session_linked') {
+            let linkResult: Awaited<ReturnType<typeof handleChatSessionLinkedFromPixel>> = 'error';
+            try {
+              linkResult = await handleChatSessionLinkedFromPixel(env, peek);
+            } catch (linkErr) {
+              console.warn(
+                JSON.stringify({
+                  tag: 'buyer.chat_session_linked.intercept',
+                  error: String((linkErr as Error)?.message ?? linkErr).slice(0, 120),
+                }),
+              );
             }
-          } catch (linkErr) {
-            console.warn(
-              JSON.stringify({
-                tag: 'buyer.chat_session_linked.intercept',
-                error: String((linkErr as Error)?.message ?? linkErr).slice(0, 120),
-              }),
-            );
+            const ack =
+              linkResult === 'linked'
+                ? { ok: true, linked: true }
+                : { ok: true, linked: false, reason: linkResult };
+            return new Response(JSON.stringify(ack), {
+              status: 200,
+              headers: withCorsHeaders({ 'Content-Type': 'application/json' }, env, request),
+            });
           }
         }
 
