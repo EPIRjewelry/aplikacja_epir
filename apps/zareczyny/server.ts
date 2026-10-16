@@ -74,7 +74,8 @@ const remixOnRequest = createPagesFunctionHandler({
 
 export const onRequest = async (context: EventContext<Env, string, unknown>) => {
   const response = await remixOnRequest(context);
-  const session = context.data?.[EPIR_SESSION_BRIDGE_KEY] as
+  const data = context.data as Record<string, unknown> | undefined;
+  const session = data?.[EPIR_SESSION_BRIDGE_KEY] as
     | EpirZareczynySession
     | undefined;
   if (session?.isPending) {

@@ -22,11 +22,11 @@ import {
   invokeOnRequest,
   loadBuiltOnRequest,
   makeTestEnv,
+  type ZareczynyOnRequest,
 } from './helpers/pages-event-context';
-import type {PagesFunction} from '@remix-run/cloudflare-pages';
 
 const ORIGIN = 'https://zareczyny.epirbizuteria.pl';
-let onRequest: PagesFunction<Env>;
+let onRequest: ZareczynyOnRequest;
 let authorizeNonce: string | undefined;
 
 beforeAll(async () => {

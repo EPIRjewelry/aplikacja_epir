@@ -1,8 +1,7 @@
-type OnRequest = (
+export type ZareczynyOnRequest = (
   context: EventContext<Env, string, unknown>,
 ) => Response | Promise<Response>;
 
-// AUDIT-LOCAL: Node has no Workers `caches` global.
 const memCache = {match: async () => undefined, put: async () => {}, delete: async () => false};
 (globalThis as any).caches ??= {default: memCache, open: async () => memCache};
 
@@ -24,11 +23,11 @@ export function makeTestEnv(overrides: Partial<Env> = {}): Env {
   } as Env;
 }
 
-export async function loadBuiltOnRequest(): Promise<OnRequest> {
+export async function loadBuiltOnRequest(): Promise<ZareczynyOnRequest> {
   const {pathToFileURL, fileURLToPath} = await import('node:url');
   const bundleUrl = new URL('../../functions/[[path]].js', import.meta.url);
   const mod = (await import(pathToFileURL(fileURLToPath(bundleUrl)).href)) as {
-    onRequest: OnRequest;
+    onRequest: ZareczynyOnRequest;
   };
   return mod.onRequest;
 }
@@ -36,7 +35,7 @@ export async function loadBuiltOnRequest(): Promise<OnRequest> {
 export function makePagesContext(
   request: Request,
   env: Env,
-): Parameters<OnRequest>[0] {
+): EventContext<Env, string, unknown> {
   const assetsFetcher = {
     fetch: async () => new Response('Not Found', {status: 404}),
   };
@@ -53,21 +52,21 @@ export function makePagesContext(
     data,
     functionPath: '',
     params: {},
-    assets: assetsFetcher as Fetcher,
-    caches: globalThis.caches,
+    assets: assetsFetcher as unknown as Fetcher,
+    caches: globalThis.caches as unknown as CacheStorage,
     cloudflare: {
       env,
       waitUntil,
       passThroughOnException,
-      caches: globalThis.caches,
+      caches: globalThis.caches as unknown as CacheStorage,
       ctx: {},
       data,
     },
-  } as Parameters<OnRequest>[0];
+  } as unknown as EventContext<Env, string, unknown>;
 }
 
 export async function invokeOnRequest(
-  onRequest: OnRequest,
+  onRequest: ZareczynyOnRequest,
   request: Request,
   env: Env,
 ): Promise<Response> {
