@@ -104,7 +104,7 @@ Vars produkcyjne: [`workers/bigquery-batch/wrangler.toml`](../workers/bigquery-b
 | `referrer` | TEXT | Referrer | W `payload`; Iceberg prod: często **`referrer_url`** |
 | `product_id` | TEXT | Produkt | W `payload`; opcjonalnie top-level w Iceberg |
 | `product_title` | TEXT | Tytuł produktu | W `payload` |
-| `raw_data` | TEXT | JSON surowy | W `payload` |
+| `raw_data` | TEXT | JSON surowy | **Nie** — eksport batch nie wysyła `raw_data` (rekord streamu buduje [`mapPixelRowToPipelineRecord`](../workers/bigquery-batch/src/pixel-pipeline-record.ts) z wybranych kolumn, bez `payload`) |
 
 Pozostałe kolumny (heatmap, scroll, cart, order, `form_action`, `link_type`, …) istnieją w D1 i trafiają do **`payload`** w eksporcie batch (`JSON.stringify` całego wiersza).
 

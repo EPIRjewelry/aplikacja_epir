@@ -155,6 +155,31 @@ export function scrubInvalidChatSessionStorage(sessionStorageKey = 'epir-assista
   }
 }
 
+/**
+ * Tylko odczyt `sess_*` (ścieżka odczytu: historia, klucze transkryptu). Nigdy nie mintuje.
+ * Mint wyłącznie w ścieżce wysyłki (`resolveEffectiveChatSessionWithMeta`).
+ */
+export function readStoredChatSessionId(
+  sessionStorageKey = 'epir-assistant-session',
+): string | null {
+  if (typeof window === 'undefined') return null;
+  scrubInvalidChatSessionStorage(sessionStorageKey);
+  try {
+    const stored = sessionStorage.getItem(sessionStorageKey)?.trim() ?? '';
+    return isValidChatSessionStorageValue(stored) ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Odczyt historii z serwera dopuszczalny dopiero po otwarciu panelu i przy zgodzie na czat (`true`). */
+export function isChatHistorySyncAllowed(input: {
+  isOpen: boolean;
+  consentGranted: boolean | undefined;
+}): boolean {
+  return input.isOpen === true && input.consentGranted === true;
+}
+
 function mintChatSessionStorageId(sessionStorageKey: string): ResolvedChatSession {
   const minted = `${CHAT_SESSION_STORAGE_PREFIX}${crypto.randomUUID()}`;
   try {
