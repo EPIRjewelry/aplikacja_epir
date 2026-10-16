@@ -60,9 +60,7 @@ export async function appendBuyerSessionMessage(
   if (!sid || !text || !env.SESSION_DO) return;
   try {
     const body: Record<string, unknown> = {role, content: text};
-    if (role === 'assistant') {
-      body.tool_calls = (assistantToolNames ?? []).map((name) => ({type: 'function', function: {name}}));
-    }
+    if (role === 'assistant') body.tool_calls = (assistantToolNames ?? []).map((name) => ({type: 'function', function: {name}}));
     await sessionStub(env, sid).fetch('https://session/append', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},

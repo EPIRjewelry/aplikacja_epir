@@ -624,18 +624,24 @@ function toolDefsInclude(defs: ReturnType<typeof buildBuyerToolDefinitions>, nam
   return defs.some((d) => d.function?.name === name);
 }
 
-async function lastAssistToolState(env: Env, sessionId: string): Promise<'absent' | 'empty' | 'nonempty'> {
+async function shouldForceSearchCatalog(env: Env, sessionId: string): Promise<boolean> {
   const sid = sessionId.trim();
-  if (!sid || !env.SESSION_DO) return 'absent';
+  if (!sid || !env.SESSION_DO) return false;
   try {
     const res = await env.SESSION_DO.get(env.SESSION_DO.idFromName(sid)).fetch('https://session/history');
     const raw = res.ok ? await res.json().catch(() => []) : [];
-    const last = Array.isArray(raw) ? [...raw].reverse().find((e) => e?.role === 'assistant') : undefined;
-    if (!last || typeof last !== 'object' || !('tool_calls' in last)) return 'absent';
-    const tc = (last as {tool_calls?: unknown}).tool_calls;
-    return Array.isArray(tc) && tc.length ? 'nonempty' : 'empty';
+    if (!Array.isArray(raw)) return false;
+    let sawCatalog = false;
+    for (const e of raw) {
+      if (e?.role !== 'assistant' || !Array.isArray((e as {tool_calls?: unknown[]}).tool_calls)) continue;
+      for (const tc of (e as {tool_calls: unknown[]}).tool_calls) {
+        if ((tc as {function?: {name?: string}})?.function?.name === 'search_catalog') sawCatalog = true;
+      }
+    }
+    const last = [...raw].reverse().find((e) => e?.role === 'assistant') as {tool_calls?: unknown} | undefined;
+    return !sawCatalog && !!last && 'tool_calls' in last && Array.isArray(last.tool_calls) && last.tool_calls.length === 0;
   } catch {
-    return 'absent';
+    return false;
   }
 }
 
@@ -810,12 +816,6 @@ export async function composeBuyerAssistantReply(
   };
 
   const catalogSid = sessionId?.trim() ?? '';
-  const catalogForceOk =
-    catalogSid !== '' &&
-    !productHandle &&
-    !detectIllegalOrHarmfulRequest(userText) &&
-    (await lastAssistToolState(env, catalogSid)) === 'empty' &&
-    modelTools.includes('search_catalog');
   let catalogForceSortNext = false;
 
   const messages: GroqMessage[] = [
@@ -962,7 +962,7 @@ export async function composeBuyerAssistantReply(
    * (b) tool-as-text create/update gdy warianty na allowliście katalogu.
    * @see https://console.groq.com/docs/tool-use/local-tool-calling
    */
-  const resolveForcedToolName = (text: string): string | null => {
+  const resolveForcedToolName = async (text: string): Promise<string | null> => {
     if (looksLikeToolCallAsText(text)) {
       const fromText = toolNameFromAsText(text);
       if (!fromText || !toolDefsInclude(toolDefinitions, fromText)) return null;
@@ -979,7 +979,9 @@ export async function composeBuyerAssistantReply(
       const cartTool = detectForcedCartTool(userText, sessionCartId);
       if (cartTool && toolDefsInclude(toolDefinitions, cartTool)) return cartTool;
     }
-    if (catalogForceOk && toolDefsInclude(toolDefinitions, 'search_catalog')) {
+    if (catalogSnapshotChannel(channelId) === 'epir-online-store' && catalogSid !== '' && !productHandle
+      && !detectIllegalOrHarmfulRequest(userText) && toolDefsInclude(toolDefinitions, 'search_catalog')
+      && (await shouldForceSearchCatalog(env, catalogSid))) {
       return 'search_catalog';
     }
     return null;
@@ -1022,7 +1024,7 @@ export async function composeBuyerAssistantReply(
 
     if (toolCalls.length === 0) {
       const forcedName =
-        !forcedToolUsed ? resolveForcedToolName(text) : null;
+        !forcedToolUsed ? await resolveForcedToolName(text) : null;
       if (forcedName) {
         forcedToolUsed = true;
         console.log(

@@ -64,7 +64,6 @@ export type ExecuteBuyerToolInput = {
   variantOptionIndex?: VariantOptionIndex;
   shopifyCustomerId?: string | null;
   request?: Request;
-  /** Sort matches by min price (forced catalog turn or price filter). */
   catalogSortMinPrice?: boolean;
 };
 

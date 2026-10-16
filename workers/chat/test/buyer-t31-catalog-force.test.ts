@@ -7,6 +7,7 @@ import * as ex from '../src/buyer/execute-buyer-tool';
 import * as facts from '../src/facts';
 import * as sessionCart from '../src/buyer/session-cart';
 import * as toolReadiness from '../src/buyer/tool-readiness';
+import type {BuyerChannelId} from '../src/buyer/channel-switch';
 import {makeDurableStateStub} from './helpers/session-do-sql-stub';
 
 const ENV = {SHOP_DOMAIN: 'mock-shop.myshopify.com'} as import('../src/config/bindings').Env;
@@ -46,7 +47,7 @@ function mockAll() {
     matchingVariantIds: [], matchingVariants: [], matchingPriceRange: {min: {minor: n, display_pl: `${n / 100} zł`}, max: {minor: n, display_pl: `${n / 100} zł`}, isFlat: true}, isFlat: true});
   vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({search: vi.fn().mockResolvedValue({matches: [mk(42000, 'c'), mk(29000, 'a'), mk(35000, 'b')], total: 3, facets: FACETS})} as never);
 }
-async function turn(sid: string, channel: (typeof CH)[number], user: string, opts?: {productHandle?: string}) {
+async function turn(sid: string, channel: BuyerChannelId, user: string, opts?: {productHandle?: string}) {
   const forced: string[] = []; let n = 0;
   vi.spyOn(aiClient, 'streamGroqEvents').mockImplementation(async (_a, _b, _c, _d, _e, o) => {
     if (o?.toolChoice && typeof o.toolChoice === 'object') { forced.push(o.toolChoice.function.name); return catTool(); }
@@ -80,8 +81,17 @@ describe.each(CH)('T31 (%s)', (channel) => {
   it('skips force when previous assistant had tool_calls', async () => {
     const sid = `kb-${channel}`;
     await seed(sid, [{role: 'user', content: 'wysyłka'}, {role: 'assistant', content: 'Polityka.', tool_calls: [{type: 'function', function: {name: 'search_shop_policies_and_faqs'}}]}]);
-    expect(Array.isArray((await lastAssist(sid))?.tool_calls)).toBe(true);
+    expect((await lastAssist(sid))?.tool_calls).toEqual([{type: 'function', function: {name: 'search_shop_policies_and_faqs'}}]);
     expect((await turn(sid, channel, 'prezent')).forced).not.toContain('search_catalog');
+  });
+  it('no force after search_catalog already in session history', async () => {
+    const sid = `thx-${channel}`;
+    await seed(sid, [
+      {role: 'user', content: 'prezent'},
+      {role: 'assistant', content: 'Produkty.', tool_calls: [{type: 'function', function: {name: 'search_catalog'}}]},
+      {role: 'user', content: 'ok'}, {role: 'assistant', content: 'Miło.', tool_calls: []},
+    ]);
+    expect((await turn(sid, channel, 'dziękuję')).forced).not.toContain('search_catalog');
   });
 });
 
@@ -93,4 +103,12 @@ it('skips force on PDP productHandle', async () => {
   await seed(sid, [{role: 'user', content: 'x'}, {role: 'assistant', content: 'pytanie', tool_calls: []}]);
   expect((await lastAssist(sid))?.tool_calls).toEqual([]);
   expect((await turn(sid, 'epir-online-store', 'tanio', {productHandle: 'ring-x'})).forced).not.toContain('search_catalog');
+});
+
+it('skips force on kazka-hydrogen (GK)', async () => {
+  vi.restoreAllMocks(); sessionNs = makeSessionNamespace(); ENV.SESSION_DO = sessionNs as never; mockAll();
+  const sid = 'gk-t31';
+  await seed(sid, [{role: 'user', content: 'prezent'}, {role: 'assistant', content: 'Pytanie.', tool_calls: []}]);
+  expect((await lastAssist(sid))?.tool_calls).toEqual([]);
+  expect((await turn(sid, 'kazka-hydrogen', 'tanio')).forced).not.toContain('search_catalog');
 });
