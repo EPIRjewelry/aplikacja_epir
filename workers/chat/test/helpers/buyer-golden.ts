@@ -129,9 +129,8 @@ export function mergeIndex(...products: ProductFacts[]): VariantOptionIndex {
 }
 
 export function mockCartContinue(channelId: BuyerChannelId, token = 'MOCK-CART-TOKEN'): string {
-  const host =
-    channelId === 'epir-zareczyny' ? 'zareczyny.epirbizuteria.pl' : 'epirbizuteria.pl';
-  return `https://${host}/cart/c/${token}?key=mock-key`;
+  const origin = storefrontOriginForChannel(channelId);
+  return `${origin}/cart/c/${token}?key=mock-key`;
 }
 
 export function mockFlatCartPayload(
@@ -158,10 +157,4 @@ export function assertKTon(reply: string): void {
   if (TON_FAIL_RE.test(reply)) throw new Error(`K-ton FAIL: ${reply.slice(0, 120)}`);
 }
 
-export function freeShippingGapMinor(cartTotalMinor: number, thresholdMinor = 50000): number {
-  return Math.max(0, thresholdMinor - cartTotalMinor);
-}
-
-export const MOCK_KB_PHONE = '+48 12 345 67 89';
-export const MOCK_KB_SHIPPING =
-  'Darmowa dostawa od 500 zł dla całego zamówienia (mock FAQ).';
+export const MOCK_KB_PHONE = '+48 000 000 000';
