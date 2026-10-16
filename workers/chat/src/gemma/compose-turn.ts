@@ -4,13 +4,16 @@ import type {ComposeBuyerTurnOptions} from '../buyer/compose-buyer-turn';
 import {appendBuyerSessionMessage, readBuyerSessionHistory} from '../buyer/session-history';
 import {detectJailbreakOrHarmIntent} from '../intent/jailbreak-prefilter';
 import {extractGemmaIntent} from './intent/extract-intent';
-import {buildEpirDeterministicReply, detectFormOfAddressFromText} from './profiles/epir';
+import {detectFormOfAddressFromText} from './profiles/epir';
+import {runGemmaAllowedActions} from './actions/run';
+import {buildEpirActionReply} from './actions/reply';
 import {readGemmaState, writeGemmaState} from './session-gemma-state';
 import {transitionGemmaState} from './state/machine';
 import type {GemmaSessionState} from './state/types';
 import {withBuyerTurnGate} from './turn-gate';
 import {gemmaV2EmergencyReply} from './fallback';
 import type {GemmaIntent} from './intent/schema';
+import {buildEpirDeterministicReply} from './profiles/epir';
 
 function cartNeedsConsent(intent: GemmaIntent): boolean {
   if (!intent.cart_action || intent.cart_action === 'show') return false;
@@ -23,11 +26,16 @@ function applyFormOfAddress(prev: GemmaSessionState, userText: string): GemmaSes
   return {...prev, form_of_address: detected};
 }
 
+function _requestFromOpts(opts: ComposeBuyerTurnOptions | undefined): Request {
+  return new Request('https://gemma-v2/buyer-turn');
+}
+
 export async function runGemmaV2Turn(
   env: Env,
   channelId: BuyerChannelId,
   userText: string,
   opts: ComposeBuyerTurnOptions | undefined,
+  clientRequest?: Request,
 ): Promise<{reply: string}> {
   const sessionId = opts?.sessionId?.trim() ?? '';
   const turnId = crypto.randomUUID();
@@ -81,18 +89,40 @@ export async function runGemmaV2Turn(
     prev = applyFormOfAddress(prev, userText);
 
     const transitioned = transitionGemmaState(prev, intentResult.intent);
+    const userCorpus = [
+      userText,
+      ...history.filter((h) => h.role === 'user').map((h) => h.content),
+    ].join('\n');
+
+    const actionOutcome = await runGemmaAllowedActions({
+      env,
+      channelId,
+      request: clientRequest ?? _requestFromOpts(opts),
+      sessionId,
+      userText,
+      userCorpus,
+      intent: intentResult.intent,
+      prev,
+      transitioned,
+      productHandle: opts?.productHandle,
+    });
+
     const next: GemmaSessionState = {
       ...prev,
       state: transitioned.nextState,
       slots: transitioned.slots,
+      shown: actionOutcome.shown,
+      selected: actionOutcome.selected,
       turn: prev.turn + 1,
     };
 
-    const reply = buildEpirDeterministicReply({
+    const reply = buildEpirActionReply({
       channelId,
       state: transitioned.nextState,
       missingSlot: transitioned.missingSlot,
       cartNeedsConsent: cartNeedsConsent(intentResult.intent),
+      intent: intentResult.intent,
+      outcome: actionOutcome,
     });
 
     if (sessionId) {

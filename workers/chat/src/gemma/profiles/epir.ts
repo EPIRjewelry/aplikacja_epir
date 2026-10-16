@@ -39,11 +39,11 @@ function needsQuestionForSlot(slot: keyof GemmaSlots): string {
     case 'stone':
       return 'Proszę Pana/Panią — jaki kamień Pana/Panią interesuje?';
     case 'occasion':
-      return 'Proszę Pana/Panią — na jaką okazję szuka Pana/Pani biżuterii?';
+      return 'Proszę Pana/Panią — na jaką okazję szuka Pan/Pani biżuterii?';
     case 'recipient':
       return 'Proszę Pana/Panią — dla kogo jest prezent?';
     default:
-      return 'Proszę Pana/Panią — opisać, czego szuka Pana/Pani?';
+      return 'Proszę Pana/Panią — opisać, czego Pan/Pani szuka?';
   }
 }
 
@@ -68,6 +68,56 @@ export function epirPolicyReply(): string {
 
 export function epirDetailsReply(): string {
   return 'Proszę Pana/Panią — przygotuję szczegóły wskazanego modelu.';
+}
+
+export function epirCatalogEmptyReply(channelId: BuyerChannelId): string {
+  return (
+    'Proszę Pana/Panią — nie znalazłam propozycji w tym opisie. ' +
+    'Kontakt: ' +
+    contactPageUrl(channelId) +
+    '.'
+  );
+}
+
+export function epirCatalogCardsReply(body: string): string {
+  return 'Proszę Pana/Panią — propozycje dopasowane do opisu:\n' + body;
+}
+
+export function epirKbAnswerReply(answer: string): string {
+  return 'Proszę Pana/Panią — oto informacja ze sklepu:\n' + answer;
+}
+
+export function epirKbUnavailableReply(): string {
+  return (
+    'Nie mam dostępu do aktualnych zasad sklepu. Proszę zajrzeć do regulaminu na stronie sklepu lub skontaktować się z pracownią.'
+  );
+}
+
+export function epirCartErrorReply(channelId: BuyerChannelId): string {
+  return (
+    'Proszę Pana/Panią — nie udało się zaktualizować koszyka. ' +
+    'Kontakt: ' +
+    contactPageUrl(channelId) +
+    '.'
+  );
+}
+
+export function epirCartConsentWithProductLink(channelId: BuyerChannelId, productUrl?: string): string {
+  const base = 'Proszę Pana/Panią o potwierdzenie, czy mogę zaktualizować koszyk.';
+  if (productUrl?.trim()) {
+    return base + ' Można też dodać samodzielnie: ' + productUrl.trim() + '.';
+  }
+  return base;
+}
+
+export function epirVariantQuestionReply(channelId: BuyerChannelId, productUrl?: string): string {
+  const link = productUrl?.trim() || contactPageUrl(channelId);
+  return (
+    'Proszę Pana/Panią — który wariant Pana/Panią interesuje? ' +
+    'Szczegóły i dodanie samodzielne: ' +
+    link +
+    '.'
+  );
 }
 
 export function buildEpirDeterministicReply(params: {
@@ -108,6 +158,13 @@ export function listEpirTemplateStrings(channelId: BuyerChannelId): string[] {
     epirCartReply(false),
     epirPolicyReply(),
     epirDetailsReply(),
+    epirCatalogEmptyReply(channelId),
+    epirCatalogCardsReply('g1: /products/fikcyjny-parity'),
+    epirKbAnswerReply('Fikcyjna odpowiedź polityki.'),
+    epirKbUnavailableReply(),
+    epirCartErrorReply(channelId),
+    epirCartConsentWithProductLink(channelId, '/products/fikcyjny-parity'),
+    epirVariantQuestionReply(channelId, '/products/fikcyjny-parity'),
   ];
 }
 

@@ -20,6 +20,6 @@ export async function composeGemmaReply(
     analyticsConsent: opts?.analyticsConsent,
     sessionIdSource: opts?.sessionIdSource,
   });
-  const {reply} = await runGemmaV2Turn(env, channelId, userText, opts);
+  const {reply} = await runGemmaV2Turn(env, channelId, userText, opts, _request);
   return reply;
 }

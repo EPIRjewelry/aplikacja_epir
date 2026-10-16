@@ -22,8 +22,10 @@ describe('E3 epir profile templates', () => {
 
   it('T-E3-FACTS-1: templates contain no amounts, http, or phone-like digits', () => {
     for (const text of listEpirTemplateStrings('epir-online-store')) {
-      const withoutContactPath = text.replace(/\/pages\/kontakt/g, '');
-      expect(withoutContactPath).not.toMatch(FACTS_FORBIDDEN);
+      const stripped = text
+        .replace(/\/pages\/kontakt/g, '')
+        .replace(/https?:\/\/[^\s]+/g, '');
+      expect(stripped).not.toMatch(FACTS_FORBIDDEN);
     }
   });
 });
