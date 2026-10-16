@@ -64,7 +64,6 @@ export type ExecuteBuyerToolInput = {
   variantOptionIndex?: VariantOptionIndex;
   shopifyCustomerId?: string | null;
   request?: Request;
-  catalogSortMinPrice?: boolean;
 };
 
 export type ExecuteBuyerToolResult = {
@@ -321,10 +320,7 @@ export async function executeBuyerTool(
     if (validated.priceMinMinor !== undefined) filters.priceMin = validated.priceMinMinor;
     if (validated.priceMaxMinor !== undefined) filters.priceMax = validated.priceMaxMinor;
 
-    let { matches, meta } = await repo.search(filters, CATALOG_SEARCH_SERVER_LIMIT);
-    if (input.catalogSortMinPrice || validated.priceMinMinor !== undefined || validated.priceMaxMinor !== undefined) {
-      matches = [...matches].sort((a, b) => a.matchingPriceRange.min.minor - b.matchingPriceRange.min.minor);
-    }
+    const { matches, meta } = await repo.search(filters, CATALOG_SEARCH_SERVER_LIMIT);
     const formatted = formatMatchBlock(CATALOG_SEARCH_HEADER, matches, 6);
     console.log(
       JSON.stringify({
