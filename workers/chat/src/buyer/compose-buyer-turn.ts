@@ -59,6 +59,7 @@ import {
   lastBuyerHistoryEntries,
   readBuyerSessionHistory,
 } from './session-history';
+import { detectIllegalOrHarmfulRequest } from '../intent/jailbreak-prefilter';
 import { ensureBuyerSessionContext } from './session-context';
 import {
   brandKeyForChannel,
@@ -151,7 +152,7 @@ function catalogFactsGuidance(modelTools: BuyerToolId[]): string {
     : 'Produkty, ceny, dostępność i linki: wyłącznie z bloku [PRODUKT NA STRONIE] w tej turze (narzędzie katalogu niedostępne).';
   return [
     catalogLine,
-    'Nigdy nie pokazuj klientowi id/gid i nie proś go o id wariantu; pytaj o rozmiar, metal lub kamień.',
+    'Nigdy nie pokazuj klientowi id/gid i nie proś go o id wariantu; o rozmiar, metal lub kamień pytaj tylko przed create_cart lub update_cart.',
     'Nie potwierdzaj istnienia produktu, kolekcji, kodu rabatowego ani promocji, których nie ma w wyniku narzędzia, w odpowiedzi bazy wiedzy ani w totals koszyka.',
     'Na nieznaną nazwę lub kod: «nie znajduję takiej pozycji / takiego kodu w ofercie», potem propozycja z wyniku wyszukiwania. Nigdy nie obiecuj naliczenia rabatu.',
   ].join('\n');
@@ -484,6 +485,7 @@ type FinalizeReplyContext = {
   /** messages type=error z create/update — treść klientowi, bez continue_url. */
   cartClientErrors?: string[];
   hadGetCartThisTurn?: boolean;
+  buyerToolNamesThisTurn: string[];
 };
 
 function cartDeterministicReply(ctx: FinalizeReplyContext): string | null {
@@ -610,7 +612,7 @@ async function finalizeBuyerReply(
   if (sessionId?.trim()) {
     try {
       await appendBuyerSessionMessage(env, sessionId, 'user', userText);
-      await appendBuyerSessionMessage(env, sessionId, 'assistant', guarded);
+      await appendBuyerSessionMessage(env, sessionId, 'assistant', guarded, ctx.buyerToolNamesThisTurn);
     } catch (e) {
       console.warn('[buyer.compose_turn] session history append failed', e);
     }
@@ -620,6 +622,27 @@ async function finalizeBuyerReply(
 
 function toolDefsInclude(defs: ReturnType<typeof buildBuyerToolDefinitions>, name: string): boolean {
   return defs.some((d) => d.function?.name === name);
+}
+
+async function shouldForceSearchCatalog(env: Env, sessionId: string): Promise<boolean> {
+  const sid = sessionId.trim();
+  if (!sid || !env.SESSION_DO) return false;
+  try {
+    const res = await env.SESSION_DO.get(env.SESSION_DO.idFromName(sid)).fetch('https://session/history');
+    const raw = res.ok ? await res.json().catch(() => []) : [];
+    if (!Array.isArray(raw)) return false;
+    let sawCatalog = false;
+    for (const e of raw) {
+      if (e?.role !== 'assistant' || !Array.isArray((e as {tool_calls?: unknown[]}).tool_calls)) continue;
+      for (const tc of (e as {tool_calls: unknown[]}).tool_calls) {
+        if ((tc as {function?: {name?: string}})?.function?.name === 'search_catalog') sawCatalog = true;
+      }
+    }
+    const last = [...raw].reverse().find((e) => e?.role === 'assistant') as {tool_calls?: unknown} | undefined;
+    return !sawCatalog && !!last && 'tool_calls' in last && Array.isArray(last.tool_calls) && last.tool_calls.length === 0;
+  } catch {
+    return false;
+  }
 }
 
 export async function composeBuyerAssistantReply(
@@ -789,7 +812,11 @@ export async function composeBuyerAssistantReply(
     hadSearchCatalogThisTurn: false,
     cartMutatedSuccessfullyThisTurn: false,
     variantOptionIndex,
+    buyerToolNamesThisTurn: [],
   };
+
+  const catalogSid = sessionId?.trim() ?? '';
+  let catalogForceSortNext = false;
 
   const messages: GroqMessage[] = [
     { role: 'system', content: systemParts },
@@ -836,7 +863,10 @@ export async function composeBuyerAssistantReply(
       variantOptionIndex,
       shopifyCustomerId: null,
       request,
+      catalogSortMinPrice: catalogForceSortNext && call.name === 'search_catalog',
     });
+    finalizeCtx.buyerToolNamesThisTurn.push(call.name);
+    if (catalogForceSortNext && call.name === 'search_catalog') catalogForceSortNext = false;
     if (executed.sessionCartId !== undefined) {
       sessionCartId = executed.sessionCartId;
     }
@@ -932,7 +962,7 @@ export async function composeBuyerAssistantReply(
    * (b) tool-as-text create/update gdy warianty na allowliście katalogu.
    * @see https://console.groq.com/docs/tool-use/local-tool-calling
    */
-  const resolveForcedToolName = (text: string): string | null => {
+  const resolveForcedToolName = async (text: string): Promise<string | null> => {
     if (looksLikeToolCallAsText(text)) {
       const fromText = toolNameFromAsText(text);
       if (!fromText || !toolDefsInclude(toolDefinitions, fromText)) return null;
@@ -948,6 +978,11 @@ export async function composeBuyerAssistantReply(
     if (!finalizeCtx.cartMutatedSuccessfullyThisTurn) {
       const cartTool = detectForcedCartTool(userText, sessionCartId);
       if (cartTool && toolDefsInclude(toolDefinitions, cartTool)) return cartTool;
+    }
+    if (catalogSnapshotChannel(channelId) === 'epir-online-store' && catalogSid !== '' && !productHandle
+      && !detectIllegalOrHarmfulRequest(userText) && toolDefsInclude(toolDefinitions, 'search_catalog')
+      && (await shouldForceSearchCatalog(env, catalogSid))) {
+      return 'search_catalog';
     }
     return null;
   };
@@ -989,20 +1024,23 @@ export async function composeBuyerAssistantReply(
 
     if (toolCalls.length === 0) {
       const forcedName =
-        !forcedToolUsed ? resolveForcedToolName(text) : null;
+        !forcedToolUsed ? await resolveForcedToolName(text) : null;
       if (forcedName) {
         forcedToolUsed = true;
         console.log(
           JSON.stringify({
             tag: looksLikeToolCallAsText(text)
               ? 'buyer.tool_as_text_retry'
-              : 'buyer.cart_intent_force_tool',
+              : forcedName === 'search_catalog'
+                ? 'buyer.catalog_intent_force_tool'
+                : 'buyer.cart_intent_force_tool',
             keys: looksLikeToolCallAsText(text)
               ? toolAsTextKeyNames(text)
               : undefined,
             forced: forcedName,
           }),
         );
+        if (forcedName === 'search_catalog') catalogForceSortNext = true;
         try {
           const forceStream = await streamGroqEvents(
             messages,
