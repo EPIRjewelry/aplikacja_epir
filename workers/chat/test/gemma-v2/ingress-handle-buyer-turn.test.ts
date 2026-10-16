@@ -6,6 +6,7 @@ import {shopifyAppProxyCanonicalString} from '../../src/hmac';
 import * as buyerTurn from '../../src/buyer/handle-buyer-turn';
 import * as compose from '../../src/buyer/compose-buyer-turn';
 import {makeDurableStateStub} from '../helpers/session-do-sql-stub';
+import {expectBuyerUnavailableJson} from '../helpers/buyer-unavailable';
 import {FIKCYJNY_TESTER_ID, makeGemmaRuntimeKv} from './fixtures/fake-testers-kv';
 
 const noopCtx = {waitUntil() {}} as unknown as ExecutionContext;
