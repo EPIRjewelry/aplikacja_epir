@@ -57,27 +57,6 @@ function normalizeInserts(rows: CapturedMessageInsert[]) {
   }));
 }
 
-/** User row + channel/storefront on assistant — legacy still runs reply-link-guard before append. */
-function assertBuyerTurnD1Parity(
-  legacyInserts: CapturedMessageInsert[],
-  v2Inserts: CapturedMessageInsert[],
-  legacyReply: string,
-  v2Reply: string,
-) {
-  const legacyUser = legacyInserts.filter((r) => r.role === 'user');
-  const v2User = v2Inserts.filter((r) => r.role === 'user');
-  expect(normalizeInserts(legacyUser)).toEqual(normalizeInserts(v2User));
-
-  const legacyAsst = legacyInserts.find((r) => r.role === 'assistant');
-  const v2Asst = v2Inserts.find((r) => r.role === 'assistant');
-  expect(legacyAsst).toBeDefined();
-  expect(v2Asst).toBeDefined();
-  expect(legacyAsst!.channel).toBe(v2Asst!.channel);
-  expect(legacyAsst!.storefront_id).toBe(v2Asst!.storefront_id);
-  expect(legacyAsst!.content).toBe(legacyReply);
-  expect(v2Asst!.content).toBe(v2Reply);
-}
-
 function postReq(body: Record<string, unknown>) {
   return new Request('https://example.com/chat', {
     method: 'POST',
@@ -93,24 +72,17 @@ describe('E2 buyer turn D1 parity — legacy vs v2', () => {
 
   it('T-PARITY-1 GE: legacy compose vs v2 compose — same message rows (channel/storefront)', async () => {
     const userText = 'Fikcyjne zapytanie parity GE';
-    const expectedReply = gemmaV2EmergencyReply('epir-online-store');
-    await stubBuyerComposeDeps(expectedReply);
+    await stubBuyerComposeDeps('Fikcyjna odpowiedz parity bez linkow');
     const req = new Request('https://example.com/chat', {method: 'POST'});
 
     const sidLegacy = 'sess_e2_parity_legacy_ge';
     const {db: dbL, messageInserts: legacyInserts} = makeFakeD1Chatbot();
     const {env: envLegacy} = makeSessionDoEnv(dbL, sidLegacy);
-    const legacyReply = await composeBuyerAssistantReply(
-      envLegacy,
-      'epir-online-store',
-      userText,
-      req,
-      {
-        sessionId: sidLegacy,
-        storefrontId: 'online-store',
-        bodyChannel: 'online-store',
-      },
-    );
+    const legacyReply = await composeBuyerAssistantReply(envLegacy, 'epir-online-store', userText, req, {
+      sessionId: sidLegacy,
+      storefrontId: 'online-store',
+      bodyChannel: 'online-store',
+    });
 
     const sidV2 = 'sess_e2_parity_v2_ge';
     const {db: dbV, messageInserts: v2Inserts} = makeFakeD1Chatbot();
@@ -121,35 +93,32 @@ describe('E2 buyer turn D1 parity — legacy vs v2', () => {
       bodyChannel: 'online-store',
     });
 
-    assertBuyerTurnD1Parity(legacyInserts, v2Inserts, legacyReply, v2Reply);
+    const strip = (rows: CapturedMessageInsert[]) =>
+      normalizeInserts(rows).map((r) => (r.role === 'assistant' ? {...r, content: '<reply>'} : r));
+    expect(strip(legacyInserts)).toEqual(strip(v2Inserts));
+    expect(legacyInserts.find((r) => r.role === 'assistant')?.content).toBe(legacyReply);
+    expect(v2Inserts.find((r) => r.role === 'assistant')?.content).toBe(v2Reply);
+    expect(v2Inserts.map((r) => r.role)).toEqual(['user', 'assistant']);
     for (const row of v2Inserts) {
       expect(row.channel).toBe('online-store');
       expect(row.storefront_id).toBe('online-store');
       expect(OPERATOR_STUDIO_CHANNELS).not.toContain(row.channel);
     }
-    expect(v2Inserts.map((r) => r.role)).toEqual(['user', 'assistant']);
   });
 
   it('T-PARITY-1 GZ: legacy compose vs v2 compose — hydrogen-zareczyny / zareczyny', async () => {
     const userText = 'Fikcyjne zapytanie parity GZ';
-    const expectedReply = gemmaV2EmergencyReply('epir-zareczyny');
-    await stubBuyerComposeDeps(expectedReply);
+    await stubBuyerComposeDeps('Fikcyjna odpowiedz parity bez linkow');
     const req = new Request('https://example.com/chat', {method: 'POST'});
 
     const sidLegacy = 'sess_e2_parity_legacy_gz';
     const {db: dbL, messageInserts: legacyInserts} = makeFakeD1Chatbot();
     const {env: envLegacy} = makeSessionDoEnv(dbL, sidLegacy);
-    const legacyReply = await composeBuyerAssistantReply(
-      envLegacy,
-      'epir-zareczyny',
-      userText,
-      req,
-      {
-        sessionId: sidLegacy,
-        storefrontId: 'zareczyny',
-        bodyChannel: 'hydrogen-zareczyny',
-      },
-    );
+    const legacyReply = await composeBuyerAssistantReply(envLegacy, 'epir-zareczyny', userText, req, {
+      sessionId: sidLegacy,
+      storefrontId: 'zareczyny',
+      bodyChannel: 'hydrogen-zareczyny',
+    });
 
     const sidV2 = 'sess_e2_parity_v2_gz';
     const {db: dbV, messageInserts: v2Inserts} = makeFakeD1Chatbot();
@@ -160,7 +129,12 @@ describe('E2 buyer turn D1 parity — legacy vs v2', () => {
       bodyChannel: 'hydrogen-zareczyny',
     });
 
-    assertBuyerTurnD1Parity(legacyInserts, v2Inserts, legacyReply, v2Reply);
+    const strip = (rows: CapturedMessageInsert[]) =>
+      normalizeInserts(rows).map((r) => (r.role === 'assistant' ? {...r, content: '<reply>'} : r));
+    expect(strip(legacyInserts)).toEqual(strip(v2Inserts));
+    expect(legacyInserts.find((r) => r.role === 'assistant')?.content).toBe(legacyReply);
+    expect(v2Inserts.find((r) => r.role === 'assistant')?.content).toBe(v2Reply);
+    expect(v2Inserts.map((r) => r.role)).toEqual(['user', 'assistant']);
     for (const row of v2Inserts) {
       expect(row.channel).toBe('hydrogen-zareczyny');
       expect(row.storefront_id).toBe('zareczyny');
