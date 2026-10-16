@@ -35,7 +35,8 @@ function shopDomain(env: Env): string | null {
 
 function hasTag(tags: string[] | undefined, tag: string): boolean {
   if (!tags?.length) return false;
-  return tags.some((t) => t === tag);
+  const want = tag.toLowerCase();
+  return tags.some((t) => t.toLowerCase() === want);
 }
 
 function isAccessDeniedError(err: unknown): boolean {

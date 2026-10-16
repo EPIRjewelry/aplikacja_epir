@@ -79,15 +79,3 @@ export function fictionalMatchFromProduct(product: ProductFacts, filters = {}): 
   const matches = filterProducts([product], filters);
   return matches[0]!;
 }
-
-export function fictionalTaggedProduct(id: string, tagged: boolean): ProductFacts {
-  const base = fictionalMultiVariantProduct();
-  return {
-    ...base,
-    productId: id,
-    handle: `fikcyjny-${id.split('/').pop()}`,
-    title: `Fikcyjny produkt ${id.split('/').pop()}`,
-    url: `https://example.test/products/fikcyjny-${id.split('/').pop()}`,
-    collections: tagged ? [] : [{handle: 'inne', title: 'Inne'}],
-  };
-}

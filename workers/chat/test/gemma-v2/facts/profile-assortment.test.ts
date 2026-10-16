@@ -2,7 +2,6 @@
  * E2b — asortyment GZ po tagu Shopify `zareczyny`.
  *
  * Mutacje:
- * - **M-E2b-4** — Wyłącz `filterProductMatchesByZareczynyTag` w `catalog-search.ts` → T-E2b-GZ-1 FAIL.
  * - **M-E2b-6** — W `assortment.ts` na błąd zwróć wszystkie produkty zamiast [] → T-E2b-GZ-2 FAIL.
  */
 import {beforeEach, describe, expect, it, vi} from 'vitest';
@@ -11,7 +10,6 @@ import {
   filterProductMatchesByZareczynyTag,
 } from '../../../src/gemma/facts/assortment';
 import * as graphql from '../../../src/graphql';
-import {filterProducts} from '../../../src/facts/filter';
 import {fictionalMatchFromProduct, fictionalMultiVariantProduct} from '../fixtures/fictional-catalog-products';
 
 function envWithGzToken(): import('../../../src/config/bindings').Env {
@@ -76,11 +74,39 @@ describe('E2b GZ assortment by tag', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it('T-E2b-GE-GZ-2: metal/budget filters identical on same ProductFacts (channel-agnostic filterProducts)', () => {
-    const product = fictionalMultiVariantProduct();
-    const filters = {metal: ['złoto 585'], priceMax: {minor: 300_000, currency: 'PLN' as const}};
-    const ge = filterProducts([product], filters);
-    const gz = filterProducts([product], filters);
-    expect(ge).toEqual(gz);
+  it('T-E2b-GZ-TOKEN: missing GZ Storefront token → zero products and assortment_tags_unavailable warn', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const matches = [fictionalMatchFromProduct(fictionalMultiVariantProduct())];
+    const env = {SHOP_DOMAIN: 'fikcyjny-sklep.myshopify.com'} as import('../../../src/config/bindings').Env;
+    const out = await filterProductMatchesByZareczynyTag(env, 'epir-zareczyny', matches);
+    expect(out).toHaveLength(0);
+    expect(
+      warnSpy.mock.calls.some((args) => {
+        const raw = args[0];
+        if (typeof raw !== 'string') return false;
+        try {
+          const parsed = JSON.parse(raw) as {tag?: string};
+          return parsed.tag === 'gemma.facts.assortment_tags_unavailable';
+        } catch {
+          return false;
+        }
+      }),
+    ).toBe(true);
+    warnSpy.mockRestore();
+  });
+
+  it('T-E2b-GZ-5: tag match is case-insensitive (Zareczyny)', async () => {
+    const pIn = fictionalMultiVariantProduct();
+    pIn.productId = 'gid://shopify/Product/910003';
+    const matches = [fictionalMatchFromProduct(pIn)];
+    vi.spyOn(graphql, 'callStorefrontAPI').mockResolvedValue({
+      nodes: [{id: pIn.productId, tags: ['Zareczyny']}],
+    });
+    const out = await filterProductMatchesByZareczynyTag(
+      envWithGzToken(),
+      'epir-zareczyny',
+      matches,
+    );
+    expect(out).toHaveLength(1);
   });
 });

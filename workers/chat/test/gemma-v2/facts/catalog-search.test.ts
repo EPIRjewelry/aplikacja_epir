@@ -3,6 +3,7 @@
  *
  * Mutacje:
  * - **M-E2b-1** — Pomiń `filterProducts` z price w `catalog-search.ts` → T-E2b-PIPE-1 FAIL.
+ * - **M-E2b-4** — Wyłącz `filterProductMatchesByZareczynyTag` w `catalog-search.ts` → T-E2b-GZ-1 / PIPE-4 FAIL.
  */
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {searchGemmaCatalog} from '../../../src/gemma/facts/catalog-search';
@@ -155,5 +156,40 @@ describe('E2b catalog search pipeline', () => {
     const out = await searchGemmaCatalog(env, 'epir-zareczyny', {text: 'fikcyjne'}, 10);
 
     expect(out.map((m) => m.product.productId)).toEqual([pIn.productId]);
+  });
+
+  it('T-E2b-GE-GZ-2: GE vs GZ same metal/budget filters yield identical matchingVariants before tag drop', async () => {
+    const product = fictionalMultiVariantProduct();
+    const match = fictionalMatchFromProduct(product, {
+      metal: ['złoto 585'],
+      priceMax: moneyFromMinor(300_000),
+    });
+    const searchSpy = vi.fn().mockResolvedValue({
+      matches: [match],
+      total: 1,
+      facets: {
+        total: 1,
+        byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+        byStone: {},
+        byMetal: {},
+        byProductType: {},
+      },
+    });
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({search: searchSpy} as never);
+    vi.spyOn(graphql, 'callStorefrontAPI').mockResolvedValue({
+      nodes: [{id: product.productId, tags: [ZARECZYNY_ASSORTMENT_TAG]}],
+    });
+    const baseEnv = {SHOP_DOMAIN: 'fikcyjny.myshopify.com'} as import('../../../src/config/bindings').Env;
+    const gzEnv = {
+      ...baseEnv,
+      PRIVATE_STOREFRONT_API_TOKEN_ZARECZYNY: 'fikcyjny-gz-token',
+    } as import('../../../src/config/bindings').Env;
+    const filters = {text: 'fikcyjne', metal: ['złoto 585'], priceMax: moneyFromMinor(300_000)};
+
+    const geOut = await searchGemmaCatalog(baseEnv, 'epir-online-store', filters, 10);
+    const gzOut = await searchGemmaCatalog(gzEnv, 'epir-zareczyny', filters, 10);
+
+    expect(geOut[0]?.matchingVariants).toEqual(gzOut[0]?.matchingVariants);
+    expect(searchSpy).toHaveBeenCalledTimes(2);
   });
 });
