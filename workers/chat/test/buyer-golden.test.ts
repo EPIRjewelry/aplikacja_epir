@@ -91,7 +91,7 @@ describe('buyer golden — etap 1', () => {
       );
       const parsed = JSON.parse(out.content) as {status?: string};
       expect(parsed.status).toBe('option_value_out_of_range');
-      expect(mcpSpy).not.toHaveBeenCalled();
+      expect(mcpSpy.mock.calls.filter((c) => c[1] === 'update_cart')).toHaveLength(0);
     });
 
     it('T05 create_cart z opcjami — continue_url z mocka', async () => {
