@@ -274,11 +274,16 @@ Postura ingress dla produkcji:
 
 Custom domain per projekt Pages (subdomena). W zależności od storefrontu:
 
+**Secrets (Cloudflare Pages → Settings → Variables and Secrets → Secrets):**
+
 - `SESSION_SECRET`
 - `PUBLIC_STOREFRONT_API_TOKEN`
 - `PRIVATE_STOREFRONT_API_TOKEN` (gdzie wymagany)
-- `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`
 - `EPIR_CHAT_SHARED_SECRET`
+
+**Vars publiczne (nie Secrets)** — źródło prawdy dla Zaręczyn: `[vars]` w [`apps/zareczyny/wrangler.toml`](../apps/zareczyny/wrangler.toml) (deploy / Wrangler), m.in. `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`, `SHOP_ID`, `PUBLIC_STOREFRONT_URL`. **Nie** ustawiać `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID` jako Secret w panelu Pages.
+
+Obecność `SESSION_SECRET` w **Production** w panelu wymaga osobnej weryfikacji operatora przed deployem bez fallbacku sesji (plan E1b) — lista w repo nie zastępuje kontroli UI.
 
 Deploy Pages (subdomeny Hydrogen):
 
@@ -496,7 +501,7 @@ Oczekiwany sygnał: oba skrypty kończą się kodem `0` i drukują końcowy stat
 | 8 | Sekrety i vars `workers/bigquery-batch` | eksport: `PIPELINE_*_INGEST_URL` (co najmniej jeden); **RPC `run_analytics_query`:** `R2_SQL_API_TOKEN` + vars `R2_SQL_*` / `WAREHOUSE_SQL_*` (patrz [`wrangler.toml`](../../workers/bigquery-batch/wrangler.toml)) |
 | 9 | Sekrety i vars `workers/analyst-worker` | `ANALYST_HTTP_BEARER` (`wrangler secret put` w katalogu workera); deploy **po** `workers/bigquery-batch`; w prod **`ANALYST_EXPOSE_VALID_QUERY_IDS=false`** (lub brak); opcjonalnie limity `ANALYST_RATE_LIMIT_*` jak w sekcji `workers/analyst-worker` poniżej |
 | 10 | Sekrety `workers/marketing-ingest` | `MARKETING_PIPELINE_INGEST_URL`; opcjonalnie `MARKETING_PIPELINE_INGEST_TOKEN`; `GA4_SERVICE_ACCOUNT_JSON`; Ads: `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_ADS_DEVELOPER_TOKEN`; opcjonalnie `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (MCC), `MARKETING_OPS_PREVIEW_KEY` (Bearer do `/ops/marketing-preview`); vars (nie-sekret): `GA4_PROPERTY_ID`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CUSTOMER_ID` (Dashboard / `[vars]` — patrz [`wrangler.toml`](../workers/marketing-ingest/wrangler.toml)) |
-| 11 | Sekrety Cloudflare Pages (`kazka`, `zareczyny`) | `SESSION_SECRET`, `PUBLIC_STOREFRONT_API_TOKEN`, `PRIVATE_STOREFRONT_API_TOKEN` (gdzie wymagany), `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`, `EPIR_CHAT_SHARED_SECRET` ustawione w obu projektach Pages |
+| 11 | Sekrety Cloudflare Pages (`kazka`, `zareczyny`) | `SESSION_SECRET`, `PUBLIC_STOREFRONT_API_TOKEN`, `PRIVATE_STOREFRONT_API_TOKEN` (gdzie wymagany), `EPIR_CHAT_SHARED_SECRET` ustawione w obu projektach Pages; dla **zareczyny** `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID` wyłącznie w `[vars]` repo (`apps/zareczyny/wrangler.toml`), **nie** jako Secret; operator potwierdza `SESSION_SECRET` w Production w UI przed release E1b bez fallbacku sesji |
 | 12 | Migracja D1 `ai-assistant-sessions-db` | `005_consent_events.sql` zaaplikowana (`wrangler d1 execute ai-assistant-sessions-db --remote --file=./migrations/005_consent_events.sql` z katalogu `workers/chat`); tabela `consent_events` istnieje |
 | 13 | Migracje D1 `jewelry-analytics-db` | wszystkie aktualne pliki migracyjne z `workers/bigquery-batch` zaaplikowane na bazę docelową |
 
