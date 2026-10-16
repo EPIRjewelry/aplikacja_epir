@@ -59,6 +59,7 @@ import {
   lastBuyerHistoryEntries,
   readBuyerSessionHistory,
 } from './session-history';
+import { detectIllegalOrHarmfulRequest } from '../intent/jailbreak-prefilter';
 import { ensureBuyerSessionContext } from './session-context';
 import {
   brandKeyForChannel,
@@ -151,7 +152,7 @@ function catalogFactsGuidance(modelTools: BuyerToolId[]): string {
     : 'Produkty, ceny, dostępność i linki: wyłącznie z bloku [PRODUKT NA STRONIE] w tej turze (narzędzie katalogu niedostępne).';
   return [
     catalogLine,
-    'Nigdy nie pokazuj klientowi id/gid i nie proś go o id wariantu; pytaj o rozmiar, metal lub kamień.',
+    'Nigdy nie pokazuj klientowi id/gid i nie proś go o id wariantu; o rozmiar, metal lub kamień pytaj tylko przed create_cart lub update_cart.',
     'Nie potwierdzaj istnienia produktu, kolekcji, kodu rabatowego ani promocji, których nie ma w wyniku narzędzia, w odpowiedzi bazy wiedzy ani w totals koszyka.',
     'Na nieznaną nazwę lub kod: «nie znajduję takiej pozycji / takiego kodu w ofercie», potem propozycja z wyniku wyszukiwania. Nigdy nie obiecuj naliczenia rabatu.',
   ].join('\n');
@@ -484,6 +485,7 @@ type FinalizeReplyContext = {
   /** messages type=error z create/update — treść klientowi, bez continue_url. */
   cartClientErrors?: string[];
   hadGetCartThisTurn?: boolean;
+  buyerToolNamesThisTurn: string[];
 };
 
 function cartDeterministicReply(ctx: FinalizeReplyContext): string | null {
@@ -610,7 +612,7 @@ async function finalizeBuyerReply(
   if (sessionId?.trim()) {
     try {
       await appendBuyerSessionMessage(env, sessionId, 'user', userText);
-      await appendBuyerSessionMessage(env, sessionId, 'assistant', guarded);
+      await appendBuyerSessionMessage(env, sessionId, 'assistant', guarded, ctx.buyerToolNamesThisTurn);
     } catch (e) {
       console.warn('[buyer.compose_turn] session history append failed', e);
     }
@@ -620,6 +622,21 @@ async function finalizeBuyerReply(
 
 function toolDefsInclude(defs: ReturnType<typeof buildBuyerToolDefinitions>, name: string): boolean {
   return defs.some((d) => d.function?.name === name);
+}
+
+async function lastAssistToolState(env: Env, sessionId: string): Promise<'absent' | 'empty' | 'nonempty'> {
+  const sid = sessionId.trim();
+  if (!sid || !env.SESSION_DO) return 'absent';
+  try {
+    const res = await env.SESSION_DO.get(env.SESSION_DO.idFromName(sid)).fetch('https://session/history');
+    const raw = res.ok ? await res.json().catch(() => []) : [];
+    const last = Array.isArray(raw) ? [...raw].reverse().find((e) => e?.role === 'assistant') : undefined;
+    if (!last || typeof last !== 'object' || !('tool_calls' in last)) return 'absent';
+    const tc = (last as {tool_calls?: unknown}).tool_calls;
+    return Array.isArray(tc) && tc.length ? 'nonempty' : 'empty';
+  } catch {
+    return 'absent';
+  }
 }
 
 export async function composeBuyerAssistantReply(
@@ -789,7 +806,16 @@ export async function composeBuyerAssistantReply(
     hadSearchCatalogThisTurn: false,
     cartMutatedSuccessfullyThisTurn: false,
     variantOptionIndex,
+    buyerToolNamesThisTurn: [],
   };
+
+  const catalogForceOk =
+    Boolean(sessionId) &&
+    !productHandle &&
+    !detectIllegalOrHarmfulRequest(userText) &&
+    (await lastAssistToolState(env, sessionId)) === 'empty' &&
+    modelTools.includes('search_catalog');
+  let catalogForceSortNext = false;
 
   const messages: GroqMessage[] = [
     { role: 'system', content: systemParts },
@@ -836,7 +862,10 @@ export async function composeBuyerAssistantReply(
       variantOptionIndex,
       shopifyCustomerId: null,
       request,
+      catalogSortMinPrice: catalogForceSortNext && call.name === 'search_catalog',
     });
+    finalizeCtx.buyerToolNamesThisTurn.push(call.name);
+    if (catalogForceSortNext && call.name === 'search_catalog') catalogForceSortNext = false;
     if (executed.sessionCartId !== undefined) {
       sessionCartId = executed.sessionCartId;
     }
@@ -949,6 +978,9 @@ export async function composeBuyerAssistantReply(
       const cartTool = detectForcedCartTool(userText, sessionCartId);
       if (cartTool && toolDefsInclude(toolDefinitions, cartTool)) return cartTool;
     }
+    if (catalogForceOk && toolDefsInclude(toolDefinitions, 'search_catalog')) {
+      return 'search_catalog';
+    }
     return null;
   };
 
@@ -996,13 +1028,16 @@ export async function composeBuyerAssistantReply(
           JSON.stringify({
             tag: looksLikeToolCallAsText(text)
               ? 'buyer.tool_as_text_retry'
-              : 'buyer.cart_intent_force_tool',
+              : forcedName === 'search_catalog'
+                ? 'buyer.catalog_intent_force_tool'
+                : 'buyer.cart_intent_force_tool',
             keys: looksLikeToolCallAsText(text)
               ? toolAsTextKeyNames(text)
               : undefined,
             forced: forcedName,
           }),
         );
+        if (forcedName === 'search_catalog') catalogForceSortNext = true;
         try {
           const forceStream = await streamGroqEvents(
             messages,

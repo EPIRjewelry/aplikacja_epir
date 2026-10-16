@@ -53,16 +53,20 @@ export async function appendBuyerSessionMessage(
   sessionId: string,
   role: 'user' | 'assistant',
   content: string,
+  assistantToolNames?: string[],
 ): Promise<void> {
   const sid = sessionId.trim();
   const text = content.trim();
   if (!sid || !text || !env.SESSION_DO) return;
   try {
-    const stub = sessionStub(env, sid);
-    await stub.fetch('https://session/append', {
+    const body: Record<string, unknown> = {role, content: text};
+    if (role === 'assistant') {
+      body.tool_calls = (assistantToolNames ?? []).map((name) => ({type: 'function', function: {name}}));
+    }
+    await sessionStub(env, sid).fetch('https://session/append', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({role, content: text}),
+      body: JSON.stringify(body),
     });
   } catch (e) {
     console.warn('[buyer.session_history] append failed', e);
