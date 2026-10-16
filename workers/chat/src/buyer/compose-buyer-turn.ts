@@ -502,12 +502,16 @@ function cartDeterministicReply(ctx: FinalizeReplyContext): string | null {
 function scrubToolAsTextOrFallback(
   reply: string,
   ctx: FinalizeReplyContext,
+  sessionId?: string,
 ): string {
   if (!looksLikeToolCallAsText(reply)) return reply;
+  const sid = sessionId?.trim().slice(0, 8);
   console.log(
     JSON.stringify({
       tag: 'buyer.tool_as_text_blocked',
+      site: 'finalize_scrub',
       keys: toolAsTextKeyNames(reply),
+      ...(sid ? { sid } : {}),
     }),
   );
   return cartDeterministicReply(ctx) ?? FINAL_TOOL_FALLBACK_USER;
@@ -542,7 +546,7 @@ async function finalizeBuyerReply(
   ctx: FinalizeReplyContext,
 ): Promise<string> {
   let scrubbed = scrubGidFromClientReply(reply);
-  scrubbed = scrubToolAsTextOrFallback(scrubbed, ctx);
+  scrubbed = scrubToolAsTextOrFallback(scrubbed, ctx, sessionId);
   scrubbed = sanitizeMarkdownLinks(scrubbed, ctx.allowedUrls, {
     channelId: ctx.channelId,
     originalByNorm: ctx.originalUrlByNorm,
@@ -1019,6 +1023,15 @@ export async function composeBuyerAssistantReply(
           );
           const forced = await collectStreamRound(forceStream);
           if (forced.toolCalls.length === 0) {
+            const sid = sessionId?.trim().slice(0, 8);
+            console.log(
+              JSON.stringify({
+                tag: 'buyer.forced_no_tool_call',
+                forced: forcedName,
+                had_tool_as_text: looksLikeToolCallAsText(text),
+                ...(sid ? { sid } : {}),
+              }),
+            );
             return finishReply(
               looksLikeToolCallAsText(text)
                 ? clientReplyForToolAsTextWithoutForce(text)
@@ -1053,10 +1066,13 @@ export async function composeBuyerAssistantReply(
         }
       }
       if (looksLikeToolCallAsText(text)) {
+        const sid = sessionId?.trim().slice(0, 8);
         console.log(
           JSON.stringify({
             tag: 'buyer.tool_as_text_blocked',
+            site: 'round_no_tool_calls',
             keys: toolAsTextKeyNames(text),
+            ...(sid ? { sid } : {}),
           }),
         );
         return finishReply(clientReplyForToolAsTextWithoutForce(text));
@@ -1139,6 +1155,14 @@ export async function composeBuyerAssistantReply(
         }
       }
       if (recoveredCall && !FINAL_RECOVERABLE_TOOL_NAMES.has(recoveredCall.name)) {
+        const sid = sessionId?.trim().slice(0, 8);
+        console.log(
+          JSON.stringify({
+            tag: 'buyer.final_non_recoverable_tool',
+            tool: recoveredCall.name,
+            ...(sid ? { sid } : {}),
+          }),
+        );
         return finishReply(FINAL_TOOL_FALLBACK_USER);
       }
     }
