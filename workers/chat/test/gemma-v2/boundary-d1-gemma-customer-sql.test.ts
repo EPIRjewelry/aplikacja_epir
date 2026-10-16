@@ -14,6 +14,7 @@ const ROW = {
   operatorStorefront: 6,
   buyerMsgOperatorSession: 7,
   buyerMsgInternalDashboardSession: 8,
+  buyerMsgOperatorStorefrontSession: 9,
 } as const;
 
 async function setupSchema() {
@@ -78,6 +79,11 @@ async function seedSessions() {
       channel: 'internal-dashboard',
       storefront_id: 'online-store',
     },
+    {
+      session_id: 'sess_sql-op-sf-session-fikcyjny',
+      channel: 'online-store',
+      storefront_id: 'operator',
+    },
   ];
 
   for (const row of rows) {
@@ -139,6 +145,12 @@ async function seedMessages() {
     {
       id: ROW.buyerMsgInternalDashboardSession,
       session_id: 'sess_sql-idash-session-fikcyjny',
+      channel: 'online-store',
+      storefront_id: 'online-store',
+    },
+    {
+      id: ROW.buyerMsgOperatorStorefrontSession,
+      session_id: 'sess_sql-op-sf-session-fikcyjny',
       channel: 'online-store',
       storefront_id: 'online-store',
     },

@@ -2897,7 +2897,15 @@ async function handleChat(
   );
 
   if (!isOperatorChannel(payload.channel)) {
-    return handleBuyerTurn(request, env, brandLock, raw);
+    const buyerUrl = new URL(request.url);
+    const loggedInCustomerIdForBuyer =
+      ingressOptions?.appProxyVerified === true
+        ? normalizeOptionalString(buyerUrl.searchParams.get('logged_in_customer_id'))
+        : null;
+    return handleBuyerTurn(request, env, brandLock, raw, {
+      appProxyVerified: ingressOptions?.appProxyVerified,
+      loggedInCustomerId: loggedInCustomerIdForBuyer,
+    });
   }
 
   // [TOKEN VAULT] Bez zmian
