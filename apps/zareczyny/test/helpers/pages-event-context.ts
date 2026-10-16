@@ -1,6 +1,10 @@
-import type {PagesFunction} from '@remix-run/cloudflare-pages';
+type OnRequest = (
+  context: EventContext<Env, string, unknown>,
+) => Response | Promise<Response>;
 
-type OnRequest = PagesFunction<Env>;
+// AUDIT-LOCAL: Node has no Workers `caches` global.
+const memCache = {match: async () => undefined, put: async () => {}, delete: async () => false};
+(globalThis as any).caches ??= {default: memCache, open: async () => memCache};
 
 export function makeTestEnv(overrides: Partial<Env> = {}): Env {
   return {
@@ -21,9 +25,9 @@ export function makeTestEnv(overrides: Partial<Env> = {}): Env {
 }
 
 export async function loadBuiltOnRequest(): Promise<OnRequest> {
-  const {pathToFileURL} = await import('node:url');
-  const bundleUrl = new URL('../functions/[[path]].js', import.meta.url);
-  const mod = (await import(pathToFileURL(bundleUrl.href).href)) as {
+  const {pathToFileURL, fileURLToPath} = await import('node:url');
+  const bundleUrl = new URL('../../functions/[[path]].js', import.meta.url);
+  const mod = (await import(pathToFileURL(fileURLToPath(bundleUrl)).href)) as {
     onRequest: OnRequest;
   };
   return mod.onRequest;

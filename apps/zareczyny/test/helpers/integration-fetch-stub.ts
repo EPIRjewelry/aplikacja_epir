@@ -71,6 +71,10 @@ export function createIntegrationFetchStub(options: IntegrationFetchStubOptions)
 }
 
 function stubStorefrontGraphql(body: string) {
+  // AUDIT-LOCAL
+  if (body.includes('localization')) {
+    return {data: {shop: {id: 'gid://shopify/Shop/1', name: 'EPIR Test'}, localization: {language: {isoCode: 'PL'}, country: {isoCode: 'PL', currency: {isoCode: 'PLN'}}}}};
+  }
   if (body.includes('query layout') || body.includes('layout')) {
     return {data: {shop: {name: 'EPIR Test', description: 'integration'}}};
   }

@@ -1,7 +1,6 @@
 import {
   createPagesFunctionHandler,
   type GetLoadContextFunction,
-  type PagesFunction,
 } from '@remix-run/cloudflare-pages';
 import * as build from '@remix-run/dev/server-build';
 import {getStoreFrontClient} from '@epir/utils';
@@ -73,7 +72,7 @@ const remixOnRequest = createPagesFunctionHandler({
   mode: process.env.NODE_ENV,
 });
 
-export const onRequest: PagesFunction<Env> = async (context) => {
+export const onRequest = async (context: EventContext<Env, string, unknown>) => {
   const response = await remixOnRequest(context);
   const session = context.data?.[EPIR_SESSION_BRIDGE_KEY] as
     | EpirZareczynySession

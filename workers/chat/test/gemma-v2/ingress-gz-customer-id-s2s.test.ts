@@ -140,6 +140,36 @@ describe('E1b GZ S2S customer id ingress', () => {
     expect(ingress?.loggedInCustomerId).toBe(TEST_GID);
   });
 
+  it('T2b: hydrogen-zareczyny channel with wrong storefrontId → loggedInCustomerId null', async () => {
+    const handleSpy = vi.spyOn(buyerTurn, 'handleBuyerTurn');
+    const env = makeEnv();
+
+    const response = await worker.fetch(
+      new Request('https://asystent.epirbizuteria.pl/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-EPIR-SHARED-SECRET': 'shared-secret',
+          'X-EPIR-STOREFRONT-ID': 'online-store',
+          'X-EPIR-CHANNEL': 'hydrogen-zareczyny',
+          'X-EPIR-LOGGED-IN-CUSTOMER-ID': TEST_GID,
+        },
+        body: JSON.stringify({
+          message: 'hej',
+          stream: false,
+          session_id: 'sess_gz-wrong-storefront',
+          brand: 'zareczyny',
+        }),
+      }),
+      env,
+      noopCtx,
+    );
+
+    expect(response.status).toBe(200);
+    const ingress = handleSpy.mock.calls[0]?.[4];
+    expect(ingress?.loggedInCustomerId).toBeNull();
+  });
+
   it('T2: S2S GZ without customer header → loggedInCustomerId null', async () => {
     const handleSpy = vi.spyOn(buyerTurn, 'handleBuyerTurn');
     const env = makeEnv();
