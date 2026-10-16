@@ -131,6 +131,7 @@ describe('E1 index.ts → handleBuyerTurn ingress (decyzja 1, M2b/M2c)', () => {
     );
 
     expect(response.status).toBe(200);
+    expectBuyerUnavailableJson((await response.json()) as Record<string, unknown>);
     expect(handleSpy).toHaveBeenCalledTimes(1);
     const ingress = handleSpy.mock.calls[0]?.[4];
     expect(ingress?.appProxyVerified).not.toBe(true);
