@@ -1,8 +1,9 @@
-import path from 'path';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {defineConfig} from 'vitest/config';
-import {defineWorkersConfig} from '@cloudflare/vitest-pool-workers/config';
+import {defineWorkersProject} from '@cloudflare/vitest-pool-workers/config';
 
-const rootDir = path.dirname(new URL(import.meta.url).pathname);
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 const nodeProject = defineConfig({
   resolve: {
@@ -28,7 +29,7 @@ const nodeProject = defineConfig({
   },
 });
 
-const workersD1Project = defineWorkersConfig({
+const workersD1Project = defineWorkersProject({
   test: {
     name: 'chat-d1-workers',
     include: ['test/gemma-v2/boundary-d1-gemma-customer-sql.test.ts'],

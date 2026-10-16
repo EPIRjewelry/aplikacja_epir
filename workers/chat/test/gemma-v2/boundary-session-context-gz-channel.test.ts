@@ -46,7 +46,7 @@ function makeSessionNamespace() {
 }
 
 describe('E0 boundary — GZ channel fallback (session-context.ts)', () => {
-  it('epir-zareczyny without bodyChannel → hydrogen-zareczyny in set-storefront-context', async () => {
+  it('epir-zareczyny bez storefrontId i bodyChannel → fallback channelId na hydrogen-zareczyny', async () => {
     const {namespace, calls} = makeSessionNamespace();
     const env = {SESSION_DO: namespace} as Env;
     const sid = 'sess_gz-fallback-fikcyjny';
@@ -54,13 +54,12 @@ describe('E0 boundary — GZ channel fallback (session-context.ts)', () => {
     await ensureBuyerSessionContext(env, {
       sessionId: sid,
       channelId: 'epir-zareczyny',
-      storefrontId: 'zareczyny',
       userText: 'Fikcyjne zapytanie GZ',
     });
 
     const sf = calls.find((c) => c.path === 'set-storefront-context');
     expect(sf).toBeDefined();
     expect((sf!.body as {channel?: string}).channel).toBe('hydrogen-zareczyny');
-    expect((sf!.body as {storefront_id?: string}).storefront_id).toBe('zareczyny');
+    expect((sf!.body as {storefront_id?: string | null}).storefront_id).toBeNull();
   });
 });
