@@ -3,11 +3,12 @@
  * - **M-E3-9** — parse fail → odmowa → COMPOSE-2 FAIL
  * - **M-E3-11** — append poza gate → GATE-2 FAIL
  * - **M-E3-14** — prefiltr po wywołaniu A → JB-1 FAIL
+ * - **M-E3-13** — ignoruj cart_consent w compose-turn → CART-1 FAIL
  */
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {composeGemmaReply} from '../../src/gemma/compose-gemma-reply';
 import {gemmaV2EmergencyReply} from '../../src/gemma/fallback';
-import {epirRefusalReply} from '../../src/gemma/profiles/epir';
+import {epirCartReply, epirRefusalReply} from '../../src/gemma/profiles/epir';
 import type {Env} from '../../src/config/bindings';
 import {callOrderIndexes, makeTrackedSessionNamespace} from './helpers/session-do-calls';
 import {stubGemmaIntentJson} from './helpers/stub-gemma-intent';
@@ -124,5 +125,30 @@ describe('E3 composeGemmaReply intent orchestration', () => {
     );
     expect(reply).toBe(epirRefusalReply('epir-online-store'));
     expect(groqSpy).not.toHaveBeenCalled();
+  });
+
+  it('T-E3-CART-1: cart add without consent asks for confirmation; with consent it does not', async () => {
+    const {namespace} = makeTrackedSessionNamespace();
+    const env = {SESSION_DO: namespace} as Env;
+    const opts = {storefrontId: 'online-store', bodyChannel: 'online-store'};
+    await stubGemmaIntentJson({cart_action: 'add', cart_consent: false});
+    const noConsent = await composeGemmaReply(
+      env,
+      'epir-online-store',
+      'Fikcyjna prośba o koszyk',
+      new Request('https://example.com'),
+      {...opts, sessionId: 'sess_e3_cart_1a'},
+    );
+    expect(noConsent).toBe(epirCartReply(true));
+
+    await stubGemmaIntentJson({cart_action: 'add', cart_consent: true});
+    const withConsent = await composeGemmaReply(
+      env,
+      'epir-online-store',
+      'Fikcyjna zgoda na koszyk',
+      new Request('https://example.com'),
+      {...opts, sessionId: 'sess_e3_cart_1b'},
+    );
+    expect(withConsent).toBe(epirCartReply(false));
   });
 });

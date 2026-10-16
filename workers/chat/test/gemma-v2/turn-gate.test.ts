@@ -72,4 +72,25 @@ describe('E3 withBuyerTurnGate', () => {
     ).rejects.toThrow('fikcyjny błąd tury');
     expect(calls).toContain('end-buyer-turn');
   });
+
+  it('T-E3-GATE-4: begin/end failure does not lose the turn result', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const namespace = {
+      idFromName(name: string) {
+        return name;
+      },
+      get() {
+        return {
+          fetch() {
+            return Promise.reject(new Error('fikcyjna awaria DO'));
+          },
+        } as unknown as DurableObjectStub;
+      },
+    } as unknown as DurableObjectNamespace;
+    const env = {SESSION_DO: namespace} as Env;
+    const out = await withBuyerTurnGate(env, 'sess_gate_4', 'turn-4', async () => 'odpowiedz');
+    expect(out).toBe('odpowiedz');
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    warnSpy.mockRestore();
+  });
 });

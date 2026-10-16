@@ -33,4 +33,15 @@ describe('E3 extractGemmaIntent', () => {
       expect.objectContaining({timingLabel: 'buyer_gemma_intent', max_tokens: 512}),
     );
   });
+
+  it('T-E3-INTENT-4: parse failure → exactly one retry, then parsed intent', async () => {
+    const ai = await import('../../../src/ai-client');
+    const spy = vi
+      .spyOn(ai, 'getGroqResponse')
+      .mockResolvedValueOnce('not-json')
+      .mockResolvedValueOnce(fictionalGemmaIntentJson({slots: {recipient: 'żona'}}));
+    const out = await extractGemmaIntent({env: {} as never, userText: 'Fikcyjne', history: []});
+    expect(out.ok).toBe(true);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
 });

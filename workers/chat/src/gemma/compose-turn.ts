@@ -12,11 +12,6 @@ import {withBuyerTurnGate} from './turn-gate';
 import {gemmaV2EmergencyReply} from './fallback';
 import type {GemmaIntent} from './intent/schema';
 
-export type ComposeTurnTrace = {
-  usedEmergency: boolean;
-  nextState: string;
-};
-
 function cartNeedsConsent(intent: GemmaIntent): boolean {
   if (!intent.cart_action || intent.cart_action === 'show') return false;
   return intent.cart_consent !== true;
@@ -33,7 +28,7 @@ export async function runGemmaV2Turn(
   channelId: BuyerChannelId,
   userText: string,
   opts: ComposeBuyerTurnOptions | undefined,
-): Promise<{reply: string; trace: ComposeTurnTrace}> {
+): Promise<{reply: string}> {
   const sessionId = opts?.sessionId?.trim() ?? '';
   const turnId = crypto.randomUUID();
 
@@ -114,17 +109,8 @@ export async function runGemmaV2Turn(
   };
 
   if (!sessionId) {
-    const reply = await runInsideGate();
-    return {reply, trace: {usedEmergency: reply === gemmaV2EmergencyReply(channelId), nextState: 'powitanie'}};
+    return {reply: await runInsideGate()};
   }
 
-  const reply = await withBuyerTurnGate(env, sessionId, turnId, runInsideGate);
-  const saved = await readGemmaState(env, sessionId);
-  return {
-    reply,
-    trace: {
-      usedEmergency: reply === gemmaV2EmergencyReply(channelId),
-      nextState: saved.state,
-    },
-  };
+  return {reply: await withBuyerTurnGate(env, sessionId, turnId, runInsideGate)};
 }
