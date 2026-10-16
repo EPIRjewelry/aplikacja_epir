@@ -3,7 +3,7 @@
  * Run: npm test -w @epir/mcp-data-ops
  */
 import { describe, expect, it } from 'vitest';
-import { D1_DATABASES, WAREHOUSE_QUERY_IDS, sampleColumnsFor } from '../src/config.js';
+import { D1_DATABASES, READONLY_WAREHOUSE_QUERY_IDS, WAREHOUSE_QUERY_IDS, sampleColumnsFor } from '../src/config.js';
 
 describe('epir-data-ops config (Kustosz wiring)', () => {
   it('exposes Q1–Q10 whitelist', () => {
@@ -11,6 +11,12 @@ describe('epir-data-ops config (Kustosz wiring)', () => {
     expect(WAREHOUSE_QUERY_IDS[0]).toBe('Q1_CONVERSION_CHAT');
     expect(WAREHOUSE_QUERY_IDS).toContain('Q3_TOP_CHAT_QUESTIONS');
     expect(WAREHOUSE_QUERY_IDS).toContain('Q9_TOOL_USAGE');
+  });
+
+  it('readonly warehouse list is Q1–Q10 without Q3', () => {
+    expect(READONLY_WAREHOUSE_QUERY_IDS).toHaveLength(9);
+    expect(READONLY_WAREHOUSE_QUERY_IDS).not.toContain('Q3_TOP_CHAT_QUESTIONS');
+    expect(READONLY_WAREHOUSE_QUERY_IDS[0]).toBe('Q1_CONVERSION_CHAT');
   });
 
   it('allows operator_daily_reports without message content sample cols', () => {

@@ -37,6 +37,20 @@ export const READONLY_SAFE_ANALYTICS_QUERY_IDS = [
   'Q10_SESSION_DURATION',
 ] as const;
 
+/** Skrót `Q1`…`Q10` → kanoniczne queryId. Q3 jest na liście, ale readonly go odrzuca. */
+export const ANALYTICS_QUERY_ALIASES: Record<string, (typeof ANALYTICS_QUERY_IDS)[number]> = {
+  Q1: 'Q1_CONVERSION_CHAT',
+  Q2: 'Q2_CONVERSION_PATHS',
+  Q3: 'Q3_TOP_CHAT_QUESTIONS',
+  Q4: 'Q4_STOREFRONT_SEGMENTATION',
+  Q5: 'Q5_TOP_PRODUCTS',
+  Q6: 'Q6_CHAT_ENGAGEMENT',
+  Q7: 'Q7_PRODUCT_TO_PURCHASE',
+  Q8: 'Q8_DAILY_EVENTS',
+  Q9: 'Q9_TOOL_USAGE',
+  Q10: 'Q10_SESSION_DURATION',
+};
+
 export type OperatorAuthEnv = {
   EPIR_OPERATOR_PANEL_SECRET?: string;
   EPIR_READONLY_ANALYTICS_KEY?: string;
@@ -103,6 +117,35 @@ export function isWhitelistedAnalyticsQueryId(queryId: string): boolean {
 
 export function isReadonlySafeAnalyticsQueryId(queryId: string): boolean {
   return (READONLY_SAFE_ANALYTICS_QUERY_IDS as readonly string[]).includes(queryId);
+}
+
+/**
+ * Kanoniczne queryId. Przyjmuje pełny identyfikator (dowolna wielkość liter)
+ * albo skrót `Q1`…`Q10`. Nieznany tekst wraca bez zmian (caller odrzuci whitelistą).
+ */
+export function resolveAnalyticsQueryId(raw: string): string {
+  const trimmed = raw.trim();
+  if (isWhitelistedAnalyticsQueryId(trimmed)) return trimmed;
+  const upper = trimmed.toUpperCase();
+  const alias = ANALYTICS_QUERY_ALIASES[upper];
+  if (alias) return alias;
+  const canonical = ANALYTICS_QUERY_IDS.find((id) => id.toUpperCase() === upper);
+  return canonical ?? trimmed;
+}
+
+export function analyticsQueryDeniedPayload(
+  request: Request,
+  env: OperatorAuthEnv,
+  error: 'queryId_required' | 'queryId_not_whitelisted',
+): { ok: false; error: string; allowedQueryIds: string[]; hint: string } {
+  const readonly = isReadonlyAnalyticsCredential(request, env);
+  const allowedQueryIds = readonly
+    ? [...READONLY_SAFE_ANALYTICS_QUERY_IDS]
+    : [...ANALYTICS_QUERY_IDS];
+  const hint = readonly
+    ? 'Readonly: allowedQueryIds albo skrót Q1, Q2, Q4–Q10. Q3_TOP_CHAT_QUESTIONS zwraca treść wiadomości i wymaga EPIR_OPERATOR_PANEL_SECRET.'
+    : 'Tylko Q1–Q10 z whitelisty (pełne queryId albo skrót Q1–Q10); brak własnego SQL.';
+  return { ok: false, error, allowedQueryIds, hint };
 }
 
 export function analyticsReadUnauthorizedResponse(corsHeaders: Record<string, string>): Response {
