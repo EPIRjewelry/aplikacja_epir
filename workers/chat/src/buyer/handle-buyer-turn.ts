@@ -15,7 +15,7 @@ import {
   extractStorefrontIdFromBody,
 } from './session-context';
 import {channelIdFromBrandLock, readChannelMode, readGemmaCoreMode} from './channel-switch';
-import {composeGemmaReply} from '../gemma/compose-gemma-reply';
+import {composeGemmaReply} from '../gemma';
 import {isAllowedGemmaInternalTurn, readGemmaTesterIds} from '../gemma/internal-access';
 
 export type BuyerTurnIngress = {
