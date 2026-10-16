@@ -3,7 +3,7 @@ import {env} from 'cloudflare:test';
 import {gemmaCustomerMessagesSql} from '../../../bigquery-batch/src/gemma-channel-filter';
 
 /** Oczekiwane ID wierszy przechodzące gemmaCustomerMessagesSql (tylko GE + GZ). */
-export const GEMMA_CUSTOMER_SQL_PASSING_IDS = [1, 2] as const;
+const EXPECTED_PASSING_IDS = [1, 2] as const;
 
 const ROW = {
   ge: 1,
@@ -175,6 +175,6 @@ describe('E0 boundary — gemmaCustomerMessagesSql on real D1 (Miniflare)', () =
     ).all<{id: number}>();
 
     const ids = (result.results ?? []).map((r) => r.id);
-    expect(ids).toEqual([...GEMMA_CUSTOMER_SQL_PASSING_IDS]);
+    expect(ids).toEqual([...EXPECTED_PASSING_IDS]);
   });
 });
