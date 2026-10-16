@@ -164,6 +164,14 @@ export async function handleBuyerTurn(
     }
     const errMsg = e instanceof Error ? e.message : String(e);
     if (/AI Gateway returned empty content/i.test(errMsg)) {
+      const sid = sessionId.trim().slice(0, 8);
+      console.log(
+        JSON.stringify({
+          tag: 'buyer.gateway_empty_content',
+          channel_id: channelId,
+          sid,
+        }),
+      );
       return new Response(
         JSON.stringify({
           type: 'message',

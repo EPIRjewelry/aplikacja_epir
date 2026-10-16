@@ -371,6 +371,7 @@ describe('handleBuyerTurn', () => {
     vi.spyOn(compose, 'composeBuyerAssistantReply').mockRejectedValue(
       new Error('AI Gateway returned empty content'),
     );
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
     const body = { message: 'dodaj do koszyka', session_id: 'sess-empty-ai' };
@@ -379,6 +380,12 @@ describe('handleBuyerTurn', () => {
     const json = await res.json();
     expect(json.type).toBe('message');
     expect(json.reply).toBe(FINAL_TOOL_FALLBACK_USER);
+    const gatewayLog = logSpy.mock.calls
+      .map((c) => c[0])
+      .find((x) => typeof x === 'string' && x.includes('buyer.gateway_empty_content'));
+    expect(gatewayLog).toContain('"sid":"sess-emp"');
+    expect(gatewayLog).toContain('"channel_id":"epir-online-store"');
+    logSpy.mockRestore();
   });
 
   it('handleChat passes parsed body once — widget payload is not 400', async () => {
