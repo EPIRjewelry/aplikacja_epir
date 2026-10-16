@@ -22,16 +22,25 @@ export async function readGemmaTesterIds(
   }
 }
 
-/** E1: tylko GE (App Proxy + allowlista). GZ/kazka w internal → false do E1b. */
+/**
+ * E1: GE — App Proxy + allowlista.
+ * E1b: GZ — pełny GID z S2S BFF (bez appProxyVerified).
+ */
 export function isAllowedGemmaInternalTurn(params: {
   channelId: BuyerChannelId;
   appProxyVerified?: boolean;
   loggedInCustomerId?: string | null;
   testerIds: Set<string>;
 }): boolean {
-  if (params.channelId !== 'epir-online-store') return false;
-  if (params.appProxyVerified !== true) return false;
   const customerId = params.loggedInCustomerId?.trim();
   if (!customerId) return false;
-  return params.testerIds.has(customerId);
+  if (!params.testerIds.has(customerId)) return false;
+
+  if (params.channelId === 'epir-online-store') {
+    return params.appProxyVerified === true;
+  }
+  if (params.channelId === 'epir-zareczyny') {
+    return true;
+  }
+  return false;
 }

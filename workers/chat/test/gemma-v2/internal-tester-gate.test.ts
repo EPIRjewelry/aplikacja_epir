@@ -107,8 +107,8 @@ describe('E1 internal tester gate (GE only)', () => {
     expect(composeSpy).not.toHaveBeenCalled();
   });
 
-  it('internal + ingress: GZ channel blocked for all (E1b)', async () => {
-    const composeSpy = vi.spyOn(compose, 'composeBuyerAssistantReply');
+  it('internal + ingress: GZ allowlisted tester via S2S ingress (E1b) → compose', async () => {
+    vi.spyOn(compose, 'composeBuyerAssistantReply').mockResolvedValue('gz-internal');
     const env = {
       GEMMA_RUNTIME_KV: makeGemmaRuntimeKv({
         channelMode: 'internal',
@@ -118,11 +118,11 @@ describe('E1 internal tester gate (GE only)', () => {
     } as never;
     const body = geBuyerBody();
     const res = await handleBuyerTurn(postReq(body), env, gzBuyerBrandLock(), body, {
-      appProxyVerified: true,
+      appProxyVerified: false,
       loggedInCustomerId: FIKCYJNY_TESTER_ID,
     });
-    expect(await res.json()).toEqual(BUYER_UNAVAILABLE_JSON);
-    expect(composeSpy).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as {type: string}).type).toBe('message');
   });
 
   it('internal + ingress: KAZKA channel blocked for all (M13)', async () => {
