@@ -50,9 +50,7 @@ describe('E0 boundary — SessionDO call order in buyer turn', () => {
     const appendRoles = calls
       .filter((c) => c.path === 'append')
       .map((c) => (c.body as {role?: string}).role);
-    expect(appendRoles.filter((r) => r === 'user').length).toBeGreaterThanOrEqual(1);
-    expect(appendRoles.filter((r) => r === 'assistant').length).toBeGreaterThanOrEqual(1);
-    expect(appendRoles.every((r) => r === 'user' || r === 'assistant')).toBe(true);
+    expect(appendRoles).toEqual(['user', 'assistant']);
   });
 
   it('second turn reuses same Session DO id (real compose)', async () => {
