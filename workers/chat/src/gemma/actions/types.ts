@@ -24,6 +24,8 @@ export type GemmaCartFacts = {
   notices?: string[];
   totalsNote?: string | null;
   clientErrors?: string[];
+  /** Wyjątek akcji koszyka (D5) — szablon błędu bez continue_url. */
+  cartFailed?: boolean;
   variantUnresolved?: boolean;
   cartShowSummary?: string;
 };

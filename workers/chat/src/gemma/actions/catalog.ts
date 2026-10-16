@@ -1,7 +1,7 @@
 import {resolveUrlForChannel} from '../../buyer/channel-origins';
 import {searchGemmaCatalog} from '../facts/catalog-search';
 import type {GemmaActionContext, GemmaCatalogCard} from './types';
-import {slotsToCatalogFilters, sortMatchesByMinVariantPrice} from './slots-to-filters';
+import {isQualitativeBudget, slotsToCatalogFilters, sortMatchesByMinVariantPrice} from './slots-to-filters';
 import type {GemmaShownRef} from '../state/types';
 
 const CATALOG_LIMIT = 6;
@@ -18,7 +18,11 @@ export async function runCatalogAction(ctx: GemmaActionContext): Promise<{
     CATALOG_LIMIT,
     ctx.request,
   );
-  const sorted = sortMatchesByMinVariantPrice(matches);
+  // Kolejność repozytorium (trafność), chyba że klient prosi słownie o tanio/skromnie.
+  const sorted = sortMatchesByMinVariantPrice(
+    matches,
+    isQualitativeBudget(ctx.transitioned.slots, ctx.userCorpus),
+  );
   const cards: GemmaCatalogCard[] = [];
   const shown: GemmaShownRef[] = [];
   let idx = 1;

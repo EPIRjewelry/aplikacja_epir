@@ -1,6 +1,6 @@
 /**
  * E4 compose integration.
- * - **M-E4-6** — mutacja koszyka bez cart_action → T-E4-GUARD-1 FAIL
+ * - **M-E4-6** — mutacja koszyka bez cart_action → T-E4-GUARD-1b FAIL
  * - **M-E4-14** — allowedVariantIds z całego katalogu → T-E4-GUARD-2 FAIL
  */
 import {beforeEach, describe, expect, it, vi} from 'vitest';
@@ -15,8 +15,26 @@ import {handleBuyerTurn} from '../../src/buyer/handle-buyer-turn';
 import {geBuyerBody} from './fixtures/boundary-payloads';
 import {makeGemmaRuntimeKv} from './fixtures/fake-testers-kv';
 import {geBuyerBrandLock} from './helpers/brand-lock-fixtures';
-import {epirCartConsentWithProductLink} from '../../src/gemma/profiles/epir';
+import {epirCartConsentWithProductLink, epirCartErrorReply} from '../../src/gemma/profiles/epir';
 import {DEFAULT_GEMMA_SESSION_STATE} from '../../src/gemma/state/types';
+
+async function seedShownG1(namespace: DurableObjectNamespace, sid: string): Promise<void> {
+  const product = fictionalMultiVariantProduct();
+  const {writeGemmaState} = await import('../../src/gemma/session-gemma-state');
+  await writeGemmaState({SESSION_DO: namespace} as never, sid, {
+    ...DEFAULT_GEMMA_SESSION_STATE,
+    shown: [
+      {
+        ref: 'g1',
+        productId: product.productId,
+        handle: product.handle,
+        variantIds: product.variants.map((v) => v.variantId),
+        url: '/products/fikcyjny-pierscionek-parity',
+      },
+    ],
+    turn: 1,
+  });
+}
 
 describe('E4 composeGemmaReply actions', () => {
   beforeEach(() => vi.restoreAllMocks());
@@ -64,6 +82,7 @@ describe('E4 composeGemmaReply actions', () => {
       product_ref: 'g1',
       variant_choice: 'gid://shopify/ProductVariant/900001-c',
     });
+    await seedShownG1(namespace, 'sess_e4_speed_cart');
     await composeGemmaReply(
       {SESSION_DO: namespace} as never,
       'epir-online-store',
@@ -87,6 +106,7 @@ describe('E4 composeGemmaReply actions', () => {
       variant_choice: 'gid://shopify/ProductVariant/900001-c',
     });
     const {namespace} = makeTrackedSessionNamespace();
+    await seedShownG1(namespace, 'sess_e4_err');
     const reply = await composeGemmaReply(
       {SESSION_DO: namespace} as never,
       'epir-online-store',
@@ -95,7 +115,7 @@ describe('E4 composeGemmaReply actions', () => {
       {sessionId: 'sess_e4_err', storefrontId: 'online-store', bodyChannel: 'online-store'},
     );
     expect(reply).not.toMatch(/checkout/i);
-    expect(reply).toContain('koszyk');
+    expect(reply).toBe(epirCartErrorReply('epir-online-store'));
   });
 
   it('T-E4-STATE-1: catalog turn persists shown on SessionDO stub', async () => {
@@ -112,7 +132,7 @@ describe('E4 composeGemmaReply actions', () => {
       new Request('https://example.com'),
       {sessionId: sid, storefrontId: 'online-store', bodyChannel: 'online-store'},
     );
-    const res = await namespace.get(sid).fetch('https://session/gemma-state');
+    const res = await namespace.get(namespace.idFromName(sid)).fetch('https://session/gemma-state');
     const state = (await res.json()) as {shown: unknown[]};
     expect(state.shown.length).toBeGreaterThan(0);
   });
@@ -211,5 +231,29 @@ describe('E4 composeGemmaReply actions', () => {
     );
     expect(res.status).toBe(200);
     expect(legacySpy).toHaveBeenCalled();
+  });
+
+  it('T-E4-GUARD-1b: consent true but no cart_action → zero executeBuyerTool', async () => {
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue(['ucp_cart']);
+    const facts = await import('../../src/facts');
+    vi.spyOn(facts, 'fetchProductFactsByHandle').mockResolvedValue(fictionalMultiVariantProduct());
+    vi.spyOn(await import('../../src/buyer/session-cart'), 'readSessionCartId').mockResolvedValue(null);
+    const execSpy = vi.spyOn(execute, 'executeBuyerTool').mockResolvedValue({content: '{}'});
+    await stubGemmaIntentJson({
+      cart_action: null,
+      cart_consent: true,
+      product_ref: 'g1',
+      variant_choice: 'gid://shopify/ProductVariant/900001-c',
+    });
+    const {namespace} = makeTrackedSessionNamespace();
+    await seedShownG1(namespace, 'sess_e4_guard_1b');
+    await composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'dziękuję',
+      new Request('https://example.com'),
+      {sessionId: 'sess_e4_guard_1b', storefrontId: 'online-store', bodyChannel: 'online-store'},
+    );
+    expect(execSpy).not.toHaveBeenCalled();
   });
 });

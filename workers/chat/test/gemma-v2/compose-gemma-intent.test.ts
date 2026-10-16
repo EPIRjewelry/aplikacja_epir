@@ -8,7 +8,7 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {composeGemmaReply} from '../../src/gemma/compose-gemma-reply';
 import {gemmaV2EmergencyReply} from '../../src/gemma/fallback';
-import {epirCartReply, epirRefusalReply} from '../../src/gemma/profiles/epir';
+import {epirCartReply, epirRefusalReply, epirVariantQuestionReply} from '../../src/gemma/profiles/epir';
 import type {Env} from '../../src/config/bindings';
 import {callOrderIndexes, makeTrackedSessionNamespace} from './helpers/session-do-calls';
 import {stubGemmaIntentJson} from './helpers/stub-gemma-intent';
@@ -149,6 +149,8 @@ describe('E3 composeGemmaReply intent orchestration', () => {
       new Request('https://example.com'),
       {...opts, sessionId: 'sess_e3_cart_1b'},
     );
-    expect(withConsent).toBe(epirCartReply(false));
+    // E4 (D2): zgoda bez wskazanego produktu → pytanie o wariant, nie ponowna prośba o zgodę.
+    expect(withConsent).not.toBe(noConsent);
+    expect(withConsent).toBe(epirVariantQuestionReply('epir-online-store', undefined));
   });
 });

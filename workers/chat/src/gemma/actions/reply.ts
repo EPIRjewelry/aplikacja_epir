@@ -5,6 +5,7 @@ import {
   epirCartErrorReply,
   epirCatalogEmptyReply,
   epirCatalogCardsReply,
+  epirDetailsPricesReply,
   epirKbAnswerReply,
   epirKbUnavailableReply,
   epirVariantQuestionReply,
@@ -30,8 +31,8 @@ export function buildEpirActionReply(params: {
     if (cartText) return cartText;
   }
 
-  if (outcome.cart?.clientErrors?.length) {
-    return epirCartErrorReply(channelId);
+  if (outcome.cart?.clientErrors?.length || outcome.cart?.cartFailed) {
+    return epirCartErrorReply(channelId, outcome.cart.clientErrors ?? []);
   }
 
   if (outcome.cart?.variantUnresolved) {
@@ -69,11 +70,12 @@ export function buildEpirActionReply(params: {
   if (state === 'szczegoly' && outcome.productDetail) {
     const prices = buildGemmaVariantPriceFacts({
       product: outcome.productDetail,
+      matchingVariantIds: outcome.productDetail.variants.map((v) => v.variantId),
       matchingVariants: outcome.productDetail.variants,
       matchingPriceRange: outcome.productDetail.priceRange,
+      isFlat: outcome.productDetail.priceRange.isFlat,
     });
-    const line = prices.lines.map((l) => l.displayPl).join(', ');
-    return `Proszę Pana/Panią — szczegóły modelu. Ceny wariantów: ${line}.`;
+    return epirDetailsPricesReply(prices.lines.map((l) => l.displayPl).join(', '));
   }
 
   return buildEpirDeterministicReply({

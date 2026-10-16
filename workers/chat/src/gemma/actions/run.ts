@@ -73,7 +73,7 @@ export async function runGemmaAllowedActions(ctx: GemmaActionContext): Promise<G
     } catch (e) {
       console.warn('[gemma.actions] cart failed', e);
       outcome.cartFailed = true;
-      outcome.cart = {clientErrors: ['Koszyk jest chwilowo niedostępny.']};
+      outcome.cart = {cartFailed: true};
     }
   }
 

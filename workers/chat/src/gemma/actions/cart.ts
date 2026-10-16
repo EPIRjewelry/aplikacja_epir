@@ -35,35 +35,29 @@ function parseSelectedOptions(variantChoice: string | null): SelectedOption[] | 
   return null;
 }
 
-async function resolveProductForCart(ctx: GemmaActionContext): Promise<ProductFacts | null> {
-  const catalogChannel = catalogSnapshotChannel(ctx.channelId);
-  if (ctx.prev.selected?.productId) {
-    const shown = ctx.prev.shown.find((s) => s.productId === ctx.prev.selected?.productId);
-    if (shown?.handle) {
-      return fetchProductFactsByHandle(ctx.env, catalogChannel, shown.handle, {
-        clientRequest: ctx.request,
-        urlChannel: ctx.channelId,
-      });
-    }
-  }
+/** Kolejność: jawny product_ref tej tury → produkt ze strony (PDP) → selected z sesji. */
+function resolveCartHandle(ctx: GemmaActionContext): string | null {
   const ref = ctx.intent.product_ref?.trim();
   if (ref) {
     const shown = ctx.prev.shown.find((s) => s.ref === ref || s.handle === ref);
-    if (shown?.handle) {
-      return fetchProductFactsByHandle(ctx.env, catalogChannel, shown.handle, {
-        clientRequest: ctx.request,
-        urlChannel: ctx.channelId,
-      });
-    }
+    return shown?.handle || null;
   }
-  const handle = ctx.productHandle?.trim();
-  if (handle) {
-    return fetchProductFactsByHandle(ctx.env, catalogChannel, handle, {
-      clientRequest: ctx.request,
-      urlChannel: ctx.channelId,
-    });
+  const pageHandle = ctx.productHandle?.trim();
+  if (pageHandle) return pageHandle;
+  const selectedId = ctx.prev.selected?.productId;
+  if (selectedId) {
+    return ctx.prev.shown.find((s) => s.productId === selectedId)?.handle || null;
   }
   return null;
+}
+
+async function resolveProductForCart(ctx: GemmaActionContext): Promise<ProductFacts | null> {
+  const handle = resolveCartHandle(ctx);
+  if (!handle) return null;
+  return fetchProductFactsByHandle(ctx.env, catalogSnapshotChannel(ctx.channelId), handle, {
+    clientRequest: ctx.request,
+    urlChannel: ctx.channelId,
+  });
 }
 
 function resolveVariantId(
@@ -72,7 +66,8 @@ function resolveVariantId(
   intent: GemmaIntent,
 ): string | null {
   const variants = product.variants.filter((v) => v.available !== false);
-  if (variants.length === 1) {
+  // Tylko produkt jednowariantowy; jedyny dostępny z wielu (np. rozmiar) nie jest wyborem klienta.
+  if (product.variants.length === 1 && variants.length === 1) {
     return variants[0].variantId;
   }
   const choice = intent.variant_choice?.trim();
@@ -89,7 +84,12 @@ function resolveVariantId(
 function productUrlFromCtx(ctx: GemmaActionContext, product: ProductFacts | null): string | undefined {
   if (!product) {
     const ref = ctx.intent.product_ref?.trim();
-    const shown = ref ? ctx.prev.shown.find((s) => s.ref === ref) : ctx.prev.shown[0];
+    const selectedId = ctx.prev.selected?.productId;
+    const shown = ref
+      ? ctx.prev.shown.find((s) => s.ref === ref || s.handle === ref)
+      : selectedId
+        ? ctx.prev.shown.find((s) => s.productId === selectedId)
+        : undefined;
     return shown?.url;
   }
   const shown = ctx.prev.shown.find((s) => s.productId === product.productId);
@@ -129,7 +129,7 @@ export async function runCartAction(ctx: GemmaActionContext): Promise<GemmaCartF
       });
       return {productUrl, cartShowSummary: executed.content};
     } catch {
-      return {productUrl, clientErrors: ['Koszyk jest chwilowo niedostępny.']};
+      return {productUrl, cartFailed: true};
     }
   }
 
@@ -196,10 +196,7 @@ export async function runCartAction(ctx: GemmaActionContext): Promise<GemmaCartF
 
       return {productUrl: productUrlFromCtx(ctx, product)};
     } catch {
-      return {
-        productUrl: productUrlFromCtx(ctx, product),
-        clientErrors: ['Koszyk jest chwilowo niedostępny.'],
-      };
+      return {productUrl: productUrlFromCtx(ctx, product), cartFailed: true};
     }
   }
 

@@ -1,5 +1,6 @@
 import {resolveUrlForChannel} from '../../buyer/channel-origins';
 import type {BuyerChannelId} from '../../buyer/channel-switch';
+import {KB_POLICY_UNAVAILABLE_REPLY} from '../../buyer/kb-policies';
 import type {GemmaConversationState, GemmaSlots, FormOfAddress} from '../state/types';
 
 const CONTACT_PAGE_PATH = '/pages/kontakt';
@@ -88,18 +89,23 @@ export function epirKbAnswerReply(answer: string): string {
 }
 
 export function epirKbUnavailableReply(): string {
-  return (
-    'Nie mam dostępu do aktualnych zasad sklepu. Proszę zajrzeć do regulaminu na stronie sklepu lub skontaktować się z pracownią.'
-  );
+  return KB_POLICY_UNAVAILABLE_REPLY;
 }
 
-export function epirCartErrorReply(channelId: BuyerChannelId): string {
+/** `messages` z Cart MCP (fakty Shopify) wstawia kod; bez continue_url. */
+export function epirCartErrorReply(channelId: BuyerChannelId, shopMessages: string[] = []): string {
+  const msgs = shopMessages.map((m) => m.trim()).filter(Boolean);
   return (
     'Proszę Pana/Panią — nie udało się zaktualizować koszyka. ' +
+    (msgs.length ? msgs.join(' ') + ' ' : '') +
     'Kontakt: ' +
     contactPageUrl(channelId) +
     '.'
   );
+}
+
+export function epirDetailsPricesReply(variantPriceLine: string): string {
+  return 'Proszę Pana/Panią — szczegóły modelu. Ceny wariantów: ' + variantPriceLine + '.';
 }
 
 export function epirCartConsentWithProductLink(channelId: BuyerChannelId, productUrl?: string): string {
@@ -165,6 +171,7 @@ export function listEpirTemplateStrings(channelId: BuyerChannelId): string[] {
     epirCartErrorReply(channelId),
     epirCartConsentWithProductLink(channelId, '/products/fikcyjny-parity'),
     epirVariantQuestionReply(channelId, '/products/fikcyjny-parity'),
+    epirDetailsPricesReply('fikcyjna lista wariantów'),
   ];
 }
 
