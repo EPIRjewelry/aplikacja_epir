@@ -21,3 +21,14 @@ export function gzBuyerBrandLock(): ChatBrandLock {
     side: 'zareczyny',
   };
 }
+
+export function kazkaBuyerBrandLock(): ChatBrandLock {
+  return {
+    brandKey: 'kazka',
+    brand: 'kazka',
+    storefrontId: 'kazka',
+    channel: 'hydrogen-kazka',
+    source: 'test',
+    side: 'kazka',
+  };
+}

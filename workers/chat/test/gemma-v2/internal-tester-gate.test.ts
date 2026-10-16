@@ -2,10 +2,15 @@ import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {handleBuyerTurn, BUYER_UNAVAILABLE_JSON} from '../../src/buyer/handle-buyer-turn';
 import * as compose from '../../src/buyer/compose-buyer-turn';
 import {geBuyerBody} from './fixtures/boundary-payloads';
-import {makeGemmaRuntimeKv} from './fixtures/fake-testers-kv';
-import {geBuyerBrandLock, gzBuyerBrandLock} from './helpers/brand-lock-fixtures';
-
-const FIKCYJNY_TESTER_ID = '9001002001';
+import {
+  FIKCYJNY_TESTER_ID,
+  makeGemmaRuntimeKv,
+} from './fixtures/fake-testers-kv';
+import {
+  geBuyerBrandLock,
+  gzBuyerBrandLock,
+  kazkaBuyerBrandLock,
+} from './helpers/brand-lock-fixtures';
 
 function postReq(body: Record<string, unknown>) {
   return new Request('https://example.com/chat', {
@@ -71,6 +76,37 @@ describe('E1 internal tester gate (GE only)', () => {
     expect(composeSpy).not.toHaveBeenCalled();
   });
 
+  it('internal + ingress: appProxyVerified false blocks even allowlisted tester (M2)', async () => {
+    const composeSpy = vi.spyOn(compose, 'composeBuyerAssistantReply');
+    const env = {
+      GEMMA_RUNTIME_KV: makeGemmaRuntimeKv({
+        channelMode: 'internal',
+        testers: [FIKCYJNY_TESTER_ID],
+      }),
+    } as never;
+    const body = geBuyerBody();
+    const res = await handleBuyerTurn(postReq(body), env, geBuyerBrandLock(), body, {
+      appProxyVerified: false,
+      loggedInCustomerId: FIKCYJNY_TESTER_ID,
+    });
+    expect(await res.json()).toEqual(BUYER_UNAVAILABLE_JSON);
+    expect(composeSpy).not.toHaveBeenCalled();
+  });
+
+  it('internal without ingress argument → unavailable (fail-closed)', async () => {
+    const composeSpy = vi.spyOn(compose, 'composeBuyerAssistantReply');
+    const env = {
+      GEMMA_RUNTIME_KV: makeGemmaRuntimeKv({
+        channelMode: 'internal',
+        testers: [FIKCYJNY_TESTER_ID],
+      }),
+    } as never;
+    const body = geBuyerBody();
+    const res = await handleBuyerTurn(postReq(body), env, geBuyerBrandLock(), body);
+    expect(await res.json()).toEqual(BUYER_UNAVAILABLE_JSON);
+    expect(composeSpy).not.toHaveBeenCalled();
+  });
+
   it('internal + ingress: GZ channel blocked for all (E1b)', async () => {
     const composeSpy = vi.spyOn(compose, 'composeBuyerAssistantReply');
     const env = {
@@ -82,6 +118,24 @@ describe('E1 internal tester gate (GE only)', () => {
     } as never;
     const body = geBuyerBody();
     const res = await handleBuyerTurn(postReq(body), env, gzBuyerBrandLock(), body, {
+      appProxyVerified: true,
+      loggedInCustomerId: FIKCYJNY_TESTER_ID,
+    });
+    expect(await res.json()).toEqual(BUYER_UNAVAILABLE_JSON);
+    expect(composeSpy).not.toHaveBeenCalled();
+  });
+
+  it('internal + ingress: KAZKA channel blocked for all (M13)', async () => {
+    const composeSpy = vi.spyOn(compose, 'composeBuyerAssistantReply');
+    const env = {
+      GEMMA_RUNTIME_KV: makeGemmaRuntimeKv({
+        channelMode: 'internal',
+        channelId: 'kazka-hydrogen',
+        testers: [FIKCYJNY_TESTER_ID],
+      }),
+    } as never;
+    const body = geBuyerBody();
+    const res = await handleBuyerTurn(postReq(body), env, kazkaBuyerBrandLock(), body, {
       appProxyVerified: true,
       loggedInCustomerId: FIKCYJNY_TESTER_ID,
     });

@@ -11,7 +11,8 @@ export function gemmaV2EmergencyReply(channelId: BuyerChannelId): string {
   const link = contactUrl ?? STORE_CONTACT_PAGE_PATH;
   return (
     'Przepraszamy, asystent jest chwilowo niedostępny. ' +
-    'Prosimy o kontakt przez formularz na stronie kontaktu sklepu: ' +
-    link
+    'Prosimy Pana/Panią o kontakt przez stronę kontaktu: ' +
+    link +
+    '.'
   );
 }

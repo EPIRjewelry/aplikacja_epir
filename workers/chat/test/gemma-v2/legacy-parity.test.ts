@@ -1,11 +1,19 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {handleBuyerTurn, BUYER_UNAVAILABLE_JSON} from '../../src/buyer/handle-buyer-turn';
-import * as channelSwitch from '../../src/buyer/channel-switch';
+import {
+  handleBuyerTurn,
+  BUYER_UNAVAILABLE_JSON,
+} from '../../src/buyer/handle-buyer-turn';
 import * as compose from '../../src/buyer/compose-buyer-turn';
 import * as gemmaCompose from '../../src/gemma/compose-gemma-reply';
 import {BuyerTurnOverloadError, BUYER_LLM_OVERLOAD_MESSAGE} from '../../src/buyer/buyer-llm-retry';
 import {FINAL_TOOL_FALLBACK_USER} from '../../src/buyer/compose-buyer-turn';
-import {geBuyerBody, FIKCYJNY_SESSION_ID} from './fixtures/boundary-payloads';
+import {channelKvKey, coreKvKey} from '../../src/buyer/channel-switch';
+import {
+  geBuyerBody,
+  FIKCYJNY_SESSION_ID,
+  FIKCYJNY_USER_MESSAGE,
+} from './fixtures/boundary-payloads';
+import {makeGemmaRuntimeKv} from './fixtures/fake-testers-kv';
 import {geBuyerBrandLock} from './helpers/brand-lock-fixtures';
 
 function postReq(body: Record<string, unknown>) {
@@ -16,34 +24,66 @@ function postReq(body: Record<string, unknown>) {
   });
 }
 
-async function runLegacyPath(coreMode: 'legacy' | 'kv-missing') {
-  vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('on');
-  vi.spyOn(channelSwitch, 'readGemmaCoreMode').mockResolvedValue(
-    coreMode === 'legacy' ? 'legacy' : 'legacy',
-  );
-  if (coreMode === 'kv-missing') {
-    vi.spyOn(channelSwitch, 'readGemmaCoreMode').mockResolvedValue('legacy');
-  }
-  const legacySpy = vi.spyOn(compose, 'composeBuyerAssistantReply').mockResolvedValue('parity reply');
-  const gemmaSpy = vi.spyOn(gemmaCompose, 'composeGemmaReply');
+const LEGACY_COMPOSE_OPTS = {
+  sessionId: FIKCYJNY_SESSION_ID,
+  productHandle: undefined,
+  storefrontId: 'online-store',
+  bodyChannel: 'online-store',
+  analyticsConsent: undefined,
+  sessionIdSource: undefined,
+};
 
-  const body = geBuyerBody();
-  const res = await handleBuyerTurn(postReq(body), {} as never, geBuyerBrandLock(), body);
-  const json = await res.json();
-  return {res, json, legacySpy, gemmaSpy};
-}
-
-describe('E1 legacy parity (core=legacy)', () => {
+describe('E1 legacy parity (real readGemmaCoreMode)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('on + legacy core matches prior success shape and legacy compose only', async () => {
-    const {res, json, legacySpy, gemmaSpy} = await runLegacyPath('legacy');
+  it('on + legacy core: full JSON and exact composeBuyerAssistantReply args', async () => {
+    const legacySpy = vi
+      .spyOn(compose, 'composeBuyerAssistantReply')
+      .mockResolvedValue('parity reply');
+    const gemmaSpy = vi.spyOn(gemmaCompose, 'composeGemmaReply');
+    const env = {
+      GEMMA_RUNTIME_KV: makeGemmaRuntimeKv({channelMode: 'on', coreMode: 'legacy'}),
+    } as never;
+    const body = geBuyerBody();
+    const res = await handleBuyerTurn(postReq(body), env, geBuyerBrandLock(), body);
     expect(res.status).toBe(200);
-    expect(json).toMatchObject({
+    expect(await res.json()).toEqual({
       type: 'message',
       reply: 'parity reply',
+      channel_id: 'epir-online-store',
+      mode: 'on',
+      session_id: FIKCYJNY_SESSION_ID,
+    });
+    expect(legacySpy).toHaveBeenCalledTimes(1);
+    expect(legacySpy).toHaveBeenCalledWith(
+      env,
+      'epir-online-store',
+      FIKCYJNY_USER_MESSAGE,
+      expect.any(Request),
+      LEGACY_COMPOSE_OPTS,
+    );
+    expect(gemmaSpy).not.toHaveBeenCalled();
+  });
+
+  it('bogus core KV value → legacy compose (fail-safe)', async () => {
+    const legacySpy = vi.spyOn(compose, 'composeBuyerAssistantReply').mockResolvedValue('bogus-core');
+    const gemmaSpy = vi.spyOn(gemmaCompose, 'composeGemmaReply');
+    const env = {
+      GEMMA_RUNTIME_KV: {
+        async get(key: string) {
+          if (key === channelKvKey('epir-online-store')) return 'on';
+          if (key === coreKvKey('epir-online-store')) return 'bogus';
+          return null;
+        },
+      },
+    } as never;
+    const body = geBuyerBody();
+    const res = await handleBuyerTurn(postReq(body), env, geBuyerBrandLock(), body);
+    expect(await res.json()).toEqual({
+      type: 'message',
+      reply: 'bogus-core',
       channel_id: 'epir-online-store',
       mode: 'on',
       session_id: FIKCYJNY_SESSION_ID,
@@ -52,37 +92,84 @@ describe('E1 legacy parity (core=legacy)', () => {
     expect(gemmaSpy).not.toHaveBeenCalled();
   });
 
-  it('overload path unchanged under legacy core', async () => {
-    vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('on');
-    vi.spyOn(channelSwitch, 'readGemmaCoreMode').mockResolvedValue('legacy');
-    vi.spyOn(compose, 'composeBuyerAssistantReply').mockRejectedValue(new BuyerTurnOverloadError());
-
+  it('missing GEMMA_RUNTIME_KV binding → unavailable (channel fail-closed off)', async () => {
+    const composeSpy = vi.spyOn(compose, 'composeBuyerAssistantReply');
     const body = geBuyerBody();
     const res = await handleBuyerTurn(postReq(body), {} as never, geBuyerBrandLock(), body);
+    expect(await res.json()).toEqual(BUYER_UNAVAILABLE_JSON);
+    expect(composeSpy).not.toHaveBeenCalled();
+  });
+
+  it('channel KV read error → unavailable', async () => {
+    const composeSpy = vi.spyOn(compose, 'composeBuyerAssistantReply');
+    const env = {
+      GEMMA_RUNTIME_KV: {
+        async get(key: string) {
+          if (key === channelKvKey('epir-online-store')) throw new Error('kv down');
+          return null;
+        },
+      },
+    } as never;
+    const body = geBuyerBody();
+    const res = await handleBuyerTurn(postReq(body), env, geBuyerBrandLock(), body);
+    expect(await res.json()).toEqual(BUYER_UNAVAILABLE_JSON);
+    expect(composeSpy).not.toHaveBeenCalled();
+  });
+
+  it('core KV read error → legacy compose when channel on', async () => {
+    const legacySpy = vi.spyOn(compose, 'composeBuyerAssistantReply').mockResolvedValue('core-kv-error');
+    const env = {
+      GEMMA_RUNTIME_KV: {
+        async get(key: string) {
+          if (key === channelKvKey('epir-online-store')) return 'on';
+          if (key === coreKvKey('epir-online-store')) throw new Error('core kv down');
+          return null;
+        },
+      },
+    } as never;
+    const body = geBuyerBody();
+    const res = await handleBuyerTurn(postReq(body), env, geBuyerBrandLock(), body);
+    expect(await res.json()).toEqual({
+      type: 'message',
+      reply: 'core-kv-error',
+      channel_id: 'epir-online-store',
+      mode: 'on',
+      session_id: FIKCYJNY_SESSION_ID,
+    });
+    expect(legacySpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('overload path unchanged under legacy core routing', async () => {
+    vi.spyOn(compose, 'composeBuyerAssistantReply').mockRejectedValue(new BuyerTurnOverloadError());
+    const env = {
+      GEMMA_RUNTIME_KV: makeGemmaRuntimeKv({channelMode: 'on', coreMode: 'legacy'}),
+    } as never;
+    const body = geBuyerBody();
+    const res = await handleBuyerTurn(postReq(body), env, geBuyerBrandLock(), body);
     const json = (await res.json()) as {reply?: string};
     expect(json.reply).toBe(BUYER_LLM_OVERLOAD_MESSAGE);
   });
 
-  it('empty AIG path unchanged under legacy core', async () => {
-    vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('on');
-    vi.spyOn(channelSwitch, 'readGemmaCoreMode').mockResolvedValue('legacy');
+  it('empty AIG path unchanged under legacy core routing', async () => {
     vi.spyOn(compose, 'composeBuyerAssistantReply').mockRejectedValue(
       new Error('AI Gateway returned empty content'),
     );
-
+    const env = {
+      GEMMA_RUNTIME_KV: makeGemmaRuntimeKv({channelMode: 'on', coreMode: 'legacy'}),
+    } as never;
     const body = geBuyerBody();
-    const res = await handleBuyerTurn(postReq(body), {} as never, geBuyerBrandLock(), body);
+    const res = await handleBuyerTurn(postReq(body), env, geBuyerBrandLock(), body);
     const json = (await res.json()) as {reply?: string};
     expect(json.reply).toBe(FINAL_TOOL_FALLBACK_USER);
   });
 
-  it('off still unavailable without compose when core legacy', async () => {
-    vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('off');
-    vi.spyOn(channelSwitch, 'readGemmaCoreMode').mockResolvedValue('legacy');
+  it('off still unavailable without compose', async () => {
     const composeSpy = vi.spyOn(compose, 'composeBuyerAssistantReply');
-
+    const env = {
+      GEMMA_RUNTIME_KV: makeGemmaRuntimeKv({channelMode: 'off', coreMode: 'legacy'}),
+    } as never;
     const body = geBuyerBody();
-    const res = await handleBuyerTurn(postReq(body), {} as never, geBuyerBrandLock(), body);
+    const res = await handleBuyerTurn(postReq(body), env, geBuyerBrandLock(), body);
     expect(await res.json()).toEqual(BUYER_UNAVAILABLE_JSON);
     expect(composeSpy).not.toHaveBeenCalled();
   });

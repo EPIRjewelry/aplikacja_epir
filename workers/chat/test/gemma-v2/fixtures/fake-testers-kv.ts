@@ -1,6 +1,15 @@
 import type {BuyerChannelId} from '../../../src/buyer/channel-switch';
 import {channelKvKey, coreKvKey} from '../../../src/buyer/channel-switch';
 import {GEMMA_TESTERS_KV_KEY} from '../../../src/gemma/internal-access';
+import type {BuyerTurnIngress} from '../../../src/buyer/handle-buyer-turn';
+
+export const FIKCYJNY_TESTER_ID = '9001002001';
+
+export function geInternalTesterIngress(
+  id: string = FIKCYJNY_TESTER_ID,
+): BuyerTurnIngress {
+  return {appProxyVerified: true, loggedInCustomerId: id};
+}
 
 export function makeGemmaRuntimeKv(
   options: {

@@ -3,7 +3,7 @@ import {readGemmaCoreMode, coreKvKey} from '../../src/buyer/channel-switch';
 import * as compose from '../../src/buyer/compose-buyer-turn';
 import * as gemmaCompose from '../../src/gemma/compose-gemma-reply';
 import {handleBuyerTurn} from '../../src/buyer/handle-buyer-turn';
-import {geBuyerBody} from './fixtures/boundary-payloads';
+import {geBuyerBody, FIKCYJNY_SESSION_ID} from './fixtures/boundary-payloads';
 import {makeGemmaRuntimeKv} from './fixtures/fake-testers-kv';
 import {geBuyerBrandLock} from './helpers/brand-lock-fixtures';
 
@@ -64,10 +64,16 @@ describe('E1 handleBuyerTurn core routing', () => {
     const env = {GEMMA_RUNTIME_KV: makeGemmaRuntimeKv({coreMode: 'v2'})} as never;
     const body = geBuyerBody();
     const res = await handleBuyerTurn(postReq(body), env, geBuyerBrandLock(), body);
-    const json = (await res.json()) as {reply?: string};
+    const json = await res.json();
 
     expect(gemmaSpy).toHaveBeenCalledTimes(1);
     expect(compose.composeBuyerAssistantReply).not.toHaveBeenCalled();
-    expect(json.reply).toBe('v2 awaryjny');
+    expect(json).toEqual({
+      type: 'message',
+      reply: 'v2 awaryjny',
+      channel_id: 'epir-online-store',
+      mode: 'on',
+      session_id: FIKCYJNY_SESSION_ID,
+    });
   });
 });

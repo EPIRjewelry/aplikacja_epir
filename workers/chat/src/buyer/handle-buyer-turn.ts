@@ -113,13 +113,14 @@ export async function handleBuyerTurn(
     });
   }
 
-  if (mode === 'internal' && ingress !== undefined) {
+  if (mode === 'internal') {
     const testerIds = await readGemmaTesterIds(env);
+    const ing = ingress ?? {};
     if (
       !isAllowedGemmaInternalTurn({
         channelId,
-        appProxyVerified: ingress.appProxyVerified,
-        loggedInCustomerId: ingress.loggedInCustomerId,
+        appProxyVerified: ing.appProxyVerified,
+        loggedInCustomerId: ing.loggedInCustomerId,
         testerIds,
       })
     ) {

@@ -106,16 +106,16 @@ describe('E0 boundary — HTTP response shape (handleBuyerTurn)', () => {
     expect(json.reply).toBe('Odpowiedź fikcyjna E0.');
   });
 
-  it('internal → 200 message with mode internal (baseline before E1 tester gate)', async () => {
+  it('internal without verified ingress → unavailable (E1 tester gate fail-closed)', async () => {
     vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('internal');
-    vi.spyOn(compose, 'composeBuyerAssistantReply').mockResolvedValue('Internal baseline.');
+    const composeSpy = vi.spyOn(compose, 'composeBuyerAssistantReply');
 
     const body = geBuyerBody();
     const res = await handleBuyerTurn(postReq(body), {} as never, geBuyerBrandLock(), body);
-    const json = (await res.json()) as Record<string, unknown>;
 
     expect(res.status).toBe(200);
-    expectBuyerMessageShape(json, {mode: 'internal', channelId: 'epir-online-store'});
+    expectBuyerUnavailable(await res.json());
+    expect(composeSpy).not.toHaveBeenCalled();
   });
 
   it('BuyerTurnOverloadError → 200 message with overload copy', async () => {

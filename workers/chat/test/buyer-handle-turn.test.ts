@@ -163,19 +163,18 @@ describe('handleBuyerTurn', () => {
     expect(composeSpy.mock.calls[0]?.[4]?.sessionId).toBe(json.session_id);
   });
 
-  it('legacy messages[] returns 200 with minted session_id when body omits it', async () => {
+  it('internal mode without verified ingress returns unavailable (E1 gate)', async () => {
     vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('internal');
     vi.spyOn(channelSwitch, 'channelIdFromBrandLock').mockReturnValue('epir-online-store');
-    vi.spyOn(compose, 'composeBuyerAssistantReply').mockResolvedValue('Odpowiedź testowa');
+    const composeSpy = vi.spyOn(compose, 'composeBuyerAssistantReply');
 
     const env = {} as import('../src/config/bindings').Env;
     const body = { messages: [{ role: 'user', content: 'Szukam pierścionka' }] };
 
     const res = await handleBuyerTurn(postReq(body), env, buyerBrandLock(), body);
-    const json = (await res.json()) as { type?: string; reply?: string; session_id?: string };
-    expect(json.type).toBe('message');
-    expect(json.reply).toBe('Odpowiedź testowa');
-    expect(json.session_id).toMatch(/^sess_/);
+    const json = (await res.json()) as { type?: string };
+    expect(json.type).toBe('unavailable');
+    expect(composeSpy).not.toHaveBeenCalled();
   });
 
   it('tura 1 bez session_id → mint; tura 2 z tym id odczytuje koszyk z SessionDO', async () => {
