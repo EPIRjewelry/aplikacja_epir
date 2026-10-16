@@ -19,8 +19,9 @@ import {
   rememberChatSessionIdForPrivacy,
   persistChatSessionIdFromWorker,
   readShopifyAnalyticsProcessingAllowed,
-  resolveEffectiveChatSessionId,
+  readStoredChatSessionId,
   resolveEffectiveChatSessionWithMeta,
+  isChatHistorySyncAllowed,
 } from './epir-session-browser';
 
 /** Global Shopify (Customer Account UI extensions / App Bridge) — opcjonalnie. */
@@ -159,10 +160,16 @@ function getChatTranscriptStorageKeys(
     }
   };
 
-  const sessionId = resolveEffectiveChatSessionId(SESSION_ID_KEY);
+  // Tylko odczyt: klucze transkryptu nigdy nie tworzą identyfikatorów.
+  const sessionId = readStoredChatSessionId(SESSION_ID_KEY);
   if (sessionId) addKey(sessionId);
 
-  const anonymousId = sessionStorage.getItem(ANONYMOUS_ID_KEY) ?? getOrCreateAnonymousId();
+  let anonymousId: string | null = null;
+  try {
+    anonymousId = sessionStorage.getItem(ANONYMOUS_ID_KEY);
+  } catch {
+    anonymousId = null;
+  }
   if (anonymousId) addKey(anonymousId);
 
   return keys;
@@ -420,6 +427,7 @@ function ChatWidgetFallback({
   const messageImageUrlsRef = useRef<Set<string>>(new Set());
   const messagesRef = useRef<ChatMessage[]>([]);
   const hydrationCompleteRef = useRef(false);
+  const historySyncStartedRef = useRef(false);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({behavior: 'smooth'});
@@ -458,12 +466,22 @@ function ChatWidgetFallback({
       commitMessages(restored);
     }
     hydrationCompleteRef.current = true;
+  }, [channel, commitMessages, storefrontId]);
 
-    const sessionId = resolveEffectiveChatSessionId(SESSION_ID_KEY);
+  // Historia z serwera: dopiero po otwarciu panelu (isOpen), przy zgodzie na czat (=== true) i istniejącym `sess_*`.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (historySyncStartedRef.current) return;
+
+    if (!isChatHistorySyncAllowed({isOpen, consentGranted})) return;
+    // Raz na montowanie: nowa karta bez `sess_*` nie ma czego przywracać (brak żądania, brak mintu).
+    historySyncStartedRef.current = true;
+    const sessionId = readStoredChatSessionId(SESSION_ID_KEY);
     const historyApiUrl = resolveChatHistoryApiUrl(chatApiUrl);
     if (!historyApiUrl || !sessionId) return;
 
     let cancelled = false;
+    let finished = false;
     void (async () => {
       try {
         const response = await fetch(historyApiUrl, {
@@ -491,13 +509,17 @@ function ChatWidgetFallback({
         syncPersistedChatMessages(storefrontId, channel, history);
       } catch (error) {
         console.warn('[ChatWidget] Failed to sync history', error);
+      } finally {
+        finished = true;
       }
     })();
 
     return () => {
       cancelled = true;
+      // Panel zamknięty / zgoda cofnięta w trakcie żądania: pozwól na ponowną próbę przy kolejnym otwarciu.
+      if (!finished) historySyncStartedRef.current = false;
     };
-  }, [chatApiUrl, channel, commitMessages, storefrontId]);
+  }, [chatApiUrl, channel, commitMessages, consentGranted, isOpen, storefrontId]);
 
   useEffect(() => {
     if (!hydrationCompleteRef.current) return;

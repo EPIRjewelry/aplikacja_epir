@@ -100,6 +100,19 @@ function resolveEffectiveAssistantSessionId(sessionIdKey) {
   return meta.sessionId;
 }
 
+/** Tylko odczyt `sess_*` (ścieżka odczytu: historia, klucze transkryptu). Nigdy nie mintuje. */
+function readStoredAssistantSessionId(sessionIdKey) {
+  var key = sessionIdKey || EPIR_ASSISTANT_SESSION_KEY;
+  scrubInvalidAssistantSessionStorage(key);
+  try {
+    var stored = sessionStorage.getItem(key);
+    var trimmed = stored ? String(stored).trim() : '';
+    return isValidChatSessionStorageValue(trimmed) ? trimmed : '';
+  } catch (e) {
+    return '';
+  }
+}
+
 /** Echo `session_id` z workera nie zastępuje cookie i nie migruje rozjechanej sesji. */
 function persistAssistantSessionIdFromWorker(sessionIdKey, workerSessionId) {
   var echoed = workerSessionId ? String(workerSessionId).trim() : '';
@@ -404,25 +417,6 @@ function resolveLoggedInCustomerId(section) {
 }
 
 /* ===== CONSENT GATE (App Proxy POST /apps/assistant/consent) ===== */
-// #region agent log
-function epirAgentDebugLog(location, message, data, hypothesisId) {
-  try {
-    fetch('http://127.0.0.1:7457/ingest/49605965-4d1e-4f49-8545-82fd58eedfca', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c882f5' },
-      body: JSON.stringify({
-        sessionId: 'c882f5',
-        location: location,
-        message: message,
-        data: data || {},
-        hypothesisId: hypothesisId,
-        timestamp: Date.now(),
-        runId: 'pre-fix',
-      }),
-    }).catch(function () {});
-  } catch (e) {}
-}
-// #endregion
 var EPIR_CONSENT_ANONYMOUS_KEY = 'epir-chat-anonymous-id';
 
 function getEpirAnonymousIdForConsent() {
@@ -1139,7 +1133,8 @@ function getAssistantHistoryEndpoint(section) {
 }
 
 function getAssistantTranscriptStorageKey(section, actorId) {
-  var normalizedActor = normalizeLoggedInCustomerId(actorId) || getEpirAnonymousIdForConsent();
+  var normalizedActor = normalizeLoggedInCustomerId(actorId);
+  if (!normalizedActor) return '';
   var shopDomain = normalizeLoggedInCustomerId(getAssistantShopDomain(section)) || 'unknown-shop';
   var storefrontId = normalizeLoggedInCustomerId(section && section.dataset && section.dataset.storefrontId) || 'epir-liquid';
   var channel = normalizeLoggedInCustomerId(section && section.dataset && section.dataset.channel) || 'online-store';
@@ -1164,17 +1159,14 @@ function getAssistantTranscriptStorageKeys(section, sessionIdKey) {
     }
   };
 
-  try {
-    var sessionId = sessionStorage.getItem(sessionIdKey || EPIR_ASSISTANT_SESSION_KEY);
-    if (sessionId) addKey(sessionId);
-  } catch (e) {}
+  var sessionId = readStoredAssistantSessionId(sessionIdKey);
+  if (sessionId) addKey(sessionId);
 
   try {
     var anonymousId = sessionStorage.getItem(EPIR_CONSENT_ANONYMOUS_KEY);
     if (anonymousId) addKey(anonymousId);
   } catch (e2) {}
 
-  addKey(getEpirAnonymousIdForConsent());
   return keys;
 }
 
@@ -1287,7 +1279,7 @@ function buildAssistantHistoryFetchUrl(section) {
 }
 
 async function fetchAssistantTranscriptFromBackend(section, sessionIdKey) {
-  var sessionId = resolveEffectiveAssistantSessionId(sessionIdKey) || '';
+  var sessionId = readStoredAssistantSessionId(sessionIdKey);
   if (!sessionId) return [];
 
   var response = await fetch(await buildAssistantHistoryFetchUrl(section), {
@@ -1335,6 +1327,17 @@ function syncAssistantTranscriptFromBackend(section, messagesEl, sessionIdKey) {
     });
 }
 
+/** Historia tylko po akcji użytkownika (otwarty panel) i przy zgodzie „chat” z banera. */
+function syncAssistantHistoryIfAllowed(section) {
+  if (!section || !section.classList) return;
+  if (section.classList.contains('epir-assistant--consent-locked')) return;
+  if (!readBannerChatGranted()) return;
+  var messagesEl =
+    section.querySelector('#assistant-messages') || section.querySelector('#assistant-messages-embed');
+  if (!messagesEl) return;
+  syncAssistantTranscriptFromBackend(section, messagesEl, EPIR_ASSISTANT_SESSION_KEY);
+}
+
 // Minimal initializer: bind toggle button to open/close the assistant (supports block + embed)
 function initAssistantUIForSection(section) {
   if (!section || section.dataset.assistantUiInit === '1') return;
@@ -1373,6 +1376,7 @@ function initAssistantUIForSection(section) {
           toggleTarget.classList.remove('is-closed');
           launcher.setAttribute('aria-expanded', 'true');
           try { sessionStorage.setItem(EPIR_ASSISTANT_UI_OPEN_KEY, '1'); } catch (_e) {}
+          syncAssistantHistoryIfAllowed(section);
         }
       });
 
@@ -1409,8 +1413,9 @@ function initAssistantUIForSection(section) {
     if (hasRestoredTranscript && messagesEl) {
       renderAssistantTranscript(messagesEl, restoredTranscript);
     }
-    if (messagesEl) {
-      syncAssistantTranscriptFromBackend(section, messagesEl, EPIR_ASSISTANT_SESSION_KEY);
+    // Panel otwarty bez kliku (inline albo przywrócony po nawigacji w tej karcie).
+    if (messagesEl && toggleTarget && !toggleTarget.classList.contains('is-closed')) {
+      syncAssistantHistoryIfAllowed(section);
     }
 
     // Delegacja kliku w linki in-store: zapisz flagę otwartego panelu, żeby
@@ -1936,32 +1941,10 @@ async function sendMessageToWorker(
       signal: controller.signal,
     });
 
-    // #region agent log
-    epirAgentDebugLog(
-      'assistant-runtime.js:chat:response',
-      'theme chat fetch response',
-      {
-        ok: res.ok,
-        status: res.status,
-        contentType: res.headers.get('content-type') || '',
-        endpoint: endpoint,
-        consentLocked: !!(sectionEl && sectionEl.classList.contains('epir-assistant--consent-locked')),
-      },
-      res.ok ? 'B' : 'E',
-    );
-    // #endregion
 
     if (!res.ok) {
       const errText = await (async () => { try { return await res.text(); } catch { return ''; } })();
       console.error('Server error:', res.status, errText);
-      // #region agent log
-      epirAgentDebugLog(
-        'assistant-runtime.js:chat:error',
-        'theme chat upstream error',
-        { status: res.status, errSnippet: String(errText).slice(0, 200) },
-        'E',
-      );
-      // #endregion
       throw new Error(`Serwer zwrócił błąd (${res.status}).`);
     }
 
@@ -2135,14 +2118,6 @@ function initAssistantSubmitHandler() {
 function doSendFromForm(form, input) {
   const sectionEl = form.closest('#epir-assistant-embed') || form.closest('#epir-assistant-section') || getAssistantSection();
   if (sectionEl && sectionEl.classList.contains('epir-assistant--consent-locked')) {
-    // #region agent log
-    epirAgentDebugLog(
-      'assistant-runtime.js:doSendFromForm',
-      'blocked by consent lock',
-      { consentLocked: true },
-      'D',
-    );
-    // #endregion
     return;
   }
   const messagesEl = sectionEl && (sectionEl.querySelector('#assistant-messages') || sectionEl.querySelector('#assistant-messages-embed'));
