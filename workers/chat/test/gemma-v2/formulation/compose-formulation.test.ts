@@ -288,4 +288,141 @@ describe('E5 compose formulation', () => {
     expect(res.status).toBe(200);
     expect(calls.some((c) => c.path.includes('end-buyer-turn'))).toBe(true);
   });
+
+  it('T-E5-FLOW-4: B z placeholderami jest przyjęte; kod wstawia URL i cenę z faktów', async () => {
+    await catalogPropozycjeStub();
+    await stubGemmaGroqCalls({
+      intent: {state: 'propozycje', slots: {recipient: 'żona'}},
+      formulation: {text: 'Proszę Pana/Panią — polecam serdecznie {{g1}} ({{g1.price}}).', product_refs: ['g1']},
+    });
+    const {namespace} = makeTrackedSessionNamespace();
+    const reply = await composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'prezent',
+      new Request('https://example.com'),
+      {sessionId: 'sess_e5_flow_4'},
+    );
+    expect(reply).toContain('polecam serdecznie');
+    expect(reply).toContain(fictionalMultiVariantProduct().url);
+    expect(reply).not.toContain('{{');
+  });
+
+  it('T-E5-FLOW-5: „?” w URL faktu nie liczy się jako pytanie (E5-D7 d)', async () => {
+    const product = {...fictionalMultiVariantProduct(), url: 'https://example.test/products/fikcyjny?variant=1'};
+    vi.spyOn(catalogSearch, 'searchGemmaCatalog').mockResolvedValue([fictionalMatchFromProduct(product)]);
+    await stubGemmaGroqCalls({
+      intent: {state: 'propozycje', slots: {recipient: 'żona'}},
+      formulation: {text: 'Proszę Pana/Panią — czy ten model {{g1}} odpowiada?', product_refs: ['g1']},
+    });
+    const {namespace} = makeTrackedSessionNamespace();
+    const reply = await composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'prezent',
+      new Request('https://example.com'),
+      {sessionId: 'sess_e5_flow_5'},
+    );
+    expect(reply).toContain('czy ten model');
+  });
+
+  it('T-E5-SPEED-3: błąd transportu B → bez ponowienia B (A + 1×B)', async () => {
+    await catalogPropozycjeStub();
+    const ai = await import('../../../src/ai-client');
+    const spy = vi.spyOn(ai, 'getGroqResponse').mockImplementation(async (_m, _e, opts) => {
+      if (opts?.timingLabel === 'buyer_gemma_intent') {
+        return JSON.stringify(fictionalGemmaIntent({state: 'propozycje', slots: {recipient: 'żona'}}));
+      }
+      throw new Error('network down');
+    });
+    const {namespace} = makeTrackedSessionNamespace();
+    await composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'prezent',
+      new Request('https://example.com'),
+      {sessionId: 'sess_e5_speed_3'},
+    );
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('T-E5-FACTS-B-1: payload B zawiera nazwę produktu z karty', async () => {
+    await catalogPropozycjeStub();
+    let formulationUser = '';
+    await stubGemmaGroqCalls({
+      intent: {state: 'propozycje', slots: {recipient: 'żona'}},
+      onFormulation: (messages) => {
+        const user = (messages as {role: string; content: string}[]).find((m) => m.role === 'user');
+        formulationUser = user?.content ?? '';
+      },
+    });
+    const {namespace} = makeTrackedSessionNamespace();
+    await composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'prezent',
+      new Request('https://example.com'),
+      {sessionId: 'sess_e5_facts_b_1'},
+    );
+    expect(formulationUser).toContain(fictionalMultiVariantProduct().title);
+  });
+
+  it('T-E5-SPEED-4: 429 z B → bez ponowienia w rundzie 0 (B nie jest w withLlmRound0Retry)', async () => {
+    vi.useFakeTimers();
+    await catalogPropozycjeStub();
+    let bCalls = 0;
+    vi.spyOn(aiClient, 'getGroqResponse').mockImplementation(async (_m, _e, opts) => {
+      if (opts?.timingLabel === 'buyer_gemma_intent') {
+        return JSON.stringify(fictionalGemmaIntent({state: 'propozycje', slots: {recipient: 'żona'}}));
+      }
+      bCalls += 1;
+      throw new aiClient.AiGatewayHttpError(429, null, 'response');
+    });
+    const {namespace} = makeTrackedSessionNamespace();
+    const p = composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'prezent',
+      new Request('https://example.com'),
+      {sessionId: 'sess_e5_speed_4'},
+    );
+    await vi.advanceTimersByTimeAsync(GEMMA_FORMULATION_BUDGET_MS + 50);
+    const reply = await p;
+    expect(bCalls).toBe(1);
+    expect(reply).not.toBe(BUYER_LLM_OVERLOAD_MESSAGE);
+  });
+
+  it('T-E5-FLOW-6: naruszenie bez URL (forma „ty”) → odpowiedź deterministyczna, nie tekst B', async () => {
+    await catalogPropozycjeStub();
+    await stubGemmaGroqCalls({
+      intent: {state: 'propozycje', slots: {recipient: 'żona'}},
+      formulation: {text: 'Polecam cię serdecznie: {{g1}}.', product_refs: ['g1']},
+    });
+    const {namespace} = makeTrackedSessionNamespace();
+    const reply = await composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'prezent',
+      new Request('https://example.com'),
+      {sessionId: 'sess_e5_flow_6'},
+    );
+    expect(reply).not.toContain('cię');
+    expect(reply).toContain('propozycje');
+  });
+
+  it('T-E5-HTTP-3: błąd transportu A logowany jako kind intent_transport', async () => {
+    vi.spyOn(aiClient, 'getGroqResponse').mockRejectedValue(new Error('network down'));
+    const logSpy = vi.spyOn(console, 'log');
+    const {namespace} = makeTrackedSessionNamespace();
+    const reply = await composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'fikcyjne',
+      new Request('https://example.com'),
+      {sessionId: 'sess_e5_http_3'},
+    );
+    expect(reply).toBe(gemmaV2EmergencyReply('epir-online-store'));
+    const logged = logSpy.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('gemma.turn_error'));
+    expect(logged.some((l) => l.includes('"kind":"intent_transport"'))).toBe(true);
+  });
 });

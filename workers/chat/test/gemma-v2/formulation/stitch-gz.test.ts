@@ -8,7 +8,7 @@ describe('E5 formulation stitch GZ', () => {
       channelId: 'epir-online-store',
       state: 'propozycje',
       allowedRefs: ['g1'],
-      products: [{ref: 'g1', url: 'https://example.test/products/fikcyjny', priceDisplay: '2 000 zł'}],
+      products: [{ref: 'g1', url: 'https://example.test/products/fikcyjny', priceDisplay: '2 000 zł', title: 'Fikcyjny', available: true}],
       kbAnswer: null,
       allowedUrls: ['https://example.test/products/fikcyjny'],
       allowedNumbers: ['2000'],
@@ -31,6 +31,8 @@ describe('E5 formulation stitch GZ', () => {
           ref: 'g1',
           url: 'https://zareczyny.example.test/products/fikcyjny-gz',
           priceDisplay: '1 500 zł',
+          title: 'Fikcyjny GZ',
+          available: true,
         },
       ],
       kbAnswer: null,
@@ -43,5 +45,34 @@ describe('E5 formulation stitch GZ', () => {
     });
     expect(out).toContain('https://zareczyny.example.test/products/fikcyjny-gz');
     expect(out).not.toContain('epirbizuteria.pl');
+  });
+
+  it('T-E5-DETAIL-1: szczegoly — ref i URL produktu ze szczegółów po productId, nie shown[0]', async () => {
+    const {buildTurnFacts} = await import('../../../src/gemma/formulation/build-turn-facts');
+    const {fictionalMultiVariantProduct} = await import('../fixtures/fictional-catalog-products');
+    const detail = fictionalMultiVariantProduct();
+    const turn = buildTurnFacts({
+      channelId: 'epir-online-store',
+      state: 'szczegoly',
+      userText: 'pokaż drugi',
+      outcome: {
+        catalogCards: [],
+        catalogFailed: false,
+        productDetail: detail,
+        kb: null,
+        kbFailed: false,
+        cart: null,
+        selected: {productId: detail.productId, variantId: null},
+        shown: [
+          {ref: 'g1', productId: 'gid://shopify/Product/111', handle: 'inny', variantIds: [], url: 'https://example.test/products/inny'},
+          {ref: 'g2', productId: detail.productId, handle: detail.handle, variantIds: [], url: detail.url},
+        ],
+      } as never,
+    });
+    expect(turn.products).toHaveLength(1);
+    expect(turn.products[0].ref).toBe('g2');
+    expect(turn.products[0].url).toBe(detail.url);
+    expect(turn.products[0].title).toBe(detail.title);
+    expect(turn.allowedUrls).not.toContain('https://example.test/products/inny');
   });
 });

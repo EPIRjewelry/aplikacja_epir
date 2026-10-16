@@ -27,14 +27,22 @@ export function budgetMinorFromSlots(slots: GemmaSlots, userCorpus: string): num
   return undefined;
 }
 
+function slotBudgetDigits(slots: GemmaSlots): Set<string> {
+  const raw = slots.budget?.trim() ?? '';
+  return new Set((raw.match(/\d[\d\s]*/g) ?? []).map((r) => r.replace(/\s/g, '')).filter(Boolean));
+}
+
 function parseRangeBounds(
   userCorpus: string,
   corpusNumbers: Set<string>,
+  budgetDigits: Set<string>,
 ): {minMinor: number; maxMinor: number} | null {
+  // Zakres tylko dla liczb budżetu (slot A): „rozmiar 12-14” nie jest ceną.
+  if (!budgetDigits.size) return null;
   const patterns = [
-    /od\s+(\d[\d\s]*)\s+do\s+(\d[\d\s]*)/giu,
+    /(?<!\p{L})od\s+(\d[\d\s]*)\s+do\s+(\d[\d\s]*)/giu,
     /(\d[\d\s]*)\s*[–-]\s*(\d[\d\s]*)/gu,
-    /między\s+(\d[\d\s]*)\s+a\s+(\d[\d\s]*)/giu,
+    /(?<!\p{L})między\s+(\d[\d\s]*)\s+a\s+(\d[\d\s]*)/giu,
   ];
   for (const re of patterns) {
     let m;
@@ -42,6 +50,7 @@ function parseRangeBounds(
       const a = m[1].replace(/\s/g, '');
       const b = m[2].replace(/\s/g, '');
       if (!corpusNumbers.has(a) || !corpusNumbers.has(b)) continue;
+      if (!budgetDigits.has(a) && !budgetDigits.has(b)) continue;
       const plnA = Number(a);
       const plnB = Number(b);
       if (!Number.isFinite(plnA) || !Number.isFinite(plnB) || plnA <= 0 || plnB <= 0) continue;
@@ -56,7 +65,7 @@ function parseRangeBounds(
 function isMinBudgetMarkerBeforeNumber(userCorpus: string, digits: string): boolean {
   const spaced = digits.split('').join('\\s*');
   const re = new RegExp(
-    `(?:od|powyżej|ponad|minimum|co najmniej|nie mniej niż)\\s+${spaced}(?:\\s*zł)?`,
+    `(?<!\\p{L})(?:od|powyżej|ponad|minimum|co najmniej|nie mniej niż)\\s+${spaced}(?:\\s*zł)?`,
     'iu',
   );
   return re.test(userCorpus);
@@ -67,7 +76,7 @@ export function budgetPriceBoundsFromSlots(
   userCorpus: string,
 ): {priceMin?: ReturnType<typeof moneyFromMinor>; priceMax?: ReturnType<typeof moneyFromMinor>} {
   const corpusNumbers = corpusNumberSet(userCorpus);
-  const range = parseRangeBounds(userCorpus, corpusNumbers);
+  const range = parseRangeBounds(userCorpus, corpusNumbers, slotBudgetDigits(slots));
   if (range) {
     return {
       priceMin: moneyFromMinor(range.minMinor),

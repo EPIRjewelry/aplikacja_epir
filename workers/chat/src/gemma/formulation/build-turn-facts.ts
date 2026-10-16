@@ -51,7 +51,16 @@ export function buildTurnFacts(params: {
       const shown = outcome.shown.find((s) => s.ref === card.ref);
       const url = shown?.url || '';
       if (url) allowedUrls.add(url);
-      products.push({ref: card.ref, url, priceDisplay});
+      const variants = card.match.matchingVariants.length
+        ? card.match.matchingVariants
+        : card.match.product.variants;
+      products.push({
+        ref: card.ref,
+        url,
+        priceDisplay,
+        title: card.match.product.title,
+        available: variants.some((v) => v.available),
+      });
     }
   }
 
@@ -63,16 +72,26 @@ export function buildTurnFacts(params: {
       matchingPriceRange: outcome.productDetail.priceRange,
       isFlat: outcome.productDetail.priceRange.isFlat,
     });
-    const ref = outcome.shown[0]?.ref || 'g1';
-    const url = outcome.shown[0]?.url || '';
+    // Ref i link produktu ze szczegółów (po productId), nie ślepe shown[0].
+    const detail = outcome.productDetail;
+    const shownDetail = outcome.shown.find((s) => s.productId === detail.productId);
+    const ref = shownDetail?.ref || 'g1';
+    const url = shownDetail?.url || detail.url || '';
     if (url) allowedUrls.add(url);
     const priceDisplay = prices.lines.map((l) => l.displayPl).join(', ');
-    products.push({ref, url, priceDisplay});
+    products.push({
+      ref,
+      url,
+      priceDisplay,
+      title: detail.title,
+      available: detail.variants.some((v) => v.available),
+    });
   }
 
   const allowedNumbers = new Set<string>(numbersFromText(userText));
   for (const p of products) {
     for (const n of numbersFromText(p.priceDisplay)) allowedNumbers.add(n);
+    for (const n of numbersFromText(p.title)) allowedNumbers.add(n);
   }
 
   const kbAnswer = state === 'polityki_kontakt' && outcome.kb ? outcome.kb.answer : null;

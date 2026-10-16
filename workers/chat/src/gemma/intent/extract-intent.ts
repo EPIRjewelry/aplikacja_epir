@@ -1,6 +1,6 @@
 import type {Env} from '../../config/bindings';
 import {getGroqResponse, type GroqMessage} from '../../ai-client';
-import {withLlmRound0Retry} from '../../buyer/buyer-llm-retry';
+import {BuyerTurnOverloadError, withLlmRound0Retry} from '../../buyer/buyer-llm-retry';
 import type {BuyerHistoryEntry} from '../../buyer/session-history';
 import {parseIntentJson, type ParseIntentResult} from './parse-intent';
 import type {GemmaIntent} from './schema';
@@ -52,6 +52,12 @@ function unwrapParse(result: ParseIntentResult): ExtractIntentResult {
   return {ok: true, intent: result.intent};
 }
 
+/** Overload (BuyerTurnOverloadError) idzie dalej bez zmian — osobny komunikat w handle-buyer-turn. */
+function wrapIntentTransportError(e: unknown): Error {
+  if (e instanceof BuyerTurnOverloadError) return e;
+  return new GemmaTurnError('intent_transport', e);
+}
+
 export async function extractGemmaIntent(params: {
   env: Env;
   userText: string;
@@ -63,7 +69,7 @@ export async function extractGemmaIntent(params: {
   try {
     firstRaw = await callIntentModel(params.env, messages, params.sessionId);
   } catch (e) {
-    throw new GemmaTurnError('intent_transport', e);
+    throw wrapIntentTransportError(e);
   }
   const first = parseIntentJson(firstRaw);
   if (first.ok) {
@@ -75,7 +81,7 @@ export async function extractGemmaIntent(params: {
   try {
     retryRaw = await callIntentModel(params.env, messages, params.sessionId);
   } catch (e) {
-    throw new GemmaTurnError('intent_transport', e);
+    throw wrapIntentTransportError(e);
   }
   return unwrapParse(parseIntentJson(retryRaw));
 }

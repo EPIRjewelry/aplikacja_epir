@@ -49,6 +49,8 @@ describe('E5 cart show', () => {
       new Request('https://example.com'),
       {sessionId: 'sess_e5_show_2'},
     );
+    // Pozycja z koszyka musi dotrzeć do odpowiedzi (nie tylko do formattera).
+    expect(reply).toContain('Fikcyjny pierścionek testowy');
     expect(reply).not.toContain('DANE TECHNICZNE');
     expect(reply).not.toContain('gid://');
     expect(reply.toLowerCase()).not.toContain('continue_url');

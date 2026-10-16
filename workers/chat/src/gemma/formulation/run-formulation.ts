@@ -85,7 +85,8 @@ export async function maybeFormulateReply(params: {
       )
     : ['parse_or_transport'];
 
-  if (Date.now() < deadlineMs) {
+  // E5-D2: błąd B (transport, zły JSON, timeout) → od razu deterministycznie; retry tylko po naruszeniu walidatora.
+  if (first && Date.now() < deadlineMs) {
     const second = await extractFormulationReply({
       env: params.env,
       userText: params.userText,

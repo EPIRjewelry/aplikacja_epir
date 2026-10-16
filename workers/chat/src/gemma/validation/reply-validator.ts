@@ -14,11 +14,21 @@ export type ReplyValidationFacts = {
 const URL_IN_TEXT =
   /https?:\/\/|www\.|\[[^\]]*\]\([^)]+\)|[a-z0-9][-a-z0-9]*\.[a-z]{2,}\/[^\s)\]>]+/i;
 
+const ADDRESS_PAIR = /(Pan|Pana|Panu|Panem|Pani|Panią)\/(Pan|Pana|Panu|Panem|Pani|Panią)/gu;
+const STANDALONE_ADDRESS = /(?<!\p{L})(Pan|Pani|Pana|Panu|Panem|Panią)(?!\p{L})/u;
+/** Kwota w tekście modelu: ceny wyłącznie przez {{gN.price}} (E5-D7 b2), także gdy liczba jest w userText. */
+const CURRENCY_AMOUNT = /\d[\d\s.,]*\s*(?:zł|zl|pln|złotych|złote|złoty)(?!\p{L})/iu;
+
 function hasGenderedAddressViolation(text: string): boolean {
-  let t = text;
-  t = t.replace(/Pana\/Panią/giu, '');
-  t = t.replace(/Pan\/Pani/giu, '');
-  return /\b(Pan|Pani|Pana|Panu|Panem|Panią)\b/u.test(t);
+  const t = text.replace(ADDRESS_PAIR, '');
+  return STANDALONE_ADDRESS.test(t);
+}
+
+/** Placeholdery {{gN}} / {{gN.price}} nie są liczbami tekstu (cyfra w refie). */
+function stripPlaceholders(text: string): string {
+  return text
+    .replace(new RegExp(GEMMA_PLACEHOLDER_REF_PRICE.source, 'g'), ' ')
+    .replace(new RegExp(GEMMA_PLACEHOLDER_REF.source, 'g'), ' ');
 }
 
 function normalizePhoneDigits(text: string): string {
@@ -82,7 +92,10 @@ export function validateFormulationTextBeforeStitch(
 
   if (URL_IN_TEXT.test(trimmed)) violations.push('url_in_model_text');
 
-  const numbersInText = extractNumbers(trimmed);
+  const plain = stripPlaceholders(trimmed);
+  if (CURRENCY_AMOUNT.test(plain)) violations.push('price_in_model_text');
+
+  const numbersInText = extractNumbers(plain);
   for (const n of numbersInText) {
     if (!facts.allowedNumbers.has(n)) violations.push('number_not_in_facts');
   }
@@ -90,7 +103,7 @@ export function validateFormulationTextBeforeStitch(
   const kbDigits = facts.kbAnswer
     ? new Set(extractPhoneSequences(facts.kbAnswer).map(normalizePhoneDigits))
     : new Set<string>();
-  for (const seq of extractPhoneSequences(trimmed)) {
+  for (const seq of extractPhoneSequences(plain)) {
     const norm = normalizePhoneDigits(seq);
     if (!kbDigits.has(norm)) violations.push('phone_not_in_facts');
   }

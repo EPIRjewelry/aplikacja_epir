@@ -89,4 +89,18 @@ describe('E4 slots-to-filters', () => {
     expect(bounds.priceMin).toBeUndefined();
     expect(bounds.priceMax).toBeUndefined();
   });
+
+  it('T-E5-BUDGET-DIR-6: rozmiar 12-14 nie jest zakresem ceny', () => {
+    const corpus = 'pierścionek rozmiar 12-14, do 2000 zł';
+    const bounds = budgetPriceBoundsFromSlots({budget: '2000'}, corpus);
+    expect(bounds.priceMin).toBeUndefined();
+    expect(bounds.priceMax).toEqual(moneyFromMinor(200_000));
+    expect(budgetPriceBoundsFromSlots({}, 'rozmiar 12-14')).toEqual({});
+  });
+
+  it('T-E5-BUDGET-DIR-7: „pod 2000 zł” nie jest markerem min', () => {
+    const bounds = budgetPriceBoundsFromSlots({budget: '2000'}, 'coś pod 2000 zł');
+    expect(bounds.priceMin).toBeUndefined();
+    expect(bounds.priceMax).toEqual(moneyFromMinor(200_000));
+  });
 });

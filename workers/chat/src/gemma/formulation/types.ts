@@ -5,6 +5,9 @@ export type FormulationProductRef = {
   ref: string;
   url: string;
   priceDisplay: string;
+  /** Nazwa z karty produktu (fakty kodu, kanon §2.2) — model nie zgaduje, co jest pod refem. */
+  title: string;
+  available: boolean;
 };
 
 export type TurnFacts = {

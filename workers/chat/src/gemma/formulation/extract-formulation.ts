@@ -12,7 +12,8 @@ Zasady:
 - W "text" NIE wklejaj adresów URL, www, cen liczbowych ani numerów telefonu — używaj placeholderów {{g1}}, {{g1.price}} z listy refs.
 - product_refs musi być podzbiorem dozwolonych refów z payloadu.
 - Co najwyżej jedno pytanie (jeden znak ?).
-- Nie wspominaj marki KAZKA.`;
+- Nie wspominaj marki KAZKA.
+- O produktach pisz tylko to, co jest w facts (title, available, cena przez placeholder); nie dopisuj cech spoza faktów.`;
 
 function buildUserPayload(userText: string, turn: TurnFacts): string {
   return JSON.stringify({
@@ -63,18 +64,21 @@ export async function extractFormulationReply(params: {
     messages.push({role: 'user', content: userBody});
   }
 
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const raw = await Promise.race([
       callFormulationModel(params.env, messages, params.sessionId),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('formulation_timeout')), remaining),
-      ),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('formulation_timeout')), remaining);
+      }),
     ]);
     const parsed = parseFormulationJson(raw);
     if (!parsed.ok) return null;
     return parsed.formulation;
   } catch {
     return null;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 

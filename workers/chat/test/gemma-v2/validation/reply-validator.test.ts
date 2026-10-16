@@ -75,4 +75,23 @@ describe('E5 reply validator', () => {
     const v = validateFormulationTextBeforeStitch('{{g9}}', ['g9'], baseFacts);
     expect(v).toContain('ref_out_of_scope');
   });
+
+  it('T-E5-VAL-PH-1: placeholders {{g1}} / {{g1.price}} are not numbers', () => {
+    const v = validateFormulationTextBeforeStitch('Proszę Pana/Panią — polecam {{g1}} w cenie {{g1.price}}.', ['g1'], baseFacts);
+    expect(v).toEqual([]);
+  });
+
+  it('T-E5-VAL-PRICE-1: amount in model text fails even when number is in userText', () => {
+    const v = validateFormulationTextBeforeStitch('Tak, ten model kosztuje 100 zł.', [], {
+      ...baseFacts,
+      allowedNumbers: new Set(['100']),
+      userText: 'czy jest coś za 100 zł?',
+    });
+    expect(v).toContain('price_in_model_text');
+  });
+
+  it('T-E5-VAL-FORM-2: pairs Panu/Pani ok; standalone Panią fails', () => {
+    expect(validateFormulationTextBeforeStitch('Polecam Panu/Pani ten model.', [], baseFacts)).not.toContain('gendered_address');
+    expect(validateFormulationTextBeforeStitch('Zapraszam Panią do salonu.', [], baseFacts)).toContain('gendered_address');
+  });
 });
