@@ -88,4 +88,72 @@ describe('E2b catalog search pipeline', () => {
     );
     expect(out).toHaveLength(1);
   });
+
+  it('T-E2b-PIPE-3: metal goes to repo.search and survives the budget filter', async () => {
+    const base = fictionalMultiVariantProduct();
+    const product = {
+      ...base,
+      variants: base.variants.map((v, i) =>
+        i === 1 ? {...v, metal: 'srebro 925', price: moneyFromMinor(100_000)} : {...v, metal: 'złoto 585'},
+      ),
+    };
+    const repoMatch = fictionalMatchFromProduct(product, {metal: ['złoto']});
+    const searchSpy = vi.fn().mockResolvedValue({
+      matches: [repoMatch],
+      total: 1,
+      facets: {
+        total: 1,
+        byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+        byStone: {},
+        byMetal: {},
+        byProductType: {},
+      },
+    });
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({search: searchSpy} as never);
+
+    const out = await searchGemmaCatalog(
+      {SHOP_DOMAIN: 'fikcyjny.myshopify.com'} as import('../../../src/config/bindings').Env,
+      'epir-online-store',
+      {text: 'fikcyjne', metal: ['złoto'], priceMax: moneyFromMinor(300_000)},
+      10,
+    );
+
+    expect(searchSpy.mock.calls[0][0]).toEqual(expect.objectContaining({metal: ['złoto']}));
+    expect(out).toHaveLength(1);
+    expect(out[0].matchingVariants.map((v) => v.variantId)).toEqual([
+      'gid://shopify/ProductVariant/900001-c',
+    ]);
+  });
+
+  it('T-E2b-PIPE-4: epir-zareczyny pipeline drops products without the zareczyny tag', async () => {
+    const pIn = {...fictionalMultiVariantProduct(), productId: 'gid://shopify/Product/910011'};
+    const pOut = {...fictionalMultiVariantProduct(), productId: 'gid://shopify/Product/910012'};
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [fictionalMatchFromProduct(pIn), fictionalMatchFromProduct(pOut)],
+        total: 2,
+        facets: {
+          total: 2,
+          byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
+    vi.spyOn(graphql, 'callStorefrontAPI').mockResolvedValue({
+      nodes: [
+        {id: pIn.productId, tags: [ZARECZYNY_ASSORTMENT_TAG]},
+        {id: pOut.productId, tags: ['inne']},
+      ],
+    });
+    const env = {
+      SHOP_DOMAIN: 'fikcyjny.myshopify.com',
+      PRIVATE_STOREFRONT_API_TOKEN_ZARECZYNY: 'fikcyjny-gz-token',
+    } as import('../../../src/config/bindings').Env;
+
+    const out = await searchGemmaCatalog(env, 'epir-zareczyny', {text: 'fikcyjne'}, 10);
+
+    expect(out.map((m) => m.product.productId)).toEqual([pIn.productId]);
+  });
 });

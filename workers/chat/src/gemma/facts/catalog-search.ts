@@ -34,7 +34,8 @@ export async function searchGemmaCatalog(
   let out: ProductMatch[] = matches;
   if (priceMin !== undefined || priceMax !== undefined) {
     const products = matches.map((m) => m.product);
-    out = filterProducts(products, {priceMin, priceMax});
+    // Ponowny filtr na pełnych wariantach: metal i kamień muszą zostać, inaczej budżet przywraca warianty z innym metalem.
+    out = filterProducts(products, {metal, stone, priceMin, priceMax});
   }
 
   return filterProductMatchesByZareczynyTag(env, channelId, out, clientRequest);
