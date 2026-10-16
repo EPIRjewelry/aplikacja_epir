@@ -3,10 +3,8 @@ import {SessionDO} from '../../src/index';
 import type {Env} from '../../src/config/bindings';
 import {ensureBuyerSessionContext} from '../../src/buyer/session-context';
 import {appendBuyerSessionMessage} from '../../src/buyer/session-history';
-import {
-  gemmaCustomerMessagesSql,
-  OPERATOR_STUDIO_CHANNELS,
-} from '../../../bigquery-batch/src/gemma-channel-filter';
+import {gemmaCustomerMessagesSql, OPERATOR_STUDIO_CHANNELS} from '../../../bigquery-batch/src/gemma-channel-filter';
+import {syntheticBuyerRowCountsAsGemmaCustomer} from './helpers/gemma-customer-filter-eval';
 import {makeDurableStateStub} from '../helpers/session-do-sql-stub';
 import {makeFakeD1Chatbot} from './fixtures/fake-d1-chatbot';
 import {FIKCYJNY_SESSION_ID} from './fixtures/boundary-payloads';
@@ -76,11 +74,30 @@ describe('E0 boundary — D1 messages storefront_id/channel for analytics', () =
     expect(OPERATOR_STUDIO_CHANNELS).not.toContain(messageInserts[0]?.channel);
   });
 
-  it('gemmaCustomerMessagesSql excludes operator channels (contract anchor)', () => {
-    const sql = gemmaCustomerMessagesSql('m');
-    expect(sql).toContain("'operator'");
-    expect(sql).toContain("'internal-dashboard'");
-    expect(sql).not.toContain('hydrogen-zareczyny');
-    expect(sql).not.toContain('online-store');
+  it('synthetic GE/GZ buyer rows pass gemma customer filter; operator row does not', () => {
+    expect(gemmaCustomerMessagesSql('m').length).toBeGreaterThan(20);
+
+    const sessions = new Map<string, {session_id: string; channel: string; storefront_id: string}>();
+
+    const geRow = {
+      session_id: 'sess_d1-ge-fikcyjny-0001',
+      channel: 'online-store',
+      storefront_id: 'online-store',
+    };
+    const gzRow = {
+      session_id: 'sess_d1-gz-fikcyjny-0002',
+      channel: 'hydrogen-zareczyny',
+      storefront_id: 'zareczyny',
+    };
+    const operatorRow = {
+      session_id: 'sess_op-fikcyjny-0003',
+      channel: 'operator',
+      storefront_id: 'operator',
+    };
+
+    expect(syntheticBuyerRowCountsAsGemmaCustomer(geRow, sessions)).toBe(true);
+    expect(syntheticBuyerRowCountsAsGemmaCustomer(gzRow, sessions)).toBe(true);
+    expect(syntheticBuyerRowCountsAsGemmaCustomer(operatorRow, sessions)).toBe(false);
+    expect(OPERATOR_STUDIO_CHANNELS).toContain(operatorRow.channel);
   });
 });

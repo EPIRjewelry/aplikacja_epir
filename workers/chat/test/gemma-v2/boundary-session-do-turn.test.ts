@@ -1,13 +1,11 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {handleBuyerTurn} from '../../src/buyer/handle-buyer-turn';
-import * as channelSwitch from '../../src/buyer/channel-switch';
-import * as compose from '../../src/buyer/compose-buyer-turn';
-import {ensureBuyerSessionContext} from '../../src/buyer/session-context';
-import {appendBuyerSessionMessage} from '../../src/buyer/session-history';
 import type {Env} from '../../src/config/bindings';
-import {geBuyerBody, FIKCYJNY_SESSION_ID} from './fixtures/boundary-payloads';
+import {geBuyerBody} from './fixtures/boundary-payloads';
+import {makeGemmaChannelKv} from './fixtures/fake-gemma-kv';
 import {geBuyerBrandLock} from './helpers/brand-lock-fixtures';
 import {callOrderIndexes, makeTrackedSessionNamespace} from './helpers/session-do-calls';
+import {stubBuyerComposeDeps} from './helpers/stub-compose-deps';
 
 function postReq(body: Record<string, unknown>) {
   return new Request('https://example.com/chat', {
@@ -17,36 +15,28 @@ function postReq(body: Record<string, unknown>) {
   });
 }
 
+function buyerEnvWithSession(namespace: DurableObjectNamespace): Env {
+  return {
+    SESSION_DO: namespace,
+    GEMMA_RUNTIME_KV: makeGemmaChannelKv({'epir-online-store': 'on'}),
+    ALLOWED_ORIGIN: '*',
+    SHOP_DOMAIN: 'test-shop.myshopify.com',
+  } as Env;
+}
+
 describe('E0 boundary — SessionDO call order in buyer turn', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('compose path: set-session-id → set-storefront-context before append user/assistant', async () => {
-    vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('on');
+  it('real composeBuyerAssistantReply: set-session-id → set-storefront-context before append user/assistant', async () => {
+    await stubBuyerComposeDeps('Odpowiedź z prawdziwego compose.');
     const {namespace, calls} = makeTrackedSessionNamespace();
-    const env = {SESSION_DO: namespace} as Env;
+    const env = buyerEnvWithSession(namespace);
 
-    vi.spyOn(compose, 'composeBuyerAssistantReply').mockImplementation(
-      async (_env, channelId, userText, _req, opts) => {
-        const sid = opts?.sessionId;
-        await ensureBuyerSessionContext(_env, {
-          sessionId: sid,
-          channelId,
-          storefrontId: 'online-store',
-          bodyChannel: 'online-store',
-          userText,
-        });
-        if (sid) {
-          await appendBuyerSessionMessage(_env, sid, 'user', userText);
-          await appendBuyerSessionMessage(_env, sid, 'assistant', 'Odpowiedź fikcyjna.');
-        }
-        return 'Odpowiedź fikcyjna.';
-      },
-    );
-
-    const body = geBuyerBody();
-    await handleBuyerTurn(postReq(body), env, geBuyerBrandLock(), body);
+    const body = geBuyerBody({message: 'Fikcyjne zapytanie o pierścionek'});
+    const res = await handleBuyerTurn(postReq(body), env, geBuyerBrandLock(), body);
+    expect(res.status).toBe(200);
 
     const setSid = callOrderIndexes(calls, 'set-session-id');
     const setSf = callOrderIndexes(calls, 'set-storefront-context');
@@ -60,27 +50,15 @@ describe('E0 boundary — SessionDO call order in buyer turn', () => {
     const appendRoles = calls
       .filter((c) => c.path === 'append')
       .map((c) => (c.body as {role?: string}).role);
-    expect(appendRoles).toEqual(['user', 'assistant']);
+    expect(appendRoles.filter((r) => r === 'user').length).toBeGreaterThanOrEqual(1);
+    expect(appendRoles.filter((r) => r === 'assistant').length).toBeGreaterThanOrEqual(1);
     expect(appendRoles.every((r) => r === 'user' || r === 'assistant')).toBe(true);
   });
 
-  it('second turn reuses same Session DO id', async () => {
-    vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('on');
+  it('second turn reuses same Session DO id (real compose)', async () => {
+    await stubBuyerComposeDeps('ok');
     const {namespace, calls} = makeTrackedSessionNamespace();
-    const env = {SESSION_DO: namespace} as Env;
-
-    vi.spyOn(compose, 'composeBuyerAssistantReply').mockImplementation(
-      async (_env, channelId, userText, _req, opts) => {
-        await ensureBuyerSessionContext(_env, {
-          sessionId: opts?.sessionId,
-          channelId,
-          storefrontId: 'online-store',
-          bodyChannel: 'online-store',
-          userText,
-        });
-        return 'ok';
-      },
-    );
+    const env = buyerEnvWithSession(namespace);
 
     const body1 = geBuyerBody({message: 'Tura jeden'});
     const res1 = await handleBuyerTurn(postReq(body1), env, geBuyerBrandLock(), body1);

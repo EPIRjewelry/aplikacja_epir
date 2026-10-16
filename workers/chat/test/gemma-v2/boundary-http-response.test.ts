@@ -7,8 +7,9 @@ import * as channelSwitch from '../../src/buyer/channel-switch';
 import * as compose from '../../src/buyer/compose-buyer-turn';
 import {FINAL_TOOL_FALLBACK_USER} from '../../src/buyer/compose-buyer-turn';
 import {BuyerTurnOverloadError, BUYER_LLM_OVERLOAD_MESSAGE} from '../../src/buyer/buyer-llm-retry';
-import {geBuyerBody, FIKCYJNY_SESSION_ID} from './fixtures/boundary-payloads';
-import {geBuyerBrandLock} from './helpers/brand-lock-fixtures';
+import {geBuyerBody, gzBuyerBody, FIKCYJNY_SESSION_ID} from './fixtures/boundary-payloads';
+import {makeGemmaChannelKv} from './fixtures/fake-gemma-kv';
+import {geBuyerBrandLock, gzBuyerBrandLock} from './helpers/brand-lock-fixtures';
 import {
   expectAssistantFailed,
   expectBuyerMessageShape,
@@ -30,11 +31,13 @@ describe('E0 boundary — HTTP response shape (handleBuyerTurn)', () => {
   });
 
   it('off → 200 unavailable channel_off without compose', async () => {
-    vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('off');
     const composeSpy = vi.spyOn(compose, 'composeBuyerAssistantReply');
+    const env = {
+      GEMMA_RUNTIME_KV: makeGemmaChannelKv({'epir-online-store': 'off'}),
+    } as never;
 
     const body = geBuyerBody();
-    const res = await handleBuyerTurn(postReq(body), {} as never, geBuyerBrandLock(), body);
+    const res = await handleBuyerTurn(postReq(body), env, geBuyerBrandLock(), body);
     const json = (await res.json()) as Record<string, unknown>;
 
     expect(res.status).toBe(200);
@@ -42,18 +45,23 @@ describe('E0 boundary — HTTP response shape (handleBuyerTurn)', () => {
     expect(composeSpy).not.toHaveBeenCalled();
   });
 
-  it('unknown channel mode from KV gate → unavailable (fail-closed)', async () => {
-    vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('off');
+  it('unknown KV value maybe → off via readChannelMode → unavailable (fail-closed)', async () => {
     const composeSpy = vi.spyOn(compose, 'composeBuyerAssistantReply');
-    const kv = {async get() { return 'maybe'; }} as KVNamespace;
+    const env = {
+      GEMMA_RUNTIME_KV: makeGemmaChannelKv({'epir-online-store': 'maybe'}),
+    } as never;
 
     const body = geBuyerBody();
-    const res = await handleBuyerTurn(
-      postReq(body),
-      {GEMMA_RUNTIME_KV: kv} as never,
-      geBuyerBrandLock(),
-      body,
-    );
+    const res = await handleBuyerTurn(postReq(body), env, geBuyerBrandLock(), body);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(BUYER_UNAVAILABLE_JSON);
+    expect(composeSpy).not.toHaveBeenCalled();
+  });
+
+  it('no GEMMA_RUNTIME_KV binding → fail-closed unavailable', async () => {
+    const composeSpy = vi.spyOn(compose, 'composeBuyerAssistantReply');
+    const body = geBuyerBody();
+    const res = await handleBuyerTurn(postReq(body), {} as never, geBuyerBrandLock(), body);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(BUYER_UNAVAILABLE_JSON);
     expect(composeSpy).not.toHaveBeenCalled();
@@ -69,6 +77,19 @@ describe('E0 boundary — HTTP response shape (handleBuyerTurn)', () => {
 
     expectMissingUserMessage(json, res.status);
     expect(composeSpy).not.toHaveBeenCalled();
+  });
+
+  it('GZ on → 200 message epir-zareczyny / hydrogen-zareczyny context', async () => {
+    vi.spyOn(channelSwitch, 'readChannelMode').mockResolvedValue('on');
+    vi.spyOn(compose, 'composeBuyerAssistantReply').mockResolvedValue('Odpowiedź GZ fikcyjna.');
+
+    const body = gzBuyerBody();
+    const res = await handleBuyerTurn(postReq(body), {} as never, gzBuyerBrandLock(), body);
+    const json = (await res.json()) as Record<string, unknown>;
+
+    expect(res.status).toBe(200);
+    expectBuyerMessageShape(json, {mode: 'on', channelId: 'epir-zareczyny'});
+    expect(json.reply).toBe('Odpowiedź GZ fikcyjna.');
   });
 
   it('on → 200 message with channel_id, mode, session_id, reply', async () => {

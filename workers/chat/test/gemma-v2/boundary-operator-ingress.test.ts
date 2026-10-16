@@ -39,7 +39,7 @@ describe('E0 boundary — operator ingress isolation (W1 positive)', () => {
     vi.restoreAllMocks();
   });
 
-  it('operator S2S /chat: composeBuyerAssistantReply never called; operator greeting in reply', async () => {
+  it('operator S2S /chat: composeBuyerAssistantReply never called; isShortGreeting operator reply', async () => {
     const composeSpy = vi.spyOn(compose, 'composeBuyerAssistantReply');
     const {env} = makeWorkerTestEnv();
 
