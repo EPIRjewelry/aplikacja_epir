@@ -809,11 +809,12 @@ export async function composeBuyerAssistantReply(
     buyerToolNamesThisTurn: [],
   };
 
+  const catalogSid = sessionId?.trim() ?? '';
   const catalogForceOk =
-    Boolean(sessionId) &&
+    catalogSid !== '' &&
     !productHandle &&
     !detectIllegalOrHarmfulRequest(userText) &&
-    (await lastAssistToolState(env, sessionId)) === 'empty' &&
+    (await lastAssistToolState(env, catalogSid)) === 'empty' &&
     modelTools.includes('search_catalog');
   let catalogForceSortNext = false;
 
