@@ -1619,6 +1619,28 @@ export class SessionDO {
       return new Response('ok');
     }
 
+    if (method === 'GET' && pathname.endsWith('/gemma-state')) {
+      const { readGemmaStateRow } = await import('./gemma/session-do-gemma-state');
+      const state = readGemmaStateRow(this.sql);
+      return new Response(JSON.stringify(state), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (method === 'POST' && pathname.endsWith('/gemma-state')) {
+      const { readGemmaStateRow, mergeGemmaStatePost, writeGemmaStateRow } = await import(
+        './gemma/session-do-gemma-state'
+      );
+      const body = await request.json().catch(() => null);
+      const prev = readGemmaStateRow(this.sql);
+      const merged = mergeGemmaStatePost(prev, body);
+      if ('error' in merged) {
+        return new Response(merged.error, { status: 400 });
+      }
+      writeGemmaStateRow(this.sql, merged);
+      return new Response('ok');
+    }
+
     // POST /append
     if (method === 'POST' && pathname.endsWith('/append')) {
       const payload = (await request.json().catch(() => null)) as HistoryEntry | null;

@@ -1,12 +1,14 @@
 import {describe, expect, it, vi} from 'vitest';
 import {composeGemmaReply} from '../../src/gemma/compose-gemma-reply';
 import {gemmaV2EmergencyReply} from '../../src/gemma/fallback';
+import {stubGemmaIntentJson} from './helpers/stub-gemma-intent';
 import {SessionDO} from '../../src/index';
 import type {Env} from '../../src/config/bindings';
 import {makeDurableStateStub} from '../helpers/session-do-sql-stub';
 
 describe('E1 composeGemmaReply skeleton', () => {
-  it('returns emergency reply without LLM or MCP', async () => {
+  it('returns deterministic reply with mocked intent (no MCP)', async () => {
+    await stubGemmaIntentJson({state: 'powitanie'});
     const ai = await import('../../src/ai-client');
     const groqSpy = vi.spyOn(ai, 'getGroqResponse');
     const streamSpy = vi.spyOn(ai, 'streamGroqEvents');
@@ -46,10 +48,9 @@ describe('E1 composeGemmaReply skeleton', () => {
       },
     );
 
-    expect(reply).toBe(gemmaV2EmergencyReply('epir-online-store'));
-    expect(reply).toContain('https://epirbizuteria.pl/pages/kontakt');
-    expect(reply).toMatch(/Prosimy|Proszę/i);
-    expect(groqSpy).not.toHaveBeenCalled();
+    expect(reply).not.toBe(gemmaV2EmergencyReply('epir-online-store'));
+    expect(reply).toMatch(/Proszę Pana\/Panią/i);
+    expect(groqSpy).toHaveBeenCalled();
     expect(streamSpy).not.toHaveBeenCalled();
     expect(calls.some((p) => p === 'set-session-id')).toBe(true);
   });

@@ -23,6 +23,7 @@ import {geBuyerBody} from './fixtures/boundary-payloads';
 import {makeGemmaRuntimeKv} from './fixtures/fake-testers-kv';
 import {geBuyerBrandLock} from './helpers/brand-lock-fixtures';
 import {stubBuyerComposeDeps} from './helpers/stub-compose-deps';
+import {stubGemmaIntentJson} from './helpers/stub-gemma-intent';
 import {callOrderIndexes, makeTrackedSessionNamespace} from './helpers/session-do-calls';
 
 function makeSessionDoEnv(d1: D1Database, sessionShardId: string) {
@@ -87,6 +88,7 @@ describe('E2 buyer turn D1 parity — legacy vs v2', () => {
     const sidV2 = 'sess_e2_parity_v2_ge';
     const {db: dbV, messageInserts: v2Inserts} = makeFakeD1Chatbot();
     const {env: envV2} = makeSessionDoEnv(dbV, sidV2);
+    await stubGemmaIntentJson({slots: {recipient: 'fikcyjny odbiorca'}});
     const v2Reply = await composeGemmaReply(envV2, 'epir-online-store', userText, req, {
       sessionId: sidV2,
       storefrontId: 'online-store',
@@ -123,6 +125,7 @@ describe('E2 buyer turn D1 parity — legacy vs v2', () => {
     const sidV2 = 'sess_e2_parity_v2_gz';
     const {db: dbV, messageInserts: v2Inserts} = makeFakeD1Chatbot();
     const {env: envV2} = makeSessionDoEnv(dbV, sidV2);
+    await stubGemmaIntentJson({slots: {recipient: 'fikcyjny odbiorca'}});
     const v2Reply = await composeGemmaReply(envV2, 'epir-zareczyny', userText, req, {
       sessionId: sidV2,
       storefrontId: 'zareczyny',
@@ -143,6 +146,7 @@ describe('E2 buyer turn D1 parity — legacy vs v2', () => {
   });
 
   it('T-PARITY-2 v2 handleBuyerTurn: set-session-id → set-storefront-context before append user/assistant', async () => {
+    await stubGemmaIntentJson({slots: {recipient: 'fikcyjny odbiorca'}});
     const {namespace, calls} = makeTrackedSessionNamespace();
     const env = {
       SESSION_DO: namespace,
@@ -175,6 +179,7 @@ describe('E2 buyer turn D1 parity — legacy vs v2', () => {
   });
 
   it('T-PARITY-3 v2: append failure still returns assistant reply', async () => {
+    await stubGemmaIntentJson({slots: {recipient: 'fikcyjny odbiorca'}});
     vi.spyOn(sessionHistory, 'appendBuyerSessionMessage').mockRejectedValue(
       new Error('do down'),
     );
@@ -186,11 +191,13 @@ describe('E2 buyer turn D1 parity — legacy vs v2', () => {
       storefrontId: 'online-store',
       bodyChannel: 'online-store',
     });
-    expect(reply).toBe(gemmaV2EmergencyReply('epir-online-store'));
+    expect(reply).not.toBe(gemmaV2EmergencyReply('epir-online-store'));
+    expect(reply.length).toBeGreaterThan(0);
     expect(messageInserts.length).toBe(0);
   });
 
   it('T-NEG-1: message content has no serialized form/PII keys beyond user text', async () => {
+    await stubGemmaIntentJson({slots: {recipient: 'fikcyjny odbiorca'}});
     const userText = 'Fikcyjne pytanie bez formularza';
     const {db, messageInserts} = makeFakeD1Chatbot();
     const {env} = makeSessionDoEnv(db, 'sess_e2_neg_form');
@@ -206,6 +213,7 @@ describe('E2 buyer turn D1 parity — legacy vs v2', () => {
   });
 
   it('T-NEG-2: v2 turn only user and assistant roles in D1 messages', async () => {
+    await stubGemmaIntentJson({slots: {recipient: 'fikcyjny odbiorca'}});
     const {db, messageInserts} = makeFakeD1Chatbot();
     const {env} = makeSessionDoEnv(db, 'sess_e2_neg_roles');
     await composeGemmaReply(env, 'epir-zareczyny', 'Fikcyjne GZ role', postReq({}), {

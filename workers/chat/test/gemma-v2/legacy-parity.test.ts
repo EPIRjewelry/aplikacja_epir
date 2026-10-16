@@ -163,6 +163,24 @@ describe('E1 legacy parity (real readGemmaCoreMode)', () => {
     expect(json.reply).toBe(FINAL_TOOL_FALLBACK_USER);
   });
 
+  it('T-E3-LEGACY-1: legacy core does not call composeGemmaReply or gemma-state', async () => {
+    const legacySpy = vi.spyOn(compose, 'composeBuyerAssistantReply').mockResolvedValue('legacy-only');
+    const gemmaSpy = vi.spyOn(gemmaCompose, 'composeGemmaReply');
+    const {namespace, calls} = await import('./helpers/session-do-calls').then((m) =>
+      m.makeTrackedSessionNamespace(),
+    );
+    const env = {
+      GEMMA_RUNTIME_KV: makeGemmaRuntimeKv({channelMode: 'on', coreMode: 'legacy'}),
+      SESSION_DO: namespace,
+    } as never;
+    const body = geBuyerBody();
+    const res = await handleBuyerTurn(postReq(body), env, geBuyerBrandLock(), body);
+    expect(res.status).toBe(200);
+    expect(gemmaSpy).not.toHaveBeenCalled();
+    expect(legacySpy).toHaveBeenCalledTimes(1);
+    expect(calls.some((c) => c.path === 'gemma-state')).toBe(false);
+  });
+
   it('off still unavailable without compose', async () => {
     const composeSpy = vi.spyOn(compose, 'composeBuyerAssistantReply');
     const env = {
