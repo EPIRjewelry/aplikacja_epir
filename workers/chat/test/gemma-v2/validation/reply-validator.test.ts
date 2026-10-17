@@ -99,7 +99,7 @@ describe('E5 reply validator', () => {
   });
 
   it('T-D5-BIS-VAL-1: Panu lub Pani dozwolone; samotne Panu odrzucone', () => {
-    expect(validateFormulationTextBeforeStitch('Polecam Panu lub Pani ten model.', [], baseFacts)).toEqual([]);
+    expect(validateFormulationTextBeforeStitch('Polecam Panu lub Pani {{g1}}.', ['g1'], baseFacts)).toEqual([]);
     expect(validateFormulationTextBeforeStitch('Polecam Panu ten model.', [], baseFacts)).toContain('gendered_address');
   });
 

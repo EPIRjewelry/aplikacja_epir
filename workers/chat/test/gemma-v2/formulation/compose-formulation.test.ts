@@ -378,7 +378,10 @@ describe('E5 compose formulation', () => {
     await catalogPropozycjeStub();
     await stubGemmaGroqCalls({
       intent: {state: 'propozycje', slots: {recipient: 'żona'}},
-      formulation: {text: 'Polecam serdecznie {{g1}} ({{g1.price}}).', product_refs: ['g1']},
+      formulation: {
+        text: 'Dla Pana lub Pani: polecam serdecznie {{g1}} ({{g1.price}}).',
+        product_refs: ['g1'],
+      },
     });
     const {namespace} = makeTrackedSessionNamespace();
     const reply = await composeGemmaReply(
@@ -398,7 +401,7 @@ describe('E5 compose formulation', () => {
     vi.spyOn(catalogSearch, 'searchGemmaCatalog').mockResolvedValue([fictionalMatchFromProduct(product)]);
     await stubGemmaGroqCalls({
       intent: {state: 'propozycje', slots: {recipient: 'żona'}},
-      formulation: {text: 'Czy ten model {{g1}} odpowiada?', product_refs: ['g1']},
+      formulation: {text: 'Dla Pana lub Pani: czy ten model {{g1}} odpowiada?', product_refs: ['g1']},
     });
     const {namespace} = makeTrackedSessionNamespace();
     const reply = await composeGemmaReply(
