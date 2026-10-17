@@ -8,6 +8,8 @@ export type GemmaCatalogSearchFilters = Pick<
 > & {
   /** Browse bez query + filtr available (D1) — tylko Gemma, nie legacy CatalogFilters. */
   ucpBrowseInStockAvailable?: boolean;
+  /** Gdy true — MCP `gift_card: false` + filtr po Storefront giftCard. */
+  excludeGiftCards?: boolean;
 };
 
 export type GemmaVariantPriceLine = {

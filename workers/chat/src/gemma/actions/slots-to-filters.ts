@@ -1,6 +1,7 @@
 import {moneyFromMinor} from '../../facts/types';
 import type {GemmaSlots} from '../state/types';
 import type {GemmaCatalogSearchFilters} from '../facts/types';
+import {customerRequestsGiftCard} from '../facts/gift-card-catalog';
 
 /** Cyfry ze slotu budżetu muszą wystąpić w korpusie usera (D1). */
 function corpusNumberSet(userCorpus: string): Set<string> {
@@ -112,6 +113,9 @@ export function slotsToCatalogFilters(
   if (qualitative && !text) {
     filters.ucpBrowseInStockAvailable = true;
     filters.available = true;
+  }
+  if (!customerRequestsGiftCard(slots, userCorpus)) {
+    filters.excludeGiftCards = true;
   }
   return filters;
 }

@@ -431,7 +431,7 @@ async function loadAllCollections(
 }
 
 const PRODUCT_NODE_FIELDS = `
-  id handle title vendor productType descriptionHtml onlineStoreUrl
+  id handle title vendor productType giftCard descriptionHtml onlineStoreUrl
   featuredImage { url altText }
   collections(first: ${COLLECTIONS_PAGE}) {
     pageInfo { hasNextPage endCursor }

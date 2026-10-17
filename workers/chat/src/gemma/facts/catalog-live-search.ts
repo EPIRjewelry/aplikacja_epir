@@ -65,6 +65,7 @@ function parseUcpSearchProductIds(mcpOut: unknown): string[] {
 
 export type GemmaCatalogLiveSearchOptions = FetchStorefrontLiveOptions & {
   browseInStockAvailable?: boolean;
+  excludeGiftCards?: boolean;
 };
 
 /** MCP + Storefront dla Gemma v2 (browse D1, błąd MCP D3) — legacy buyer używa facts/index. */
@@ -81,11 +82,16 @@ export async function gemmaCatalogLiveSearch(
   }
 
   const brand = brandForChannel(channel);
-  const mcpArgs = buildUcpSearchCatalogArgs(
-    filters,
-    limit,
-    options?.browseInStockAvailable ? {browseInStockAvailable: true} : undefined,
-  );
+  const buildOpts: import('../../facts/catalog-ucp-args').BuildUcpSearchCatalogOptions | undefined =
+    options?.browseInStockAvailable
+      ? {
+          browseInStockAvailable: true,
+          ...(options.excludeGiftCards ? {giftCard: false} : {}),
+        }
+      : options?.excludeGiftCards
+        ? {giftCard: false}
+        : undefined;
+  const mcpArgs = buildUcpSearchCatalogArgs(filters, limit, buildOpts);
   const mcpOut = await callMcpToolDirect(env, 'search_catalog', mcpArgs, brand);
   const mcpCode = parseMcpErrorCode(mcpOut);
   if (mcpCode !== undefined) {

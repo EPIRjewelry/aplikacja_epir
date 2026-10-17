@@ -56,7 +56,7 @@ export function buildUcpAgentProfileJson(env: {
           'https://ucp.dev/2026-08-25/schemas/shopping/catalog_lookup.json',
         ),
         'dev.shopify.catalog': capability(
-          'https://shopify.dev/docs/agents/catalog/storefront-catalog',
+          'https://shopify.dev/docs/agents/catalog/storefront-catalog-extension',
           'https://shopify.dev/ucp/schemas/2026-08-25/shopify_catalog.json',
           ['dev.ucp.shopping.catalog.lookup', 'dev.ucp.shopping.catalog.search'],
         ),

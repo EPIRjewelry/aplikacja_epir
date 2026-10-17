@@ -5,6 +5,7 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {buildUcpSearchCatalogArgs} from '../../../src/facts/catalog-ucp-args';
 import {CatalogMcpSearchError} from '../../../src/gemma/facts/catalog-mcp-error';
+import * as facts from '../../../src/facts';
 import * as liveSearch from '../../../src/gemma/facts/catalog-live-search';
 import {hasCatalogQueryOrFilters} from '../../../src/mcp_server';
 import {composeGemmaReply} from '../../../src/gemma/compose-gemma-reply';
@@ -44,6 +45,43 @@ describe('Cień catalog qualitative fix', () => {
     expect(filters.ucpBrowseInStockAvailable).toBe(true);
     expect(filters.text).toBeUndefined();
     expect(filters.priceMax).toBeUndefined();
+    expect(filters.excludeGiftCards).toBe(true);
+  });
+
+  it('T-FIX-GC-1: coś taniego — pierwsza propozycja nie jest gift_card (M-FIX-gift)', async () => {
+    const gift = fictionalMultiVariantProduct();
+    gift.giftCard = true;
+    gift.title = 'Karta podarunkowa';
+    gift.variants = gift.variants.map((v) => ({...v, price: moneyFromMinor(2_000)}));
+    const jewelry = fictionalMultiVariantProduct();
+    jewelry.productId = 'gid://shopify/Product/900099';
+    jewelry.variants = jewelry.variants.map((v) => ({...v, price: moneyFromMinor(120_000)}));
+    vi.spyOn(liveSearch, 'gemmaCatalogLiveSearch').mockResolvedValue({
+      matches: [fictionalMatchFromProduct(gift), fictionalMatchFromProduct(jewelry)],
+      total: 2,
+      facets: {
+        total: 2,
+        byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+        byStone: {},
+        byMetal: {},
+        byProductType: {},
+      },
+    });
+    const filters = slotsToCatalogFilters({budget: 'tanio'}, 'coś taniego');
+    const out = await searchGemmaCatalog(
+      {PRIVATE_STOREFRONT_API_TOKEN: 'x'} as never,
+      'epir-online-store',
+      filters,
+      GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT,
+    );
+    expect(out[0]!.product.giftCard).not.toBe(true);
+    const top = await fetchGemmaCatalogMatchesForTurn({
+      env: {PRIVATE_STOREFRONT_API_TOKEN: 'x'} as never,
+      channelId: 'epir-online-store',
+      slots: {budget: 'tanio'},
+      userCorpus: 'coś taniego',
+    });
+    expect(top[0]!.match.product.giftCard).not.toBe(true);
   });
 
   it('R04: coś taniego — search z limitem 250 i browse; odpowiedź niepusta (M-FIX-1)', async () => {
@@ -109,9 +147,11 @@ describe('Cień catalog qualitative fix', () => {
   });
 
   it('T-FIX-MCP-ERR: MCP code → throw + gemma.catalog.error (M-FIX-3)', async () => {
-    vi.spyOn(liveSearch, 'gemmaCatalogLiveSearch').mockRejectedValue(
-      new CatalogMcpSearchError(-32602),
-    );
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: async () => {
+        throw new CatalogMcpSearchError(-32602);
+      },
+    } as never);
     const logSpy = vi.spyOn(console, 'log');
     await expect(
       searchGemmaCatalog(

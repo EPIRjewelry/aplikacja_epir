@@ -3,11 +3,11 @@
  *
  * Mutacje:
  * - **M-E2b-1** — Pomiń `filterProducts` z price w `catalog-search.ts` → T-E2b-PIPE-1 FAIL.
- * - **M-E2b-4** — Wyłącz `filterProductMatchesByZareczynyTag` w `catalog-search.ts` → T-E2b-PIPE-4 FAIL.
+ * - **M-E2b-4** — Wyłącz `filterProductMatchesByZareczynyTag` w `catalog-search.ts` → T-E2b-GZ-1 / PIPE-4 FAIL.
  */
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {searchGemmaCatalog} from '../../../src/gemma/facts/catalog-search';
-import * as liveSearch from '../../../src/gemma/facts/catalog-live-search';
+import * as facts from '../../../src/facts';
 import * as graphql from '../../../src/graphql';
 import {moneyFromMinor} from '../../../src/facts/types';
 import {
@@ -35,7 +35,9 @@ describe('E2b catalog search pipeline', () => {
         byProductType: {},
       },
     });
-    vi.spyOn(liveSearch, 'gemmaCatalogLiveSearch').mockImplementation(searchSpy);
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: searchSpy,
+    } as never);
     const out = await searchGemmaCatalog(
       {SHOP_DOMAIN: 'fikcyjny.myshopify.com'} as import('../../../src/config/bindings').Env,
       'epir-online-store',
@@ -44,14 +46,11 @@ describe('E2b catalog search pipeline', () => {
     );
 
     expect(searchSpy).toHaveBeenCalledWith(
-      expect.anything(),
-      'epir-online-store',
       expect.objectContaining({text: 'fikcyjne'}),
       10,
-      expect.anything(),
     );
-    expect(searchSpy.mock.calls[0][2]).not.toHaveProperty('priceMax');
-    expect(searchSpy.mock.calls[0][2]).not.toHaveProperty('priceMin');
+    expect(searchSpy.mock.calls[0][0]).not.toHaveProperty('priceMax');
+    expect(searchSpy.mock.calls[0][0]).not.toHaveProperty('priceMin');
     expect(out).toHaveLength(1);
     expect(out[0].matchingVariants.length).toBe(1);
   });
@@ -59,17 +58,19 @@ describe('E2b catalog search pipeline', () => {
   it('T-E2b-PIPE-2: epir-zareczyny uses catalog snapshot GE and urlChannel + tag query', async () => {
     const product = fictionalMultiVariantProduct();
     const match = fictionalMatchFromProduct(product);
-    const liveSpy = vi.spyOn(liveSearch, 'gemmaCatalogLiveSearch').mockResolvedValue({
-      matches: [match],
-      total: 1,
-      facets: {
+    const repoSpy = vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [match],
         total: 1,
-        byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
-        byStone: {},
-        byMetal: {},
-        byProductType: {},
-      },
-    });
+        facets: {
+          total: 1,
+          byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
     vi.spyOn(graphql, 'callStorefrontAPI').mockResolvedValue({
       nodes: [{id: product.productId, tags: [ZARECZYNY_ASSORTMENT_TAG]}],
     });
@@ -81,11 +82,9 @@ describe('E2b catalog search pipeline', () => {
 
     const out = await searchGemmaCatalog(env, 'epir-zareczyny', {text: 'fikcyjne'}, 10, new Request('https://example.com'));
 
-    expect(liveSpy).toHaveBeenCalledWith(
+    expect(repoSpy).toHaveBeenCalledWith(
       expect.anything(),
       'epir-online-store',
-      expect.objectContaining({text: 'fikcyjne'}),
-      10,
       expect.objectContaining({urlChannel: 'epir-zareczyny'}),
     );
     expect(out).toHaveLength(1);
@@ -111,7 +110,7 @@ describe('E2b catalog search pipeline', () => {
         byProductType: {},
       },
     });
-    vi.spyOn(liveSearch, 'gemmaCatalogLiveSearch').mockImplementation(searchSpy);
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({search: searchSpy} as never);
 
     const out = await searchGemmaCatalog(
       {SHOP_DOMAIN: 'fikcyjny.myshopify.com'} as import('../../../src/config/bindings').Env,
@@ -120,7 +119,7 @@ describe('E2b catalog search pipeline', () => {
       10,
     );
 
-    expect(searchSpy.mock.calls[0][2]).toEqual(expect.objectContaining({metal: ['złoto']}));
+    expect(searchSpy.mock.calls[0][0]).toEqual(expect.objectContaining({metal: ['złoto']}));
     expect(out).toHaveLength(1);
     expect(out[0].matchingVariants.map((v) => v.variantId)).toEqual([
       'gid://shopify/ProductVariant/900001-c',
@@ -130,17 +129,19 @@ describe('E2b catalog search pipeline', () => {
   it('T-E2b-PIPE-4: epir-zareczyny pipeline drops products without the zareczyny tag', async () => {
     const pIn = {...fictionalMultiVariantProduct(), productId: 'gid://shopify/Product/910011'};
     const pOut = {...fictionalMultiVariantProduct(), productId: 'gid://shopify/Product/910012'};
-    vi.spyOn(liveSearch, 'gemmaCatalogLiveSearch').mockResolvedValue({
-      matches: [fictionalMatchFromProduct(pIn), fictionalMatchFromProduct(pOut)],
-      total: 2,
-      facets: {
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [fictionalMatchFromProduct(pIn), fictionalMatchFromProduct(pOut)],
         total: 2,
-        byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
-        byStone: {},
-        byMetal: {},
-        byProductType: {},
-      },
-    });
+        facets: {
+          total: 2,
+          byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
     vi.spyOn(graphql, 'callStorefrontAPI').mockResolvedValue({
       nodes: [
         {id: pIn.productId, tags: [ZARECZYNY_ASSORTMENT_TAG]},
@@ -174,7 +175,7 @@ describe('E2b catalog search pipeline', () => {
         byProductType: {},
       },
     });
-    vi.spyOn(liveSearch, 'gemmaCatalogLiveSearch').mockImplementation(searchSpy);
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({search: searchSpy} as never);
     vi.spyOn(graphql, 'callStorefrontAPI').mockResolvedValue({
       nodes: [{id: product.productId, tags: [ZARECZYNY_ASSORTMENT_TAG]}],
     });

@@ -1,15 +1,13 @@
 import {catalogSnapshotChannel} from '../../buyer/channel-switch';
 import type {BuyerChannelId} from '../../buyer/channel-switch';
 import type {Env} from '../../config/bindings';
+import {getCatalogRepository} from '../../facts';
 import {filterProducts} from '../../facts/filter';
 import type {ProductMatch} from '../../facts/types';
-import {
-  GEMMA_CATALOG_DISPLAY_LIMIT,
-  GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT,
-} from '../actions/catalog-limits';
 import {filterProductMatchesByZareczynyTag} from './assortment';
 import {gemmaCatalogLiveSearch} from './catalog-live-search';
 import {CatalogMcpSearchError} from './catalog-mcp-error';
+import {filterOutGiftCardMatches} from './gift-card-catalog';
 import type {GemmaCatalogSearchFilters} from './types';
 
 export type GemmaCatalogPricedMatch = {match: ProductMatch; minMinor: number};
@@ -23,8 +21,17 @@ export async function searchGemmaCatalog(
 ): Promise<ProductMatch[]> {
   const started = Date.now();
   const catalogChannel = catalogSnapshotChannel(channelId);
-  const {priceMin, priceMax, text, ucpIntent, metal, stone, ucpBrowseInStockAvailable, available} =
-    filters;
+  const {
+    priceMin,
+    priceMax,
+    text,
+    ucpIntent,
+    metal,
+    stone,
+    ucpBrowseInStockAvailable,
+    available,
+    excludeGiftCards,
+  } = filters;
 
   const ucpFilters = {
     text,
@@ -35,11 +42,33 @@ export async function searchGemmaCatalog(
   };
 
   try {
-    const {matches} = await gemmaCatalogLiveSearch(env, catalogChannel, ucpFilters, limit, {
-      clientRequest,
-      urlChannel: channelId,
-      browseInStockAvailable: Boolean(ucpBrowseInStockAvailable),
-    });
+    let matches: ProductMatch[];
+    if (ucpBrowseInStockAvailable) {
+      const {matches: browseMatches} = await gemmaCatalogLiveSearch(
+        env,
+        catalogChannel,
+        ucpFilters,
+        limit,
+        {
+          clientRequest,
+          urlChannel: channelId,
+          browseInStockAvailable: true,
+          excludeGiftCards,
+        },
+      );
+      matches = browseMatches;
+    } else {
+      const repo = await getCatalogRepository(env, catalogChannel, {
+        clientRequest,
+        urlChannel: channelId,
+      });
+      const {matches: repoMatches} = await repo.search(ucpFilters, limit);
+      matches = repoMatches;
+    }
+
+    if (excludeGiftCards) {
+      matches = filterOutGiftCardMatches(matches);
+    }
 
     let out: ProductMatch[] = matches;
     if (priceMin !== undefined || priceMax !== undefined) {
