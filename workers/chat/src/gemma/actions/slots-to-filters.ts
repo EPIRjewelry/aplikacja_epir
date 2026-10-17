@@ -30,14 +30,20 @@ function plnFromBudgetDigits(digits: string): number | undefined {
   return pln;
 }
 
+function normalizeBudgetCorpus(userCorpus: string): string {
+  return userCorpus.replace(/,/g, '.');
+}
+
 function thousandMultiplierInCorpus(digits: string, userCorpus: string): boolean {
-  const normalized = normalizeBudgetDigits(digits);
-  const decimalPattern = normalized.replace(',', '[,.]').replace('.', '[,.]');
+  const pln = plnFromBudgetDigits(digits);
+  if (pln === undefined) return false;
+  const corpus = normalizeBudgetCorpus(userCorpus);
+  const amountLiteral = String(pln).replace('.', '\\.');
   const thousandSuffix = '(?:tys\\.?|tysiąc|tysiące|tysięcy|tyś)';
-  const tysRe = new RegExp(`(?<!\\p{L})${decimalPattern}\\s*${thousandSuffix}(?!\\p{L})`, 'iu');
-  if (tysRe.test(userCorpus)) return true;
-  const kRe = new RegExp(`(?<!\\p{L})${decimalPattern}\\s*k(?!\\p{L})`, 'iu');
-  return kRe.test(userCorpus);
+  const tysRe = new RegExp(`(?<!\\p{L})${amountLiteral}\\s*${thousandSuffix}(?!\\p{L})`, 'iu');
+  if (tysRe.test(corpus)) return true;
+  const kRe = new RegExp(`(?<!\\p{L})${amountLiteral}\\s*k(?!\\p{L})`, 'iu');
+  return kRe.test(corpus);
 }
 
 function minorFromBudgetDigits(digits: string, userCorpus: string): number | undefined {

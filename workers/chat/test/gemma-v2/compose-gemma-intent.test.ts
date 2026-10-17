@@ -131,7 +131,7 @@ describe('E3 composeGemmaReply intent orchestration', () => {
     expect(groqSpy).not.toHaveBeenCalled();
   });
 
-  it('T-E3-CART-1: cart add without consent asks for confirmation; with consent it does not', async () => {
+  it('T-E3-CART-1: cart add bez shown — pytanie o produkt (D-Q2), nie prośba o zgodę', async () => {
     const {namespace} = makeTrackedSessionNamespace();
     const env = {SESSION_DO: namespace} as Env;
     const opts = {storefrontId: 'online-store', bodyChannel: 'online-store'};
@@ -143,7 +143,8 @@ describe('E3 composeGemmaReply intent orchestration', () => {
       new Request('https://example.com'),
       {...opts, sessionId: 'sess_e3_cart_1a'},
     );
-    expect(noConsent).toBe(epirCartReply(true));
+    expect(noConsent).toBe(epirCartProductQuestionReply('epir-online-store'));
+    expect(noConsent).not.toBe(epirCartReply(true));
 
     await stubGemmaIntentJson({cart_action: 'add', cart_consent: true});
     const withConsent = await composeGemmaReply(
@@ -153,8 +154,38 @@ describe('E3 composeGemmaReply intent orchestration', () => {
       new Request('https://example.com'),
       {...opts, sessionId: 'sess_e3_cart_1b'},
     );
-    // D-Q2: zgoda bez produktu na liście shown → pytanie o produkt, nie zgodę ani wariant.
-    expect(withConsent).not.toBe(noConsent);
     expect(withConsent).toBe(epirCartProductQuestionReply('epir-online-store'));
+  });
+
+  it('T-E3-CART-1b: cart add ze shown, bez zgody — prośba o potwierdzenie koszyka', async () => {
+    const {namespace} = makeTrackedSessionNamespace();
+    const env = {SESSION_DO: namespace} as Env;
+    const {writeGemmaState} = await import('../../src/gemma/session-gemma-state');
+    const sid = 'sess_e3_cart_1b_shown';
+    await writeGemmaState(env, sid, {
+      state: 'propozycje',
+      slots: {},
+      shown: [
+        {
+          ref: 'g1',
+          productId: 'gid://shopify/Product/900001',
+          handle: 'fikcyjny-pierscionek-parity',
+          variantIds: [],
+          url: '/products/fikcyjny-pierscionek-parity',
+        },
+      ],
+      selected: null,
+      form_of_address: 'unknown',
+      turn: 1,
+    });
+    await stubGemmaIntentJson({cart_action: 'add', cart_consent: false, product_ref: 'g1'});
+    const reply = await composeGemmaReply(
+      env,
+      'epir-online-store',
+      'dodaj do koszyka',
+      new Request('https://example.com'),
+      {sessionId: sid, storefrontId: 'online-store', bodyChannel: 'online-store'},
+    );
+    expect(reply).toBe(epirCartReply(true));
   });
 });

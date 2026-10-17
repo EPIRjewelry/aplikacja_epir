@@ -70,7 +70,7 @@ describe('D-Q1 — znaczniki intencji A', () => {
         return JSON.stringify(
           fictionalGemmaIntent({
             state: 'propozycje',
-            slots: {metal: 'złoto'},
+            slots: {product_type: 'pierścionek', metal: 'złoto'},
           }),
         );
       }
@@ -216,6 +216,7 @@ describe('D-Q1 budżet tys / k', () => {
     expect(budgetMinorFromSlots({budget: '5'}, 'budżet 5 tyś')).toBe(500_000);
     expect(budgetMinorFromSlots({budget: '3'}, 'ok 3k')).toBe(300_000);
     expect(budgetMinorFromSlots({budget: '2,5'}, 'do 2,5 tys')).toBe(250_000);
+    expect(budgetMinorFromSlots({budget: '2,5'}, 'do 2.5 tys')).toBe(250_000);
   });
 });
 
