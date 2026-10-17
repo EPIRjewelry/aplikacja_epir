@@ -39,6 +39,37 @@ describe('E4 action reply', () => {
     expect(reply).toContain('https://epirbizuteria.pl/products/fikcyjny-pierscionek-parity');
   });
 
+  it('T-E4-CATALOG-FMT-1: deterministyczne propozycje bez gN:, z tytułem i /products/', () => {
+    const product = fictionalMultiVariantProduct();
+    const reply = buildEpirActionReply({
+      channelId: 'epir-online-store',
+      state: 'propozycje',
+      intent: fictionalGemmaIntent(),
+      outcome: {
+        shown: [
+          {
+            ref: 'g1',
+            productId: product.productId,
+            handle: product.handle,
+            variantIds: [],
+            url: product.url,
+          },
+        ],
+        selected: null,
+        catalogCards: [{ref: 'g1', match: fictionalMatchFromProduct(product), minMinor: 120_000}],
+        kb: null,
+        cart: null,
+        productDetail: null,
+        catalogFailed: false,
+        kbFailed: false,
+        cartFailed: false,
+      },
+    });
+    expect(reply).not.toMatch(/\bg\d+:/);
+    expect(reply).toContain(product.title);
+    expect(reply).toMatch(/\/products\//);
+  });
+
   it('T-E4-CART-5b: successful mutation → exactly one checkout URL in the reply', () => {
     const url = 'https://checkout.example.test/cart/c1';
     const reply = buildEpirActionReply({

@@ -152,6 +152,38 @@ describe('E5 compose formulation', () => {
     expect(reply).not.toMatch(/evil\.example/);
   });
 
+  it('T-E5-BUYER-LEAK-3: B „g1: {{g1}}” → stitch leak → fallback bez gN: (M12)', async () => {
+    await catalogPropozycjeStub();
+    const intent = fictionalGemmaIntent({state: 'propozycje', slots: {recipient: 'żona'}});
+    const runMod = await import('../../../src/gemma/actions/run');
+    const runSpy = vi.spyOn(runMod, 'runGemmaAllowedActions');
+    const ai = await import('../../../src/ai-client');
+    vi.spyOn(ai, 'getGroqResponse').mockImplementation(async (_m, _e, opts) => {
+      if (opts?.timingLabel === 'buyer_gemma_intent') {
+        return JSON.stringify(intent);
+      }
+      return JSON.stringify({text: 'g1: {{g1}}', product_refs: ['g1']});
+    });
+    const {namespace} = makeTrackedSessionNamespace();
+    const reply = await composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'prezent',
+      new Request('https://example.com'),
+      {sessionId: 'sess_e5_leak_int'},
+    );
+    const outcome = await runSpy.mock.results[0]?.value;
+    const expected = buildEpirActionReply({
+      channelId: 'epir-online-store',
+      state: 'propozycje',
+      intent,
+      outcome,
+    });
+    expect(reply).toBe(expected);
+    expect(reply).not.toMatch(/\bg\d+:/);
+    expect(reply).toMatch(/\/products\//);
+  });
+
   it('T-E5-FLOW-3: two invalid B responses → buildEpirActionReply', async () => {
     await catalogPropozycjeStub();
     const intent = fictionalGemmaIntent({state: 'propozycje', slots: {recipient: 'żona'}});

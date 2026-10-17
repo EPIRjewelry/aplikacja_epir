@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {hasInternalRefMarkerLeak} from '../../../src/gemma/formulation/buyer-reply-format';
+import {formatBuyerCatalogLine, hasInternalRefMarkerLeak} from '../../../src/gemma/formulation/buyer-reply-format';
 import {stitchFormulationReply} from '../../../src/gemma/formulation/stitch-reply';
 import type {TurnFacts} from '../../../src/gemma/formulation/types';
 
@@ -46,5 +46,15 @@ describe('E5 buyer reply — no internal gN: markers', () => {
     expect(hasInternalRefMarkerLeak(out)).toBe(false);
     expect(out).toContain('pierscionek-galazki-z-topazem-swiss-blue');
     expect(out).not.toMatch(/\bg1:\s*https?:/);
+  });
+
+  it('T-E5-BUYER-FMT-1: brak ceny — bez pustych nawiasów', () => {
+    expect(
+      formatBuyerCatalogLine({
+        title: 'Fikcyjny pierścionek',
+        url: 'https://example.test/products/x',
+        priceDisplay: '',
+      }),
+    ).toBe('Fikcyjny pierścionek — https://example.test/products/x');
   });
 });

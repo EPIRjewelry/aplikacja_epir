@@ -7,8 +7,10 @@ export function formatBuyerCatalogLine(p: {
   const title = p.title.trim();
   const url = p.url.trim();
   const price = p.priceDisplay.trim();
-  if (title && url) return `${title} — ${url} (${price})`;
-  if (url) return `${url} (${price})`;
+  if (title && url) {
+    return price ? `${title} — ${url} (${price})` : `${title} — ${url}`;
+  }
+  if (url) return price ? `${url} (${price})` : url;
   return price;
 }
 
