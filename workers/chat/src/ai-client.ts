@@ -130,6 +130,11 @@ export type GroqMessage = {
   name?: string;
 };
 
+export type GroqJsonSchemaResponseFormat = {
+  type: 'json_schema';
+  json_schema: {name: string; strict: true; schema: Record<string, unknown>};
+};
+
 type GatewayCompatBody = {
   model: string;
   messages: GroqMessage[];
@@ -151,6 +156,7 @@ type GatewayCompatBody = {
   include_reasoning?: boolean;
   /** Harmony: budżet rozumowania (`low` = krótszy chain-of-thought, niższe TTFT). */
   reasoning_effort?: 'low' | 'medium' | 'high';
+  response_format?: GroqJsonSchemaResponseFormat;
 };
 
 /**
@@ -1451,6 +1457,9 @@ export type GetGroqResponseOptions = {
    * Ścieżka pamięci (kolejka / person-memory): pusta odpowiedź → `""`, `console.warn` zamiast throw + `console.error`.
    */
   forMemory?: boolean;
+  responseFormat?: GroqJsonSchemaResponseFormat;
+  /** Twardy limit całego wywołania (łącznie z retry bramy). Tylko ścieżka gateway. */
+  timeoutMs?: number;
 };
 
 async function getGroqResponseWorkersAi(
@@ -1579,11 +1588,20 @@ export async function getGroqResponseViaGateway(
         reasoning_effort: MODEL_PARAMS.reasoning_effort,
       };
 
+  if (options?.responseFormat) {
+    body.response_format = options.responseFormat;
+  }
+
+  const gatewayOpts: {timingLabel: string; abortSignal?: AbortSignal} = {
+    timingLabel: label,
+  };
+  if (options?.timeoutMs) {
+    gatewayOpts.abortSignal = AbortSignal.timeout(options.timeoutMs);
+  }
+
   let res: Response;
   try {
-    res = await callGatewayCompat(env, body, {
-      timingLabel: label,
-    });
+    res = await callGatewayCompat(env, body, gatewayOpts);
   } catch (err) {
     console.error('[AI Gateway] getGroqResponseViaGateway network_error', err);
     throw err;

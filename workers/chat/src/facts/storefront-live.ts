@@ -48,6 +48,10 @@ export type FetchStorefrontLiveOptions = {
   clientRequest?: Request;
   /** Kanał rozmowy — URL produktu (np. GZ), niezależnie od migawki katalogu. */
   urlChannel?: BuyerChannelId;
+  /** Gemma v2 (D3): błąd MCP → throw z executeCatalogMcpLiveSearch. */
+  throwOnMcpError?: boolean;
+  /** Gemma v2 browse (D1) — tylko gdy woła searchGemmaCatalog. */
+  browseInStockAvailable?: boolean;
 };
 
 function resolveProductUrlContext(
@@ -430,8 +434,9 @@ async function loadAllCollections(
   return nodes;
 }
 
-const PRODUCT_NODE_FIELDS = `
-  id handle title vendor productType descriptionHtml onlineStoreUrl
+/** Fragment GraphQL Product — pola walidowane w storefront-product-query-contract.test.ts */
+export const STOREFRONT_PRODUCT_NODE_FIELDS = `
+  id handle title vendor productType isGiftCard descriptionHtml onlineStoreUrl
   featuredImage { url altText }
   collections(first: ${COLLECTIONS_PAGE}) {
     pageInfo { hasNextPage endCursor }
@@ -457,6 +462,8 @@ const PRODUCT_NODE_FIELDS = `
     nodes { ${VARIANT_FIELDS} }
   }
 `;
+
+const PRODUCT_NODE_FIELDS = STOREFRONT_PRODUCT_NODE_FIELDS;
 
 async function fetchProductNodesBatch(
   env: Env,

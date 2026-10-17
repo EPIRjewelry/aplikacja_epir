@@ -84,10 +84,17 @@ const MCP_POLICIES_TIMEOUT_MS = 15000;
 const MCP_POLICIES_MAX_ATTEMPTS = 3;
 const MCP_CATALOG_MAX_ATTEMPTS = 2;
 
-const CATALOG_EMPTY = {
-  products: [],
+/** Współdzielony marker bezpiecznego fallbacku katalogu (timeout / błąd transportu). */
+export const MCP_CATALOG_TRANSPORT_EMPTY_RESULT = Object.freeze({
+  products: Object.freeze([] as []),
   system_note: 'Catalog temporarily unavailable.',
-};
+});
+
+const CATALOG_EMPTY = MCP_CATALOG_TRANSPORT_EMPTY_RESULT;
+
+export function isMcpCatalogTransportEmptyResult(result: unknown): boolean {
+  return result === MCP_CATALOG_TRANSPORT_EMPTY_RESULT;
+}
 
 function verifyInternalKey(env: Env, request: Request): { ok: boolean; message?: string } {
   const expected = env.EPIR_INTERNAL_KEY || (process.env as any)?.EPIR_INTERNAL_KEY;
@@ -239,7 +246,7 @@ function normalizeSearchCatalogArgs(
   return normalized;
 }
 
-function hasCatalogQueryOrFilters(args: any): boolean {
+export function hasCatalogQueryOrFilters(args: any): boolean {
   const query = args?.catalog?.query;
   if (isNonEmptyString(query)) return true;
   const filters = args?.catalog?.filters;

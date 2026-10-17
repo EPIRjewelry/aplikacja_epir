@@ -267,6 +267,22 @@ describe('5) create_cart once when next LLM round fails with 503', () => {
   });
 });
 
+describe('E5b gateway legacy pin (additive)', () => {
+  it('T-AIC-LEGACY-1b: getGroqResponse buyer_turn without structured options has no response_format', async () => {
+    const jsonOk = () =>
+      new Response(
+        JSON.stringify({choices: [{message: {content: 'hej'}}], usage: {}}),
+        {status: 200, headers: {'Content-Type': 'application/json'}},
+      );
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonOk());
+    await getGroqResponseViaGateway(messages, gatewayEnv(), {timingLabel: 'buyer_turn'});
+    const init = fetchSpy.mock.calls[0]![1] as RequestInit;
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect('response_format' in body).toBe(false);
+    expect(init.signal).toBeUndefined();
+  });
+});
+
 describe('6) MODEL_PARAMS defaults remain for non-buyer smoke contract', () => {
   it('operator defaults low / 2048 / 0.5 (harmony smoke path tool_loop_*)', () => {
     expect(MODEL_PARAMS.reasoning_effort).toBe('low');

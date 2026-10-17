@@ -14,7 +14,14 @@ import {
   extractSessionIdSourceFromBody,
   extractStorefrontIdFromBody,
 } from './session-context';
-import {channelIdFromBrandLock, readChannelMode} from './channel-switch';
+import {channelIdFromBrandLock, readChannelMode, readGemmaCoreMode} from './channel-switch';
+import {composeGemmaReply} from '../gemma';
+import {isAllowedGemmaInternalTurn, readGemmaTesterIds} from '../gemma/internal-access';
+
+export type BuyerTurnIngress = {
+  appProxyVerified?: boolean;
+  loggedInCustomerId?: string | null;
+};
 
 function buyerResponseHeaders(env: Env, request: Request): Record<string, string> {
   const requestOrigin = request.headers.get('Origin');
@@ -75,14 +82,18 @@ export async function handleBuyerTurn(
   env: Env,
   brandLock: ChatBrandLock,
   rawBody: unknown,
+  ingress?: BuyerTurnIngress,
 ): Promise<Response> {
   const channelId = channelIdFromBrandLock(brandLock);
-  const mode = channelId ? await readChannelMode(env, channelId) : 'off';
+  const [mode, coreMode] = channelId
+    ? await Promise.all([readChannelMode(env, channelId), readGemmaCoreMode(env, channelId)])
+    : ['off' as const, 'legacy' as const];
   console.log(
     JSON.stringify({
       tag: 'chat.buyer_gate',
       channel_id: channelId,
       mode,
+      core_mode: coreMode,
       brand_key: brandLock.brandKey,
       server_channel: brandLock.channel,
     }),
@@ -100,6 +111,24 @@ export async function handleBuyerTurn(
       status: 200,
       headers: buyerResponseHeaders(env, request),
     });
+  }
+
+  if (mode === 'internal') {
+    const testerIds = await readGemmaTesterIds(env);
+    const ing = ingress ?? {};
+    if (
+      !isAllowedGemmaInternalTurn({
+        channelId,
+        appProxyVerified: ing.appProxyVerified,
+        loggedInCustomerId: ing.loggedInCustomerId,
+        testerIds,
+      })
+    ) {
+      return new Response(JSON.stringify(BUYER_UNAVAILABLE_JSON), {
+        status: 200,
+        headers: buyerResponseHeaders(env, request),
+      });
+    }
   }
 
   const body = rawBody;
@@ -126,15 +155,20 @@ export async function handleBuyerTurn(
   const sessionId = acceptOrReplaceBuyerSessionId(extractSessionIdFromBody(body));
   const productHandle = extractProductHandleFromBody(body);
 
+  const composeOpts = {
+    sessionId,
+    productHandle,
+    storefrontId: extractStorefrontIdFromBody(body),
+    bodyChannel: extractChannelFromBody(body),
+    analyticsConsent: extractAnalyticsConsentFromBody(body),
+    sessionIdSource: extractSessionIdSourceFromBody(body),
+  };
+
   try {
-    const reply = await composeBuyerAssistantReply(env, channelId, userText, request, {
-      sessionId,
-      productHandle,
-      storefrontId: extractStorefrontIdFromBody(body),
-      bodyChannel: extractChannelFromBody(body),
-      analyticsConsent: extractAnalyticsConsentFromBody(body),
-      sessionIdSource: extractSessionIdSourceFromBody(body),
-    });
+    const reply =
+      coreMode === 'v2'
+        ? await composeGemmaReply(env, channelId, userText, request, composeOpts)
+        : await composeBuyerAssistantReply(env, channelId, userText, request, composeOpts);
     const okPayload: Record<string, unknown> = {
       type: 'message',
       reply,
