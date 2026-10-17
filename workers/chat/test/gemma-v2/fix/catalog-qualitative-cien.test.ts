@@ -166,7 +166,7 @@ describe('Cień catalog qualitative fix', () => {
       {sessionId: 'sess_fix_r03'},
     );
     expect(reply).not.toBe(epirCatalogEmptyReply('epir-online-store'));
-    expect(reply).toMatch(/g1:|\/products\//);
+    expect(reply).toMatch(/\/products\//);
   });
 
   it('T-FIX-MCP-QUERY-1: query-path MCP error → catalogFailed (D3, M2 query guard)', async () => {

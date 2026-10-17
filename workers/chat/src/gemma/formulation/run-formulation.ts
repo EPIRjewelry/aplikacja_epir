@@ -11,6 +11,7 @@ import {stitchFormulationReply} from './stitch-reply';
 import type {GemmaActionOutcome} from '../actions/types';
 import type {GemmaConversationState, GemmaSlots} from '../state/types';
 import type {BuyerChannelId} from '../../buyer/channel-switch';
+import {hasInternalRefMarkerLeak} from './buyer-reply-format';
 import {
   assertStitchedUrlsAllowed,
   validateFormulationTextBeforeStitch,
@@ -60,6 +61,7 @@ export async function maybeFormulateReply(params: {
     );
     if (violations.length) return null;
     const stitched = stitchFormulationReply(turn, parsed);
+    if (hasInternalRefMarkerLeak(stitched)) return null;
     if (!assertStitchedUrlsAllowed(stitched, allowedUrlSet(turn))) return null;
     return stitched;
   };

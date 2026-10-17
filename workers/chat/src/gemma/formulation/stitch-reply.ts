@@ -1,11 +1,12 @@
 import {GEMMA_PLACEHOLDER_REF, GEMMA_PLACEHOLDER_REF_PRICE} from './constants';
+import {formatBuyerCatalogLine} from './buyer-reply-format';
 import type {TurnFacts} from './types';
 import type {ParsedFormulation} from './types';
 
-function refMap(turn: TurnFacts): Map<string, {url: string; priceDisplay: string}> {
-  const m = new Map<string, {url: string; priceDisplay: string}>();
+function refMap(turn: TurnFacts): Map<string, {url: string; priceDisplay: string; title: string}> {
+  const m = new Map<string, {url: string; priceDisplay: string; title: string}>();
   for (const p of turn.products) {
-    m.set(p.ref, {url: p.url, priceDisplay: p.priceDisplay});
+    m.set(p.ref, {url: p.url, priceDisplay: p.priceDisplay, title: p.title});
   }
   return m;
 }
@@ -23,10 +24,10 @@ export function stitchFormulationReply(turn: TurnFacts, parsed: ParsedFormulatio
 
   const lines: string[] = [];
   for (const ref of parsed.product_refs) {
-    if (text.includes(ref) && text.includes(map.get(ref)?.url ?? '___')) continue;
     const p = map.get(ref);
     if (!p?.url) continue;
-    const line = `${ref}: ${p.url} ${p.priceDisplay}`.trim();
+    const line = formatBuyerCatalogLine(p);
+    if (text.includes(p.url) && text.includes(p.priceDisplay)) continue;
     if (!text.includes(line)) lines.push(line);
   }
   if (lines.length) {

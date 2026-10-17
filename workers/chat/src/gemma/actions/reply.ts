@@ -12,6 +12,7 @@ import {
   epirCartShowEmptyReply,
   epirCartShowLinesReply,
 } from '../profiles/epir';
+import {formatBuyerCatalogLine} from '../formulation/buyer-reply-format';
 import {formatCartMutationReply, formatCartShowBodyFromToolContent} from './cart';
 import type {GemmaActionOutcome} from './types';
 import type {BuyerChannelId} from '../../buyer/channel-switch';
@@ -75,7 +76,11 @@ export function buildEpirActionReply(params: {
         const prices = buildGemmaVariantPriceFacts(c.match);
         const priceText = prices.rangeText || prices.lines[0]?.displayPl || '';
         const shown = outcome.shown.find((s) => s.ref === c.ref);
-        return `${c.ref}: ${shown?.url || ''} ${priceText}`.trim();
+        return formatBuyerCatalogLine({
+          title: c.match.product.title,
+          url: shown?.url || '',
+          priceDisplay: priceText,
+        });
       });
       return epirCatalogCardsReply(lines.join('\n'));
     }
