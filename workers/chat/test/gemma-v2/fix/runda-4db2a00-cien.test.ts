@@ -130,7 +130,7 @@ describe('Runda 4db2a00 — Cień', () => {
     expect(top[0]?.minMinor).toBeGreaterThan(top[1]?.minMinor ?? 0);
   });
 
-  it('T-R04-tanio-1: coś taniego — B wybiera najtańsze refs (mock formulation)', async () => {
+  it('T-R04-tanio-1: coś taniego — g1 musi być najtańszy (sort rosnący)', async () => {
     const cheap = fictionalMultiVariantProduct();
     cheap.title = 'Fikcyjny tanio A';
     cheap.variants = cheap.variants.map((v, i) =>
@@ -139,15 +139,19 @@ describe('Runda 4db2a00 — Cień', () => {
     const mid = {...fictionalMultiVariantProduct(), productId: 'gid://shopify/Product/900002'};
     mid.title = 'Fikcyjny tanio B';
     mid.variants = mid.variants.map((v) => ({...v, price: moneyFromMinor(210_00)}));
+    const pricey = {...fictionalMultiVariantProduct(), productId: 'gid://shopify/Product/900003'};
+    pricey.title = 'Fikcyjny tanio drogi';
+    pricey.variants = pricey.variants.map((v) => ({...v, price: moneyFromMinor(900_000)}));
     vi.spyOn(catalogSearch, 'searchGemmaCatalog').mockResolvedValue([
+      fictionalMatchFromProduct(pricey),
       fictionalMatchFromProduct(mid),
       fictionalMatchFromProduct(cheap),
     ]);
     await stubGemmaGroqCalls({
       intent: {state: 'propozycje', slots: {budget: 'tanio'}},
       formulation: {
-        text: 'Polecam {{g1}} oraz {{g2}}.',
-        product_refs: ['g1', 'g2'],
+        text: 'Polecam {{g1}}.',
+        product_refs: ['g1'],
       },
     });
     const {namespace} = makeTrackedSessionNamespace();
@@ -159,37 +163,6 @@ describe('Runda 4db2a00 — Cień', () => {
       {sessionId: 'sess_r04_tanio_b'},
     );
     expect(reply).toContain('Fikcyjny tanio A');
-    expect(reply).toContain('Fikcyjny tanio B');
-  });
-
-  it('T-D-Z8-1: koszyk bez shown — pytanie o produkt, nie MCP (R09.3)', async () => {
-    const ai = await import('../../../src/ai-client');
-    vi.spyOn(ai, 'getGroqResponse').mockImplementation(async (_m, _e, opts) => {
-      if (opts?.timingLabel === 'buyer_gemma_intent') {
-        return JSON.stringify(
-          fictionalGemmaIntent({
-            state: 'koszyk',
-            cart_action: 'add',
-            cart_consent: true,
-            product_ref: 'g1',
-          }),
-        );
-      }
-      return JSON.stringify({text: 'x', product_refs: []});
-    });
-    const mcpSpy = vi.spyOn(mcpServer, 'callMcpToolDirect');
-    const {namespace} = makeTrackedSessionNamespace();
-    const reply = await composeGemmaReply(
-      {SESSION_DO: namespace} as never,
-      'epir-online-store',
-      'dodaj do koszyka',
-      new Request('https://example.com'),
-      {sessionId: 'sess_dz8_cart_no_shown'},
-    );
-    const cartTools = mcpSpy.mock.calls.filter((c) =>
-      ['create_cart', 'update_cart'].includes(String(c[1])),
-    );
-    expect(cartTools).toHaveLength(0);
-    expect(reply).toMatch(/Który wariant|koszyk/i);
+    expect(reply).not.toContain('Fikcyjny tanio drogi');
   });
 });

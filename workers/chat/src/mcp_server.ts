@@ -85,10 +85,10 @@ const MCP_POLICIES_MAX_ATTEMPTS = 3;
 const MCP_CATALOG_MAX_ATTEMPTS = 2;
 
 /** Współdzielony marker bezpiecznego fallbacku katalogu (timeout / błąd transportu). */
-export const MCP_CATALOG_TRANSPORT_EMPTY_RESULT = {
-  products: [] as [],
+export const MCP_CATALOG_TRANSPORT_EMPTY_RESULT = Object.freeze({
+  products: Object.freeze([] as []),
   system_note: 'Catalog temporarily unavailable.',
-};
+});
 
 const CATALOG_EMPTY = MCP_CATALOG_TRANSPORT_EMPTY_RESULT;
 

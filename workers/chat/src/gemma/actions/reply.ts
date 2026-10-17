@@ -11,11 +11,13 @@ import {
   epirKbAnswerReply,
   epirKbUnavailableReply,
   epirThanksAckReply,
+  epirCartProductQuestionReply,
   epirVariantQuestionReply,
   epirCartShowEmptyReply,
   epirCartShowLinesReply,
 } from '../profiles/epir';
 import {intentRequestsCustomOrder} from '../state/machine';
+import {intentHasSearchableProductSlots, isThanksOccasionMarker} from '../state/slot-markers';
 import {formatBuyerCatalogLine} from '../formulation/buyer-reply-format';
 import {formatCartMutationReply, formatCartShowBodyFromToolContent} from './cart';
 import type {GemmaActionOutcome} from './types';
@@ -37,7 +39,11 @@ export function buildEpirActionReply(params: {
     return epirCustomOrderFormReply();
   }
 
-  if (state === 'powitanie' && intent.slots.occasion?.trim().toLowerCase() === 'podziękowanie') {
+  if (
+    state === 'powitanie' &&
+    isThanksOccasionMarker(intent.slots.occasion) &&
+    !intentHasSearchableProductSlots(intent.slots)
+  ) {
     return epirThanksAckReply();
   }
 
@@ -61,6 +67,10 @@ export function buildEpirActionReply(params: {
 
   if (outcome.cart?.clientErrors?.length || outcome.cart?.cartFailed) {
     return epirCartErrorReply(channelId, outcome.cart.clientErrors ?? []);
+  }
+
+  if (outcome.cart?.productUnresolved) {
+    return epirCartProductQuestionReply(channelId);
   }
 
   if (outcome.cart?.variantUnresolved) {

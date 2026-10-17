@@ -1,4 +1,10 @@
 import type {GemmaIntent} from '../intent/schema';
+import {
+  intentHasSearchableProductSlots,
+  isCustomOrderProductType,
+  isThanksOccasionMarker,
+  shouldPersistSlotInSession,
+} from './slot-markers';
 import type {
   GemmaConversationState,
   GemmaSessionState,
@@ -16,16 +22,14 @@ export type TransitionResult = {
 
 /** Intencja A: zamówienie indywidualne / odcisk — bez wyszukiwania katalogu (link w szablonie). */
 export function intentRequestsCustomOrder(intent: GemmaIntent): boolean {
-  const pt = intent.slots.product_type?.trim().toLowerCase() ?? '';
-  return (
-    pt.includes('zamówienie indywidualne') ||
-    pt.includes('indywidualne') ||
-    pt.includes('odcisk')
-  );
+  return isCustomOrderProductType(intent.slots.product_type);
 }
 
 function isThanksAckIntent(intent: GemmaIntent): boolean {
-  return intent.slots.occasion?.trim().toLowerCase() === 'podziękowanie';
+  return (
+    isThanksOccasionMarker(intent.slots.occasion) &&
+    !intentHasSearchableProductSlots(intent.slots)
+  );
 }
 
 function mergeSlots(prev: GemmaSlots, incoming: GemmaSlots): GemmaSlots {
@@ -33,7 +37,9 @@ function mergeSlots(prev: GemmaSlots, incoming: GemmaSlots): GemmaSlots {
   for (const key of Object.keys(incoming) as (keyof GemmaSlots)[]) {
     const v = incoming[key];
     if (v !== null && v !== undefined && String(v).trim()) {
-      out[key] = String(v).trim();
+      const trimmed = String(v).trim();
+      if (!shouldPersistSlotInSession(key, trimmed)) continue;
+      out[key] = trimmed;
     }
   }
   return out;
@@ -90,7 +96,7 @@ export function transitionGemmaState(
     };
   }
 
-  if (intent.cart_action || intent.state === 'koszyk') {
+  if (intent.cart_action) {
     return {
       nextState: 'koszyk',
       slots: mergedSlots,

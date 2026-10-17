@@ -130,7 +130,7 @@ export async function executeCatalogMcpLiveSearch(
         ucp_ids: ids.length,
         filter_metal_active: false,
         filter_stone_active: false,
-        price_filter_active: false,
+        price_filter_active: Boolean(filters.priceMin ?? filters.priceMax),
       }),
     );
   }

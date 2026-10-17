@@ -142,6 +142,17 @@ export function epirVariantQuestionReply(channelId: BuyerChannelId, productUrl?:
   return 'Który wariant Pana lub Panią interesuje? Szczegóły i dodanie samodzielne: ' + link + '.';
 }
 
+/** Koszyk bez aktualnej listy shown — jedno pytanie o produkt (D-P3 / D5-bis). */
+export function epirCartProductQuestionReply(channelId: BuyerChannelId): string {
+  return (
+    'Który produkt z ostatnich propozycji Pana lub Pani interesuje? ' +
+    'Proszę wskazać model — bez tego nie mogę dodać pozycji do koszyka. ' +
+    'Kontakt z pracownią: ' +
+    contactPageUrl(channelId) +
+    '.'
+  );
+}
+
 export function epirCartShowEmptyReply(channelId: BuyerChannelId): string {
   return 'Koszyk jest pusty. Kontakt: ' + contactPageUrl(channelId) + '.';
 }
@@ -194,6 +205,7 @@ export function listEpirTemplateStrings(channelId: BuyerChannelId): string[] {
     epirKbUnavailableReply(),
     epirCartErrorReply(channelId),
     epirCartConsentWithProductLink(channelId, '/products/fikcyjny-parity'),
+    epirCartProductQuestionReply(channelId),
     epirVariantQuestionReply(channelId, '/products/fikcyjny-parity'),
     epirDetailsPricesReply('fikcyjna lista wariantów'),
     epirCartShowEmptyReply(channelId),

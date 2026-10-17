@@ -1,21 +1,49 @@
 import {moneyFromMinor} from '../../facts/types';
+import {catalogTextFromSlots} from '../state/slot-markers';
 import type {GemmaSlots} from '../state/types';
 import type {GemmaCatalogSearchFilters} from '../facts/types';
 import {customerRequestsGiftCard} from '../facts/gift-card-catalog';
 
 /** Cyfry ze slotu budżetu muszą wystąpić w korpusie usera (D1). */
 function corpusNumberSet(userCorpus: string): Set<string> {
-  return new Set(
-    (userCorpus.match(/\d(?:[\d ]*\d)?/g) ?? []).map((n) => n.replace(/\s/g, '')),
-  );
+  const out = new Set<string>();
+  for (const m of userCorpus.match(/\d+(?:[,.]\d+)?/g) ?? []) {
+    const compact = m.replace(/\s/g, '');
+    out.add(compact);
+    out.add(compact.replace(',', '.'));
+    out.add(compact.replace('.', ','));
+  }
+  for (const m of userCorpus.match(/\d(?:[\d ]*\d)?/g) ?? []) {
+    out.add(m.replace(/\s/g, ''));
+  }
+  return out;
+}
+
+function normalizeBudgetDigits(digits: string): string {
+  return digits.replace(/\s/g, '');
+}
+
+function plnFromBudgetDigits(digits: string): number | undefined {
+  const normalized = normalizeBudgetDigits(digits).replace(',', '.');
+  const pln = Number(normalized);
+  if (!Number.isFinite(pln) || pln <= 0) return undefined;
+  return pln;
+}
+
+function thousandMultiplierInCorpus(digits: string, userCorpus: string): boolean {
+  const normalized = normalizeBudgetDigits(digits);
+  const decimalPattern = normalized.replace(',', '[,.]').replace('.', '[,.]');
+  const thousandSuffix = '(?:tys\\.?|tysiąc|tysiące|tysięcy|tyś)';
+  const tysRe = new RegExp(`(?<!\\p{L})${decimalPattern}\\s*${thousandSuffix}(?!\\p{L})`, 'iu');
+  if (tysRe.test(userCorpus)) return true;
+  const kRe = new RegExp(`(?<!\\p{L})${decimalPattern}\\s*k(?!\\p{L})`, 'iu');
+  return kRe.test(userCorpus);
 }
 
 function minorFromBudgetDigits(digits: string, userCorpus: string): number | undefined {
-  const pln = Number(digits);
-  if (!Number.isFinite(pln) || pln <= 0) return undefined;
-  const spaced = digits.split('').join('\\s*');
-  const tysRe = new RegExp(`(?<!\\p{L})${spaced}\\s*(?:tys|tysiąc|tysiące)(?!\\p{L})`, 'iu');
-  if (tysRe.test(userCorpus)) {
+  const pln = plnFromBudgetDigits(digits);
+  if (pln === undefined) return undefined;
+  if (thousandMultiplierInCorpus(digits, userCorpus)) {
     return pln * 1000 * 100;
   }
   return pln * 100;
@@ -25,13 +53,17 @@ function minorFromBudgetDigits(digits: string, userCorpus: string): number | und
 export function budgetMinorFromSlots(slots: GemmaSlots, userCorpus: string): number | undefined {
   const raw = slots.budget?.trim();
   if (!raw) return undefined;
-  const digitRuns = raw.match(/\d[\d\s]*/g);
+  const digitRuns = raw.match(/\d+(?:[,.]\d+)?(?:\s*\d+)*/g) ?? raw.match(/\d[\d\s]*/g);
   if (!digitRuns?.length) return undefined;
   const corpusNumbers = corpusNumberSet(userCorpus);
   for (const run of digitRuns) {
-    const digits = run.replace(/\s/g, '');
+    const digits = normalizeBudgetDigits(run);
     if (!digits) continue;
-    if (!corpusNumbers.has(digits)) continue;
+    const corpusHit =
+      corpusNumbers.has(digits) ||
+      corpusNumbers.has(digits.replace(',', '.')) ||
+      corpusNumbers.has(digits.replace('.', ','));
+    if (!corpusHit) continue;
     const minor = minorFromBudgetDigits(digits, userCorpus);
     if (minor !== undefined) return minor;
   }
@@ -109,10 +141,7 @@ export function slotsToCatalogFilters(
   slots: GemmaSlots,
   userCorpus: string,
 ): GemmaCatalogSearchFilters {
-  const parts = [slots.product_type, slots.occasion, slots.recipient, slots.metal, slots.stone]
-    .map((s) => s?.trim())
-    .filter(Boolean);
-  const text = parts.join(' ').trim();
+  const text = catalogTextFromSlots(slots);
   const bounds = budgetPriceBoundsFromSlots(slots, userCorpus);
   const qualitative = isQualitativeBudget(slots, userCorpus);
   const filters: GemmaCatalogSearchFilters = {text: text || undefined};
@@ -141,16 +170,28 @@ export function isLuxuryQualitativeBudget(slots: GemmaSlots): boolean {
   return b.includes('luksus');
 }
 
-export function sortMatchesByMinVariantPrice(
+/** Budżet słowny „tanio” — sort rosnący po cenie (D-Q2 drobne). */
+export function isTanioQualitativeBudget(slots: GemmaSlots): boolean {
+  const b = slots.budget?.trim().toLowerCase() ?? '';
+  return b.includes('tanio');
+}
+
+export function attachMinMinorToMatches(
   matches: import('../../facts/types').ProductMatch[],
-  sortAscending = true,
-) {
-  const priced = matches.map((m) => {
+): import('../facts/catalog-search').GemmaCatalogPricedMatch[] {
+  return matches.map((m) => {
     const variants = m.matchingVariants.length ? m.matchingVariants : m.product.variants;
     const minors = variants.map((v) => v.price.minor ?? v.price.amount_minor ?? 0);
     const minMinor = minors.length ? Math.min(...minors) : 0;
     return {match: m, minMinor};
   });
+}
+
+export function sortMatchesByMinVariantPrice(
+  matches: import('../../facts/types').ProductMatch[],
+  sortAscending = true,
+) {
+  const priced = attachMinMinorToMatches(matches);
   return sortAscending
     ? priced.sort((a, b) => a.minMinor - b.minMinor)
     : priced.sort((a, b) => b.minMinor - a.minMinor);

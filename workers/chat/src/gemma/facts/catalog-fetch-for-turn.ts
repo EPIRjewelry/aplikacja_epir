@@ -5,8 +5,10 @@ import {
   GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT,
 } from '../actions/catalog-limits';
 import {
+  attachMinMinorToMatches,
   isLuxuryQualitativeBudget,
   isQualitativeBudget,
+  isTanioQualitativeBudget,
   slotsToCatalogFilters,
   sortMatchesByMinVariantPrice,
 } from '../actions/slots-to-filters';
@@ -35,7 +37,13 @@ export async function fetchGemmaCatalogMatchesForTurn(params: {
     fetchLimit,
     params.clientRequest,
   );
-  const sortAscending = !isLuxuryQualitativeBudget(params.slots);
-  const sorted = sortMatchesByMinVariantPrice(matches, sortAscending);
-  return sorted.slice(0, GEMMA_CATALOG_DISPLAY_LIMIT);
+  let priced: import('./catalog-search').GemmaCatalogPricedMatch[];
+  if (qualitative && isLuxuryQualitativeBudget(params.slots)) {
+    priced = sortMatchesByMinVariantPrice(matches, false);
+  } else if (qualitative && isTanioQualitativeBudget(params.slots)) {
+    priced = sortMatchesByMinVariantPrice(matches, true);
+  } else {
+    priced = attachMinMinorToMatches(matches);
+  }
+  return priced.slice(0, GEMMA_CATALOG_DISPLAY_LIMIT);
 }

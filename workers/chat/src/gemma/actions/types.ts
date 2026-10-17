@@ -27,6 +27,8 @@ export type GemmaCartFacts = {
   /** Wyjątek akcji koszyka (D5) — szablon błędu bez continue_url. */
   cartFailed?: boolean;
   variantUnresolved?: boolean;
+  /** Brak produktu na liście shown (D-P3 / D-Q2). */
+  productUnresolved?: boolean;
   cartShowSummary?: string;
 };
 

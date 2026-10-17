@@ -140,13 +140,18 @@ export async function runCartAction(ctx: GemmaActionContext): Promise<GemmaCartF
   }
 
   if (intent.cart_action === 'add' || intent.cart_action === 'change') {
+    const handle = resolveCartHandle(ctx);
+    if (!handle) {
+      return {productUnresolved: true};
+    }
+
     if (intent.cart_consent !== true) {
       return {needsConsent: true, productUrl};
     }
 
     const product = await resolveProductForCart(ctx);
     if (!product) {
-      return {variantUnresolved: true, productUrl};
+      return {productUnresolved: true};
     }
 
     const index = createVariantOptionIndex();
