@@ -17,7 +17,7 @@ export type GemmaIntent = {
 
 export type IntentParseError = {kind: 'parse'; message: string};
 
-const CONVERSATION_STATES = new Set([
+export const GEMMA_CONVERSATION_STATE_VALUES = [
   'powitanie',
   'potrzeby',
   'propozycje',
@@ -25,7 +25,9 @@ const CONVERSATION_STATES = new Set([
   'koszyk',
   'polityki_kontakt',
   'odmowa',
-]);
+] as const;
+
+const CONVERSATION_STATES = new Set<string>(GEMMA_CONVERSATION_STATE_VALUES);
 
 const SLOT_KEYS = new Set(['budget', 'metal', 'stone', 'product_type', 'occasion', 'recipient']);
 

@@ -1,6 +1,7 @@
 import type {Env} from '../../config/bindings';
-import {getGroqResponse, type GroqMessage} from '../../ai-client';
+import {AiGatewayHttpError, getGroqResponse, type GroqMessage} from '../../ai-client';
 import {GEMMA_FORMULATION_BUDGET_MS} from './constants';
+import {GEMMA_FORMULATION_RESPONSE_FORMAT} from './formulation-json-schema';
 import {parseFormulationJson} from './parse-formulation';
 import type {TurnFacts} from './types';
 import type {ParsedFormulation} from './types';
@@ -14,6 +15,29 @@ Zasady:
 - Co najwyżej jedno pytanie (jeden znak ?).
 - Nie wspominaj marki KAZKA.
 - O produktach pisz tylko to, co jest w facts (title, available, cena przez placeholder); nie dopisuj cech spoza faktów.`;
+
+class FormulationTimeoutError extends Error {
+  constructor() {
+    super('formulation_timeout');
+    this.name = 'FormulationTimeoutError';
+  }
+}
+
+function logFormulationError(e: unknown): void {
+  const payload: Record<string, unknown> = {tag: 'gemma.formulation.error'};
+  if (e instanceof AiGatewayHttpError) payload.http_status = e.status;
+  if (e instanceof Error) payload.error_name = e.name;
+  console.log(JSON.stringify(payload));
+}
+
+function isTimeoutLike(e: unknown): boolean {
+  if (e instanceof FormulationTimeoutError) return true;
+  if (e instanceof Error) {
+    if (e.message === 'formulation_timeout') return true;
+    if (e.name === 'AbortError' || e.name === 'TimeoutError') return true;
+  }
+  return false;
+}
 
 function buildUserPayload(userText: string, turn: TurnFacts): string {
   return JSON.stringify({
@@ -32,10 +56,13 @@ async function callFormulationModel(
   env: Env,
   messages: GroqMessage[],
   sessionId?: string,
+  timeoutMs?: number,
 ): Promise<string> {
   return getGroqResponse(messages, env, {
     timingLabel: 'buyer_gemma_formulation',
     sessionId,
+    responseFormat: GEMMA_FORMULATION_RESPONSE_FORMAT,
+    timeoutMs,
   });
 }
 
@@ -64,18 +91,21 @@ export async function extractFormulationReply(params: {
     messages.push({role: 'user', content: userBody});
   }
 
+  const callTimeoutMs = Math.min(remaining, GEMMA_FORMULATION_BUDGET_MS);
+
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const raw = await Promise.race([
-      callFormulationModel(params.env, messages, params.sessionId),
+      callFormulationModel(params.env, messages, params.sessionId, callTimeoutMs),
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('formulation_timeout')), remaining);
+        timer = setTimeout(() => reject(new FormulationTimeoutError()), remaining);
       }),
     ]);
     const parsed = parseFormulationJson(raw);
     if (!parsed.ok) return null;
     return parsed.formulation;
-  } catch {
+  } catch (e) {
+    logFormulationError(e);
     return null;
   } finally {
     if (timer !== undefined) clearTimeout(timer);

@@ -1,10 +1,12 @@
 import type {Env} from '../../config/bindings';
-import {getGroqResponse, type GroqMessage} from '../../ai-client';
+import {AiGatewayHttpError, getGroqResponse, type GroqMessage} from '../../ai-client';
 import {BuyerTurnOverloadError, withLlmRound0Retry} from '../../buyer/buyer-llm-retry';
 import type {BuyerHistoryEntry} from '../../buyer/session-history';
 import {parseIntentJson, type ParseIntentResult} from './parse-intent';
 import type {GemmaIntent} from './schema';
 import {GemmaTurnError} from '../errors';
+import {GEMMA_INTENT_TIMEOUT_MS} from './constants';
+import {GEMMA_INTENT_RESPONSE_FORMAT} from './intent-json-schema';
 
 const INTENT_SYSTEM = `Jesteś parserem intencji Gemma v2. Odpowiadasz WYŁĄCZNIE jednym obiektem JSON (bez markdown).
 Pola (wszystkie wymagane): state, slots, product_ref, variant_choice, cart_action, cart_consent, policy_query, safety.
@@ -31,6 +33,13 @@ function buildIntentMessages(
   return messages;
 }
 
+function logIntentTransportError(e: unknown): void {
+  const payload: Record<string, unknown> = {tag: 'gemma.intent.error'};
+  if (e instanceof AiGatewayHttpError) payload.http_status = e.status;
+  if (e instanceof Error) payload.error_name = e.name;
+  console.log(JSON.stringify(payload));
+}
+
 async function callIntentModel(
   env: Env,
   messages: GroqMessage[],
@@ -39,8 +48,9 @@ async function callIntentModel(
   return withLlmRound0Retry(0, () =>
     getGroqResponse(messages, env, {
       timingLabel: 'buyer_gemma_intent',
-      max_tokens: 512,
       sessionId,
+      responseFormat: GEMMA_INTENT_RESPONSE_FORMAT,
+      timeoutMs: GEMMA_INTENT_TIMEOUT_MS,
     }),
   );
 }
@@ -55,6 +65,7 @@ function unwrapParse(result: ParseIntentResult): ExtractIntentResult {
 /** Overload (BuyerTurnOverloadError) idzie dalej bez zmian — osobny komunikat w handle-buyer-turn. */
 function wrapIntentTransportError(e: unknown): Error {
   if (e instanceof BuyerTurnOverloadError) return e;
+  logIntentTransportError(e);
   return new GemmaTurnError('intent_transport', e);
 }
 

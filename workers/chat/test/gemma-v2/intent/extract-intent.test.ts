@@ -30,8 +30,9 @@ describe('E3 extractGemmaIntent', () => {
     expect(spy).toHaveBeenCalledWith(
       expect.any(Array),
       expect.anything(),
-      expect.objectContaining({timingLabel: 'buyer_gemma_intent', max_tokens: 512}),
+      expect.objectContaining({timingLabel: 'buyer_gemma_intent'}),
     );
+    expect(spy.mock.calls[0]![2]?.max_tokens).toBeUndefined();
   });
 
   it('T-E3-INTENT-4: parse failure → exactly one retry, then parsed intent', async () => {
