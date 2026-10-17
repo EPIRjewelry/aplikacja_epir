@@ -9,10 +9,12 @@ import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {composeGemmaReply} from '../../src/gemma/compose-gemma-reply';
 import {gemmaV2EmergencyReply} from '../../src/gemma/fallback';
 import {
+  epirCartConsentWithProductLink,
   epirCartProductQuestionReply,
   epirCartReply,
   epirRefusalReply,
 } from '../../src/gemma/profiles/epir';
+import * as mcpServer from '../../src/mcp_server';
 import type {Env} from '../../src/config/bindings';
 import {callOrderIndexes, makeTrackedSessionNamespace} from './helpers/session-do-calls';
 import {stubGemmaIntentJson} from './helpers/stub-gemma-intent';
@@ -179,6 +181,7 @@ describe('E3 composeGemmaReply intent orchestration', () => {
       turn: 1,
     });
     await stubGemmaIntentJson({cart_action: 'add', cart_consent: false, product_ref: 'g1'});
+    const mcpSpy = vi.spyOn(mcpServer, 'callMcpToolDirect');
     const reply = await composeGemmaReply(
       env,
       'epir-online-store',
@@ -186,6 +189,12 @@ describe('E3 composeGemmaReply intent orchestration', () => {
       new Request('https://example.com'),
       {sessionId: sid, storefrontId: 'online-store', bodyChannel: 'online-store'},
     );
-    expect(reply).toBe(epirCartReply(true));
+    const cartTools = mcpSpy.mock.calls.filter((c) =>
+      ['create_cart', 'update_cart'].includes(String(c[1])),
+    );
+    expect(cartTools).toHaveLength(0);
+    expect(reply).toBe(
+      epirCartConsentWithProductLink('epir-online-store', '/products/fikcyjny-pierscionek-parity'),
+    );
   });
 });
