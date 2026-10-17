@@ -82,16 +82,11 @@ export async function gemmaCatalogLiveSearch(
   }
 
   const brand = brandForChannel(channel);
-  const buildOpts: import('../../facts/catalog-ucp-args').BuildUcpSearchCatalogOptions | undefined =
-    options?.browseInStockAvailable
-      ? {
-          browseInStockAvailable: true,
-          ...(options.excludeGiftCards ? {giftCard: false} : {}),
-        }
-      : options?.excludeGiftCards
-        ? {giftCard: false}
-        : undefined;
-  const mcpArgs = buildUcpSearchCatalogArgs(filters, limit, buildOpts);
+  const mcpArgs = buildUcpSearchCatalogArgs(
+    filters,
+    limit,
+    options?.browseInStockAvailable ? {browseInStockAvailable: true} : undefined,
+  );
   const mcpOut = await callMcpToolDirect(env, 'search_catalog', mcpArgs, brand);
   const mcpCode = parseMcpErrorCode(mcpOut);
   if (mcpCode !== undefined) {

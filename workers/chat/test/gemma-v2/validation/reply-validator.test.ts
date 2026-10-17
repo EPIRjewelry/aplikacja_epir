@@ -94,4 +94,16 @@ describe('E5 reply validator', () => {
     expect(validateFormulationTextBeforeStitch('Polecam Panu/Pani ten model.', [], baseFacts)).not.toContain('gendered_address');
     expect(validateFormulationTextBeforeStitch('Zapraszam Panią do salonu.', [], baseFacts)).toContain('gendered_address');
   });
+
+  it('T-E5-VAL-CAT-1: propozycje B must cite at least one catalog ref', () => {
+    const v = validateFormulationTextBeforeStitch(
+      'Proszę Pana/Panią — fikcyjna odpowiedź.',
+      [],
+      baseFacts,
+    );
+    expect(v).toContain('catalog_ref_missing');
+    expect(
+      validateFormulationTextBeforeStitch('Polecam {{g1}}.', ['g1'], baseFacts),
+    ).not.toContain('catalog_ref_missing');
+  });
 });

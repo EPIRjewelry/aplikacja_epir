@@ -7,6 +7,7 @@ import {buildUcpSearchCatalogArgs} from '../../../src/facts/catalog-ucp-args';
 import {CatalogMcpSearchError} from '../../../src/gemma/facts/catalog-mcp-error';
 import * as facts from '../../../src/facts';
 import * as liveSearch from '../../../src/gemma/facts/catalog-live-search';
+import * as mcpServer from '../../../src/mcp_server';
 import {hasCatalogQueryOrFilters} from '../../../src/mcp_server';
 import {composeGemmaReply} from '../../../src/gemma/compose-gemma-reply';
 import {fetchGemmaCatalogMatchesForTurn} from '../../../src/gemma/facts/catalog-fetch-for-turn';
@@ -144,6 +145,35 @@ describe('Cień catalog qualitative fix', () => {
     );
     expect(reply).not.toBe(epirCatalogEmptyReply('epir-online-store'));
     expect(reply).toMatch(/g1:|\/products\//);
+  });
+
+  it('T-FIX-MCP-BROWSE-1: browse MCP error → catalogFailed empty reply (M2 guard)', async () => {
+    vi.spyOn(mcpServer, 'callMcpToolDirect').mockResolvedValue({
+      error: {code: -32602, message: 'invalid'},
+    });
+    await stubGemmaIntentJson({state: 'propozycje', slots: {budget: 'tanio'}});
+    const logSpy = vi.spyOn(console, 'log');
+    const {namespace} = makeTrackedSessionNamespace();
+    const reply = await composeGemmaReply(
+      {SESSION_DO: namespace, PRIVATE_STOREFRONT_API_TOKEN: 'x'} as never,
+      'epir-online-store',
+      'coś taniego',
+      new Request('https://example.com'),
+      {sessionId: 'sess_mcp_browse'},
+    );
+    expect(reply).toBe(epirCatalogEmptyReply('epir-online-store'));
+    expect(
+      logSpy.mock.calls.some((c) => {
+        const raw = c[0];
+        if (typeof raw !== 'string') return false;
+        try {
+          const j = JSON.parse(raw) as {tag?: string; catalog_failed?: boolean};
+          return j.tag === 'gemma.turn' && j.catalog_failed === true;
+        } catch {
+          return false;
+        }
+      }),
+    ).toBe(true);
   });
 
   it('T-FIX-MCP-ERR: MCP code → throw + gemma.catalog.error (M-FIX-3)', async () => {

@@ -11,8 +11,6 @@ export const CATALOG_SEARCH_SERVER_LIMIT = 10;
  */
 export type BuildUcpSearchCatalogOptions = {
   browseInStockAvailable?: boolean;
-  /** Filtr dev.shopify.catalog — `gift_card: false` wyklucza karty podarunkowe z MCP. */
-  giftCard?: boolean;
 };
 
 function priceMinor(v: CatalogFilters['priceMin']): number | undefined {
@@ -51,21 +49,13 @@ export function buildUcpSearchCatalogArgs(
       : undefined;
 
   if (buildOptions?.browseInStockAvailable) {
-    const browseFilters: Record<string, unknown> = {available: true};
-    if (buildOptions.giftCard === false) {
-      browseFilters.gift_card = false;
-    }
-    catalog.filters = browseFilters;
+    catalog.filters = {available: true};
     return {catalog};
   }
 
   catalog.query = filters.text?.trim() || '';
-  const queryFilters: Record<string, unknown> = {...(priceFilter ?? {})};
-  if (buildOptions?.giftCard === false) {
-    queryFilters.gift_card = false;
-  }
-  if (Object.keys(queryFilters).length) {
-    catalog.filters = queryFilters;
+  if (priceFilter) {
+    catalog.filters = priceFilter;
   }
   return {catalog};
 }

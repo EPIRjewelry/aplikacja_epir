@@ -90,6 +90,14 @@ export function validateFormulationTextBeforeStitch(
     if (!facts.allowedRefs.has(ref)) violations.push('ref_out_of_scope');
   }
 
+  if (facts.allowedRefs.size > 0) {
+    const placeholderRefs = collectPlaceholderRefs(trimmed);
+    const citesCatalog =
+      productRefs.some((r) => facts.allowedRefs.has(r)) ||
+      placeholderRefs.some((r) => facts.allowedRefs.has(r));
+    if (!citesCatalog) violations.push('catalog_ref_missing');
+  }
+
   if (URL_IN_TEXT.test(trimmed)) violations.push('url_in_model_text');
 
   const plain = stripPlaceholders(trimmed);

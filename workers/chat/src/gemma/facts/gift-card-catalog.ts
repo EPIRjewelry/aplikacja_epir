@@ -1,7 +1,7 @@
 import type {ProductMatch} from '../../facts/types';
 import type {GemmaSlots} from '../state/types';
 
-/** Klient prosi o kartę podarunkową — wtedy nie filtrujemy gift_card (dev.shopify.catalog). */
+/** Klient prosi o kartę podarunkową — wtedy nie filtrujemy po Product.giftCard. */
 export function customerRequestsGiftCard(slots: GemmaSlots, userCorpus: string): boolean {
   const blob = [slots.product_type, slots.occasion, slots.recipient, userCorpus]
     .filter(Boolean)
