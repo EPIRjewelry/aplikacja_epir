@@ -68,7 +68,7 @@ describe('E5 compose formulation', () => {
     await catalogPropozycjeStub();
     const aiSpy = await stubGemmaGroqCalls({
       intent: {state: 'propozycje', slots: {recipient: 'żona'}},
-      formulation: {text: 'Proszę Pana/Panią — propozycje poniżej.', product_refs: ['g1']},
+      formulation: {text: 'Polecam propozycje poniżej {{g1}}.', product_refs: ['g1']},
     });
     const {namespace} = makeTrackedSessionNamespace();
     await composeGemmaReply(
@@ -148,12 +148,65 @@ describe('E5 compose formulation', () => {
       {sessionId: 'sess_e5_flow_2'},
     );
     expect(bCalls).toBe(2);
-    expect(reply).toContain('Proszę Pana/Panią');
+    expect(reply).not.toMatch(/Pana\/Panią/);
     expect(reply).not.toMatch(/evil\.example/);
+    expect(reply).toMatch(/\/products\//);
+  });
+
+  it('T-D5-BIS-E2E-1: B „Polecam Panu lub Pani {{g1}}” dociera jako formulation, nie szablon', async () => {
+    await catalogPropozycjeStub();
+    vi.spyOn(aiClient, 'getGroqResponse').mockImplementation(async (_m, _e, opts) => {
+      if (opts?.timingLabel === 'buyer_gemma_intent') {
+        return JSON.stringify(fictionalGemmaIntent({state: 'propozycje', slots: {recipient: 'żona'}}));
+      }
+      return JSON.stringify({text: 'Polecam Panu lub Pani {{g1}}.', product_refs: ['g1']});
+    });
+    const {namespace} = makeTrackedSessionNamespace();
+    const reply = await composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'prezent',
+      new Request('https://example.com'),
+      {sessionId: 'sess_d5_bis_ok'},
+    );
+    expect(reply).toContain('Polecam Panu lub Pani');
+    expect(reply).not.toMatch(/\bg\d+:/);
+  });
+
+  it('T-D5-BIS-E2E-2: B „Polecam Panu {{g1}}” → szablon deterministyczny', async () => {
+    await catalogPropozycjeStub();
+    const intent = fictionalGemmaIntent({state: 'propozycje', slots: {recipient: 'żona'}});
+    const runMod = await import('../../../src/gemma/actions/run');
+    const runSpy = vi.spyOn(runMod, 'runGemmaAllowedActions');
+    vi.spyOn(aiClient, 'getGroqResponse').mockImplementation(async (_m, _e, opts) => {
+      if (opts?.timingLabel === 'buyer_gemma_intent') {
+        return JSON.stringify(intent);
+      }
+      return JSON.stringify({text: 'Polecam Panu {{g1}}.', product_refs: ['g1']});
+    });
+    const {namespace} = makeTrackedSessionNamespace();
+    const reply = await composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'prezent',
+      new Request('https://example.com'),
+      {sessionId: 'sess_d5_bis_tpl'},
+    );
+    const outcome = await runSpy.mock.results[0]?.value;
+    const expected = buildEpirActionReply({
+      channelId: 'epir-online-store',
+      state: 'propozycje',
+      intent,
+      outcome,
+    });
+    expect(reply).toBe(expected);
+    expect(reply).not.toContain('Polecam Panu');
   });
 
   it('T-E5-BUYER-LEAK-3: B „g1: {{g1}}” → stitch leak → fallback bez gN: (M12)', async () => {
-    await catalogPropozycjeStub();
+    const product = fictionalMultiVariantProduct();
+    product.title = 'Pierścionek 1 fikcyjny';
+    vi.spyOn(catalogSearch, 'searchGemmaCatalog').mockResolvedValue([fictionalMatchFromProduct(product)]);
     const intent = fictionalGemmaIntent({state: 'propozycje', slots: {recipient: 'żona'}});
     const runMod = await import('../../../src/gemma/actions/run');
     const runSpy = vi.spyOn(runMod, 'runGemmaAllowedActions');
@@ -325,7 +378,7 @@ describe('E5 compose formulation', () => {
     await catalogPropozycjeStub();
     await stubGemmaGroqCalls({
       intent: {state: 'propozycje', slots: {recipient: 'żona'}},
-      formulation: {text: 'Proszę Pana/Panią — polecam serdecznie {{g1}} ({{g1.price}}).', product_refs: ['g1']},
+      formulation: {text: 'Polecam serdecznie {{g1}} ({{g1.price}}).', product_refs: ['g1']},
     });
     const {namespace} = makeTrackedSessionNamespace();
     const reply = await composeGemmaReply(
@@ -345,7 +398,7 @@ describe('E5 compose formulation', () => {
     vi.spyOn(catalogSearch, 'searchGemmaCatalog').mockResolvedValue([fictionalMatchFromProduct(product)]);
     await stubGemmaGroqCalls({
       intent: {state: 'propozycje', slots: {recipient: 'żona'}},
-      formulation: {text: 'Proszę Pana/Panią — czy ten model {{g1}} odpowiada?', product_refs: ['g1']},
+      formulation: {text: 'Czy ten model {{g1}} odpowiada?', product_refs: ['g1']},
     });
     const {namespace} = makeTrackedSessionNamespace();
     const reply = await composeGemmaReply(

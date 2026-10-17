@@ -78,7 +78,7 @@ describe('E5 reply validator', () => {
   });
 
   it('T-E5-VAL-PH-1: placeholders {{g1}} / {{g1.price}} are not numbers', () => {
-    const v = validateFormulationTextBeforeStitch('Proszę Pana/Panią — polecam {{g1}} w cenie {{g1.price}}.', ['g1'], baseFacts);
+    const v = validateFormulationTextBeforeStitch('Polecam Panu lub Pani {{g1}} w cenie {{g1.price}}.', ['g1'], baseFacts);
     expect(v).toEqual([]);
   });
 
@@ -91,9 +91,21 @@ describe('E5 reply validator', () => {
     expect(v).toContain('price_in_model_text');
   });
 
-  it('T-E5-VAL-FORM-2: pairs Panu/Pani ok; standalone Panią fails', () => {
-    expect(validateFormulationTextBeforeStitch('Polecam Panu/Pani ten model.', [], baseFacts)).not.toContain('gendered_address');
+  it('T-E5-VAL-FORM-2: ukośnik Panu/Pani odrzucony; standalone Panią fails', () => {
+    expect(validateFormulationTextBeforeStitch('Polecam Panu/Pani ten model.', [], baseFacts)).toContain(
+      'slash_gendered_address',
+    );
     expect(validateFormulationTextBeforeStitch('Zapraszam Panią do salonu.', [], baseFacts)).toContain('gendered_address');
+  });
+
+  it('T-D5-BIS-VAL-1: Panu lub Pani dozwolone; samotne Panu odrzucone', () => {
+    expect(validateFormulationTextBeforeStitch('Polecam Panu lub Pani ten model.', [], baseFacts)).toEqual([]);
+    expect(validateFormulationTextBeforeStitch('Polecam Panu ten model.', [], baseFacts)).toContain('gendered_address');
+  });
+
+  it('T-D5-BIS-VAL-2: forma z ukośnikiem odrzucona (siatka Z14)', () => {
+    const v = validateFormulationTextBeforeStitch('Proszę Pana/Panią — który wariant?', [], baseFacts);
+    expect(v).toContain('slash_gendered_address');
   });
 
   it('T-E5-VAL-CAT-1: propozycje B must cite at least one catalog ref', () => {

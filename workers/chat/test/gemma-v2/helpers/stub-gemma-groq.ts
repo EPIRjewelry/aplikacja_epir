@@ -9,7 +9,7 @@ export async function stubGemmaGroqCalls(options: {
 }) {
   const intentPayload = JSON.stringify(fictionalGemmaIntent(options.intent ?? {}));
   const formulationPayload = JSON.stringify({
-    text: options.formulation?.text ?? 'Proszę Pana/Panią — propozycje w załączeniu.',
+    text: options.formulation?.text ?? 'Polecam propozycje w załączeniu.',
     product_refs: options.formulation?.product_refs ?? [],
   });
   const ai = await import('../../../src/ai-client');

@@ -16,14 +16,19 @@ export type ReplyValidationFacts = {
 const URL_IN_TEXT =
   /https?:\/\/|www\.|\[[^\]]*\]\([^)]+\)|[a-z0-9][-a-z0-9]*\.[a-z]{2,}\/[^\s)\]>]+/i;
 
-const ADDRESS_PAIR = /(Pan|Pana|Panu|Panem|Pani|Panią)\/(Pan|Pana|Panu|Panem|Pani|Panią)/gu;
+const ADDRESS_SLASH_PAIR = /(Pan|Pana|Panu|Panem|Pani|Panią)\/(Pan|Pana|Panu|Panem|Pani|Panią)/iu;
+const ALLOWED_LUB_ADDRESS = /\b(Pan|Panu|Pana)\s+lub\s+Pani\b/giu;
 const STANDALONE_ADDRESS = /(?<!\p{L})(Pan|Pani|Pana|Panu|Panem|Panią)(?!\p{L})/u;
 /** Kwota w tekście modelu: ceny wyłącznie przez {{gN.price}} (E5-D7 b2), także gdy liczba jest w userText. */
 const CURRENCY_AMOUNT = /\d[\d\s.,]*\s*(?:zł|zl|pln|złotych|złote|złoty)(?!\p{L})/iu;
 
-function hasGenderedAddressViolation(text: string): boolean {
-  const t = text.replace(ADDRESS_PAIR, '');
-  return STANDALONE_ADDRESS.test(t);
+function hasSlashGenderedAddress(text: string): boolean {
+  return ADDRESS_SLASH_PAIR.test(text);
+}
+
+function hasStandaloneGenderedAddress(text: string): boolean {
+  const withoutAllowed = text.replace(ALLOWED_LUB_ADDRESS, ' ');
+  return STANDALONE_ADDRESS.test(withoutAllowed);
 }
 
 /** Placeholdery {{gN}} / {{gN.price}} nie są liczbami tekstu (cyfra w refie). */
@@ -119,7 +124,8 @@ export function validateFormulationTextBeforeStitch(
   }
 
   if (templateUsesInformalTy(trimmed)) violations.push('informal_address');
-  if (hasGenderedAddressViolation(trimmed)) violations.push('gendered_address');
+  if (hasSlashGenderedAddress(trimmed)) violations.push('slash_gendered_address');
+  else if (hasStandaloneGenderedAddress(trimmed)) violations.push('gendered_address');
 
   const qCount = (trimmed.match(/\?/g) ?? []).length;
   if (qCount > 1) violations.push('too_many_questions');
