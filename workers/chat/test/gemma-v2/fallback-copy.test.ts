@@ -7,7 +7,7 @@ describe('E1 gemmaV2EmergencyReply copy (Pan/Pani, bez faktów)', () => {
   it('GE exact text and link', () => {
     const text = gemmaV2EmergencyReply('epir-online-store');
     expect(text).toBe(
-      'Przepraszamy, asystent jest chwilowo niedostępny. Prosimy Pana/Panią o kontakt przez stronę kontaktu: https://epirbizuteria.pl/pages/kontakt.',
+      'Przepraszamy, asystent jest chwilowo niedostępny. Prosimy o kontakt przez stronę kontaktu: https://epirbizuteria.pl/pages/kontakt.',
     );
     expect(text).not.toMatch(TY_FORMS);
     expect(text).not.toMatch(/zł/i);
@@ -19,7 +19,7 @@ describe('E1 gemmaV2EmergencyReply copy (Pan/Pani, bez faktów)', () => {
   it('GZ exact text and link', () => {
     const text = gemmaV2EmergencyReply('epir-zareczyny');
     expect(text).toBe(
-      'Przepraszamy, asystent jest chwilowo niedostępny. Prosimy Pana/Panią o kontakt przez stronę kontaktu: https://zareczyny.epirbizuteria.pl/pages/kontakt.',
+      'Przepraszamy, asystent jest chwilowo niedostępny. Prosimy o kontakt przez stronę kontaktu: https://zareczyny.epirbizuteria.pl/pages/kontakt.',
     );
     expect(text).not.toMatch(TY_FORMS);
     expect(text).not.toMatch(/zł/i);
@@ -28,7 +28,7 @@ describe('E1 gemmaV2EmergencyReply copy (Pan/Pani, bez faktów)', () => {
   it('KAZKA exact text and link', () => {
     const text = gemmaV2EmergencyReply('kazka-hydrogen');
     expect(text).toBe(
-      'Przepraszamy, asystent jest chwilowo niedostępny. Prosimy Pana/Panią o kontakt przez stronę kontaktu: https://kazka.epirbizuteria.pl/pages/kontakt.',
+      'Przepraszamy, asystent jest chwilowo niedostępny. Prosimy o kontakt przez stronę kontaktu: https://kazka.epirbizuteria.pl/pages/kontakt.',
     );
     expect(text).not.toMatch(TY_FORMS);
     expect(text).not.toMatch(/zł/i);
