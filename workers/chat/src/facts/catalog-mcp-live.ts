@@ -1,6 +1,6 @@
 import type {BuyerChannelId} from '../buyer/channel-switch';
 import type {Env} from '../config/bindings';
-import {callMcpToolDirect} from '../mcp_server';
+import {callMcpToolDirect, isMcpCatalogTransportEmptyResult} from '../mcp_server';
 import {buildUcpSearchCatalogArgs, parseUcpFilterIgnoredMessages} from './catalog-ucp-args';
 import {computeFacetsFromMatches, filterProducts} from './filter';
 import {
@@ -17,6 +17,14 @@ export class CatalogMcpLiveSearchError extends Error {
     super('catalog_mcp_search_error');
     this.name = 'CatalogMcpLiveSearchError';
     this.mcpCode = mcpCode;
+  }
+}
+
+/** Gemma v2: bezpieczny fallback MCP (CATALOG_EMPTY), nie pusty wynik wyszukiwania. */
+export class CatalogMcpTransportEmptyError extends Error {
+  constructor() {
+    super('catalog_mcp_transport_empty');
+    this.name = 'CatalogMcpTransportEmptyError';
   }
 }
 
@@ -103,8 +111,29 @@ export async function executeCatalogMcpLiveSearch(
     return {matches: [], total: 0, facets: facetsEmpty};
   }
 
+  const rawResult = (mcpOut as {result?: unknown}).result;
+  if (isMcpCatalogTransportEmptyResult(rawResult)) {
+    if (options?.throwOnMcpError) {
+      throw new CatalogMcpTransportEmptyError();
+    }
+    return {matches: [], total: 0, facets: facetsEmpty};
+  }
+
   const filterIgnored = parseUcpFilterIgnoredMessages(mcpOut);
   const ids = parseUcpSearchProductIds(mcpOut);
+  const logStages = Boolean(options?.throwOnMcpError);
+  if (logStages) {
+    console.log(
+      JSON.stringify({
+        tag: 'gemma.catalog.stage',
+        stage: 'ucp_ids',
+        ucp_ids: ids.length,
+        filter_metal_active: false,
+        filter_stone_active: false,
+        price_filter_active: false,
+      }),
+    );
+  }
   if (!ids.length) {
     return {
       matches: [],
@@ -115,8 +144,32 @@ export async function executeCatalogMcpLiveSearch(
   }
 
   const facts = await fetchProductFactsLive(env, channel, ids, options);
+  if (logStages) {
+    console.log(
+      JSON.stringify({
+        tag: 'gemma.catalog.stage',
+        stage: 'facts_hydrated',
+        ucp_ids: ids.length,
+        facts_hydrated: facts.length,
+        dropped_no_store_url: ids.length - facts.length,
+      }),
+    );
+  }
   const postUcpFilters = {...filters, text: undefined, priceMin: undefined, priceMax: undefined};
+  if (options?.throwOnMcpError) {
+    postUcpFilters.metal = undefined;
+    postUcpFilters.stone = undefined;
+  }
   const matches = filterProducts(facts, postUcpFilters);
+  if (logStages) {
+    console.log(
+      JSON.stringify({
+        tag: 'gemma.catalog.stage',
+        stage: 'after_post_ucp_filter',
+        after_post_ucp_filter: matches.length,
+      }),
+    );
+  }
   const result: CatalogSearchResult = {
     matches,
     total: matches.length,

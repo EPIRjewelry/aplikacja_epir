@@ -10,6 +10,17 @@ function corpusNumberSet(userCorpus: string): Set<string> {
   );
 }
 
+function minorFromBudgetDigits(digits: string, userCorpus: string): number | undefined {
+  const pln = Number(digits);
+  if (!Number.isFinite(pln) || pln <= 0) return undefined;
+  const spaced = digits.split('').join('\\s*');
+  const tysRe = new RegExp(`(?<!\\p{L})${spaced}\\s*(?:tys|tysiąc|tysiące)(?!\\p{L})`, 'iu');
+  if (tysRe.test(userCorpus)) {
+    return pln * 1000 * 100;
+  }
+  return pln * 100;
+}
+
 /** Cyfry ze slotu budżetu muszą wystąpić w korpusie usera (D1). */
 export function budgetMinorFromSlots(slots: GemmaSlots, userCorpus: string): number | undefined {
   const raw = slots.budget?.trim();
@@ -21,9 +32,8 @@ export function budgetMinorFromSlots(slots: GemmaSlots, userCorpus: string): num
     const digits = run.replace(/\s/g, '');
     if (!digits) continue;
     if (!corpusNumbers.has(digits)) continue;
-    const pln = Number(digits);
-    if (!Number.isFinite(pln) || pln <= 0) continue;
-    return pln * 100;
+    const minor = minorFromBudgetDigits(digits, userCorpus);
+    if (minor !== undefined) return minor;
   }
   return undefined;
 }
@@ -123,6 +133,12 @@ export function slotsToCatalogFilters(
 /** Budżet słowny („tanio”) bez kwoty od klienta — wtedy sortujemy po cenie, bez progu (D1). */
 export function isQualitativeBudget(slots: GemmaSlots, userCorpus: string): boolean {
   return Boolean(slots.budget?.trim()) && budgetMinorFromSlots(slots, userCorpus) === undefined;
+}
+
+/** Budżet słowny „luksus” — sort malejący po cenie (intencja A, slot budget). */
+export function isLuxuryQualitativeBudget(slots: GemmaSlots): boolean {
+  const b = slots.budget?.trim().toLowerCase() ?? '';
+  return b.includes('luksus');
 }
 
 export function sortMatchesByMinVariantPrice(

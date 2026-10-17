@@ -1,4 +1,4 @@
-import {resolveUrlForChannel} from '../../buyer/channel-origins';
+import {EPIR_CUSTOM_ORDER_FORM_URL, resolveUrlForChannel} from '../../buyer/channel-origins';
 import type {BuyerChannelId} from '../../buyer/channel-switch';
 import {KB_POLICY_UNAVAILABLE_REPLY} from '../../buyer/kb-policies';
 import type {GemmaConversationState, GemmaSlots, FormOfAddress} from '../state/types';
@@ -77,6 +77,26 @@ export function epirCatalogEmptyReply(channelId: BuyerChannelId): string {
     'Czy mogę zapytać, jaki rodzaj biżuterii leży Panu lub Pani na sercu — pierścionek, kolczyki, naszyjnik? ' +
     'Kontakt z pracownią: ' +
     contactPageUrl(channelId) +
+    '.'
+  );
+}
+
+export function epirCatalogTransportReply(channelId: BuyerChannelId): string {
+  return (
+    'Katalog jest chwilowo niedostępny. Proszę spróbować ponownie za moment lub skontaktować się z pracownią: ' +
+    contactPageUrl(channelId) +
+    '.'
+  );
+}
+
+export function epirThanksAckReply(): string {
+  return 'Proszę bardzo. Jeśli pojawią się kolejne pytania, jestem do dyspozycji.';
+}
+
+export function epirCustomOrderFormReply(): string {
+  return (
+    'Zamówienia indywidualne i projekty na miarę realizujemy przez formularz: ' +
+    EPIR_CUSTOM_ORDER_FORM_URL +
     '.'
   );
 }

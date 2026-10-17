@@ -1,7 +1,11 @@
 import {catalogSnapshotChannel} from '../../buyer/channel-switch';
 import type {BuyerChannelId} from '../../buyer/channel-switch';
 import type {Env} from '../../config/bindings';
-import {CatalogMcpLiveSearchError, getCatalogRepository} from '../../facts';
+import {
+  CatalogMcpLiveSearchError,
+  CatalogMcpTransportEmptyError,
+  getCatalogRepository,
+} from '../../facts';
 import {filterProducts} from '../../facts/filter';
 import type {ProductMatch} from '../../facts/types';
 import {filterProductMatchesByZareczynyTag} from './assortment';
@@ -35,9 +39,9 @@ export async function searchGemmaCatalog(
   const ucpFilters = {
     text,
     ucpIntent,
-    metal,
-    stone,
     available,
+    priceMin,
+    priceMax,
   };
 
   try {
@@ -55,11 +59,13 @@ export async function searchGemmaCatalog(
     }
 
     let out: ProductMatch[] = matches;
-    if (priceMin !== undefined || priceMax !== undefined) {
+    const priceFilterActive = priceMin !== undefined || priceMax !== undefined;
+    if (priceFilterActive) {
       const products = matches.map((m) => m.product);
-      out = filterProducts(products, {metal, stone, priceMin, priceMax});
+      out = filterProducts(products, {priceMin, priceMax});
     }
 
+    const afterPrice = out.length;
     const result = await filterProductMatchesByZareczynyTag(env, channelId, out, clientRequest);
 
     console.log(
@@ -69,12 +75,19 @@ export async function searchGemmaCatalog(
         fetch_limit: limit,
         browse: Boolean(ucpBrowseInStockAvailable),
         has_text_query: Boolean(text?.trim()),
+        after_gift_card: matches.length,
+        after_price: afterPrice,
+        price_filter_active: priceFilterActive,
         duration_ms: Date.now() - started,
       }),
     );
 
     return result;
   } catch (e) {
+    if (e instanceof CatalogMcpTransportEmptyError) {
+      console.log(JSON.stringify({tag: 'gemma.catalog.error', code: 'transport_empty'}));
+      throw e;
+    }
     if (e instanceof CatalogMcpLiveSearchError) {
       console.log(JSON.stringify({tag: 'gemma.catalog.error', code: e.mcpCode}));
       throw new CatalogMcpSearchError(e.mcpCode);

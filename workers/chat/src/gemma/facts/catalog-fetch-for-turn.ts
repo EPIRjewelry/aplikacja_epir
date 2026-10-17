@@ -5,6 +5,7 @@ import {
   GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT,
 } from '../actions/catalog-limits';
 import {
+  isLuxuryQualitativeBudget,
   isQualitativeBudget,
   slotsToCatalogFilters,
   sortMatchesByMinVariantPrice,
@@ -23,7 +24,10 @@ export async function fetchGemmaCatalogMatchesForTurn(params: {
 }): Promise<GemmaCatalogPricedMatch[]> {
   const qualitative = isQualitativeBudget(params.slots, params.userCorpus);
   const filters = slotsToCatalogFilters(params.slots, params.userCorpus);
-  const fetchLimit = qualitative ? GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT : GEMMA_CATALOG_DISPLAY_LIMIT;
+  const browseQualitative = qualitative && Boolean(filters.ucpBrowseInStockAvailable);
+  const fetchLimit = browseQualitative
+    ? GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT
+    : GEMMA_CATALOG_DISPLAY_LIMIT;
   const matches = await searchGemmaCatalog(
     params.env,
     params.channelId,
@@ -31,6 +35,7 @@ export async function fetchGemmaCatalogMatchesForTurn(params: {
     fetchLimit,
     params.clientRequest,
   );
-  const sorted = sortMatchesByMinVariantPrice(matches, qualitative);
+  const sortAscending = !isLuxuryQualitativeBudget(params.slots);
+  const sorted = sortMatchesByMinVariantPrice(matches, sortAscending);
   return sorted.slice(0, GEMMA_CATALOG_DISPLAY_LIMIT);
 }

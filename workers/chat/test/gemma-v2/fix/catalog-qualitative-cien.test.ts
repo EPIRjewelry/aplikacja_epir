@@ -130,6 +130,29 @@ describe('Cień catalog qualitative fix', () => {
     expect(reply).not.toBe(epirCatalogEmptyReply('epir-online-store'));
   });
 
+  it('T-D-Z2-1: budżet słowny z tekstem UCP — limit 6, nie 250 (R03.1)', async () => {
+    const searchSpy = vi.spyOn(catalogSearch, 'searchGemmaCatalog').mockResolvedValue([]);
+    await stubGemmaIntentJson({
+      state: 'propozycje',
+      slots: {budget: 'tanio', recipient: 'żona'},
+    });
+    const {namespace} = makeTrackedSessionNamespace();
+    await composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'skromnie i tanio',
+      new Request('https://example.com'),
+      {sessionId: 'sess_dz2_text_limit'},
+    );
+    expect(searchSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      'epir-online-store',
+      expect.objectContaining({text: expect.stringMatching(/żona|tanio/i)}),
+      6,
+      expect.anything(),
+    );
+  });
+
   it('R04-sort: qualitative sort ascending before display slice (M-FIX-6)', async () => {
     const cheap = fictionalMultiVariantProduct();
     const expensive = {...fictionalMultiVariantProduct(), productId: 'gid://shopify/Product/900088'};

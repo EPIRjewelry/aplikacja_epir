@@ -14,6 +14,20 @@ export type TransitionResult = {
   missingSlot?: keyof GemmaSlots;
 };
 
+/** Intencja A: zamówienie indywidualne / odcisk — bez wyszukiwania katalogu (link w szablonie). */
+export function intentRequestsCustomOrder(intent: GemmaIntent): boolean {
+  const pt = intent.slots.product_type?.trim().toLowerCase() ?? '';
+  return (
+    pt.includes('zamówienie indywidualne') ||
+    pt.includes('indywidualne') ||
+    pt.includes('odcisk')
+  );
+}
+
+function isThanksAckIntent(intent: GemmaIntent): boolean {
+  return intent.slots.occasion?.trim().toLowerCase() === 'podziękowanie';
+}
+
 function mergeSlots(prev: GemmaSlots, incoming: GemmaSlots): GemmaSlots {
   const out: GemmaSlots = {...prev};
   for (const key of Object.keys(incoming) as (keyof GemmaSlots)[]) {
@@ -58,6 +72,14 @@ export function transitionGemmaState(
 
   if (intent.safety !== 'ok') {
     return {nextState: 'odmowa', slots: mergedSlots, allowedActions: []};
+  }
+
+  if (intent.state === 'powitanie' && prev.turn > 0 && isThanksAckIntent(intent)) {
+    return {nextState: 'powitanie', slots: mergedSlots, allowedActions: []};
+  }
+
+  if (intentRequestsCustomOrder(intent) && !intent.cart_action && !intent.policy_query?.trim()) {
+    return {nextState: 'propozycje', slots: mergedSlots, allowedActions: []};
   }
 
   if (intent.policy_query?.trim()) {

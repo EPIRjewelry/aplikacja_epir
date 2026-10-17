@@ -15,7 +15,11 @@ slots: obiekt z opcjonalnymi kluczami budget, metal, stone, product_type, occasi
 product_ref, variant_choice, policy_query: string lub null.
 cart_action: add|change|remove|show lub null.
 cart_consent: boolean lub null.
-safety: ok lub refuse.`;
+safety: ok lub refuse.
+Zasady:
+- Gdy klient tylko dziękuje lub domyka rozmowę bez nowej prośby: state=powitanie, slots.occasion=podziękowanie, cart_action=null, bez nowego wyszukiwania.
+- Gdy klient pyta o biżuterię na zamówienie indywidualne, odcisk palca lub własny projekt: state=propozycje, slots.product_type=zamówienie indywidualne, cart_action=null.
+- Gdy klient szuka luksusowej biżuterii bez kwoty: slots.budget zawiera słowo luksus (np. luksus, luksusowa).`;
 
 export type ExtractIntentResult =
   | {ok: true; intent: GemmaIntent}

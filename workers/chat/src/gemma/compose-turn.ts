@@ -53,6 +53,7 @@ async function runInsideGate(
   opts: ComposeBuyerTurnOptions | undefined,
   clientRequest?: Request,
 ): Promise<string> {
+  const wallStart = Date.now();
   const sessionId = opts?.sessionId?.trim() ?? '';
 
   if (detectJailbreakOrHarmIntent(userText).match) {
@@ -122,9 +123,11 @@ async function runInsideGate(
   });
 
   const formulationB = shouldInvokeFormulationB(transitioned.nextState, actionOutcome);
+  const turnSeq = prev.turn + 1;
   console.log(
     JSON.stringify({
       tag: 'gemma.turn',
+      turn_seq: turnSeq,
       state: transitioned.nextState,
       slot_keys: presentSlotKeys(transitioned.slots),
       search_catalog: transitioned.allowedActions.includes('search_catalog'),
@@ -172,6 +175,14 @@ async function runInsideGate(
       console.warn('[gemma.compose_turn] session persist failed', e);
     }
   }
+
+  console.log(
+    JSON.stringify({
+      tag: 'gemma.turn_done',
+      turn_seq: turnSeq,
+      wall_ms: Date.now() - wallStart,
+    }),
+  );
 
   return reply;
 }

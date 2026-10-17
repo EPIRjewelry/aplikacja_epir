@@ -21,7 +21,7 @@ describe('E2b catalog search pipeline', () => {
     vi.restoreAllMocks();
   });
 
-  it('T-E2b-PIPE-1: price filter after repository search (not in repo.search args)', async () => {
+  it('T-E2b-PIPE-1: priceMax trafia do UCP; siatka lokalna tylko po hydratacji', async () => {
     const product = fictionalMultiVariantProduct();
     const fullMatch = fictionalMatchFromProduct(product);
     const searchSpy = vi.fn().mockResolvedValue({
@@ -46,11 +46,12 @@ describe('E2b catalog search pipeline', () => {
     );
 
     expect(searchSpy).toHaveBeenCalledWith(
-      expect.objectContaining({text: 'fikcyjne'}),
+      expect.objectContaining({
+        text: 'fikcyjne',
+        priceMax: moneyFromMinor(200_000),
+      }),
       10,
     );
-    expect(searchSpy.mock.calls[0][0]).not.toHaveProperty('priceMax');
-    expect(searchSpy.mock.calls[0][0]).not.toHaveProperty('priceMin');
     expect(out).toHaveLength(1);
     expect(out[0].matchingVariants.length).toBe(1);
   });
@@ -90,7 +91,7 @@ describe('E2b catalog search pipeline', () => {
     expect(out).toHaveLength(1);
   });
 
-  it('T-E2b-PIPE-3: metal goes to repo.search and survives the budget filter', async () => {
+  it('T-E2b-PIPE-3: metal tylko w tekście zapytania UCP, nie w filtrze repo', async () => {
     const base = fictionalMultiVariantProduct();
     const product = {
       ...base,
@@ -115,11 +116,13 @@ describe('E2b catalog search pipeline', () => {
     const out = await searchGemmaCatalog(
       {SHOP_DOMAIN: 'fikcyjny.myshopify.com'} as import('../../../src/config/bindings').Env,
       'epir-online-store',
-      {text: 'fikcyjne', metal: ['złoto'], priceMax: moneyFromMinor(300_000)},
+      {text: 'fikcyjne złoto', metal: ['złoto'], priceMax: moneyFromMinor(300_000)},
       10,
     );
 
-    expect(searchSpy.mock.calls[0][0]).toEqual(expect.objectContaining({metal: ['złoto']}));
+    expect(searchSpy.mock.calls[0][0]).not.toHaveProperty('metal');
+    expect(searchSpy.mock.calls[0][0]).not.toHaveProperty('stone');
+    expect(searchSpy.mock.calls[0][0].text).toContain('złoto');
     expect(out).toHaveLength(1);
     expect(out[0].matchingVariants.map((v) => v.variantId)).toEqual([
       'gid://shopify/ProductVariant/900001-c',

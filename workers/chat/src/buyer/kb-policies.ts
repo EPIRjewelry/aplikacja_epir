@@ -9,7 +9,11 @@ export type PolicySource = { title: string; url: string };
 
 export type PolicyMcpResult =
   | { ok: true; answer: string; sources: PolicySource[]; contentHash: string }
-  | { ok: false; reason: 'mcp_error' | 'empty' };
+  | {
+      ok: false;
+      reason: 'mcp_error' | 'empty';
+      subreason?: 'json_rpc_error' | 'invalid_json_200' | 'transport';
+    };
 
 function hashSnippet(text: string): string {
   let h = 0;
@@ -201,8 +205,13 @@ export async function searchShopPoliciesViaMcp(
   try {
     // Executor passes only query (+ context). callShopMcp may add locale/market (documented in D2 plan).
     const out = await callMcpToolDirect(env, 'search_shop_policies_and_faqs', args);
-    const wrapped = out as { error?: unknown; result?: unknown };
-    if (wrapped.error) return { ok: false, reason: 'mcp_error' };
+    const wrapped = out as { error?: { code?: number }; result?: unknown };
+    if (wrapped.error) {
+      const code = wrapped.error.code;
+      const subreason =
+        code === -32700 ? 'invalid_json_200' : code !== undefined ? 'json_rpc_error' : 'transport';
+      return { ok: false, reason: 'mcp_error', subreason };
+    }
 
     const { answer, sources } = extractAnswerAndSources(wrapped.result ?? wrapped);
     if (!answer) return { ok: false, reason: 'empty' };

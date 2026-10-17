@@ -2,6 +2,7 @@ import type {BuyerChannelId} from '../buyer/channel-switch';
 import type {Env} from '../config/bindings';
 import {
   CatalogMcpLiveSearchError,
+  CatalogMcpTransportEmptyError,
   emptyCatalogFacets,
   executeCatalogMcpLiveSearch,
 } from './catalog-mcp-live';
@@ -25,6 +26,7 @@ export {
   parseMcpErrorCode,
   parseUcpSearchProductIds,
   CatalogMcpLiveSearchError,
+  CatalogMcpTransportEmptyError,
 } from './catalog-mcp-live';
 export type {CatalogMcpLiveSearchOptions} from './catalog-mcp-live';
 
@@ -50,7 +52,10 @@ export async function getCatalogRepository(
           throwOnMcpError: options?.throwOnMcpError ?? false,
         });
       } catch (err) {
-        if (options?.throwOnMcpError && err instanceof CatalogMcpLiveSearchError) {
+        if (
+          options?.throwOnMcpError &&
+          (err instanceof CatalogMcpLiveSearchError || err instanceof CatalogMcpTransportEmptyError)
+        ) {
           throw err;
         }
         console.warn(

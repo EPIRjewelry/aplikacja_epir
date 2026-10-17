@@ -5,13 +5,17 @@ import {
   epirCartErrorReply,
   epirCatalogEmptyReply,
   epirCatalogCardsReply,
+  epirCatalogTransportReply,
+  epirCustomOrderFormReply,
   epirDetailsPricesReply,
   epirKbAnswerReply,
   epirKbUnavailableReply,
+  epirThanksAckReply,
   epirVariantQuestionReply,
   epirCartShowEmptyReply,
   epirCartShowLinesReply,
 } from '../profiles/epir';
+import {intentRequestsCustomOrder} from '../state/machine';
 import {formatBuyerCatalogLine} from '../formulation/buyer-reply-format';
 import {formatCartMutationReply, formatCartShowBodyFromToolContent} from './cart';
 import type {GemmaActionOutcome} from './types';
@@ -28,6 +32,14 @@ export function buildEpirActionReply(params: {
   outcome: GemmaActionOutcome;
 }): string {
   const {channelId, state, outcome, intent} = params;
+
+  if (intentRequestsCustomOrder(intent)) {
+    return epirCustomOrderFormReply();
+  }
+
+  if (state === 'powitanie' && intent.slots.occasion?.trim().toLowerCase() === 'podziękowanie') {
+    return epirThanksAckReply();
+  }
 
   if (intent.cart_action === 'show' && outcome.cart) {
     if (outcome.cart.cartFailed) {
@@ -69,7 +81,7 @@ export function buildEpirActionReply(params: {
 
   if (state === 'propozycje') {
     if (outcome.catalogFailed) {
-      return epirCatalogEmptyReply(channelId);
+      return epirCatalogTransportReply(channelId);
     }
     if (outcome.catalogCards.length) {
       const lines = outcome.catalogCards.map((c) => {
