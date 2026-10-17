@@ -1,4 +1,5 @@
 import type {BuyerChannelId} from '../../buyer/channel-switch';
+import type {GemmaConversationState} from '../state/types';
 import {GEMMA_PLACEHOLDER_REF, GEMMA_PLACEHOLDER_REF_PRICE} from '../formulation/constants';
 import {templateUsesInformalTy} from '../profiles/epir';
 import {GEMMA_REPLY_MAX_CHARS} from './constants';
@@ -9,6 +10,7 @@ export type ReplyValidationFacts = {
   kbAnswer: string | null;
   userText: string;
   channelId: BuyerChannelId;
+  conversationState: GemmaConversationState;
 };
 
 const URL_IN_TEXT =
@@ -90,7 +92,7 @@ export function validateFormulationTextBeforeStitch(
     if (!facts.allowedRefs.has(ref)) violations.push('ref_out_of_scope');
   }
 
-  if (facts.allowedRefs.size > 0) {
+  if (facts.conversationState === 'propozycje' && facts.allowedRefs.size > 0) {
     const placeholderRefs = collectPlaceholderRefs(trimmed);
     const citesCatalog =
       productRefs.some((r) => facts.allowedRefs.has(r)) ||

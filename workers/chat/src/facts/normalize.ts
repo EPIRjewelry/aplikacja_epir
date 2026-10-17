@@ -325,7 +325,7 @@ export function normalizeProduct(raw: unknown, options: NormalizeOptions): Produ
 
   const productType = asStr(raw.productType) ?? asStr(raw.product_type) ?? null;
   if (!productType) issues.push({kind: 'missing_product_type'});
-  const giftCard = raw.giftCard === true || raw.gift_card === true;
+  const giftCard = raw.isGiftCard === true;
 
   const metals = [...new Set(variants.map((v) => v.metal).filter((m): m is string => Boolean(m)))];
   const sizes = [...new Set(variants.map((v) => v.size).filter((s): s is string => Boolean(s)))];

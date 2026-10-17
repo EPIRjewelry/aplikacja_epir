@@ -1,20 +1,26 @@
-import type {BuyerChannelId} from '../../buyer/channel-switch';
-import type {Env} from '../../config/bindings';
-import {callMcpToolDirect} from '../../mcp_server';
-import {
-  buildUcpSearchCatalogArgs,
-  parseUcpFilterIgnoredMessages,
-} from '../../facts/catalog-ucp-args';
-import {computeFacetsFromMatches, filterProducts} from '../../facts/filter';
+import type {BuyerChannelId} from '../buyer/channel-switch';
+import type {Env} from '../config/bindings';
+import {callMcpToolDirect} from '../mcp_server';
+import {buildUcpSearchCatalogArgs, parseUcpFilterIgnoredMessages} from './catalog-ucp-args';
+import {computeFacetsFromMatches, filterProducts} from './filter';
 import {
   fetchProductFactsLive,
   hasStorefrontCatalogToken,
   type FetchStorefrontLiveOptions,
-} from '../../facts/storefront-live';
-import type {CatalogFacetsDto, CatalogFilters, CatalogSearchResult} from '../../facts/types';
-import {CatalogMcpSearchError} from './catalog-mcp-error';
+} from './storefront-live';
+import type {CatalogFacetsDto, CatalogFilters, CatalogSearchResult} from './types';
 
-function emptyFacets(): CatalogFacetsDto {
+export class CatalogMcpLiveSearchError extends Error {
+  readonly mcpCode: number;
+
+  constructor(mcpCode: number) {
+    super('catalog_mcp_search_error');
+    this.name = 'CatalogMcpLiveSearchError';
+    this.mcpCode = mcpCode;
+  }
+}
+
+export function emptyCatalogFacets(): CatalogFacetsDto {
   return {
     total: 0,
     byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
@@ -24,19 +30,19 @@ function emptyFacets(): CatalogFacetsDto {
   };
 }
 
-function brandForChannel(channel: BuyerChannelId): string {
+export function brandForCatalogChannel(channel: BuyerChannelId): string {
   if (channel === 'kazka-hydrogen') return 'kazka';
   if (channel === 'epir-zareczyny') return 'zareczyny';
   return 'epir';
 }
 
-function parseMcpErrorCode(mcpOut: unknown): number | undefined {
+export function parseMcpErrorCode(mcpOut: unknown): number | undefined {
   const wrapped = mcpOut as {error?: {code?: number}};
   const code = wrapped.error?.code;
   return typeof code === 'number' ? code : undefined;
 }
 
-function parseUcpSearchProductIds(mcpOut: unknown): string[] {
+export function parseUcpSearchProductIds(mcpOut: unknown): string[] {
   const wrapped = mcpOut as {
     error?: unknown;
     result?: {content?: Array<{text?: string}>};
@@ -63,25 +69,26 @@ function parseUcpSearchProductIds(mcpOut: unknown): string[] {
   }
 }
 
-export type GemmaCatalogLiveSearchOptions = FetchStorefrontLiveOptions & {
+export type CatalogMcpLiveSearchOptions = FetchStorefrontLiveOptions & {
+  /** Gemma v2 (D3): rzuca zamiast pustej listy przy error.code z MCP. */
+  throwOnMcpError?: boolean;
+  /** Gemma v2 browse (D1). */
   browseInStockAvailable?: boolean;
-  excludeGiftCards?: boolean;
 };
 
-/** MCP + Storefront dla Gemma v2 (browse D1, błąd MCP D3) — legacy buyer używa facts/index. */
-export async function gemmaCatalogLiveSearch(
+export async function executeCatalogMcpLiveSearch(
   env: Env,
   channel: BuyerChannelId,
   filters: CatalogFilters,
   limit: number,
-  options?: GemmaCatalogLiveSearchOptions,
+  options?: CatalogMcpLiveSearchOptions,
 ): Promise<CatalogSearchResult> {
-  const facetsEmpty = emptyFacets();
+  const facetsEmpty = emptyCatalogFacets();
   if (!hasStorefrontCatalogToken(env, channel)) {
     return {matches: [], total: 0, facets: facetsEmpty};
   }
 
-  const brand = brandForChannel(channel);
+  const brand = brandForCatalogChannel(channel);
   const mcpArgs = buildUcpSearchCatalogArgs(
     filters,
     limit,
@@ -90,7 +97,10 @@ export async function gemmaCatalogLiveSearch(
   const mcpOut = await callMcpToolDirect(env, 'search_catalog', mcpArgs, brand);
   const mcpCode = parseMcpErrorCode(mcpOut);
   if (mcpCode !== undefined) {
-    throw new CatalogMcpSearchError(mcpCode);
+    if (options?.throwOnMcpError) {
+      throw new CatalogMcpLiveSearchError(mcpCode);
+    }
+    return {matches: [], total: 0, facets: facetsEmpty};
   }
 
   const filterIgnored = parseUcpFilterIgnoredMessages(mcpOut);

@@ -1,11 +1,10 @@
 import {catalogSnapshotChannel} from '../../buyer/channel-switch';
 import type {BuyerChannelId} from '../../buyer/channel-switch';
 import type {Env} from '../../config/bindings';
-import {getCatalogRepository} from '../../facts';
+import {CatalogMcpLiveSearchError, getCatalogRepository} from '../../facts';
 import {filterProducts} from '../../facts/filter';
 import type {ProductMatch} from '../../facts/types';
 import {filterProductMatchesByZareczynyTag} from './assortment';
-import {gemmaCatalogLiveSearch} from './catalog-live-search';
 import {CatalogMcpSearchError} from './catalog-mcp-error';
 import {filterOutGiftCardMatches} from './gift-card-catalog';
 import type {GemmaCatalogSearchFilters} from './types';
@@ -42,29 +41,14 @@ export async function searchGemmaCatalog(
   };
 
   try {
-    let matches: ProductMatch[];
-    if (ucpBrowseInStockAvailable) {
-      const {matches: browseMatches} = await gemmaCatalogLiveSearch(
-        env,
-        catalogChannel,
-        ucpFilters,
-        limit,
-        {
-          clientRequest,
-          urlChannel: channelId,
-          browseInStockAvailable: true,
-          excludeGiftCards,
-        },
-      );
-      matches = browseMatches;
-    } else {
-      const repo = await getCatalogRepository(env, catalogChannel, {
-        clientRequest,
-        urlChannel: channelId,
-      });
-      const {matches: repoMatches} = await repo.search(ucpFilters, limit);
-      matches = repoMatches;
-    }
+    const repo = await getCatalogRepository(env, catalogChannel, {
+      clientRequest,
+      urlChannel: channelId,
+      throwOnMcpError: true,
+      browseInStockAvailable: Boolean(ucpBrowseInStockAvailable),
+    });
+    const {matches: repoMatches} = await repo.search(ucpFilters, limit);
+    let matches = repoMatches;
 
     if (excludeGiftCards) {
       matches = filterOutGiftCardMatches(matches);
@@ -91,6 +75,10 @@ export async function searchGemmaCatalog(
 
     return result;
   } catch (e) {
+    if (e instanceof CatalogMcpLiveSearchError) {
+      console.log(JSON.stringify({tag: 'gemma.catalog.error', code: e.mcpCode}));
+      throw new CatalogMcpSearchError(e.mcpCode);
+    }
     if (e instanceof CatalogMcpSearchError) {
       console.log(JSON.stringify({tag: 'gemma.catalog.error', code: e.mcpCode}));
     }

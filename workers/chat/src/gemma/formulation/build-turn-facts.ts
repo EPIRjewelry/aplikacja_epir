@@ -121,6 +121,7 @@ export function validationFactsFromTurn(
     kbAnswer: turn.kbAnswer,
     userText,
     channelId: turn.channelId,
+    conversationState: turn.state,
   };
 }
 

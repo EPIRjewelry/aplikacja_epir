@@ -6,7 +6,6 @@ import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {buildUcpSearchCatalogArgs} from '../../../src/facts/catalog-ucp-args';
 import {CatalogMcpSearchError} from '../../../src/gemma/facts/catalog-mcp-error';
 import * as facts from '../../../src/facts';
-import * as liveSearch from '../../../src/gemma/facts/catalog-live-search';
 import * as mcpServer from '../../../src/mcp_server';
 import {hasCatalogQueryOrFilters} from '../../../src/mcp_server';
 import {composeGemmaReply} from '../../../src/gemma/compose-gemma-reply';
@@ -78,17 +77,19 @@ describe('Cień catalog qualitative fix', () => {
     const jewelry = fictionalMultiVariantProduct();
     jewelry.productId = 'gid://shopify/Product/900099';
     jewelry.variants = jewelry.variants.map((v) => ({...v, price: moneyFromMinor(120_000)}));
-    vi.spyOn(liveSearch, 'gemmaCatalogLiveSearch').mockResolvedValue({
-      matches: [fictionalMatchFromProduct(gift), fictionalMatchFromProduct(jewelry)],
-      total: 2,
-      facets: {
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [fictionalMatchFromProduct(gift), fictionalMatchFromProduct(jewelry)],
         total: 2,
-        byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
-        byStone: {},
-        byMetal: {},
-        byProductType: {},
-      },
-    });
+        facets: {
+          total: 2,
+          byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
     const filters = slotsToCatalogFilters({budget: 'tanio'}, 'coś taniego');
     const out = await searchGemmaCatalog(
       {PRIVATE_STOREFRONT_API_TOKEN: 'x'} as never,
@@ -123,7 +124,7 @@ describe('Cień catalog qualitative fix', () => {
       expect.anything(),
       'epir-online-store',
       expect.objectContaining({ucpBrowseInStockAvailable: true}),
-      GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT,
+      250,
       expect.anything(),
     );
     expect(reply).not.toBe(epirCatalogEmptyReply('epir-online-store'));
@@ -166,6 +167,38 @@ describe('Cień catalog qualitative fix', () => {
     );
     expect(reply).not.toBe(epirCatalogEmptyReply('epir-online-store'));
     expect(reply).toMatch(/g1:|\/products\//);
+  });
+
+  it('T-FIX-MCP-QUERY-1: query-path MCP error → catalogFailed (D3, M2 query guard)', async () => {
+    vi.spyOn(mcpServer, 'callMcpToolDirect').mockResolvedValue({
+      error: {code: -32602, message: 'invalid'},
+    });
+    await stubGemmaIntentJson({
+      state: 'propozycje',
+      slots: {recipient: 'żona', product_type: 'kolczyki'},
+    });
+    const logSpy = vi.spyOn(console, 'log');
+    const {namespace} = makeTrackedSessionNamespace();
+    const reply = await composeGemmaReply(
+      {SESSION_DO: namespace, PRIVATE_STOREFRONT_API_TOKEN: 'x'} as never,
+      'epir-online-store',
+      'kolczyki dla żony',
+      new Request('https://example.com'),
+      {sessionId: 'sess_mcp_query'},
+    );
+    expect(reply).toBe(epirCatalogEmptyReply('epir-online-store'));
+    expect(
+      logSpy.mock.calls.some((c) => {
+        const raw = c[0];
+        if (typeof raw !== 'string') return false;
+        try {
+          const j = JSON.parse(raw) as {tag?: string; catalog_failed?: boolean};
+          return j.tag === 'gemma.turn' && j.catalog_failed === true;
+        } catch {
+          return false;
+        }
+      }),
+    ).toBe(true);
   });
 
   it('T-FIX-MCP-BROWSE-1: browse MCP error → catalogFailed empty reply (M2 guard)', async () => {

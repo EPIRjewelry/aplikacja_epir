@@ -10,6 +10,7 @@ const baseFacts = {
   kbAnswer: null as string | null,
   userText: 'fikcyjne',
   channelId: 'epir-online-store' as const,
+  conversationState: 'propozycje' as const,
 };
 
 describe('E5 reply validator', () => {
@@ -105,5 +106,18 @@ describe('E5 reply validator', () => {
     expect(
       validateFormulationTextBeforeStitch('Polecam {{g1}}.', ['g1'], baseFacts),
     ).not.toContain('catalog_ref_missing');
+  });
+
+  it('T-E5-VAL-CAT-2: szczegóły B may omit {{g1}} when product_refs empty', () => {
+    const v = validateFormulationTextBeforeStitch(
+      'Ten model ma trzy rozmiary w ofercie.',
+      [],
+      {
+        ...baseFacts,
+        conversationState: 'szczegoly',
+        allowedRefs: new Set(['g1']),
+      },
+    );
+    expect(v).not.toContain('catalog_ref_missing');
   });
 });

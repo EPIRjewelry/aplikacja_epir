@@ -1,8 +1,10 @@
 import type {BuyerChannelId} from '../buyer/channel-switch';
 import type {Env} from '../config/bindings';
-import {callMcpToolDirect} from '../mcp_server';
-import {buildUcpSearchCatalogArgs, parseUcpFilterIgnoredMessages} from './catalog-ucp-args';
-import {computeFacetsFromMatches, filterProducts} from './filter';
+import {
+  CatalogMcpLiveSearchError,
+  emptyCatalogFacets,
+  executeCatalogMcpLiveSearch,
+} from './catalog-mcp-live';
 import {
   fetchProductFactsByHandle,
   fetchProductFactsForVariantIds,
@@ -12,61 +14,26 @@ import {
 } from './storefront-live';
 import type {
   CatalogFactsRepository,
-  CatalogFacetsDto,
   CatalogFilters,
-  CatalogSearchResult,
   ProductFacts,
 } from './types';
 
-function emptyFacets(): CatalogFacetsDto {
-  return {
-    total: 0,
-    byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
-    byStone: {},
-    byMetal: {},
-    byProductType: {},
-  };
-}
-
-function brandForChannel(channel: BuyerChannelId): string {
-  if (channel === 'kazka-hydrogen') return 'kazka';
-  if (channel === 'epir-zareczyny') return 'zareczyny';
-  return 'epir';
-}
-
-function parseUcpSearchProductIds(mcpOut: unknown): string[] {
-  const wrapped = mcpOut as {
-    error?: unknown;
-    result?: {content?: Array<{text?: string}>};
-  };
-  if (wrapped.error) return [];
-  const text = wrapped.result?.content?.[0]?.text;
-  if (!text) return [];
-  try {
-    const parsed = JSON.parse(text) as {
-      products?: Array<{id?: string}>;
-      catalog?: {products?: Array<{id?: string}>};
-    };
-    const products =
-      (Array.isArray(parsed.products) && parsed.products) ||
-      (Array.isArray(parsed.catalog?.products) && parsed.catalog.products) ||
-      [];
-    const ids: string[] = [];
-    for (const p of products) {
-      if (typeof p?.id === 'string' && p.id.includes('/Product/')) ids.push(p.id);
-    }
-    return ids;
-  } catch {
-    return [];
-  }
-}
+export {
+  brandForCatalogChannel,
+  emptyCatalogFacets,
+  executeCatalogMcpLiveSearch,
+  parseMcpErrorCode,
+  parseUcpSearchProductIds,
+  CatalogMcpLiveSearchError,
+} from './catalog-mcp-live';
+export type {CatalogMcpLiveSearchOptions} from './catalog-mcp-live';
 
 export async function getCatalogRepository(
   env: Env,
   channel: BuyerChannelId,
   options?: FetchStorefrontLiveOptions,
 ): Promise<CatalogFactsRepository> {
-  const facetsEmpty = emptyFacets();
+  const facetsEmpty = emptyCatalogFacets();
 
   return {
     channel,
@@ -78,33 +45,14 @@ export async function getCatalogRepository(
     },
     search: async (filters: CatalogFilters, limit: number) => {
       try {
-        if (!hasStorefrontCatalogToken(env, channel)) {
-          return {matches: [], total: 0, facets: facetsEmpty};
-        }
-        const brand = brandForChannel(channel);
-        const mcpArgs = buildUcpSearchCatalogArgs(filters, limit);
-        const mcpOut = await callMcpToolDirect(env, 'search_catalog', mcpArgs, brand);
-        const filterIgnored = parseUcpFilterIgnoredMessages(mcpOut);
-        const ids = parseUcpSearchProductIds(mcpOut);
-        if (!ids.length) {
-          return {
-            matches: [],
-            total: 0,
-            facets: facetsEmpty,
-            meta: filterIgnored.length ? {filterIgnored} : undefined,
-          };
-        }
-        const facts = await fetchProductFactsLive(env, channel, ids, options);
-        const postUcpFilters = {...filters, text: undefined, priceMin: undefined, priceMax: undefined};
-        const matches = filterProducts(facts, postUcpFilters);
-        const result: CatalogSearchResult = {
-          matches,
-          total: matches.length,
-          facets: computeFacetsFromMatches(matches),
-        };
-        if (filterIgnored.length) result.meta = {filterIgnored};
-        return result;
+        return await executeCatalogMcpLiveSearch(env, channel, filters, limit, {
+          ...options,
+          throwOnMcpError: options?.throwOnMcpError ?? false,
+        });
       } catch (err) {
+        if (options?.throwOnMcpError && err instanceof CatalogMcpLiveSearchError) {
+          throw err;
+        }
         console.warn(
           JSON.stringify({
             tag: 'facts.repository_live_search_error',
