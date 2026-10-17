@@ -1,32 +1,19 @@
 import {resolveUrlForChannel} from '../../buyer/channel-origins';
-import {searchGemmaCatalog} from '../facts/catalog-search';
+import {fetchGemmaCatalogMatchesForTurn} from '../facts/catalog-search';
 import type {GemmaActionContext, GemmaCatalogCard} from './types';
-import {
-  GEMMA_CATALOG_DISPLAY_LIMIT,
-  GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT,
-} from './catalog-limits';
-import {isQualitativeBudget, slotsToCatalogFilters, sortMatchesByMinVariantPrice} from './slots-to-filters';
 import type {GemmaShownRef} from '../state/types';
 
 export async function runCatalogAction(ctx: GemmaActionContext): Promise<{
   cards: GemmaCatalogCard[];
   shown: GemmaShownRef[];
 }> {
-  const slots = ctx.transitioned.slots;
-  const qualitative = isQualitativeBudget(slots, ctx.userCorpus);
-  const filters = slotsToCatalogFilters(slots, ctx.userCorpus);
-  const fetchLimit = qualitative ? GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT : GEMMA_CATALOG_DISPLAY_LIMIT;
-
-  const matches = await searchGemmaCatalog(
-    ctx.env,
-    ctx.channelId,
-    filters,
-    fetchLimit,
-    ctx.request,
-  );
-
-  const sorted = sortMatchesByMinVariantPrice(matches, qualitative);
-  const top = sorted.slice(0, GEMMA_CATALOG_DISPLAY_LIMIT);
+  const top = await fetchGemmaCatalogMatchesForTurn({
+    env: ctx.env,
+    channelId: ctx.channelId,
+    slots: ctx.transitioned.slots,
+    userCorpus: ctx.userCorpus,
+    clientRequest: ctx.request,
+  });
 
   const cards: GemmaCatalogCard[] = [];
   const shown: GemmaShownRef[] = [];

@@ -239,7 +239,7 @@ function normalizeSearchCatalogArgs(
   return normalized;
 }
 
-function hasCatalogQueryOrFilters(args: any): boolean {
+export function hasCatalogQueryOrFilters(args: any): boolean {
   const query = args?.catalog?.query;
   if (isNonEmptyString(query)) return true;
   const filters = args?.catalog?.filters;

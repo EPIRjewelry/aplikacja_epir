@@ -6,8 +6,12 @@ import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {buildUcpSearchCatalogArgs} from '../../../src/facts/catalog-ucp-args';
 import {CatalogMcpSearchError} from '../../../src/facts/catalog-mcp-error';
 import * as facts from '../../../src/facts';
+import {hasCatalogQueryOrFilters} from '../../../src/mcp_server';
 import {composeGemmaReply} from '../../../src/gemma/compose-gemma-reply';
-import {searchGemmaCatalog} from '../../../src/gemma/facts/catalog-search';
+import {
+  fetchGemmaCatalogMatchesForTurn,
+  searchGemmaCatalog,
+} from '../../../src/gemma/facts/catalog-search';
 import {
   epirCatalogEmptyReply,
   listEpirTemplateStrings,
@@ -24,19 +28,10 @@ import {makeTrackedSessionNamespace} from '../helpers/session-do-calls';
 import {stubGemmaIntentJson} from '../helpers/stub-gemma-intent';
 import {moneyFromMinor} from '../../../src/facts/types';
 
-function mcpArgsValidBrowse(args: {catalog?: Record<string, unknown>}): boolean {
-  const catalog = args.catalog ?? {};
-  const query = catalog.query;
-  const hasQuery = typeof query === 'string' && query.trim().length > 0;
-  const filters = catalog.filters as Record<string, unknown> | undefined;
-  const hasFilters = Boolean(filters && Object.keys(filters).length > 0);
-  return !hasQuery && hasFilters;
-}
-
 describe('Cień catalog qualitative fix', () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it('T-FIX-2 / R04-args: buildUcpSearchCatalogArgs browse — brak query, filters.available (M-FIX-2)', () => {
+  it('T-FIX-2 / R04-args: browse args pass mcp_server hasCatalogQueryOrFilters (M-FIX-2)', () => {
     const args = buildUcpSearchCatalogArgs(
       {ucpBrowseInStockAvailable: true, available: true},
       GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT,
@@ -45,7 +40,7 @@ describe('Cień catalog qualitative fix', () => {
     const catalog = args.catalog as Record<string, unknown>;
     expect('query' in catalog).toBe(false);
     expect(catalog.filters).toEqual({available: true});
-    expect(mcpArgsValidBrowse(args)).toBe(true);
+    expect(hasCatalogQueryOrFilters(args)).toBe(true);
   });
 
   it('T-FIX-1: slotsToCatalogFilters tanio bez typu → browse (M-FIX-1)', () => {
@@ -89,22 +84,13 @@ describe('Cień catalog qualitative fix', () => {
       fictionalMatchFromProduct(expensive),
       fictionalMatchFromProduct(cheap),
     ]);
-    const out = await runCatalogAction({
+    const top = await fetchGemmaCatalogMatchesForTurn({
       env: {} as never,
       channelId: 'epir-online-store',
-      request: new Request('https://example.com'),
-      sessionId: 'sess_sort',
-      userText: 'coś taniego',
+      slots: {budget: 'tanio'},
       userCorpus: 'coś taniego',
-      intent: fictionalGemmaIntent({slots: {budget: 'tanio'}}),
-      prev: DEFAULT_GEMMA_SESSION_STATE,
-      transitioned: {
-        nextState: 'propozycje',
-        slots: {budget: 'tanio'},
-        allowedActions: ['search_catalog'],
-      },
     });
-    expect(out.cards[0]!.minMinor).toBeLessThan(out.cards[1]!.minMinor);
+    expect(top[0]!.minMinor).toBeLessThan(top[1]!.minMinor);
   });
 
   it('R03: prezent dla żony, skromnie i tanio — karty (M-FIX-1)', async () => {
@@ -203,7 +189,7 @@ describe('Cień catalog qualitative fix', () => {
     ).toBe(true);
   });
 
-  it('T-FIX-B: formulation B gdy catalogCards > 0', async () => {
+  it('T-FIX-4a: catalogCards > 0 → buyer_gemma_formulation invoked', async () => {
     const ai = await import('../../../src/ai-client');
     const intentJson = JSON.stringify(
       fictionalGemmaIntent({state: 'propozycje', slots: {recipient: 'żona'}}),
@@ -224,10 +210,33 @@ describe('Cień catalog qualitative fix', () => {
       'epir-online-store',
       'prezent',
       new Request('https://example.com'),
-      {sessionId: 'sess_fix_b_invoke'},
+      {sessionId: 'sess_fix_4a'},
     );
     expect(groqSpy.mock.calls.some((c) => c[2]?.timingLabel === 'buyer_gemma_formulation')).toBe(
       true,
+    );
+  });
+
+  it('T-FIX-4b: catalogCards == 0 → buyer_gemma_formulation NOT invoked', async () => {
+    const ai = await import('../../../src/ai-client');
+    const intentJson = JSON.stringify(
+      fictionalGemmaIntent({state: 'propozycje', slots: {recipient: 'żona'}}),
+    );
+    const groqSpy = vi.spyOn(ai, 'getGroqResponse').mockImplementation(async (_m, _e, opts) => {
+      if (opts?.timingLabel === 'buyer_gemma_intent') return intentJson;
+      return intentJson;
+    });
+    vi.spyOn(catalogSearch, 'searchGemmaCatalog').mockResolvedValue([]);
+    const {namespace} = makeTrackedSessionNamespace();
+    await composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'prezent',
+      new Request('https://example.com'),
+      {sessionId: 'sess_fix_4b'},
+    );
+    expect(groqSpy.mock.calls.some((c) => c[2]?.timingLabel === 'buyer_gemma_formulation')).toBe(
+      false,
     );
   });
 });
