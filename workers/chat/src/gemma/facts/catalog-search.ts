@@ -1,46 +1,18 @@
 import {catalogSnapshotChannel} from '../../buyer/channel-switch';
 import type {BuyerChannelId} from '../../buyer/channel-switch';
 import type {Env} from '../../config/bindings';
-import {CatalogMcpSearchError} from '../../facts/catalog-mcp-error';
-import {getCatalogRepository} from '../../facts';
 import {filterProducts} from '../../facts/filter';
 import type {ProductMatch} from '../../facts/types';
-import {filterProductMatchesByZareczynyTag} from './assortment';
-import type {GemmaCatalogSearchFilters} from './types';
 import {
   GEMMA_CATALOG_DISPLAY_LIMIT,
   GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT,
 } from '../actions/catalog-limits';
-import {
-  isQualitativeBudget,
-  slotsToCatalogFilters,
-  sortMatchesByMinVariantPrice,
-} from '../actions/slots-to-filters';
-import type {GemmaSlots} from '../state/types';
+import {filterProductMatchesByZareczynyTag} from './assortment';
+import {gemmaCatalogLiveSearch} from './catalog-live-search';
+import {CatalogMcpSearchError} from './catalog-mcp-error';
+import type {GemmaCatalogSearchFilters} from './types';
 
 export type GemmaCatalogPricedMatch = {match: ProductMatch; minMinor: number};
-
-/** Jedyna ścieżka v2: filtry, limit UCP, sort po cenie, slice do wyświetlenia. */
-export async function fetchGemmaCatalogMatchesForTurn(params: {
-  env: Env;
-  channelId: BuyerChannelId;
-  slots: GemmaSlots;
-  userCorpus: string;
-  clientRequest?: Request;
-}): Promise<GemmaCatalogPricedMatch[]> {
-  const qualitative = isQualitativeBudget(params.slots, params.userCorpus);
-  const filters = slotsToCatalogFilters(params.slots, params.userCorpus);
-  const fetchLimit = qualitative ? GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT : GEMMA_CATALOG_DISPLAY_LIMIT;
-  const matches = await searchGemmaCatalog(
-    params.env,
-    params.channelId,
-    filters,
-    fetchLimit,
-    params.clientRequest,
-  );
-  const sorted = sortMatchesByMinVariantPrice(matches, qualitative);
-  return sorted.slice(0, GEMMA_CATALOG_DISPLAY_LIMIT);
-}
 
 export async function searchGemmaCatalog(
   env: Env,
@@ -51,29 +23,23 @@ export async function searchGemmaCatalog(
 ): Promise<ProductMatch[]> {
   const started = Date.now();
   const catalogChannel = catalogSnapshotChannel(channelId);
-  const repo = await getCatalogRepository(env, catalogChannel, {
-    clientRequest,
-    urlChannel: channelId,
-    gemmaCatalogMcpErrors: true,
-  });
-
   const {priceMin, priceMax, text, ucpIntent, metal, stone, ucpBrowseInStockAvailable, available} =
     filters;
 
+  const ucpFilters = {
+    text,
+    ucpIntent,
+    metal,
+    stone,
+    available,
+  };
+
   try {
-    const {matches} = await repo.search(
-      {
-        text,
-        ucpIntent,
-        metal,
-        stone,
-        priceMin,
-        priceMax,
-        available,
-        ucpBrowseInStockAvailable,
-      },
-      limit,
-    );
+    const {matches} = await gemmaCatalogLiveSearch(env, catalogChannel, ucpFilters, limit, {
+      clientRequest,
+      urlChannel: channelId,
+      browseInStockAvailable: Boolean(ucpBrowseInStockAvailable),
+    });
 
     let out: ProductMatch[] = matches;
     if (priceMin !== undefined || priceMax !== undefined) {

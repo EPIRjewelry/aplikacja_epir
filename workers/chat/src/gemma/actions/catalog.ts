@@ -1,5 +1,5 @@
 import {resolveUrlForChannel} from '../../buyer/channel-origins';
-import {fetchGemmaCatalogMatchesForTurn} from '../facts/catalog-search';
+import {fetchGemmaCatalogMatchesForTurn} from '../facts/catalog-fetch-for-turn';
 import type {GemmaActionContext, GemmaCatalogCard} from './types';
 import type {GemmaShownRef} from '../state/types';
 

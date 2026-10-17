@@ -4,26 +4,22 @@
  */
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {buildUcpSearchCatalogArgs} from '../../../src/facts/catalog-ucp-args';
-import {CatalogMcpSearchError} from '../../../src/facts/catalog-mcp-error';
-import * as facts from '../../../src/facts';
+import {CatalogMcpSearchError} from '../../../src/gemma/facts/catalog-mcp-error';
+import * as liveSearch from '../../../src/gemma/facts/catalog-live-search';
 import {hasCatalogQueryOrFilters} from '../../../src/mcp_server';
 import {composeGemmaReply} from '../../../src/gemma/compose-gemma-reply';
-import {
-  fetchGemmaCatalogMatchesForTurn,
-  searchGemmaCatalog,
-} from '../../../src/gemma/facts/catalog-search';
+import {fetchGemmaCatalogMatchesForTurn} from '../../../src/gemma/facts/catalog-fetch-for-turn';
+import {searchGemmaCatalog} from '../../../src/gemma/facts/catalog-search';
 import {
   epirCatalogEmptyReply,
   listEpirTemplateStrings,
   templateStartsWithProszePana,
 } from '../../../src/gemma/profiles/epir';
 import {GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT} from '../../../src/gemma/actions/catalog-limits';
-import {runCatalogAction} from '../../../src/gemma/actions/catalog';
 import {slotsToCatalogFilters} from '../../../src/gemma/actions/slots-to-filters';
 import * as catalogSearch from '../../../src/gemma/facts/catalog-search';
 import {fictionalMatchFromProduct, fictionalMultiVariantProduct} from '../fixtures/fictional-catalog-products';
 import {fictionalGemmaIntent} from '../fixtures/gemma-intent';
-import {DEFAULT_GEMMA_SESSION_STATE} from '../../../src/gemma/state/types';
 import {makeTrackedSessionNamespace} from '../helpers/session-do-calls';
 import {stubGemmaIntentJson} from '../helpers/stub-gemma-intent';
 import {moneyFromMinor} from '../../../src/facts/types';
@@ -33,7 +29,7 @@ describe('Cień catalog qualitative fix', () => {
 
   it('T-FIX-2 / R04-args: browse args pass mcp_server hasCatalogQueryOrFilters (M-FIX-2)', () => {
     const args = buildUcpSearchCatalogArgs(
-      {ucpBrowseInStockAvailable: true, available: true},
+      {available: true},
       GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT,
       {browseInStockAvailable: true},
     );
@@ -113,11 +109,9 @@ describe('Cień catalog qualitative fix', () => {
   });
 
   it('T-FIX-MCP-ERR: MCP code → throw + gemma.catalog.error (M-FIX-3)', async () => {
-    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
-      search: async () => {
-        throw new CatalogMcpSearchError(-32602);
-      },
-    } as never);
+    vi.spyOn(liveSearch, 'gemmaCatalogLiveSearch').mockRejectedValue(
+      new CatalogMcpSearchError(-32602),
+    );
     const logSpy = vi.spyOn(console, 'log');
     await expect(
       searchGemmaCatalog(

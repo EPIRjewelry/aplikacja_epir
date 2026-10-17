@@ -1,7 +1,6 @@
 import type {BuyerChannelId} from '../buyer/channel-switch';
 import type {Env} from '../config/bindings';
 import {callMcpToolDirect} from '../mcp_server';
-import {CatalogMcpSearchError} from './catalog-mcp-error';
 import {buildUcpSearchCatalogArgs, parseUcpFilterIgnoredMessages} from './catalog-ucp-args';
 import {computeFacetsFromMatches, filterProducts} from './filter';
 import {
@@ -33,12 +32,6 @@ function brandForChannel(channel: BuyerChannelId): string {
   if (channel === 'kazka-hydrogen') return 'kazka';
   if (channel === 'epir-zareczyny') return 'zareczyny';
   return 'epir';
-}
-
-function parseMcpErrorCode(mcpOut: unknown): number | undefined {
-  const wrapped = mcpOut as {error?: {code?: number}};
-  const code = wrapped.error?.code;
-  return typeof code === 'number' ? code : undefined;
 }
 
 function parseUcpSearchProductIds(mcpOut: unknown): string[] {
@@ -89,16 +82,8 @@ export async function getCatalogRepository(
           return {matches: [], total: 0, facets: facetsEmpty};
         }
         const brand = brandForChannel(channel);
-        const mcpArgs = buildUcpSearchCatalogArgs(
-          filters,
-          limit,
-          filters.ucpBrowseInStockAvailable ? {browseInStockAvailable: true} : undefined,
-        );
+        const mcpArgs = buildUcpSearchCatalogArgs(filters, limit);
         const mcpOut = await callMcpToolDirect(env, 'search_catalog', mcpArgs, brand);
-        const mcpCode = parseMcpErrorCode(mcpOut);
-        if (options?.gemmaCatalogMcpErrors && mcpCode !== undefined) {
-          throw new CatalogMcpSearchError(mcpCode);
-        }
         const filterIgnored = parseUcpFilterIgnoredMessages(mcpOut);
         const ids = parseUcpSearchProductIds(mcpOut);
         if (!ids.length) {
@@ -120,9 +105,6 @@ export async function getCatalogRepository(
         if (filterIgnored.length) result.meta = {filterIgnored};
         return result;
       } catch (err) {
-        if (options?.gemmaCatalogMcpErrors) {
-          throw err;
-        }
         console.warn(
           JSON.stringify({
             tag: 'facts.repository_live_search_error',
