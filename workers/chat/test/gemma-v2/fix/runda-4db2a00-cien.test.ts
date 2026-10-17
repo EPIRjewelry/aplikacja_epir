@@ -163,20 +163,9 @@ describe('Runda 4db2a00 — Cień', () => {
   });
 
   it('T-D-Z8-1: koszyk bez shown — pytanie o produkt, nie MCP (R09.3)', async () => {
-    vi.spyOn(catalogSearch, 'searchGemmaCatalog').mockResolvedValue([]);
     const ai = await import('../../../src/ai-client');
-    let calls = 0;
     vi.spyOn(ai, 'getGroqResponse').mockImplementation(async (_m, _e, opts) => {
       if (opts?.timingLabel === 'buyer_gemma_intent') {
-        calls += 1;
-        if (calls === 1) {
-          return JSON.stringify(
-            fictionalGemmaIntent({
-              state: 'propozycje',
-              slots: {metal: 'srebro', stone: 'granat'},
-            }),
-          );
-        }
         return JSON.stringify(
           fictionalGemmaIntent({
             state: 'koszyk',

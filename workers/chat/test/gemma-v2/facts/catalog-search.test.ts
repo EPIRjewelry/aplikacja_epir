@@ -99,7 +99,7 @@ describe('E2b catalog search pipeline', () => {
         i === 1 ? {...v, metal: 'srebro 925', price: moneyFromMinor(100_000)} : {...v, metal: 'złoto 585'},
       ),
     };
-    const repoMatch = fictionalMatchFromProduct(product, {metal: ['złoto']});
+    const repoMatch = fictionalMatchFromProduct(product);
     const searchSpy = vi.fn().mockResolvedValue({
       matches: [repoMatch],
       total: 1,
@@ -124,9 +124,13 @@ describe('E2b catalog search pipeline', () => {
     expect(searchSpy.mock.calls[0][0]).not.toHaveProperty('stone');
     expect(searchSpy.mock.calls[0][0].text).toContain('złoto');
     expect(out).toHaveLength(1);
-    expect(out[0].matchingVariants.map((v) => v.variantId)).toEqual([
-      'gid://shopify/ProductVariant/900001-c',
-    ]);
+    // D-P1: siatka ceny lokalna bez metalu — oba warianty w widełkach priceMax przechodzą.
+    expect(out[0].matchingVariants.map((v) => v.variantId).sort()).toEqual(
+      [
+        'gid://shopify/ProductVariant/900001-b',
+        'gid://shopify/ProductVariant/900001-c',
+      ].sort(),
+    );
   });
 
   it('T-E2b-PIPE-4: epir-zareczyny pipeline drops products without the zareczyny tag', async () => {

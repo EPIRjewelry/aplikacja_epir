@@ -151,5 +151,7 @@ export function sortMatchesByMinVariantPrice(
     const minMinor = minors.length ? Math.min(...minors) : 0;
     return {match: m, minMinor};
   });
-  return sortAscending ? priced.sort((a, b) => a.minMinor - b.minMinor) : priced;
+  return sortAscending
+    ? priced.sort((a, b) => a.minMinor - b.minMinor)
+    : priced.sort((a, b) => b.minMinor - a.minMinor);
 }

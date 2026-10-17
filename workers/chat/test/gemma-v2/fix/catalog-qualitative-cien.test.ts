@@ -13,6 +13,7 @@ import {fetchGemmaCatalogMatchesForTurn} from '../../../src/gemma/facts/catalog-
 import {searchGemmaCatalog} from '../../../src/gemma/facts/catalog-search';
 import {
   epirCatalogEmptyReply,
+  epirCatalogTransportReply,
   listEpirTemplateStrings,
   templateStartsWithProszePana,
 } from '../../../src/gemma/profiles/epir';
@@ -209,7 +210,7 @@ describe('Cień catalog qualitative fix', () => {
       new Request('https://example.com'),
       {sessionId: 'sess_mcp_query'},
     );
-    expect(reply).toBe(epirCatalogEmptyReply('epir-online-store'));
+    expect(reply).toBe(epirCatalogTransportReply('epir-online-store'));
     expect(
       logSpy.mock.calls.some((c) => {
         const raw = c[0];
@@ -238,7 +239,7 @@ describe('Cień catalog qualitative fix', () => {
       new Request('https://example.com'),
       {sessionId: 'sess_mcp_browse'},
     );
-    expect(reply).toBe(epirCatalogEmptyReply('epir-online-store'));
+    expect(reply).toBe(epirCatalogTransportReply('epir-online-store'));
     expect(
       logSpy.mock.calls.some((c) => {
         const raw = c[0];
@@ -293,7 +294,7 @@ describe('Cień catalog qualitative fix', () => {
       new Request('https://example.com'),
       {sessionId: 'sess_mcp_compose'},
     );
-    expect(reply).toBe(epirCatalogEmptyReply('epir-online-store'));
+    expect(reply).toBe(epirCatalogTransportReply('epir-online-store'));
   });
 
   it('T-FIX-6: szablony bez prefiksu „Proszę Pana” (M-FIX-4)', () => {

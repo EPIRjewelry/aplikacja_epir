@@ -74,7 +74,7 @@ export function transitionGemmaState(
     return {nextState: 'odmowa', slots: mergedSlots, allowedActions: []};
   }
 
-  if (intent.state === 'powitanie' && prev.turn > 0 && isThanksAckIntent(intent)) {
+  if (isThanksAckIntent(intent) && !intent.cart_action && !intent.policy_query?.trim()) {
     return {nextState: 'powitanie', slots: mergedSlots, allowedActions: []};
   }
 
@@ -90,7 +90,7 @@ export function transitionGemmaState(
     };
   }
 
-  if (intent.cart_action) {
+  if (intent.cart_action || intent.state === 'koszyk') {
     return {
       nextState: 'koszyk',
       slots: mergedSlots,
