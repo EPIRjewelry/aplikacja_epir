@@ -24,9 +24,10 @@ describe('E5b gemma structured HTTP errors', () => {
   afterEach(() => vi.useRealTimers());
 
   it('T-GEMMA-400-A: gateway 400 on A → emergency 200', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response('Generated JSON does not match the expected schema', {status: 400}),
     );
+    const logSpy = vi.spyOn(console, 'log');
     const kv = makeGemmaRuntimeKv({coreMode: 'v2', channelMode: 'on'});
     const res = await handleBuyerTurn(
       new Request('https://example.com/chat', {method: 'POST'}),
@@ -38,6 +39,16 @@ describe('E5b gemma structured HTTP errors', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {reply: string};
     expect(body.reply).toBe(gemmaV2EmergencyReply('epir-online-store'));
+    // Cień: 400 naprawdę przyszło z wywołania A ze schematem, a nie z innego miejsca.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const sent = JSON.parse((fetchSpy.mock.calls[0]![1] as RequestInit).body as string) as {
+      response_format?: {json_schema?: {name?: string; strict?: boolean}};
+    };
+    expect(sent.response_format?.json_schema?.name).toBe('gemma_intent');
+    expect(sent.response_format?.json_schema?.strict).toBe(true);
+    const logs = logSpy.mock.calls.map((c) => String(c[0]));
+    expect(logs).toContain(JSON.stringify({tag: 'gemma.intent.error', http_status: 400, error_name: 'AiGatewayHttpError'}));
+    expect(logs).toContain(JSON.stringify({tag: 'gemma.turn_error', kind: 'intent_transport'}));
   });
 
   it('T-GEMMA-400-B: gateway 400 on B → deterministic template', async () => {
@@ -72,7 +83,8 @@ describe('E5b gemma structured HTTP errors', () => {
 
   it('T-GEMMA-TO-A: A timeout → emergency via compose', async () => {
     vi.useFakeTimers();
-    vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
+    const logSpy = vi.spyOn(console, 'log');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
       return new Promise((_res, rej) => {
         init?.signal?.addEventListener('abort', () => rej(new DOMException('Aborted', 'AbortError')));
       });
@@ -88,6 +100,12 @@ describe('E5b gemma structured HTTP errors', () => {
     await vi.advanceTimersByTimeAsync(GEMMA_INTENT_TIMEOUT_MS + 50);
     const reply = await p;
     expect(reply).toBe(gemmaV2EmergencyReply('epir-online-store'));
+    // Cień: emergency wynika z abortu fetch A, nie z wcześniejszego błędu.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const init = fetchSpy.mock.calls[0]![1] as RequestInit;
+    expect(init.signal?.aborted).toBe(true);
+    const logs = logSpy.mock.calls.map((c) => String(c[0]));
+    expect(logs).toContain(JSON.stringify({tag: 'gemma.turn_error', kind: 'intent_transport'}));
     vi.useRealTimers();
   });
 

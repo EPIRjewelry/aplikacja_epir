@@ -30,15 +30,6 @@ function logFormulationError(e: unknown): void {
   console.log(JSON.stringify(payload));
 }
 
-function isTimeoutLike(e: unknown): boolean {
-  if (e instanceof FormulationTimeoutError) return true;
-  if (e instanceof Error) {
-    if (e.message === 'formulation_timeout') return true;
-    if (e.name === 'AbortError' || e.name === 'TimeoutError') return true;
-  }
-  return false;
-}
-
 function buildUserPayload(userText: string, turn: TurnFacts): string {
   return JSON.stringify({
     userText,

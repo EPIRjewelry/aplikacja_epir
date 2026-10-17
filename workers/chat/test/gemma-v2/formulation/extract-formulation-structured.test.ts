@@ -10,7 +10,9 @@ const turn: TurnFacts = {
   channelId: 'epir-online-store',
   state: 'propozycje',
   allowedRefs: ['g1'],
-  products: [{ref: 'g1', url: '/products/fikcyjny', priceDisplay: '100 zł'}],
+  products: [
+    {ref: 'g1', url: '/products/fikcyjny', priceDisplay: '100 zł', title: 'Fikcyjny pierścionek', available: true},
+  ],
   kbAnswer: null,
   allowedUrls: ['/products/fikcyjny'],
   allowedNumbers: ['100'],
@@ -38,5 +40,25 @@ describe('E5b extractFormulationReply structured', () => {
     const msgs = spy.mock.calls[0]![0] as {role: string; content: string}[];
     const userMsg = msgs.find((m) => m.role === 'user')?.content ?? '';
     expect(userMsg).not.toContain('form_of_address');
+  });
+
+  it('T-GEMMA-TIMER-B: po szybkiej odpowiedzi B nie zostaje żaden timer (clearTimeout)', async () => {
+    vi.useFakeTimers();
+    try {
+      const ai = await import('../../../src/ai-client');
+      vi.spyOn(ai, 'getGroqResponse').mockResolvedValue(
+        JSON.stringify({text: 'Proszę Pana/Panią — fikcyjna.', product_refs: []}),
+      );
+      const out = await extractFormulationReply({
+        env: {} as never,
+        userText: 'fikcyjne',
+        turn,
+        deadlineMs: Date.now() + 4000,
+      });
+      expect(out).not.toBeNull();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

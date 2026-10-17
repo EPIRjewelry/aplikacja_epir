@@ -8,7 +8,12 @@ import {
   type GroqJsonSchemaResponseFormat,
   type GroqMessage,
 } from '../../src/ai-client';
-import {BUYER_AIG_RETRY, BUYER_MODEL_PARAMS, MODEL_PARAMS} from '../../src/config/model-params';
+import {
+  BUYER_AIG_RETRY,
+  BUYER_MODEL_PARAMS,
+  MODEL_PARAMS,
+  MODEL_VARIANTS,
+} from '../../src/config/model-params';
 import type {Env} from '../../src/config/bindings';
 
 afterEach(() => vi.restoreAllMocks());
@@ -85,6 +90,65 @@ describe('E5b ai-client gateway structured outputs', () => {
     expect(headerNames).toEqual(buyerHeaderKeys.sort());
     expect(headers.get('cf-aig-max-attempts')).toBe(String(BUYER_AIG_RETRY.maxAttempts));
     expect(headers.get('cf-aig-request-timeout')).toBeNull();
+  });
+
+  it('T-AIC-LEGACY-1-EXACT (Cień): body bajt w bajt (kolejność i wartości) + pełne nagłówki', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonOk('{}'));
+    const withAssistant = [
+      ...messages,
+      {role: 'assistant', content: 'fikcyjna odp', reasoning: 'fikcyjny reasoning'} as unknown as GroqMessage,
+    ];
+    await getGroqResponseViaGateway(withAssistant, gatewayEnv(), {timingLabel: 'buyer_x'});
+    const init = fetchSpy.mock.calls[0]![1] as RequestInit;
+    expect(fetchSpy.mock.calls[0]![0]).toBe(
+      'https://gateway.ai.cloudflare.com/v1/test_cf_account/epir-test-gateway/groq/chat/completions',
+    );
+    expect(init.body).toBe(
+      JSON.stringify({
+        model: MODEL_VARIANTS.default.id.replace('groq/', ''),
+        messages: [...messages, {role: 'assistant', content: 'fikcyjna odp'}],
+        stream: false,
+        max_completion_tokens: BUYER_MODEL_PARAMS.max_completion_tokens,
+        temperature: BUYER_MODEL_PARAMS.temperature,
+        top_p: BUYER_MODEL_PARAMS.top_p,
+        include_reasoning: BUYER_MODEL_PARAMS.include_reasoning,
+        reasoning_effort: BUYER_MODEL_PARAMS.reasoning_effort,
+      }),
+    );
+    expect(init.headers).toEqual({
+      'Content-Type': 'application/json',
+      'cf-aig-authorization': 'Bearer test_ai_gateway_token',
+      Authorization: 'Bearer test_groq_api_key',
+      'cf-aig-max-attempts': String(BUYER_AIG_RETRY.maxAttempts),
+      'cf-aig-retry-delay': String(BUYER_AIG_RETRY.retryDelayMs),
+      'cf-aig-backoff': BUYER_AIG_RETRY.backoff,
+    });
+    expect(init.signal).toBeUndefined();
+    expect(init.method).toBe('POST');
+  });
+
+  it('T-AIC-LEGACY-2-EXACT (Cień): non-buyer body bajt w bajt + pełne nagłówki', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonOk('hej'));
+    await getGroqResponseViaGateway(messages, gatewayEnv(), {timingLabel: 'tool_loop_x'});
+    const init = fetchSpy.mock.calls[0]![1] as RequestInit;
+    expect(init.body).toBe(
+      JSON.stringify({
+        model: MODEL_VARIANTS.default.id.replace('groq/', ''),
+        messages,
+        stream: false,
+        max_tokens: MODEL_PARAMS.max_tokens,
+        temperature: MODEL_PARAMS.temperature,
+        top_p: MODEL_PARAMS.top_p,
+        include_reasoning: MODEL_PARAMS.include_reasoning,
+        reasoning_effort: MODEL_PARAMS.reasoning_effort,
+      }),
+    );
+    expect(init.headers).toEqual({
+      'Content-Type': 'application/json',
+      'cf-aig-authorization': 'Bearer test_ai_gateway_token',
+      Authorization: 'Bearer test_groq_api_key',
+    });
+    expect(init.signal).toBeUndefined();
   });
 
   it('T-AIC-LEGACY-2: non-buyer label — MODEL_PARAMS keys, no cf-aig-*', async () => {

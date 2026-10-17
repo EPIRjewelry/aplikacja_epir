@@ -23,4 +23,16 @@ describe('E5b gemma formulation schema', () => {
     const out = parseFormulationJson(raw);
     expect(out.ok).toBe(true);
   });
+
+  it('T-GEMMA-SCHEMA-2c (Cień): pełny kształt schematu B', () => {
+    expect(GEMMA_FORMULATION_JSON_SCHEMA).toEqual({
+      type: 'object',
+      additionalProperties: false,
+      required: ['text', 'product_refs'],
+      properties: {
+        text: {type: 'string'},
+        product_refs: {type: 'array', items: {type: 'string'}},
+      },
+    });
+  });
 });
