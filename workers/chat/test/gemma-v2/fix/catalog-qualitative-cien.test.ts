@@ -41,6 +41,27 @@ describe('Cień catalog qualitative fix', () => {
     expect(hasCatalogQueryOrFilters(args)).toBe(true);
   });
 
+  it('T-FIX-BROWSE-MCP-ARGS: browse search_catalog MCP filters are only available:true', async () => {
+    const mcpSpy = vi.spyOn(mcpServer, 'callMcpToolDirect').mockResolvedValue({
+      result: {content: [{type: 'text', text: JSON.stringify({products: []})}]},
+    });
+    const filters = slotsToCatalogFilters({budget: 'tanio'}, 'coś taniego');
+    await searchGemmaCatalog(
+      {
+        SHOP_DOMAIN: 'example.myshopify.com',
+        PRIVATE_STOREFRONT_API_TOKEN: 'tok',
+      } as never,
+      'epir-online-store',
+      filters,
+      GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT,
+    );
+    expect(mcpSpy).toHaveBeenCalled();
+    const mcpPayload = mcpSpy.mock.calls[0]![2] as {catalog: Record<string, unknown>};
+    expect(mcpPayload.catalog.filters).toEqual({available: true});
+    expect(Object.keys(mcpPayload.catalog.filters as object).sort()).toEqual(['available']);
+    expect('query' in mcpPayload.catalog).toBe(false);
+  });
+
   it('T-FIX-1: slotsToCatalogFilters tanio bez typu → browse (M-FIX-1)', () => {
     const filters = slotsToCatalogFilters({budget: 'tanio'}, 'coś taniego bym chciał');
     expect(filters.ucpBrowseInStockAvailable).toBe(true);
