@@ -3,6 +3,16 @@ import {moneyFromMinor} from './types';
 
 export const CATALOG_SEARCH_SERVER_LIMIT = 10;
 
+/**
+ * Browse bez `catalog.query` — wymaga filtra (UCP + MCP walidacja).
+ * Filtr `available: true` — rozszerzenie dev.shopify.catalog (profil agenta:
+ * workers/chat/src/catalog/ucp-agent-profile.ts:58-61); typ `available` w
+ * workers/chat/src/facts/types.ts:98-99.
+ */
+export type BuildUcpSearchCatalogOptions = {
+  browseInStockAvailable?: boolean;
+};
+
 function priceMinor(v: CatalogFilters['priceMin']): number | undefined {
   if (v === undefined) return undefined;
   if (typeof v === 'number') return v;
@@ -13,11 +23,10 @@ function priceMinor(v: CatalogFilters['priceMin']): number | undefined {
 export function buildUcpSearchCatalogArgs(
   filters: CatalogFilters,
   limit: number = CATALOG_SEARCH_SERVER_LIMIT,
+  buildOptions?: BuildUcpSearchCatalogOptions,
 ): {catalog: Record<string, unknown>} {
-  const query = filters.text?.trim() || '';
   const intent = filters.ucpIntent?.trim() || 'purchase';
   const catalog: Record<string, unknown> = {
-    query,
     pagination: {limit},
     context: {
       address_country: 'PL',
@@ -26,13 +35,27 @@ export function buildUcpSearchCatalogArgs(
       intent,
     },
   };
+
   const min = priceMinor(filters.priceMin);
   const max = priceMinor(filters.priceMax);
-  if (min !== undefined || max !== undefined) {
-    const price: Record<string, number> = {};
-    if (min !== undefined) price.min = min;
-    if (max !== undefined) price.max = max;
-    catalog.filters = {price};
+  const priceFilter =
+    min !== undefined || max !== undefined
+      ? {
+          price: {
+            ...(min !== undefined ? {min} : {}),
+            ...(max !== undefined ? {max} : {}),
+          },
+        }
+      : undefined;
+
+  if (buildOptions?.browseInStockAvailable) {
+    catalog.filters = {available: true, ...priceFilter};
+    return {catalog};
+  }
+
+  catalog.query = filters.text?.trim() || '';
+  if (priceFilter) {
+    catalog.filters = priceFilter;
   }
   return {catalog};
 }

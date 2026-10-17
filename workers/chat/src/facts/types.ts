@@ -97,6 +97,8 @@ export type CatalogFilters = {
   size?: string;
   availableOnly?: boolean;
   available?: boolean;
+  /** Gemma v2: browse bez query + filtr available (nie ustawiać na legacy buyer). */
+  ucpBrowseInStockAvailable?: boolean;
 };
 
 export type CatalogSearchMeta = {

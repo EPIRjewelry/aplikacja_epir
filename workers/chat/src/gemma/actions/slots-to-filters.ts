@@ -103,11 +103,16 @@ export function slotsToCatalogFilters(
     .filter(Boolean);
   const text = parts.join(' ').trim();
   const bounds = budgetPriceBoundsFromSlots(slots, userCorpus);
+  const qualitative = isQualitativeBudget(slots, userCorpus);
   const filters: GemmaCatalogSearchFilters = {text: text || undefined};
   if (slots.metal?.trim()) filters.metal = [slots.metal.trim()];
   if (slots.stone?.trim()) filters.stone = [slots.stone.trim()];
   if (bounds.priceMin !== undefined) filters.priceMin = bounds.priceMin;
   if (bounds.priceMax !== undefined) filters.priceMax = bounds.priceMax;
+  if (qualitative && !text) {
+    filters.ucpBrowseInStockAvailable = true;
+    filters.available = true;
+  }
   return filters;
 }
 

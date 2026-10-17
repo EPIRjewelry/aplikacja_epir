@@ -33,6 +33,9 @@ describe('E4 slots-to-filters', () => {
     ]);
     expect(sorted[0].minMinor).toBeLessThan(sorted[1].minMinor);
     expect(isQualitativeBudget({budget: 'tanio'}, corpus)).toBe(true);
+    const browseOnly = slotsToCatalogFilters({budget: 'tanio'}, 'coś taniego');
+    expect(browseOnly.ucpBrowseInStockAvailable).toBe(true);
+    expect(browseOnly.text).toBeUndefined();
     // Bez budżetu słownego — kolejność repozytorium (trafność), bez sortowania po cenie.
     expect(isQualitativeBudget({recipient: 'żona'}, corpus)).toBe(false);
     const unsorted = sortMatchesByMinVariantPrice(

@@ -49,7 +49,7 @@ describe('E1 composeGemmaReply skeleton', () => {
     );
 
     expect(reply).not.toBe(gemmaV2EmergencyReply('epir-online-store'));
-    expect(reply).toMatch(/Proszę Pana\/Panią/i);
+    expect(reply).toMatch(/Panu lub Pani/i);
     expect(groqSpy).toHaveBeenCalled();
     expect(streamSpy).not.toHaveBeenCalled();
     expect(calls.some((p) => p === 'set-session-id')).toBe(true);

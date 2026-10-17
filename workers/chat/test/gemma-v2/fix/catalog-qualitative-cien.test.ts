@@ -1,0 +1,233 @@
+/**
+ * Cień live-fix — qualitative budget catalog (D1/D2/D3/D5/D6/D8).
+ * Mutacje: M-FIX-1..M-FIX-6 (patrz komentarze przy testach).
+ */
+import {beforeEach, describe, expect, it, vi} from 'vitest';
+import {buildUcpSearchCatalogArgs} from '../../../src/facts/catalog-ucp-args';
+import {CatalogMcpSearchError} from '../../../src/facts/catalog-mcp-error';
+import * as facts from '../../../src/facts';
+import {composeGemmaReply} from '../../../src/gemma/compose-gemma-reply';
+import {searchGemmaCatalog} from '../../../src/gemma/facts/catalog-search';
+import {
+  epirCatalogEmptyReply,
+  listEpirTemplateStrings,
+  templateStartsWithProszePana,
+} from '../../../src/gemma/profiles/epir';
+import {GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT} from '../../../src/gemma/actions/catalog-limits';
+import {runCatalogAction} from '../../../src/gemma/actions/catalog';
+import {slotsToCatalogFilters} from '../../../src/gemma/actions/slots-to-filters';
+import * as catalogSearch from '../../../src/gemma/facts/catalog-search';
+import {fictionalMatchFromProduct, fictionalMultiVariantProduct} from '../fixtures/fictional-catalog-products';
+import {fictionalGemmaIntent} from '../fixtures/gemma-intent';
+import {DEFAULT_GEMMA_SESSION_STATE} from '../../../src/gemma/state/types';
+import {makeTrackedSessionNamespace} from '../helpers/session-do-calls';
+import {stubGemmaIntentJson} from '../helpers/stub-gemma-intent';
+import {moneyFromMinor} from '../../../src/facts/types';
+
+function mcpArgsValidBrowse(args: {catalog?: Record<string, unknown>}): boolean {
+  const catalog = args.catalog ?? {};
+  const query = catalog.query;
+  const hasQuery = typeof query === 'string' && query.trim().length > 0;
+  const filters = catalog.filters as Record<string, unknown> | undefined;
+  const hasFilters = Boolean(filters && Object.keys(filters).length > 0);
+  return !hasQuery && hasFilters;
+}
+
+describe('Cień catalog qualitative fix', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it('T-FIX-2 / R04-args: buildUcpSearchCatalogArgs browse — brak query, filters.available (M-FIX-2)', () => {
+    const args = buildUcpSearchCatalogArgs(
+      {ucpBrowseInStockAvailable: true, available: true},
+      GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT,
+      {browseInStockAvailable: true},
+    );
+    const catalog = args.catalog as Record<string, unknown>;
+    expect('query' in catalog).toBe(false);
+    expect(catalog.filters).toEqual({available: true});
+    expect(mcpArgsValidBrowse(args)).toBe(true);
+  });
+
+  it('T-FIX-1: slotsToCatalogFilters tanio bez typu → browse (M-FIX-1)', () => {
+    const filters = slotsToCatalogFilters({budget: 'tanio'}, 'coś taniego bym chciał');
+    expect(filters.ucpBrowseInStockAvailable).toBe(true);
+    expect(filters.text).toBeUndefined();
+    expect(filters.priceMax).toBeUndefined();
+  });
+
+  it('R04: coś taniego — search z limitem 250 i browse; odpowiedź niepusta (M-FIX-1)', async () => {
+    const searchSpy = vi.spyOn(catalogSearch, 'searchGemmaCatalog').mockResolvedValue([
+      fictionalMatchFromProduct(fictionalMultiVariantProduct()),
+    ]);
+    await stubGemmaIntentJson({slots: {budget: 'tanio'}});
+    const {namespace} = makeTrackedSessionNamespace();
+    const reply = await composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'coś taniego',
+      new Request('https://example.com'),
+      {sessionId: 'sess_fix_r04'},
+    );
+    expect(searchSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      'epir-online-store',
+      expect.objectContaining({ucpBrowseInStockAvailable: true}),
+      GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT,
+      expect.anything(),
+    );
+    expect(reply).not.toBe(epirCatalogEmptyReply('epir-online-store'));
+  });
+
+  it('R04-sort: qualitative sort ascending before display slice (M-FIX-6)', async () => {
+    const cheap = fictionalMultiVariantProduct();
+    const expensive = {...fictionalMultiVariantProduct(), productId: 'gid://shopify/Product/900088'};
+    expensive.variants = expensive.variants.map((v) => ({
+      ...v,
+      price: moneyFromMinor(500_000),
+    }));
+    vi.spyOn(catalogSearch, 'searchGemmaCatalog').mockResolvedValue([
+      fictionalMatchFromProduct(expensive),
+      fictionalMatchFromProduct(cheap),
+    ]);
+    const out = await runCatalogAction({
+      env: {} as never,
+      channelId: 'epir-online-store',
+      request: new Request('https://example.com'),
+      sessionId: 'sess_sort',
+      userText: 'coś taniego',
+      userCorpus: 'coś taniego',
+      intent: fictionalGemmaIntent({slots: {budget: 'tanio'}}),
+      prev: DEFAULT_GEMMA_SESSION_STATE,
+      transitioned: {
+        nextState: 'propozycje',
+        slots: {budget: 'tanio'},
+        allowedActions: ['search_catalog'],
+      },
+    });
+    expect(out.cards[0]!.minMinor).toBeLessThan(out.cards[1]!.minMinor);
+  });
+
+  it('R03: prezent dla żony, skromnie i tanio — karty (M-FIX-1)', async () => {
+    vi.spyOn(catalogSearch, 'searchGemmaCatalog').mockResolvedValue([
+      fictionalMatchFromProduct(fictionalMultiVariantProduct()),
+    ]);
+    await stubGemmaIntentJson({
+      slots: {recipient: 'żona', occasion: 'prezent', budget: 'skromnie, tanio'},
+    });
+    const {namespace} = makeTrackedSessionNamespace();
+    const reply = await composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'prezent dla żony, skromnie i tanio',
+      new Request('https://example.com'),
+      {sessionId: 'sess_fix_r03'},
+    );
+    expect(reply).not.toBe(epirCatalogEmptyReply('epir-online-store'));
+    expect(reply).toMatch(/g1:|\/products\//);
+  });
+
+  it('T-FIX-MCP-ERR: MCP code → throw + gemma.catalog.error (M-FIX-3)', async () => {
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: async () => {
+        throw new CatalogMcpSearchError(-32602);
+      },
+    } as never);
+    const logSpy = vi.spyOn(console, 'log');
+    await expect(
+      searchGemmaCatalog(
+        {PRIVATE_STOREFRONT_API_TOKEN: 'x'} as never,
+        'epir-online-store',
+        {text: 'kolczyki'},
+        6,
+      ),
+    ).rejects.toBeInstanceOf(CatalogMcpSearchError);
+    expect(
+      logSpy.mock.calls.some((c) => {
+        const raw = c[0];
+        if (typeof raw !== 'string') return false;
+        try {
+          const j = JSON.parse(raw) as {tag?: string; code?: number};
+          return j.tag === 'gemma.catalog.error' && j.code === -32602;
+        } catch {
+          return false;
+        }
+      }),
+    ).toBe(true);
+  });
+
+  it('T-FIX-MCP-compose: MCP error → catalogFailed path (empty template)', async () => {
+    vi.spyOn(catalogSearch, 'searchGemmaCatalog').mockRejectedValue(new CatalogMcpSearchError(-32602));
+    await stubGemmaIntentJson({slots: {recipient: 'żona'}});
+    const {namespace} = makeTrackedSessionNamespace();
+    const reply = await composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'fikcyjne',
+      new Request('https://example.com'),
+      {sessionId: 'sess_mcp_compose'},
+    );
+    expect(reply).toBe(epirCatalogEmptyReply('epir-online-store'));
+  });
+
+  it('T-FIX-6: szablony bez prefiksu „Proszę Pana” (M-FIX-4)', () => {
+    for (const text of listEpirTemplateStrings('epir-online-store')) {
+      expect(templateStartsWithProszePana(text)).toBe(false);
+    }
+  });
+
+  it('T-FIX-7: gemma.turn po turze (M-FIX-5)', async () => {
+    vi.spyOn(catalogSearch, 'searchGemmaCatalog').mockResolvedValue([
+      fictionalMatchFromProduct(fictionalMultiVariantProduct()),
+    ]);
+    await stubGemmaIntentJson({slots: {recipient: 'żona'}});
+    const logSpy = vi.spyOn(console, 'log');
+    const {namespace} = makeTrackedSessionNamespace();
+    await composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'fikcyjne',
+      new Request('https://example.com'),
+      {sessionId: 'sess_fix_turn_log'},
+    );
+    expect(
+      logSpy.mock.calls.some((c) => {
+        const raw = c[0];
+        if (typeof raw !== 'string') return false;
+        try {
+          const j = JSON.parse(raw) as {tag?: string; catalog_n?: number};
+          return j.tag === 'gemma.turn' && j.catalog_n === 1;
+        } catch {
+          return false;
+        }
+      }),
+    ).toBe(true);
+  });
+
+  it('T-FIX-B: formulation B gdy catalogCards > 0', async () => {
+    const ai = await import('../../../src/ai-client');
+    const intentJson = JSON.stringify(
+      fictionalGemmaIntent({state: 'propozycje', slots: {recipient: 'żona'}}),
+    );
+    const groqSpy = vi.spyOn(ai, 'getGroqResponse').mockImplementation(async (_m, _e, opts) => {
+      if (opts?.timingLabel === 'buyer_gemma_intent') return intentJson;
+      if (opts?.timingLabel === 'buyer_gemma_formulation') {
+        return JSON.stringify({text: 'Panu lub Pani polecam {{g1}}.', product_refs: ['g1']});
+      }
+      return intentJson;
+    });
+    vi.spyOn(catalogSearch, 'searchGemmaCatalog').mockResolvedValue([
+      fictionalMatchFromProduct(fictionalMultiVariantProduct()),
+    ]);
+    const {namespace} = makeTrackedSessionNamespace();
+    await composeGemmaReply(
+      {SESSION_DO: namespace} as never,
+      'epir-online-store',
+      'prezent',
+      new Request('https://example.com'),
+      {sessionId: 'sess_fix_b_invoke'},
+    );
+    expect(groqSpy.mock.calls.some((c) => c[2]?.timingLabel === 'buyer_gemma_formulation')).toBe(
+      true,
+    );
+  });
+});

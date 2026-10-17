@@ -1,32 +1,37 @@
 import {resolveUrlForChannel} from '../../buyer/channel-origins';
 import {searchGemmaCatalog} from '../facts/catalog-search';
 import type {GemmaActionContext, GemmaCatalogCard} from './types';
+import {
+  GEMMA_CATALOG_DISPLAY_LIMIT,
+  GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT,
+} from './catalog-limits';
 import {isQualitativeBudget, slotsToCatalogFilters, sortMatchesByMinVariantPrice} from './slots-to-filters';
 import type {GemmaShownRef} from '../state/types';
-
-const CATALOG_LIMIT = 6;
 
 export async function runCatalogAction(ctx: GemmaActionContext): Promise<{
   cards: GemmaCatalogCard[];
   shown: GemmaShownRef[];
 }> {
-  const filters = slotsToCatalogFilters(ctx.transitioned.slots, ctx.userCorpus);
+  const slots = ctx.transitioned.slots;
+  const qualitative = isQualitativeBudget(slots, ctx.userCorpus);
+  const filters = slotsToCatalogFilters(slots, ctx.userCorpus);
+  const fetchLimit = qualitative ? GEMMA_QUALITATIVE_CATALOG_FETCH_LIMIT : GEMMA_CATALOG_DISPLAY_LIMIT;
+
   const matches = await searchGemmaCatalog(
     ctx.env,
     ctx.channelId,
     filters,
-    CATALOG_LIMIT,
+    fetchLimit,
     ctx.request,
   );
-  // Kolejność repozytorium (trafność), chyba że klient prosi słownie o tanio/skromnie.
-  const sorted = sortMatchesByMinVariantPrice(
-    matches,
-    isQualitativeBudget(ctx.transitioned.slots, ctx.userCorpus),
-  );
+
+  const sorted = sortMatchesByMinVariantPrice(matches, qualitative);
+  const top = sorted.slice(0, GEMMA_CATALOG_DISPLAY_LIMIT);
+
   const cards: GemmaCatalogCard[] = [];
   const shown: GemmaShownRef[] = [];
   let idx = 1;
-  for (const {match, minMinor} of sorted) {
+  for (const {match, minMinor} of top) {
     const ref = `g${idx++}`;
     const handle = match.product.handle;
     const url =

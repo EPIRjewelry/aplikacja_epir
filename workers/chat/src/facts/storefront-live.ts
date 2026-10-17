@@ -48,6 +48,8 @@ export type FetchStorefrontLiveOptions = {
   clientRequest?: Request;
   /** Kanał rozmowy — URL produktu (np. GZ), niezależnie od migawki katalogu. */
   urlChannel?: BuyerChannelId;
+  /** Gemma v2: błąd MCP search_catalog nie jest zamieniany na pustą listę. */
+  gemmaCatalogMcpErrors?: boolean;
 };
 
 function resolveProductUrlContext(

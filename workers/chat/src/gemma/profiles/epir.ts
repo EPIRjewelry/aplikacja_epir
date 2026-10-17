@@ -19,32 +19,32 @@ export function contactPageUrl(channelId: BuyerChannelId): string {
 export function epirRefusalReply(channelId: BuyerChannelId): string {
   return (
     'Nie mogę pomóc w tej prośbie. ' +
-    'Proszę Pana/Panią o kontakt przez stronę kontaktu: ' +
+    'Jeśli chce Pan lub Pani porozmawiać z pracownią, zapraszam na stronę kontaktu: ' +
     contactPageUrl(channelId) +
     '.'
   );
 }
 
 export function epirWelcomeReply(): string {
-  return 'Dzień dobry. Proszę Pana/Panią — w czym mogę doradzić przy wyborze biżuterii?';
+  return 'Dzień dobry, w czym mogę Panu lub Pani doradzić przy wyborze biżuterii?';
 }
 
 function needsQuestionForSlot(slot: keyof GemmaSlots): string {
   switch (slot) {
     case 'product_type':
-      return 'Proszę Pana/Panią — jaki rodzaj biżuterii Pana/Panią interesuje?';
+      return 'Jaki rodzaj biżuterii Pana lub Panią interesuje — pierścionek, kolczyki, naszyjnik, bransoletka?';
     case 'budget':
-      return 'Proszę Pana/Panią — jaki orientacyjny budżet Pana/Panią interesuje?';
+      return 'Jaki orientacyjny budżet Pana lub Panią interesuje?';
     case 'metal':
-      return 'Proszę Pana/Panią — jaki metal Pana/Panią interesuje?';
+      return 'Jaki metal Pana lub Panią interesuje?';
     case 'stone':
-      return 'Proszę Pana/Panią — jaki kamień Pana/Panią interesuje?';
+      return 'Jaki kamień Pana lub Panią interesuje?';
     case 'occasion':
-      return 'Proszę Pana/Panią — na jaką okazję szuka Pan/Pani biżuterii?';
+      return 'Na jaką okazję szuka Pan lub Pani biżuterii?';
     case 'recipient':
-      return 'Proszę Pana/Panią — dla kogo jest prezent?';
+      return 'Dla kogo jest prezent?';
     default:
-      return 'Proszę Pana/Panią — opisać, czego Pan/Pani szuka?';
+      return 'Czy może Pan lub Pani opisać, czego szuka?';
   }
 }
 
@@ -53,39 +53,40 @@ export function epirNeedsReply(missingSlot?: keyof GemmaSlots): string {
 }
 
 export function epirProposalsReply(): string {
-  return 'Proszę Pana/Panią — przygotuję propozycje dopasowane do opisu. Proszę o chwilę cierpliwości.';
+  return 'Przygotuję propozycje dopasowane do opisu — proszę o chwilę cierpliwości.';
 }
 
 export function epirCartReply(needsConsent: boolean): string {
   if (needsConsent) {
-    return 'Proszę Pana/Panią o potwierdzenie, czy mogę zaktualizować koszyk.';
+    return 'Czy mogę zaktualizować koszyk zgodnie z prośbą?';
   }
-  return 'Proszę Pana/Panią — zajmę się koszykiem zgodnie z prośbą.';
+  return 'Zajmę się koszykiem zgodnie z prośbą.';
 }
 
 export function epirPolicyReply(): string {
-  return 'Proszę Pana/Panią — sprawdzę informacje o politykach sklepu i wrócę z odpowiedzią.';
+  return 'Sprawdzę informacje o politykach sklepu i wrócę z odpowiedzią.';
 }
 
 export function epirDetailsReply(): string {
-  return 'Proszę Pana/Panią — przygotuję szczegóły wskazanego modelu.';
+  return 'Przygotuję szczegóły wskazanego modelu.';
 }
 
 export function epirCatalogEmptyReply(channelId: BuyerChannelId): string {
   return (
-    'Proszę Pana/Panią — nie znalazłam propozycji w tym opisie. ' +
-    'Kontakt: ' +
+    'Nie znalazłam propozycji dopasowanych do tego opisu. ' +
+    'Czy mogę zapytać, jaki rodzaj biżuterii leży Panu lub Pani na sercu — pierścionek, kolczyki, naszyjnik? ' +
+    'Kontakt z pracownią: ' +
     contactPageUrl(channelId) +
     '.'
   );
 }
 
 export function epirCatalogCardsReply(body: string): string {
-  return 'Proszę Pana/Panią — propozycje dopasowane do opisu:\n' + body;
+  return 'Oto propozycje dopasowane do opisu:\n' + body;
 }
 
 export function epirKbAnswerReply(answer: string): string {
-  return 'Proszę Pana/Panią — oto informacja ze sklepu:\n' + answer;
+  return 'Oto informacja ze sklepu:\n' + answer;
 }
 
 export function epirKbUnavailableReply(): string {
@@ -96,7 +97,7 @@ export function epirKbUnavailableReply(): string {
 export function epirCartErrorReply(channelId: BuyerChannelId, shopMessages: string[] = []): string {
   const msgs = shopMessages.map((m) => m.trim()).filter(Boolean);
   return (
-    'Proszę Pana/Panią — nie udało się zaktualizować koszyka. ' +
+    'Nie udało się zaktualizować koszyka. ' +
     (msgs.length ? msgs.join(' ') + ' ' : '') +
     'Kontakt: ' +
     contactPageUrl(channelId) +
@@ -105,11 +106,11 @@ export function epirCartErrorReply(channelId: BuyerChannelId, shopMessages: stri
 }
 
 export function epirDetailsPricesReply(variantPriceLine: string): string {
-  return 'Proszę Pana/Panią — szczegóły modelu. Ceny wariantów: ' + variantPriceLine + '.';
+  return 'Szczegóły modelu. Ceny wariantów: ' + variantPriceLine + '.';
 }
 
 export function epirCartConsentWithProductLink(channelId: BuyerChannelId, productUrl?: string): string {
-  const base = 'Proszę Pana/Panią o potwierdzenie, czy mogę zaktualizować koszyk.';
+  const base = 'Czy mogę zaktualizować koszyk zgodnie z prośbą?';
   if (productUrl?.trim()) {
     return base + ' Można też dodać samodzielnie: ' + productUrl.trim() + '.';
   }
@@ -118,25 +119,15 @@ export function epirCartConsentWithProductLink(channelId: BuyerChannelId, produc
 
 export function epirVariantQuestionReply(channelId: BuyerChannelId, productUrl?: string): string {
   const link = productUrl?.trim() || contactPageUrl(channelId);
-  return (
-    'Proszę Pana/Panią — który wariant Pana/Panią interesuje? ' +
-    'Szczegóły i dodanie samodzielne: ' +
-    link +
-    '.'
-  );
+  return 'Który wariant Pana lub Panią interesuje? Szczegóły i dodanie samodzielne: ' + link + '.';
 }
 
 export function epirCartShowEmptyReply(channelId: BuyerChannelId): string {
-  return (
-    'Proszę Pana/Panią — koszyk jest pusty. ' +
-    'Kontakt: ' +
-    contactPageUrl(channelId) +
-    '.'
-  );
+  return 'Koszyk jest pusty. Kontakt: ' + contactPageUrl(channelId) + '.';
 }
 
 export function epirCartShowLinesReply(body: string): string {
-  return 'Proszę Pana/Panią — zawartość koszyka:\n' + body;
+  return 'Zawartość koszyka:\n' + body;
 }
 
 export function buildEpirDeterministicReply(params: {
@@ -192,6 +183,11 @@ export function listEpirTemplateStrings(channelId: BuyerChannelId): string[] {
 
 export function templateUsesInformalTy(text: string): boolean {
   return TY_GRID.test(text);
+}
+
+/** Szablon nie może zaczynać się od sztucznego „Proszę Pana” (Cień D5). */
+export function templateStartsWithProszePana(text: string): boolean {
+  return /^Proszę Pana/i.test(text.trim());
 }
 
 export function detectFormOfAddressFromText(userText: string): FormOfAddress {

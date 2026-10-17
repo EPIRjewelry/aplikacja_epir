@@ -9,6 +9,7 @@ import {
   contactPageUrl,
   epirRefusalReply,
   listEpirTemplateStrings,
+  templateStartsWithProszePana,
   templateUsesInformalTy,
 } from '../../../src/gemma/profiles/epir';
 
@@ -28,6 +29,12 @@ describe('E3 epir profile templates', () => {
     const reply = epirRefusalReply('epir-online-store');
     expect(reply).toContain(url);
     expect(reply).not.toMatch(/kontaktu: \/pages\/kontakt\./);
+  });
+
+  it('T-FIX-6: templates do not start with „Proszę Pana”', () => {
+    for (const text of listEpirTemplateStrings('epir-online-store')) {
+      expect(templateStartsWithProszePana(text)).toBe(false);
+    }
   });
 
   it('T-E3-FORM-1: templates avoid informal ty grid', () => {

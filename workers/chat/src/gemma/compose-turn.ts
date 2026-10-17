@@ -17,6 +17,23 @@ import type {GemmaIntent} from './intent/schema';
 import {buildEpirDeterministicReply} from './profiles/epir';
 import {GemmaTurnError} from './errors';
 import {maybeFormulateReply} from './formulation/run-formulation';
+import {shouldInvokeFormulationB} from './formulation/build-turn-facts';
+import type {GemmaSlots} from './state/types';
+
+function presentSlotKeys(slots: GemmaSlots): string[] {
+  const keys: (keyof GemmaSlots)[] = [
+    'budget',
+    'metal',
+    'stone',
+    'product_type',
+    'occasion',
+    'recipient',
+  ];
+  return keys.filter((k) => {
+    const v = slots[k];
+    return v !== null && v !== undefined && String(v).trim() !== '';
+  });
+}
 
 function cartNeedsConsent(intent: GemmaIntent): boolean {
   if (!intent.cart_action || intent.cart_action === 'show') return false;
@@ -103,6 +120,19 @@ async function runInsideGate(
     transitioned,
     productHandle: opts?.productHandle,
   });
+
+  const formulationB = shouldInvokeFormulationB(transitioned.nextState, actionOutcome);
+  console.log(
+    JSON.stringify({
+      tag: 'gemma.turn',
+      state: transitioned.nextState,
+      slot_keys: presentSlotKeys(transitioned.slots),
+      search_catalog: transitioned.allowedActions.includes('search_catalog'),
+      catalog_n: actionOutcome.catalogCards.length,
+      catalog_failed: actionOutcome.catalogFailed,
+      formulation_b: formulationB,
+    }),
+  );
 
   const next: GemmaSessionState = {
     ...prev,
