@@ -1,4 +1,9 @@
-import {buildGemmaVariantPriceFacts} from '../facts/variant-prices';
+import {
+  appendOverBudgetToPriceDisplay,
+  buildGemmaVariantPriceFacts,
+  overBudgetMetalPriceLines,
+} from '../facts/variant-prices';
+import type {CatalogFilterContext} from './types';
 import type {GemmaActionOutcome} from '../actions/types';
 import type {GemmaConversationState, GemmaSlots} from '../state/types';
 import type {BuyerChannelId} from '../../buyer/channel-switch';
@@ -38,8 +43,9 @@ export function buildTurnFacts(params: {
   missingSlot?: keyof GemmaSlots;
   userText: string;
   outcome: GemmaActionOutcome;
+  catalogFilters?: CatalogFilterContext;
 }): TurnFacts {
-  const {channelId, state, outcome, userText} = params;
+  const {channelId, state, outcome, userText, catalogFilters} = params;
   const products: TurnFacts['products'] = [];
   const allowedUrls = new Set<string>();
   allowedUrls.add(contactPageUrl(channelId));
@@ -47,7 +53,15 @@ export function buildTurnFacts(params: {
   if (state === 'propozycje') {
     for (const card of outcome.catalogCards) {
       const prices = buildGemmaVariantPriceFacts(card.match);
-      const priceDisplay = prices.rangeText || prices.lines[0]?.displayPl || '';
+      const over = overBudgetMetalPriceLines(
+        card.match,
+        catalogFilters?.metal,
+        catalogFilters?.priceMax,
+      );
+      const priceDisplay = appendOverBudgetToPriceDisplay(
+        prices.rangeText || prices.lines[0]?.displayPl || '',
+        over,
+      );
       const shown = outcome.shown.find((s) => s.ref === card.ref);
       const url = shown?.url || '';
       if (url) allowedUrls.add(url);

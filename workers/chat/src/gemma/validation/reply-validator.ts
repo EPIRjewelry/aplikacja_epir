@@ -123,6 +123,17 @@ export function validateFormulationTextBeforeStitch(
     if (!kbDigits.has(norm)) violations.push('phone_not_in_facts');
   }
 
+  if (facts.kbAnswer?.trim()) {
+    const kbPhones = extractPhoneSequences(facts.kbAnswer);
+    const textPhones = extractPhoneSequences(plain);
+    const textPhoneSet = new Set(textPhones.map(normalizePhoneDigits));
+    const kbNumbers = extractNumbers(facts.kbAnswer).filter((n) => n.length >= 2);
+    const textNumbers = new Set(extractNumbers(plain));
+    const missingPhone = kbPhones.some((p) => !textPhoneSet.has(normalizePhoneDigits(p)));
+    const missingNumber = kbNumbers.some((n) => !textNumbers.has(n));
+    if (missingPhone || missingNumber) violations.push('kb_fact_dropped');
+  }
+
   if (templateUsesInformalTy(trimmed)) violations.push('informal_address');
   if (hasSlashGenderedAddress(trimmed)) violations.push('slash_gendered_address');
   else if (hasStandaloneGenderedAddress(trimmed)) violations.push('gendered_address');

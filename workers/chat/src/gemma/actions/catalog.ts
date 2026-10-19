@@ -36,6 +36,7 @@ export async function runCatalogAction(ctx: GemmaActionContext): Promise<{
       handle,
       variantIds,
       url,
+      title: match.product.title,
     });
   }
   return {cards, shown};

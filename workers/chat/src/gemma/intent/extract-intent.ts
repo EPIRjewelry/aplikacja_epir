@@ -19,7 +19,17 @@ safety: ok lub refuse.
 Zasady:
 - Gdy klient tylko dziękuje lub domyka rozmowę bez nowej prośby: state=powitanie, slots.occasion=podziękowanie, cart_action=null, bez nowego wyszukiwania.
 - Gdy klient pyta o biżuterię na zamówienie indywidualne, odcisk palca lub własny projekt: state=propozycje, slots.product_type=zamówienie indywidualne, cart_action=null.
-- Gdy klient szuka luksusowej biżuterii bez kwoty: slots.budget zawiera słowo luksus (np. luksus, luksusowa).`;
+- Gdy klient szuka luksusowej biżuterii bez kwoty: slots.budget zawiera słowo luksus (np. luksus, luksusowa).
+- policy_query: pełne pytanie klienta w języku naturalnym (całe zdanie), nie pojedyncze słowo-klucz.
+- Kolejne pytanie o zamówienie indywidualne (czas realizacji, cena, materiał, możliwości): ustaw policy_query na to pytanie, bez slots.product_type=zamówienie indywidualne.
+- cart_action=show tylko gdy klient prosi o pokazanie lub podsumowanie koszyka; „pokaż coś z…” / propozycje z katalogu to wyszukiwanie (cart_action=null).
+- „dodaj do koszyka” / „wrzuć do koszyka” → cart_action=add, cart_consent=true.
+- Klient woli dodać sam, albo podaje rozmiar/wariant po kartach bez prośby o dodanie → cart_action=add, cart_consent=false.
+- Bez wyraźnej prośby o koszyk: cart_action=null.
+- Gdy klient nazwał opcję wariantu: variant_choice jako JSON [{"name":"…","value":"…"}] (np. Rozmiar / 14).`;
+
+/** Eksport wyłącznie pod testy promptu A. */
+export const GEMMA_INTENT_SYSTEM_PROMPT = INTENT_SYSTEM;
 
 export type ExtractIntentResult =
   | {ok: true; intent: GemmaIntent}

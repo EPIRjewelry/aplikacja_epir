@@ -143,9 +143,15 @@ export function epirVariantQuestionReply(channelId: BuyerChannelId, productUrl?:
 }
 
 /** Koszyk bez aktualnej listy shown — jedno pytanie o produkt (D-P3 / D5-bis). */
-export function epirCartProductQuestionReply(channelId: BuyerChannelId): string {
+export function epirCartProductQuestionReply(
+  channelId: BuyerChannelId,
+  hasRecentProposals = true,
+): string {
+  const lead = hasRecentProposals
+    ? 'Który produkt z ostatnich propozycji Pana lub Pani interesuje? '
+    : 'Który produkt Pana lub Pani interesuje? ';
   return (
-    'Który produkt z ostatnich propozycji Pana lub Pani interesuje? ' +
+    lead +
     'Proszę wskazać model — bez tego nie mogę dodać pozycji do koszyka. ' +
     'Kontakt z pracownią: ' +
     contactPageUrl(channelId) +

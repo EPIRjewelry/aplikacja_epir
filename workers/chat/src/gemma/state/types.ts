@@ -24,6 +24,7 @@ export type GemmaShownRef = {
   handle: string;
   variantIds: string[];
   url: string;
+  title?: string;
 };
 
 export type GemmaSelected = {

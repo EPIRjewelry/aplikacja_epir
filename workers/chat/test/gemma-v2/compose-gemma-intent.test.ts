@@ -145,7 +145,7 @@ describe('E3 composeGemmaReply intent orchestration', () => {
       new Request('https://example.com'),
       {...opts, sessionId: 'sess_e3_cart_1a'},
     );
-    expect(noConsent).toBe(epirCartProductQuestionReply('epir-online-store'));
+    expect(noConsent).toBe(epirCartProductQuestionReply('epir-online-store', false));
     expect(noConsent).not.toBe(epirCartReply(true));
 
     await stubGemmaIntentJson({cart_action: 'add', cart_consent: true});
@@ -156,7 +156,7 @@ describe('E3 composeGemmaReply intent orchestration', () => {
       new Request('https://example.com'),
       {...opts, sessionId: 'sess_e3_cart_1b'},
     );
-    expect(withConsent).toBe(epirCartProductQuestionReply('epir-online-store'));
+    expect(withConsent).toBe(epirCartProductQuestionReply('epir-online-store', false));
   });
 
   it('T-E3-CART-1b: cart add ze shown, bez zgody — prośba o potwierdzenie koszyka', async () => {

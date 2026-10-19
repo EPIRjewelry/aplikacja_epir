@@ -1,6 +1,11 @@
 import type {BuyerChannelId} from '../../buyer/channel-switch';
 import type {GemmaConversationState, GemmaSlots} from '../state/types';
 
+export type CatalogFilterContext = {
+  metal?: string[];
+  priceMax?: import('../../facts/types').MoneyPln;
+};
+
 export type FormulationProductRef = {
   ref: string;
   url: string;

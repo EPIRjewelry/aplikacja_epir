@@ -44,6 +44,12 @@ const VARIANT_FIELDS = `
 
 type PageInfo = {hasNextPage?: boolean; endCursor?: string | null};
 
+export type HydrationStats = {
+  null_nodes: number;
+  normalize_null: number;
+  no_url: number;
+};
+
 export type FetchStorefrontLiveOptions = {
   clientRequest?: Request;
   /** Kanał rozmowy — URL produktu (np. GZ), niezależnie od migawki katalogu. */
@@ -52,6 +58,8 @@ export type FetchStorefrontLiveOptions = {
   throwOnMcpError?: boolean;
   /** Gemma v2 browse (D1) — tylko gdy woła searchGemmaCatalog. */
   browseInStockAvailable?: boolean;
+  /** Liczniki utraty węzłów przy hydracji (gemma.catalog.stage). */
+  hydrationStats?: HydrationStats;
 };
 
 function resolveProductUrlContext(
@@ -126,9 +134,14 @@ function zareczynyUrlTemplate(): string {
   return 'https://zareczyny.epirbizuteria.pl/products/{handle}';
 }
 
+function epirApexUrlTemplate(): string {
+  return 'https://epirbizuteria.pl/products/{handle}';
+}
+
 function urlTemplateForChannel(channel: BuyerChannelId): string | undefined {
   if (channel === 'kazka-hydrogen') return kazkaUrlTemplate();
   if (channel === 'epir-zareczyny') return zareczynyUrlTemplate();
+  if (channel === 'epir-online-store') return epirApexUrlTemplate();
   return undefined;
 }
 
@@ -511,7 +524,10 @@ export async function fetchProductFactsLive(
     for (let j = 0; j < batch.length; j++) {
       const requestedId = batch[j];
       const raw = nodes[j];
-      if (!raw || !isRecord(raw)) continue;
+      if (!raw || !isRecord(raw)) {
+        options?.hydrationStats && (options.hydrationStats.null_nodes += 1);
+        continue;
+      }
       const productId = typeof raw.id === 'string' ? raw.id : requestedId;
 
       const adaptedRaw = {
@@ -548,12 +564,35 @@ export async function fetchProductFactsLive(
         productId,
         urlTemplate,
       );
+      const hadStoreUrl =
+        typeof raw.onlineStoreUrl === 'string' && raw.onlineStoreUrl.trim().length > 0;
+      const handleForUrl =
+        typeof raw.handle === 'string' && raw.handle.trim() ? raw.handle.trim() : '';
       const facts = normalizeProduct(merged, {
         channel: normalizeChannel,
         urlTemplate: perProductUrlTemplate,
         fetchedAt,
       });
-      if (!facts) continue;
+      if (!facts) {
+        if (options?.hydrationStats) {
+          options.hydrationStats.normalize_null += 1;
+          if (
+            normalizeChannel === 'epir-online-store' &&
+            !hadStoreUrl &&
+            !handleForUrl
+          ) {
+            options.hydrationStats.no_url += 1;
+          } else if (
+            normalizeChannel === 'epir-online-store' &&
+            !hadStoreUrl &&
+            handleForUrl &&
+            !perProductUrlTemplate
+          ) {
+            options.hydrationStats.no_url += 1;
+          }
+        }
+        continue;
+      }
       enrichFactsFromMetafields(facts, productMeta.nodes, allVariants);
       byId.set(requestedId, facts);
     }

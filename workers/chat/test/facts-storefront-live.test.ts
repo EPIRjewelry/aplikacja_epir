@@ -198,7 +198,7 @@ describe('fetchProductFactsLive', () => {
     expect(products[0].handle).toBe('ok');
   });
 
-  it('skips epir-online-store product without onlineStoreUrl', async () => {
+  it('hydrates epir-online-store product without onlineStoreUrl via apex template', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       nodesResponse([
         {
@@ -224,7 +224,8 @@ describe('fetchProductFactsLive', () => {
       'epir-online-store',
       ['gid://shopify/Product/3'],
     );
-    expect(products).toHaveLength(0);
+    expect(products).toHaveLength(1);
+    expect(products[0]?.url).toBe('https://epirbizuteria.pl/products/hidden');
   });
 
   it('epir-online-store with SHOPIFY_STOREFRONT_TOKEN uses public header, no Buyer-IP', async () => {

@@ -314,8 +314,16 @@ export function normalizeProduct(raw: unknown, options: NormalizeOptions): Produ
   let url = '';
   if (channel === 'epir-online-store') {
     const storeUrl = asStr(raw.onlineStoreUrl);
-    if (!storeUrl) return null;
-    url = storeUrl;
+    if (storeUrl) {
+      url = storeUrl;
+    } else {
+      const handle = asStr(raw.handle);
+      if (handle && options.urlTemplate) {
+        url = options.urlTemplate.replace('{handle}', handle);
+      } else {
+        return null;
+      }
+    }
   } else {
     const handle = asStr(raw.handle);
     if (handle && options.urlTemplate) {

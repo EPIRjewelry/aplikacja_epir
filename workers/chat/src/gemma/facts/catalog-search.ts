@@ -60,9 +60,13 @@ export async function searchGemmaCatalog(
 
     let out: ProductMatch[] = matches;
     const priceFilterActive = priceMin !== undefined || priceMax !== undefined;
-    if (priceFilterActive) {
+    const metalFilterActive = Boolean(metal?.length);
+    const stoneFilterActive = Boolean(stone?.length);
+    const localVariantFilterActive =
+      priceFilterActive || metalFilterActive || stoneFilterActive;
+    if (localVariantFilterActive) {
       const products = matches.map((m) => m.product);
-      out = filterProducts(products, {priceMin, priceMax});
+      out = filterProducts(products, {priceMin, priceMax, metal, stone});
     }
 
     const afterPrice = out.length;
@@ -78,6 +82,8 @@ export async function searchGemmaCatalog(
         after_gift_card: matches.length,
         after_price: afterPrice,
         price_filter_active: priceFilterActive,
+        metal_filter_active: metalFilterActive,
+        stone_filter_active: stoneFilterActive,
         duration_ms: Date.now() - started,
       }),
     );

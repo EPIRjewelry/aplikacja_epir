@@ -41,12 +41,30 @@ function parseSelectedOptions(variantChoice: string | null): SelectedOption[] | 
   return null;
 }
 
+function normalizeCartRefText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /** Kolejność: jawny product_ref tej tury → produkt ze strony (PDP) → selected z sesji. */
 function resolveCartHandle(ctx: GemmaActionContext): string | null {
   const ref = ctx.intent.product_ref?.trim();
   if (ref) {
     const shown = ctx.prev.shown.find((s) => s.ref === ref || s.handle === ref);
-    return shown?.handle || null;
+    if (shown) return shown.handle;
+    const norm = normalizeCartRefText(ref);
+    const byTitle = ctx.prev.shown.find(
+      (s) => s.title && normalizeCartRefText(s.title) === norm,
+    );
+    if (byTitle) return byTitle.handle;
+    return null;
+  }
+  if (ctx.prev.shown.length === 1) {
+    return ctx.prev.shown[0]?.handle ?? null;
   }
   const pageHandle = ctx.productHandle?.trim();
   if (pageHandle) return pageHandle;
@@ -84,7 +102,28 @@ function resolveVariantId(
   if (options?.length) {
     return findVariantIdBySelectedOptions(index, product.productId, options);
   }
+  if (choice) {
+    return resolveVariantIdFromTextChoice(product, variants, choice);
+  }
   return null;
+}
+
+function resolveVariantIdFromTextChoice(
+  product: ProductFacts,
+  availableVariants: ProductFacts['variants'],
+  choice: string,
+): string | null {
+  const normChoice = normalizeCartRefText(choice);
+  const tokens = normChoice.replace(/^rozmiar\s+/, '').split(/\s+/).filter(Boolean);
+  if (!tokens.length) return null;
+  const hits = availableVariants.filter((v) => {
+    const optionValues = v.selectedOptions.map((o) => normalizeCartRefText(o.value));
+    const sizeVal = v.size ? normalizeCartRefText(v.size) : '';
+    const values = [...optionValues, sizeVal].filter(Boolean);
+    return tokens.every((t) => values.some((val) => val === t || val.includes(t)));
+  });
+  if (hits.length !== 1) return null;
+  return hits[0].variantId || hits[0].variant_id || null;
 }
 
 function productUrlFromCtx(ctx: GemmaActionContext, product: ProductFacts | null): string | undefined {
@@ -111,7 +150,7 @@ export async function runCartAction(ctx: GemmaActionContext): Promise<GemmaCartF
   }
 
   if (intent.cart_action === 'remove') {
-    return {productUrl};
+    return {productUrl, cartFailed: true, clientErrors: []};
   }
 
   if (intent.cart_action === 'show') {
@@ -205,13 +244,17 @@ export async function runCartAction(ctx: GemmaActionContext): Promise<GemmaCartF
         };
       }
 
-      return {productUrl: productUrlFromCtx(ctx, product)};
+      return {
+        productUrl: productUrlFromCtx(ctx, product),
+        cartFailed: true,
+        clientErrors: [],
+      };
     } catch {
       return {productUrl: productUrlFromCtx(ctx, product), cartFailed: true};
     }
   }
 
-  return {productUrl};
+  return {productUrl, cartFailed: true, clientErrors: []};
 }
 
 export function formatCartMutationReply(facts: GemmaCartFacts): string | null {

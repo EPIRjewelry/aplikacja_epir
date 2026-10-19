@@ -206,7 +206,7 @@ describe('D-Q2 — koszyk bez shown po [NZ]', () => {
     );
     expect(cartTools).toHaveLength(0);
     expect(productSpy).not.toHaveBeenCalled();
-    expect(reply).toBe(epirCartProductQuestionReply('epir-online-store'));
+    expect(reply).toBe(epirCartProductQuestionReply('epir-online-store', false));
   });
 });
 

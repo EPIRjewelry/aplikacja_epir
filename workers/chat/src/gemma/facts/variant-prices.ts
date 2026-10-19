@@ -1,4 +1,4 @@
-import type {ProductMatch} from '../../facts/types';
+import type {MoneyPln, ProductMatch} from '../../facts/types';
 import type {GemmaVariantPriceFacts, GemmaVariantPriceLine} from './types';
 
 function variantLabel(v: {title?: string; metal?: string | null; size?: string | null}): string {
@@ -40,4 +40,53 @@ export function buildGemmaVariantPriceFacts(match: ProductMatch): GemmaVariantPr
         match.matchingPriceRange.max.display_pl,
       )} (warianty się różnią ceną)`;
   return {lines, isFlat, rangeText};
+}
+
+function priceMinor(v: {price?: {minor?: number; amount_minor?: number}}): number {
+  return v.price?.minor ?? v.price?.amount_minor ?? 0;
+}
+
+function variantMatchesMetal(v: {metal?: string | null}, metal: string[]): boolean {
+  if (!metal.length) return true;
+  if (!v.metal) return false;
+  const vMetal = v.metal.trim().toLowerCase();
+  return metal.some((m) => vMetal.includes(m.toLowerCase()));
+}
+
+/** Warianty pasujące do metalu, ale powyżej priceMax — fakt „ponad budżet” dla modelu B (D6). */
+export function overBudgetMetalPriceLines(
+  match: ProductMatch,
+  metal: string[] | undefined,
+  priceMax: MoneyPln | undefined,
+): GemmaVariantPriceLine[] {
+  if (!metal?.length || priceMax === undefined) return [];
+  const maxMinor = priceMax.minor ?? priceMax.amount_minor;
+  if (maxMinor === undefined) return [];
+  const inBudgetIds = new Set(
+    match.matchingVariants.map((v) => v.variantId || v.variant_id || ''),
+  );
+  const lines: GemmaVariantPriceLine[] = [];
+  for (const v of match.product.variants) {
+    const id = v.variantId || v.variant_id || '';
+    if (!variantMatchesMetal(v, metal)) continue;
+    const minor = priceMinor(v);
+    if (minor <= maxMinor) continue;
+    if (inBudgetIds.has(id)) continue;
+    lines.push({
+      variantId: id,
+      label: variantLabel(v),
+      displayPl: `${displayPl(minor, v.price.display_pl)} (ponad budżet)`,
+      minor,
+    });
+  }
+  return lines;
+}
+
+export function appendOverBudgetToPriceDisplay(
+  base: string,
+  overLines: GemmaVariantPriceLine[],
+): string {
+  if (!overLines.length) return base;
+  const extra = overLines.map((l) => l.displayPl).join('; ');
+  return base ? `${base}; ${extra}` : extra;
 }

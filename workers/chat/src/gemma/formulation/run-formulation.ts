@@ -16,6 +16,9 @@ import {
   assertStitchedUrlsAllowed,
   validateFormulationTextBeforeStitch,
 } from '../validation/reply-validator';
+import {epirKbAnswerReply} from '../profiles/epir';
+import {slotsToCatalogFilters} from '../actions/slots-to-filters';
+import type {CatalogFilterContext} from './types';
 
 export async function maybeFormulateReply(params: {
   env: Env;
@@ -26,10 +29,24 @@ export async function maybeFormulateReply(params: {
   missingSlot?: keyof GemmaSlots;
   outcome: GemmaActionOutcome;
   deterministicReply: string;
+  slots?: GemmaSlots;
+  userCorpus?: string;
 }): Promise<string> {
   if (!shouldInvokeFormulationB(params.state, params.outcome)) {
     return params.deterministicReply;
   }
+
+  const catalogFilters: CatalogFilterContext | undefined =
+    params.slots && params.userCorpus
+      ? (() => {
+          const f = slotsToCatalogFilters(params.slots, params.userCorpus);
+          const ctx: CatalogFilterContext = {metal: f.metal};
+          if (f.priceMax !== undefined && typeof f.priceMax === 'object') {
+            ctx.priceMax = f.priceMax;
+          }
+          return ctx;
+        })()
+      : undefined;
 
   const turn = buildTurnFacts({
     channelId: params.channelId,
@@ -37,6 +54,7 @@ export async function maybeFormulateReply(params: {
     missingSlot: params.missingSlot,
     userText: params.userText,
     outcome: params.outcome,
+    catalogFilters,
   });
 
   const deadlineMs = Date.now() + GEMMA_FORMULATION_BUDGET_MS;
@@ -124,5 +142,12 @@ export async function maybeFormulateReply(params: {
       ms: Date.now() - start,
     }),
   );
+  if (
+    params.state === 'polityki_kontakt' &&
+    turn.kbAnswer &&
+    violations.includes('kb_fact_dropped')
+  ) {
+    return epirKbAnswerReply(turn.kbAnswer);
+  }
   return params.deterministicReply;
 }

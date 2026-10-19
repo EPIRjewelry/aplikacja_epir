@@ -1,15 +1,55 @@
 import type {GemmaIntent} from '../intent/schema';
-import {
-  intentHasSearchableProductSlots,
-  isCustomOrderProductType,
-  isThanksOccasionMarker,
-  shouldPersistSlotInSession,
-} from './slot-markers';
 import type {
   GemmaConversationState,
   GemmaSessionState,
   GemmaSlots,
 } from './types';
+
+const THANKS_OCCASION = 'podziękowanie';
+
+export function isThanksOccasionMarker(value: string | null | undefined): boolean {
+  return value?.trim().toLowerCase() === THANKS_OCCASION;
+}
+
+/** Znacznik intencji A — nie utrwalać w sesji ani w tekście UCP. */
+export function isCustomOrderProductType(value: string | null | undefined): boolean {
+  const pt = value?.trim().toLowerCase() ?? '';
+  if (!pt) return false;
+  return (
+    pt.includes('zamówienie indywidualne') ||
+    pt.includes('odcisk') ||
+    pt === 'indywidualne' ||
+    pt.includes('indywidualne')
+  );
+}
+
+/** Sloty produktowe z intencji A (bez znaczników podziękowanie / zamówienie indywidualne). */
+export function intentHasSearchableProductSlots(slots: GemmaSlots): boolean {
+  if (slots.product_type?.trim() && !isCustomOrderProductType(slots.product_type)) {
+    return true;
+  }
+  if (slots.metal?.trim()) return true;
+  if (slots.stone?.trim()) return true;
+  if (slots.recipient?.trim()) return true;
+  const occ = slots.occasion?.trim();
+  if (occ && !isThanksOccasionMarker(occ)) return true;
+  return false;
+}
+
+export function shouldPersistSlotInSession(key: keyof GemmaSlots, value: string): boolean {
+  const v = value.trim();
+  if (!v) return false;
+  if (key === 'occasion' && isThanksOccasionMarker(v)) return false;
+  if (key === 'product_type' && isCustomOrderProductType(v)) return false;
+  return true;
+}
+
+export function catalogTextFromSlots(slots: GemmaSlots): string {
+  const parts = [slots.product_type, slots.occasion, slots.recipient, slots.metal, slots.stone]
+    .map((s) => s?.trim())
+    .filter(Boolean);
+  return parts.join(' ').trim();
+}
 
 export type GemmaAllowedAction = 'search_catalog' | 'get_product' | 'cart' | 'kb_policies';
 
@@ -25,7 +65,7 @@ export function intentRequestsCustomOrder(intent: GemmaIntent): boolean {
   return isCustomOrderProductType(intent.slots.product_type);
 }
 
-function isThanksAckIntent(intent: GemmaIntent): boolean {
+export function isThanksAckIntent(intent: GemmaIntent): boolean {
   return (
     isThanksOccasionMarker(intent.slots.occasion) &&
     !intentHasSearchableProductSlots(intent.slots)
@@ -96,6 +136,18 @@ export function transitionGemmaState(
     };
   }
 
+  const cartShowIsProductBrowse =
+    intent.cart_action === 'show' &&
+    (intentHasSearchableProductSlots(intent.slots) || Boolean(intent.product_ref?.trim()));
+
+  if (cartShowIsProductBrowse) {
+    return {
+      nextState: 'propozycje',
+      slots: mergedSlots,
+      allowedActions: ['search_catalog'],
+    };
+  }
+
   if (intent.cart_action) {
     return {
       nextState: 'koszyk',
@@ -120,7 +172,11 @@ export function transitionGemmaState(
     };
   }
 
-  if (isNeedKnown(mergedSlots)) {
+  if (
+    isNeedKnown(mergedSlots) ||
+    intentHasSearchableProductSlots(mergedSlots) ||
+    intentHasSearchableProductSlots(intent.slots)
+  ) {
     return {
       nextState: 'propozycje',
       slots: mergedSlots,

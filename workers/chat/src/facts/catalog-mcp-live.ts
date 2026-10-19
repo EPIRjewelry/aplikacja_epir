@@ -120,7 +120,7 @@ export async function executeCatalogMcpLiveSearch(
   }
 
   const filterIgnored = parseUcpFilterIgnoredMessages(mcpOut);
-  const ids = parseUcpSearchProductIds(mcpOut);
+  const ids = [...new Set(parseUcpSearchProductIds(mcpOut))];
   const logStages = Boolean(options?.throwOnMcpError);
   if (logStages) {
     console.log(
@@ -143,7 +143,11 @@ export async function executeCatalogMcpLiveSearch(
     };
   }
 
-  const facts = await fetchProductFactsLive(env, channel, ids, options);
+  const hydrationStats = {null_nodes: 0, normalize_null: 0, no_url: 0};
+  const facts = await fetchProductFactsLive(env, channel, ids, {
+    ...options,
+    hydrationStats,
+  });
   if (logStages) {
     console.log(
       JSON.stringify({
@@ -152,6 +156,9 @@ export async function executeCatalogMcpLiveSearch(
         ucp_ids: ids.length,
         facts_hydrated: facts.length,
         dropped_no_store_url: ids.length - facts.length,
+        null_nodes: hydrationStats.null_nodes,
+        normalize_null: hydrationStats.normalize_null,
+        no_url: hydrationStats.no_url,
       }),
     );
   }

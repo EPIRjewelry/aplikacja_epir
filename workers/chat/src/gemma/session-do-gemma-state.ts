@@ -16,7 +16,7 @@ const SLOT_KEYS = new Set([
   'recipient',
 ]);
 
-const SHOWN_KEYS = new Set(['ref', 'productId', 'handle', 'variantIds', 'url']);
+const SHOWN_KEYS = new Set(['ref', 'productId', 'handle', 'variantIds', 'url', 'title']);
 
 function validateSlots(slots: unknown): GemmaSlots | {error: string} {
   if (slots === undefined || slots === null) return {};

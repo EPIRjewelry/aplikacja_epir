@@ -164,6 +164,8 @@ async function runInsideGate(
     missingSlot: transitioned.missingSlot,
     outcome: actionOutcome,
     deterministicReply: deterministic,
+    slots: transitioned.slots,
+    userCorpus,
   });
 
   if (sessionId) {

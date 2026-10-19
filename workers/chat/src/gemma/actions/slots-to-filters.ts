@@ -1,5 +1,5 @@
 import {moneyFromMinor} from '../../facts/types';
-import {catalogTextFromSlots} from '../state/slot-markers';
+import {catalogTextFromSlots} from '../state/machine';
 import type {GemmaSlots} from '../state/types';
 import type {GemmaCatalogSearchFilters} from '../facts/types';
 import {customerRequestsGiftCard} from '../facts/gift-card-catalog';
@@ -34,10 +34,33 @@ function normalizeBudgetCorpus(userCorpus: string): string {
   return userCorpus.replace(/,/g, '.');
 }
 
+function parseLeadingAmountBeforeThousand(corpus: string): number | undefined {
+  const thousandSuffix = '(?:tys\\.?|tysiąc|tysiące|tysięcy|tyś)';
+  const re = new RegExp(`(?<!\\p{L})(\\d+(?:[.,]\\d+)?)\\s*${thousandSuffix}(?!\\p{L})`, 'iu');
+  const m = re.exec(corpus);
+  if (!m?.[1]) return undefined;
+  const pln = plnFromBudgetDigits(m[1]);
+  return pln;
+}
+
+function corpusConfirmsBudgetViaThousandWord(digits: string, userCorpus: string): boolean {
+  const pln = plnFromBudgetDigits(digits);
+  if (pln === undefined) return false;
+  const corpusAmount = parseLeadingAmountBeforeThousand(normalizeBudgetCorpus(userCorpus));
+  if (corpusAmount === undefined) return false;
+  return Math.abs(corpusAmount * 1000 - pln) < 0.01;
+}
+
 function thousandMultiplierInCorpus(digits: string, userCorpus: string): boolean {
   const pln = plnFromBudgetDigits(digits);
   if (pln === undefined) return false;
   const corpus = normalizeBudgetCorpus(userCorpus);
+  const corpusAmount = parseLeadingAmountBeforeThousand(corpus);
+  if (corpusAmount !== undefined) {
+    const impliedPln = corpusAmount * 1000;
+    if (Math.abs(impliedPln - pln) < 0.01) return false;
+    if (Math.abs(corpusAmount - pln) < 0.001) return true;
+  }
   const amountLiteral = String(pln).replace('.', '\\.');
   const thousandSuffix = '(?:tys\\.?|tysiąc|tysiące|tysięcy|tyś)';
   const tysRe = new RegExp(`(?<!\\p{L})${amountLiteral}\\s*${thousandSuffix}(?!\\p{L})`, 'iu');
@@ -50,9 +73,9 @@ function minorFromBudgetDigits(digits: string, userCorpus: string): number | und
   const pln = plnFromBudgetDigits(digits);
   if (pln === undefined) return undefined;
   if (thousandMultiplierInCorpus(digits, userCorpus)) {
-    return pln * 1000 * 100;
+    return Math.round(pln * 1000 * 100);
   }
-  return pln * 100;
+  return Math.round(pln * 100);
 }
 
 /** Cyfry ze slotu budżetu muszą wystąpić w korpusie usera (D1). */
@@ -69,7 +92,11 @@ export function budgetMinorFromSlots(slots: GemmaSlots, userCorpus: string): num
       corpusNumbers.has(digits) ||
       corpusNumbers.has(digits.replace(',', '.')) ||
       corpusNumbers.has(digits.replace('.', ','));
-    if (!corpusHit) continue;
+    const thousandHit =
+      !corpusHit &&
+      (thousandMultiplierInCorpus(digits, userCorpus) ||
+        corpusConfirmsBudgetViaThousandWord(digits, userCorpus));
+    if (!corpusHit && !thousandHit) continue;
     const minor = minorFromBudgetDigits(digits, userCorpus);
     if (minor !== undefined) return minor;
   }
@@ -111,13 +138,44 @@ function parseRangeBounds(
   return null;
 }
 
+function escapeBudgetDigitsForRegex(digits: string): string {
+  const normalized = normalizeBudgetDigits(digits).replace(',', '.');
+  const parts = normalized.split('.');
+  const intPart = (parts[0] ?? '').replace(/\D/g, '');
+  if (!intPart) return '';
+  const intSpaced = intPart.split('').join('\\s*');
+  if (parts.length > 1 && parts[1]) {
+    const frac = parts[1].replace(/\D/g, '');
+    if (frac) return `${intSpaced}[.,]\\s*${frac.split('').join('\\s*')}`;
+  }
+  return intSpaced;
+}
+
 function isMinBudgetMarkerBeforeNumber(userCorpus: string, digits: string): boolean {
-  const spaced = digits.split('').join('\\s*');
+  const corpus = normalizeBudgetCorpus(userCorpus);
+  const thousandSuffix = '(?:tys\\.?|tysiąc|tysiące|tysięcy|tyś)';
+  const corpusThousand = parseLeadingAmountBeforeThousand(corpus);
+  const slotPln = plnFromBudgetDigits(digits);
+  if (corpusThousand !== undefined && slotPln !== undefined) {
+    const impliedPln = corpusThousand * 1000;
+    const amountsMatch =
+      Math.abs(corpusThousand - slotPln) < 0.001 || Math.abs(impliedPln - slotPln) < 0.01;
+    if (amountsMatch) {
+      const amountPattern = String(corpusThousand).replace('.', '[.,]');
+      const tysRe = new RegExp(
+        `(?<!\\p{L})(?:od|powyżej|ponad|minimum|co najmniej|nie mniej niż)\\s+${amountPattern}\\s*${thousandSuffix}`,
+        'iu',
+      );
+      if (tysRe.test(corpus)) return true;
+    }
+  }
+  const spaced = escapeBudgetDigitsForRegex(digits);
+  if (!spaced) return false;
   const re = new RegExp(
-    `(?<!\\p{L})(?:od|powyżej|ponad|minimum|co najmniej|nie mniej niż)\\s+${spaced}(?:\\s*zł)?`,
+    `(?<!\\p{L})(?:od|powyżej|ponad|minimum|co najmniej|nie mniej niż)\\s+${spaced}(?:\\s*(?:zł|pln))?(?:\\s*${thousandSuffix})?`,
     'iu',
   );
-  return re.test(userCorpus);
+  return re.test(corpus);
 }
 
 export function budgetPriceBoundsFromSlots(
@@ -136,7 +194,7 @@ export function budgetPriceBoundsFromSlots(
   const minor = budgetMinorFromSlots(slots, userCorpus);
   if (minor === undefined) return {};
 
-  const digits = String(minor / 100);
+  const digits = slots.budget?.trim() ?? String(minor / 100);
   if (isMinBudgetMarkerBeforeNumber(userCorpus, digits)) {
     return {priceMin: moneyFromMinor(minor)};
   }
