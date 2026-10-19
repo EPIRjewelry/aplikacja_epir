@@ -198,7 +198,7 @@ describe('fetchProductFactsLive', () => {
     expect(products[0].handle).toBe('ok');
   });
 
-  it('hydrates epir-online-store product without onlineStoreUrl via apex template', async () => {
+  it('skips epir-online-store product without onlineStoreUrl', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       nodesResponse([
         {
@@ -216,6 +216,7 @@ describe('fetchProductFactsLive', () => {
         },
       ]),
     );
+    const hydrationStats = {null_nodes: 0, normalize_null: 0, no_url: 0};
     const products = await fetchProductFactsLive(
       {
         SHOP_DOMAIN: 'example.myshopify.com',
@@ -223,9 +224,56 @@ describe('fetchProductFactsLive', () => {
       } as Env,
       'epir-online-store',
       ['gid://shopify/Product/3'],
+      {hydrationStats},
     );
-    expect(products).toHaveLength(1);
-    expect(products[0]?.url).toBe('https://epirbizuteria.pl/products/hidden');
+    expect(products).toHaveLength(0);
+    expect(hydrationStats.no_url).toBe(1);
+  });
+
+  it('counts null_nodes when Storefront returns a null node', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      nodesResponse([
+        {
+          id: 'gid://shopify/Product/n1',
+          handle: 'ok-a',
+          title: 'Ok A',
+          productType: 'Ring',
+          onlineStoreUrl: 'https://epirbizuteria.pl/products/ok-a',
+          collections: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: []},
+          variants: {
+            pageInfo: {hasNextPage: false, endCursor: null},
+            nodes: [mkVariantNode('gid://shopify/ProductVariant/n1', '10.00')],
+          },
+          metafields: [],
+        },
+        null,
+        {
+          id: 'gid://shopify/Product/n3',
+          handle: 'ok-b',
+          title: 'Ok B',
+          productType: 'Ring',
+          onlineStoreUrl: 'https://epirbizuteria.pl/products/ok-b',
+          collections: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: []},
+          variants: {
+            pageInfo: {hasNextPage: false, endCursor: null},
+            nodes: [mkVariantNode('gid://shopify/ProductVariant/n3', '12.00')],
+          },
+          metafields: [],
+        },
+      ]),
+    );
+    const hydrationStats = {null_nodes: 0, normalize_null: 0, no_url: 0};
+    const products = await fetchProductFactsLive(
+      {
+        SHOP_DOMAIN: 'example.myshopify.com',
+        SHOPIFY_STOREFRONT_TOKEN: 'public-epir',
+      } as Env,
+      'epir-online-store',
+      ['gid://shopify/Product/n1', 'gid://shopify/Product/n2', 'gid://shopify/Product/n3'],
+      {hydrationStats},
+    );
+    expect(products).toHaveLength(2);
+    expect(hydrationStats.null_nodes).toBe(1);
   });
 
   it('epir-online-store with SHOPIFY_STOREFRONT_TOKEN uses public header, no Buyer-IP', async () => {

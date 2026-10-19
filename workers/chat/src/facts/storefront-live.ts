@@ -134,14 +134,9 @@ function zareczynyUrlTemplate(): string {
   return 'https://zareczyny.epirbizuteria.pl/products/{handle}';
 }
 
-function epirApexUrlTemplate(): string {
-  return 'https://epirbizuteria.pl/products/{handle}';
-}
-
 function urlTemplateForChannel(channel: BuyerChannelId): string | undefined {
   if (channel === 'kazka-hydrogen') return kazkaUrlTemplate();
   if (channel === 'epir-zareczyny') return zareczynyUrlTemplate();
-  if (channel === 'epir-online-store') return epirApexUrlTemplate();
   return undefined;
 }
 
