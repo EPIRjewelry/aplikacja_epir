@@ -118,7 +118,7 @@ describe('runda-6a9c6bd — metal i ceny (#5–7)', () => {
     expect(display).toMatch(/3000/);
   });
 
-  it('T-6a9c6bd-METAL-3: wariant bez metalu przy slocie metal → 0 kart', async () => {
+  it('T-6a9c6bd-METAL-3: wariant bez metalu przy slocie metal → produkt zostaje', async () => {
     const base = fictionalMultiVariantProduct();
     const product = {
       ...base,
@@ -143,7 +143,32 @@ describe('runda-6a9c6bd — metal i ceny (#5–7)', () => {
       {metal: ['złoto']},
       10,
     );
-    expect(out).toHaveLength(0);
+    expect(out).toHaveLength(1);
+  });
+
+  it('T-6a9c6bd-STONE-1: slot kamień, stones=[] → produkt zostaje', async () => {
+    const base = fictionalMultiVariantProduct();
+    const product = {...base, stones: []};
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [fictionalMatchFromProduct(product)],
+        total: 1,
+        facets: {
+          total: 1,
+          byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
+    const out = await searchGemmaCatalog(
+      {SHOP_DOMAIN: 'x'} as never,
+      'epir-online-store',
+      {stone: ['fikcyjny szafir']},
+      10,
+    );
+    expect(out).toHaveLength(1);
   });
 
   it('T-6a9c6bd-OVER-2: buildTurnFacts zawiera ponad budżet', () => {

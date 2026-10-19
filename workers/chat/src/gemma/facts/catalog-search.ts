@@ -7,11 +7,72 @@ import {
   getCatalogRepository,
 } from '../../facts';
 import {filterProducts} from '../../facts/filter';
-import type {ProductMatch} from '../../facts/types';
+import {moneyFromMinor} from '../../facts/types';
+import type {ProductFacts, ProductMatch, VariantFacts} from '../../facts/types';
 import {filterProductMatchesByZareczynyTag} from './assortment';
 import {CatalogMcpSearchError} from './catalog-mcp-error';
 import {filterOutGiftCardMatches} from './gift-card-catalog';
 import type {GemmaCatalogSearchFilters} from './types';
+
+function rebuildProductMatch(product: ProductFacts, matching: VariantFacts[]): ProductMatch {
+  const prices = matching.map((v) => v.price.minor ?? v.price.amount_minor ?? 0);
+  const minM = Math.min(...prices);
+  const maxM = Math.max(...prices);
+  const isFlat = minM === maxM;
+  return {
+    product,
+    matchingVariants: matching,
+    matchingVariantIds: matching.map((v) => v.variantId || v.variant_id || ''),
+    matchingPriceRange: {
+      min: moneyFromMinor(minM),
+      max: moneyFromMinor(maxM),
+      isFlat,
+    },
+    isFlat,
+  };
+}
+
+function distinctFilledMetalKeys(variants: VariantFacts[]): Set<string> {
+  const keys = new Set<string>();
+  for (const v of variants) {
+    const m = v.metal?.trim();
+    if (m) keys.add(m.toLowerCase());
+  }
+  return keys;
+}
+
+function narrowMatchesByMetalSlot(
+  matches: ProductMatch[],
+  metalTokens: string[],
+): {matches: ProductMatch[]; metalFilterApplied: boolean} {
+  if (!metalTokens.length) {
+    return {matches, metalFilterApplied: false};
+  }
+
+  let metalFilterApplied = false;
+  const next: ProductMatch[] = [];
+
+  for (const match of matches) {
+    const variants =
+      match.matchingVariants.length > 0 ? match.matchingVariants : match.product.variants;
+    const distinctMetals = distinctFilledMetalKeys(variants);
+    if (distinctMetals.size <= 1) {
+      next.push(match);
+      continue;
+    }
+
+    metalFilterApplied = true;
+    const narrowed = variants.filter((v) => {
+      if (!v.metal) return false;
+      const vMetal = v.metal.trim().toLowerCase();
+      return metalTokens.some((m) => vMetal.includes(m.toLowerCase()));
+    });
+    if (!narrowed.length) continue;
+    next.push(rebuildProductMatch(match.product, narrowed));
+  }
+
+  return {matches: next, metalFilterApplied};
+}
 
 export type GemmaCatalogPricedMatch = {match: ProductMatch; minMinor: number};
 
@@ -60,13 +121,17 @@ export async function searchGemmaCatalog(
 
     let out: ProductMatch[] = matches;
     const priceFilterActive = priceMin !== undefined || priceMax !== undefined;
-    const metalFilterActive = Boolean(metal?.length);
-    const stoneFilterActive = Boolean(stone?.length);
-    const localVariantFilterActive =
-      priceFilterActive || metalFilterActive || stoneFilterActive;
-    if (localVariantFilterActive) {
+    const metalSlotActive = Boolean(metal?.length);
+    if (priceFilterActive) {
       const products = matches.map((m) => m.product);
-      out = filterProducts(products, {priceMin, priceMax, metal, stone});
+      out = filterProducts(products, {priceMin, priceMax});
+    }
+
+    let metalFilterApplied = false;
+    if (metalSlotActive && metal) {
+      const narrowed = narrowMatchesByMetalSlot(out, metal);
+      out = narrowed.matches;
+      metalFilterApplied = narrowed.metalFilterApplied;
     }
 
     const afterPrice = out.length;
@@ -82,8 +147,8 @@ export async function searchGemmaCatalog(
         after_gift_card: matches.length,
         after_price: afterPrice,
         price_filter_active: priceFilterActive,
-        metal_filter_active: metalFilterActive,
-        stone_filter_active: stoneFilterActive,
+        metal_filter_active: metalFilterApplied,
+        stone_filter_active: false,
         duration_ms: Date.now() - started,
       }),
     );
