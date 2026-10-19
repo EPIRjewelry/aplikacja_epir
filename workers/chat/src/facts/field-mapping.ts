@@ -13,6 +13,7 @@ const METAL_OPTION_NAMES = new Set([
   'metal',
   'materiał',
   'material',
+  'jewelry material',
   // do uzupełnienia po inwentaryzacji
 ]);
 

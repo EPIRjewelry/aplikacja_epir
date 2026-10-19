@@ -4,6 +4,8 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {searchGemmaCatalog} from '../../../src/gemma/facts/catalog-search';
 import * as facts from '../../../src/facts';
+import {normalizeProduct} from '../../../src/facts/normalize';
+import {isMetalOption} from '../../../src/facts/field-mapping';
 import {
   budgetPriceBoundsFromSlots,
   budgetMinorFromSlots,
@@ -169,6 +171,164 @@ describe('runda-6a9c6bd — metal i ceny (#5–7)', () => {
       10,
     );
     expect(out).toHaveLength(1);
+  });
+
+  it('T-6a9c6bd-METAL-E: slot B + max 3000 przy A=2610/B=5000 → 0; bez ceny A', async () => {
+    const base = fictionalMultiVariantProduct();
+    const variantA = {
+      ...base.variants[0],
+      metal: 'metal A',
+      price: moneyFromMinor(261_000),
+      variantId: 'gid://shopify/ProductVariant/metal-a',
+    };
+    const variantB = {
+      ...base.variants[1],
+      metal: 'metal B',
+      price: moneyFromMinor(500_000),
+      variantId: 'gid://shopify/ProductVariant/metal-b',
+    };
+    const product = {...base, variants: [variantA, variantB]};
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [fictionalMatchFromProduct(product)],
+        total: 1,
+        facets: {
+          total: 1,
+          byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
+    const out = await searchGemmaCatalog(
+      {SHOP_DOMAIN: 'x'} as never,
+      'epir-online-store',
+      {metal: ['metal B'], priceMax: moneyFromMinor(300_000)},
+      10,
+    );
+    expect(out).toHaveLength(0);
+    for (const m of out) {
+      expect(m.matchingVariants.some((v) => (v.price.minor ?? 0) === 261_000)).toBe(false);
+      expect(m.matchingVariantIds).not.toContain('gid://shopify/ProductVariant/metal-a');
+    }
+  });
+
+  it('T-6a9c6bd-HYDRATE-JM: Jewelry material → normalize → search; 585 do 3000 → 0 bez 333', async () => {
+    expect(isMetalOption('Jewelry material')).toBe(true);
+    const normalized = normalizeProduct(
+      {
+        id: 'gid://shopify/Product/jm-fikcja',
+        handle: 'fikcyjny-jm-szafir',
+        title: 'Fikcyjny pierścionek JM',
+        onlineStoreUrl: 'https://example.test/products/fikcyjny-jm-szafir',
+        variants: {
+          nodes: [
+            {
+              id: 'gid://shopify/ProductVariant/jm-333',
+              title: 'złoto 333',
+              price: {amount: '2610.00', currencyCode: 'PLN'},
+              availableForSale: true,
+              selectedOptions: [{name: 'Jewelry material', value: 'złoto 333'}],
+            },
+            {
+              id: 'gid://shopify/ProductVariant/jm-585',
+              title: 'złoto 585',
+              price: {amount: '5000.00', currencyCode: 'PLN'},
+              availableForSale: true,
+              selectedOptions: [{name: 'Jewelry material', value: 'złoto 585'}],
+            },
+          ],
+        },
+      },
+      {channel: 'epir'},
+    );
+    expect(normalized).not.toBeNull();
+    expect(normalized!.variants.map((v) => v.metal)).toEqual(['złoto 333', 'złoto 585']);
+
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [fictionalMatchFromProduct(normalized!)],
+        total: 1,
+        facets: {
+          total: 1,
+          byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
+
+    const out = await searchGemmaCatalog(
+      {SHOP_DOMAIN: 'x'} as never,
+      'epir-online-store',
+      {metal: ['585'], priceMax: moneyFromMinor(300_000)},
+      10,
+    );
+    expect(out).toHaveLength(0);
+    for (const m of out) {
+      expect(m.matchingVariants.some((v) => v.metal?.includes('333'))).toBe(false);
+      expect(m.matchingVariants.some((v) => (v.price.minor ?? 0) === 261_000)).toBe(false);
+      expect(m.matchingVariantIds).not.toContain('gid://shopify/ProductVariant/jm-333');
+    }
+  });
+
+  it('T-6a9c6bd-HYDRATE-JM-ID: 585 w budżecie → tylko wariant 585, nie 333', async () => {
+    const normalized = normalizeProduct(
+      {
+        id: 'gid://shopify/Product/jm-fikcja-id',
+        handle: 'fikcyjny-jm-id',
+        title: 'Fikcyjny pierścionek JM id',
+        onlineStoreUrl: 'https://example.test/products/fikcyjny-jm-id',
+        variants: {
+          nodes: [
+            {
+              id: 'gid://shopify/ProductVariant/jm-id-333',
+              title: 'złoto 333',
+              price: {amount: '2610.00', currencyCode: 'PLN'},
+              availableForSale: true,
+              selectedOptions: [{name: 'Jewelry material', value: 'złoto 333'}],
+            },
+            {
+              id: 'gid://shopify/ProductVariant/jm-id-585',
+              title: 'złoto 585',
+              price: {amount: '2900.00', currencyCode: 'PLN'},
+              availableForSale: true,
+              selectedOptions: [{name: 'Jewelry material', value: 'złoto 585'}],
+            },
+          ],
+        },
+      },
+      {channel: 'epir'},
+    );
+    expect(normalized).not.toBeNull();
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [fictionalMatchFromProduct(normalized!)],
+        total: 1,
+        facets: {
+          total: 1,
+          byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
+
+    const out = await searchGemmaCatalog(
+      {SHOP_DOMAIN: 'x'} as never,
+      'epir-online-store',
+      {metal: ['585'], priceMax: moneyFromMinor(300_000)},
+      10,
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].matchingVariants).toHaveLength(1);
+    expect(out[0].matchingVariants[0].variantId).toBe('gid://shopify/ProductVariant/jm-id-585');
+    expect(out[0].matchingVariants[0].metal).toBe('złoto 585');
+    expect(out[0].matchingVariants[0].price.minor).toBe(290_000);
+    expect(out[0].matchingVariantIds).not.toContain('gid://shopify/ProductVariant/jm-id-333');
   });
 
   it('T-6a9c6bd-OVER-2: buildTurnFacts zawiera ponad budżet', () => {

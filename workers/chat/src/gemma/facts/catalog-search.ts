@@ -8,7 +8,7 @@ import {
 } from '../../facts';
 import {filterProducts} from '../../facts/filter';
 import {moneyFromMinor} from '../../facts/types';
-import type {ProductFacts, ProductMatch, VariantFacts} from '../../facts/types';
+import type {MoneyPln, ProductFacts, ProductMatch, VariantFacts} from '../../facts/types';
 import {filterProductMatchesByZareczynyTag} from './assortment';
 import {CatalogMcpSearchError} from './catalog-mcp-error';
 import {filterOutGiftCardMatches} from './gift-card-catalog';
@@ -32,41 +32,72 @@ function rebuildProductMatch(product: ProductFacts, matching: VariantFacts[]): P
   };
 }
 
-function distinctFilledMetalKeys(variants: VariantFacts[]): Set<string> {
-  const keys = new Set<string>();
-  for (const v of variants) {
-    const m = v.metal?.trim();
-    if (m) keys.add(m.toLowerCase());
-  }
-  return keys;
+function priceMinorOf(v: MoneyPln | number | undefined): number | undefined {
+  if (v === undefined) return undefined;
+  if (typeof v === 'number') return v;
+  return v.minor ?? v.amount_minor;
 }
 
-function narrowMatchesByMetalSlot(
-  matches: ProductMatch[],
-  metalTokens: string[],
-): {matches: ProductMatch[]; metalFilterApplied: boolean} {
-  if (!metalTokens.length) {
-    return {matches, metalFilterApplied: false};
-  }
+function variantMatchesMetalTokens(v: VariantFacts, metalTokens: string[]): boolean {
+  if (!v.metal) return false;
+  const vMetal = v.metal.trim().toLowerCase();
+  return metalTokens.some((m) => vMetal.includes(m.toLowerCase()));
+}
 
+function variantMatchesPriceBounds(
+  v: VariantFacts,
+  priceMin: MoneyPln | number | undefined,
+  priceMax: MoneyPln | number | undefined,
+): boolean {
+  const min = priceMinorOf(priceMin);
+  const max = priceMinorOf(priceMax);
+  if (min === undefined && max === undefined) return true;
+  const p = v.price?.minor ?? v.price?.amount_minor;
+  if (p === undefined) return false;
+  if (min !== undefined && p < min) return false;
+  if (max !== undefined && p > max) return false;
+  return true;
+}
+
+function hasAnyFilledMetal(variants: VariantFacts[]): boolean {
+  return variants.some((v) => Boolean(v.metal?.trim()));
+}
+
+/**
+ * SSOT: gdy slot metalu aktywny i warianty mają v.metal — produkt tylko przy metal ∧ budżet
+ * na pełnym product.variants. Brak wypełnionego metalu → soft keep po cenie (NZ).
+ */
+function selectMatchesForMetalAndBudget(
+  matches: ProductMatch[],
+  opts: {
+    metal: string[];
+    priceMin?: MoneyPln | number;
+    priceMax?: MoneyPln | number;
+  },
+): {matches: ProductMatch[]; metalFilterApplied: boolean} {
+  const {metal: metalTokens, priceMin, priceMax} = opts;
+  const priceActive = priceMin !== undefined || priceMax !== undefined;
   let metalFilterApplied = false;
   const next: ProductMatch[] = [];
 
   for (const match of matches) {
-    const variants =
-      match.matchingVariants.length > 0 ? match.matchingVariants : match.product.variants;
-    const distinctMetals = distinctFilledMetalKeys(variants);
-    if (distinctMetals.size <= 1) {
-      next.push(match);
+    const variants = match.product.variants;
+    if (!hasAnyFilledMetal(variants)) {
+      if (!priceActive) {
+        next.push(match);
+        continue;
+      }
+      const priced = filterProducts([match.product], {priceMin, priceMax});
+      if (priced.length) next.push(priced[0]!);
       continue;
     }
 
     metalFilterApplied = true;
-    const narrowed = variants.filter((v) => {
-      if (!v.metal) return false;
-      const vMetal = v.metal.trim().toLowerCase();
-      return metalTokens.some((m) => vMetal.includes(m.toLowerCase()));
-    });
+    const narrowed = variants.filter(
+      (v) =>
+        variantMatchesMetalTokens(v, metalTokens) &&
+        variantMatchesPriceBounds(v, priceMin, priceMax),
+    );
     if (!narrowed.length) continue;
     next.push(rebuildProductMatch(match.product, narrowed));
   }
@@ -91,7 +122,6 @@ export async function searchGemmaCatalog(
     text,
     ucpIntent,
     metal,
-    stone,
     ucpBrowseInStockAvailable,
     available,
     excludeGiftCards,
@@ -122,16 +152,19 @@ export async function searchGemmaCatalog(
     let out: ProductMatch[] = matches;
     const priceFilterActive = priceMin !== undefined || priceMax !== undefined;
     const metalSlotActive = Boolean(metal?.length);
-    if (priceFilterActive) {
+    let metalFilterApplied = false;
+
+    if (metalSlotActive && metal) {
+      const selected = selectMatchesForMetalAndBudget(matches, {
+        metal,
+        priceMin,
+        priceMax,
+      });
+      out = selected.matches;
+      metalFilterApplied = selected.metalFilterApplied;
+    } else if (priceFilterActive) {
       const products = matches.map((m) => m.product);
       out = filterProducts(products, {priceMin, priceMax});
-    }
-
-    let metalFilterApplied = false;
-    if (metalSlotActive && metal) {
-      const narrowed = narrowMatchesByMetalSlot(out, metal);
-      out = narrowed.matches;
-      metalFilterApplied = narrowed.metalFilterApplied;
     }
 
     const afterPrice = out.length;
