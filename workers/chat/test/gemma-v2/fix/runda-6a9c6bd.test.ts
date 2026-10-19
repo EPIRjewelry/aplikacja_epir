@@ -24,6 +24,46 @@ import {
   fictionalMatchFromProduct,
   fictionalMultiVariantProduct,
 } from '../fixtures/fictional-catalog-products';
+import type {ProductFacts} from '../../../src/facts/types';
+
+function fictionalLesneGalazkiProduct(): ProductFacts {
+  const base = fictionalMultiVariantProduct();
+  return {
+    ...base,
+    productId: 'gid://shopify/Product/15839840436556',
+    handle: 'pierscionek-pozlacany-lesne-galazki',
+    title: 'Pierścionek pozłacany Leśne Gałązki',
+    metals: ['srebro 925, złocone'],
+    metafields: {'custom.metal': 'srebro 925, złocone'},
+    variants: [
+      {
+        ...base.variants[0],
+        variantId: 'gid://shopify/ProductVariant/57878288138572',
+        metal: null,
+        size: null,
+        selectedOptions: [{name: 'Title', value: 'Default Title'}],
+        price: moneyFromMinor(320_000),
+      },
+    ],
+    priceRange: {min: moneyFromMinor(320_000), max: moneyFromMinor(320_000), isFlat: true},
+  };
+}
+
+async function mockRepoWithProduct(product: ProductFacts) {
+  vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+    search: vi.fn().mockResolvedValue({
+      matches: [fictionalMatchFromProduct(product)],
+      total: 1,
+      facets: {
+        total: 1,
+        byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+        byStone: {},
+        byMetal: {},
+        byProductType: {},
+      },
+    }),
+  } as never);
+}
 import {moneyFromMinor} from '../../../src/facts/types';
 import {GEMMA_INTENT_SYSTEM_PROMPT} from '../../../src/gemma/intent/extract-intent';
 import {validateFormulationTextBeforeStitch} from '../../../src/gemma/validation/reply-validator';
@@ -118,6 +158,45 @@ describe('runda-6a9c6bd — metal i ceny (#5–7)', () => {
     const display = appendOverBudgetToPriceDisplay('1500,00 zł', over);
     expect(display).toMatch(/ponad budżet/i);
     expect(display).toMatch(/3000/);
+  });
+
+  it('T-PRODUCT-METAL-GALAZKI-1: fakt srebro/złocone, slot złoto → 0', async () => {
+    await mockRepoWithProduct(fictionalLesneGalazkiProduct());
+    const out = await searchGemmaCatalog(
+      {SHOP_DOMAIN: 'x'} as never,
+      'epir-online-store',
+      {metal: ['złoto']},
+      10,
+    );
+    expect(out).toHaveLength(0);
+  });
+
+  it('T-PRODUCT-METAL-GALAZKI-2: fakt srebro/złocone, slot 585 → 0', async () => {
+    await mockRepoWithProduct(fictionalLesneGalazkiProduct());
+    const out = await searchGemmaCatalog(
+      {SHOP_DOMAIN: 'x'} as never,
+      'epir-online-store',
+      {metal: ['585']},
+      10,
+    );
+    expect(out).toHaveLength(0);
+  });
+
+  it('T-PRODUCT-METAL-GALAZKI-3: fakt srebro/złocone, slot srebro → 1 wariant @ 3200', async () => {
+    await mockRepoWithProduct(fictionalLesneGalazkiProduct());
+    const out = await searchGemmaCatalog(
+      {SHOP_DOMAIN: 'x'} as never,
+      'epir-online-store',
+      {metal: ['srebro']},
+      10,
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].matchingVariants).toHaveLength(1);
+    expect(out[0].matchingVariants[0].variantId).toBe(
+      'gid://shopify/ProductVariant/57878288138572',
+    );
+    expect(out[0].matchingVariants[0].metal).toBeNull();
+    expect(out[0].matchingVariants[0].price.minor).toBe(320_000);
   });
 
   it('T-6a9c6bd-METAL-3: wariant bez metalu przy slocie metal → produkt zostaje', async () => {

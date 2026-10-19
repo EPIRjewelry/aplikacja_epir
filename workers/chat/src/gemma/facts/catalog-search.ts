@@ -63,9 +63,71 @@ function hasAnyFilledMetal(variants: VariantFacts[]): boolean {
   return variants.some((v) => Boolean(v.metal?.trim()));
 }
 
+function normalizeMaterialText(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+function materialWords(text: string): Set<string> {
+  const normalized = normalizeMaterialText(text);
+  if (!normalized) return new Set();
+  const parts = normalized.split(/[^a-z0-9]+/u).filter(Boolean);
+  return new Set(parts);
+}
+
+/** Fakt materiału produktu (nie opcja wariantu): metals[] + znane metapola. */
+function productMaterialFactText(product: ProductFacts): string {
+  const chunks: string[] = [];
+  for (const m of product.metals) {
+    if (m?.trim()) chunks.push(m.trim());
+  }
+  const customMetal = product.metafields['custom.metal'];
+  if (typeof customMetal === 'string' && customMetal.trim()) chunks.push(customMetal.trim());
+  const jewelryMaterial = product.metafields['shopify.jewelry-material'];
+  if (typeof jewelryMaterial === 'string' && jewelryMaterial.trim()) {
+    chunks.push(jewelryMaterial.trim());
+  } else if (Array.isArray(jewelryMaterial)) {
+    for (const entry of jewelryMaterial) {
+      if (String(entry).trim()) chunks.push(String(entry).trim());
+    }
+  }
+  return chunks.join(', ');
+}
+
+function hasProductMaterialFact(product: ProductFacts): boolean {
+  return Boolean(productMaterialFactText(product).trim());
+}
+
+/** Slot metalu vs fakt produktu — całe słowo (np. złoto ≠ złocone). */
+function productMaterialMatchesMetalTokens(haystack: string, metalTokens: string[]): boolean {
+  const words = materialWords(haystack);
+  if (!words.size) return false;
+  for (const token of metalTokens) {
+    const tokenWords = [...materialWords(token)];
+    if (!tokenWords.length) continue;
+    if (tokenWords.every((w) => words.has(w))) return true;
+  }
+  return false;
+}
+
+function keepMatchAfterPriceOnly(
+  match: ProductMatch,
+  priceMin: MoneyPln | number | undefined,
+  priceMax: MoneyPln | number | undefined,
+  priceActive: boolean,
+): ProductMatch | null {
+  if (!priceActive) return match;
+  const priced = filterProducts([match.product], {priceMin, priceMax});
+  return priced[0] ?? null;
+}
+
 /**
- * SSOT: gdy slot metalu aktywny i warianty mają v.metal — produkt tylko przy metal ∧ budżet
- * na pełnym product.variants. Brak wypełnionego metalu → soft keep po cenie (NZ).
+ * SSOT: wariant z v.metal → metal ∧ budżet na wariantach.
+ * Brak v.metal + fakt materiału produktu → slot musi pasować (całe słowo), potem cena.
+ * Brak obu → soft keep po cenie (NZ).
  */
 function selectMatchesForMetalAndBudget(
   matches: ProductMatch[],
@@ -82,24 +144,38 @@ function selectMatchesForMetalAndBudget(
 
   for (const match of matches) {
     const variants = match.product.variants;
-    if (!hasAnyFilledMetal(variants)) {
-      if (!priceActive) {
-        next.push(match);
-        continue;
-      }
-      const priced = filterProducts([match.product], {priceMin, priceMax});
-      if (priced.length) next.push(priced[0]!);
+    if (hasAnyFilledMetal(variants)) {
+      metalFilterApplied = true;
+      const narrowed = variants.filter(
+        (v) =>
+          variantMatchesMetalTokens(v, metalTokens) &&
+          variantMatchesPriceBounds(v, priceMin, priceMax),
+      );
+      if (!narrowed.length) continue;
+      next.push(rebuildProductMatch(match.product, narrowed));
       continue;
     }
 
-    metalFilterApplied = true;
-    const narrowed = variants.filter(
-      (v) =>
-        variantMatchesMetalTokens(v, metalTokens) &&
-        variantMatchesPriceBounds(v, priceMin, priceMax),
-    );
-    if (!narrowed.length) continue;
-    next.push(rebuildProductMatch(match.product, narrowed));
+    if (hasProductMaterialFact(match.product)) {
+      metalFilterApplied = true;
+      const haystack = productMaterialFactText(match.product);
+      if (!productMaterialMatchesMetalTokens(haystack, metalTokens)) continue;
+      const kept = keepMatchAfterPriceOnly(match, priceMin, priceMax, priceActive);
+      if (kept) next.push(kept);
+      continue;
+    }
+
+    if (hasProductMaterialFact(match.product)) {
+      metalFilterApplied = true;
+      const haystack = productMaterialFactText(match.product);
+      if (!productMaterialMatchesMetalTokens(haystack, metalTokens)) continue;
+      const kept = keepMatchAfterPriceOnly(match, priceMin, priceMax, priceActive);
+      if (kept) next.push(kept);
+      continue;
+    }
+
+    const kept = keepMatchAfterPriceOnly(match, priceMin, priceMax, priceActive);
+    if (kept) next.push(kept);
   }
 
   return {matches: next, metalFilterApplied};
