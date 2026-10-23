@@ -45,7 +45,7 @@ describe('Cień catalog qualitative fix', () => {
     const mcpSpy = vi.spyOn(mcpServer, 'callMcpToolDirect').mockResolvedValue({
       result: {content: [{type: 'text', text: JSON.stringify({products: []})}]},
     });
-    const filters = slotsToCatalogFilters({budget: 'tanio'}, 'coś taniego');
+    const filters = slotsToCatalogFilters({budget_qualitative: 'tanio'}, 'coś taniego');
     await searchGemmaCatalog(
       {
         SHOP_DOMAIN: 'example.myshopify.com',
@@ -63,7 +63,7 @@ describe('Cień catalog qualitative fix', () => {
   });
 
   it('T-FIX-1: slotsToCatalogFilters tanio bez typu → browse (M-FIX-1)', () => {
-    const filters = slotsToCatalogFilters({budget: 'tanio'}, 'coś taniego bym chciał');
+    const filters = slotsToCatalogFilters({budget_qualitative: 'tanio'}, 'coś taniego bym chciał');
     expect(filters.ucpBrowseInStockAvailable).toBe(true);
     expect(filters.text).toBeUndefined();
     expect(filters.priceMax).toBeUndefined();
@@ -91,7 +91,7 @@ describe('Cień catalog qualitative fix', () => {
         },
       }),
     } as never);
-    const filters = slotsToCatalogFilters({budget: 'tanio'}, 'coś taniego');
+    const filters = slotsToCatalogFilters({budget_qualitative: 'tanio'}, 'coś taniego');
     const out = await searchGemmaCatalog(
       {PRIVATE_STOREFRONT_API_TOKEN: 'x'} as never,
       'epir-online-store',
@@ -102,7 +102,7 @@ describe('Cień catalog qualitative fix', () => {
     const top = await fetchGemmaCatalogMatchesForTurn({
       env: {PRIVATE_STOREFRONT_API_TOKEN: 'x'} as never,
       channelId: 'epir-online-store',
-      slots: {budget: 'tanio'},
+      slots: {budget_qualitative: 'tanio'},
       userCorpus: 'coś taniego',
     });
     expect(top[0]!.match.product.giftCard).not.toBe(true);
@@ -112,7 +112,7 @@ describe('Cień catalog qualitative fix', () => {
     const searchSpy = vi.spyOn(catalogSearch, 'searchGemmaCatalog').mockResolvedValue([
       fictionalMatchFromProduct(fictionalMultiVariantProduct()),
     ]);
-    await stubGemmaIntentJson({slots: {budget: 'tanio'}});
+    await stubGemmaIntentJson({slots: {budget_qualitative: 'tanio'}});
     const {namespace} = makeTrackedSessionNamespace();
     const reply = await composeGemmaReply(
       {SESSION_DO: namespace} as never,
@@ -135,7 +135,7 @@ describe('Cień catalog qualitative fix', () => {
     const searchSpy = vi.spyOn(catalogSearch, 'searchGemmaCatalog').mockResolvedValue([]);
     await stubGemmaIntentJson({
       state: 'propozycje',
-      slots: {budget: 'tanio', recipient: 'żona'},
+      slots: {budget_qualitative: 'tanio', recipient: 'żona'},
     });
     const {namespace} = makeTrackedSessionNamespace();
     await composeGemmaReply(
@@ -168,7 +168,7 @@ describe('Cień catalog qualitative fix', () => {
     const top = await fetchGemmaCatalogMatchesForTurn({
       env: {} as never,
       channelId: 'epir-online-store',
-      slots: {budget: 'tanio'},
+      slots: {budget_qualitative: 'tanio'},
       userCorpus: 'coś taniego',
     });
     expect(top[0]!.minMinor).toBeLessThan(top[1]!.minMinor);
@@ -179,7 +179,7 @@ describe('Cień catalog qualitative fix', () => {
       fictionalMatchFromProduct(fictionalMultiVariantProduct()),
     ]);
     await stubGemmaIntentJson({
-      slots: {recipient: 'żona', occasion: 'prezent', budget: 'skromnie, tanio'},
+      slots: {recipient: 'żona', occasion: 'prezent', budget_qualitative: 'skromnie, tanio'},
     });
     const {namespace} = makeTrackedSessionNamespace();
     const reply = await composeGemmaReply(
@@ -229,7 +229,7 @@ describe('Cień catalog qualitative fix', () => {
     vi.spyOn(mcpServer, 'callMcpToolDirect').mockResolvedValue({
       error: {code: -32602, message: 'invalid'},
     });
-    await stubGemmaIntentJson({state: 'propozycje', slots: {budget: 'tanio'}});
+    await stubGemmaIntentJson({state: 'propozycje', slots: {budget_qualitative: 'tanio'}});
     const logSpy = vi.spyOn(console, 'log');
     const {namespace} = makeTrackedSessionNamespace();
     const reply = await composeGemmaReply(

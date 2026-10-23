@@ -3,13 +3,14 @@
  */
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {
-  materialLabelMatchesSlotTokens,
+  taxonomyLabelsExactMatch,
   variantMetalMatchesSlotTokens,
 } from '../../../src/facts/metal-match';
 import {executeCatalogMcpLiveSearch} from '../../../src/facts/catalog-mcp-live';
 import * as mcpServer from '../../../src/mcp_server';
 import * as storefrontLive from '../../../src/facts/storefront-live';
 import {runCatalogAction} from '../../../src/gemma/actions/catalog';
+import {runProductDetailAction} from '../../../src/gemma/actions/product-detail';
 import {budgetMinorFromSlots} from '../../../src/gemma/actions/slots-to-filters';
 import {searchGemmaCatalog} from '../../../src/gemma/facts/catalog-search';
 import * as facts from '../../../src/facts';
@@ -19,14 +20,14 @@ import {fictionalGemmaIntent} from '../fixtures/gemma-intent';
 import {moneyFromMinor} from '../../../src/facts/types';
 import {epirCartReply} from '../../../src/gemma/profiles/epir';
 
-describe('contract A — metal SSOT (exact labels)', () => {
-  it('T-CONTRACT-A-METAL-1: gold ≠ gold-plated (no includes)', () => {
+describe('contract A — metal SSOT (exact taxonomy labels)', () => {
+  it('T-CONTRACT-A-METAL-1: gold ≠ gold-plated (exact label)', () => {
     expect(variantMetalMatchesSlotTokens('gold-plated', ['gold'])).toBe(false);
-    expect(materialLabelMatchesSlotTokens('gold-plated', ['gold'])).toBe(false);
+    expect(taxonomyLabelsExactMatch('gold', 'gold-plated')).toBe(false);
     expect(variantMetalMatchesSlotTokens('gold-plated', ['gold-plated'])).toBe(true);
   });
 
-  it('T-CONTRACT-A-METAL-2: pozłacane + slot złoto → 0 (includes matcher byłby fałszywie 1)', async () => {
+  it('T-CONTRACT-A-METAL-2: pozłacane + slot złoto → 0 (substring would be wrong)', async () => {
     const base = fictionalMultiVariantProduct();
     const product = {
       ...base,
@@ -56,7 +57,7 @@ describe('contract A — metal SSOT (exact labels)', () => {
 });
 
 describe('contract A — budget number|null', () => {
-  it('T-CONTRACT-A-BUD-1: slots.budget number bez regex-primary corpus digits', () => {
+  it('T-CONTRACT-A-BUD-1: slots.budget number without regex string parser', () => {
     expect(budgetMinorFromSlots({budget: 500}, 'bez liczb w tekście')).toBe(50_000);
   });
 });
@@ -64,7 +65,7 @@ describe('contract A — budget number|null', () => {
 describe('contract A — URL handle out', () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it('T-CONTRACT-A-URL-1: brak product.url → drop z shown', async () => {
+  it('T-CONTRACT-A-URL-1: brak product.url → drop z shown (catalog)', async () => {
     const match = fictionalMatchFromProduct(fictionalMultiVariantProduct());
     match.product.url = '';
     vi.spyOn(await import('../../../src/gemma/facts/catalog-fetch-for-turn'), 'fetchGemmaCatalogMatchesForTurn').mockResolvedValue([
@@ -83,6 +84,28 @@ describe('contract A — URL handle out', () => {
     });
     expect(out.shown).toHaveLength(0);
     expect(out.cards).toHaveLength(0);
+  });
+
+  it('T-CONTRACT-A-URL-2: product-detail bez url → drop product', async () => {
+    const product = fictionalMultiVariantProduct();
+    product.url = '';
+    vi.spyOn(facts, 'fetchProductFactsByHandle').mockResolvedValue(product);
+    const out = await runProductDetailAction({
+      env: {} as never,
+      channelId: 'epir-online-store',
+      request: new Request('https://example.com'),
+      sessionId: 's',
+      userText: 'x',
+      userCorpus: 'x',
+      intent: fictionalGemmaIntent({product_ref: 'g1'}),
+      prev: {
+        ...DEFAULT_GEMMA_SESSION_STATE,
+        shown: [{ref: 'g1', productId: product.productId, handle: product.handle, variantIds: [], url: '/x'}],
+      },
+      transitioned: {nextState: 'szczegoly', slots: {}, allowedActions: ['get_product']},
+    });
+    expect(out.product).toBeNull();
+    expect(out.shownPatch).toBeNull();
   });
 });
 

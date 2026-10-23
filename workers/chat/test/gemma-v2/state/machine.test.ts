@@ -66,7 +66,7 @@ describe('E3 transitionGemmaState', () => {
         slots: {
           recipient: 'żona',
           occasion: 'prezent',
-          budget: 'skromnie, tanio',
+          budget_qualitative: 'skromnie, tanio',
         },
       }),
     );

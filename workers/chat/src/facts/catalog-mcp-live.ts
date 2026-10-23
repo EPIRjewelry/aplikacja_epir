@@ -164,6 +164,8 @@ export async function executeCatalogMcpLiveSearch(
       }),
     );
   }
+  // UCP transport: query + price only. Metal/stone use exact taxonomy labels post-hydration
+  // (see metal-match.ts / ProductFilter docs on shopify.dev — not sent as MCP facet filters).
   const postUcpFilters = {...filters, text: undefined, priceMin: undefined, priceMax: undefined};
   if (logStages && (metalFilterActive || stoneFilterActive)) {
     console.log(

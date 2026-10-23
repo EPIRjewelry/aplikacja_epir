@@ -1,6 +1,18 @@
 import type {ProductFacts} from './types';
 
-export function normalizeMaterialText(text: string): string {
+/**
+ * Gemma v2 post-UCP metal filter (decision A).
+ *
+ * UCP `search_catalog` stays query + price only — Storefront `ProductFilter` / taxonomy
+ * metafields are not applied on the MCP transport path. After hydration, metal/stone
+ * filters run locally and MUST compare exact Shopify taxonomy / option display labels
+ * (or taxonomy/metaobject GID), not substring `includes()` or fuzzy token sets.
+ *
+ * @see https://shopify.dev/docs/storefronts/headless/building-with-the-storefront-api/products-collections/filter-products
+ * @see https://shopify.dev/docs/api/storefront/latest/queries/search#argument-productfilters
+ */
+
+export function normalizeTaxonomyLabelKey(text: string): string {
   return text
     .toLowerCase()
     .normalize('NFD')
@@ -8,57 +20,84 @@ export function normalizeMaterialText(text: string): string {
     .trim();
 }
 
-/** Tokeny z etykiet taxonomy / opcji (spacje i przecinki; „gold-plated” = jeden token). */
-export function materialTokensFromText(text: string): Set<string> {
-  const normalized = normalizeMaterialText(text);
-  if (!normalized) return new Set();
-  const parts = normalized.split(/[\s,]+/u).map((p) => p.trim()).filter(Boolean);
-  return new Set(parts);
+export function isShopifyTaxonomyGid(value: string): boolean {
+  const t = value.trim();
+  return (
+    t.startsWith('gid://shopify/TaxonomyValue/') ||
+    t.startsWith('gid://shopify/Metaobject/')
+  );
 }
 
-/** Slot metalu vs etykieta — pełne tokeny (np. złoto ≠ złocone; gold ≠ gold-plated). */
-export function materialLabelMatchesSlotTokens(haystack: string, metalTokens: string[]): boolean {
-  const words = materialTokensFromText(haystack);
-  if (!words.size) return false;
-  for (const token of metalTokens) {
-    const tokenParts = [...materialTokensFromText(token)];
-    if (!tokenParts.length) continue;
-    if (tokenParts.every((w) => words.has(w))) return true;
+/** Exact equality: normalized display label or identical GID/handle string. */
+export function taxonomyLabelsExactMatch(slotValue: string, catalogLabel: string): boolean {
+  const slot = slotValue.trim();
+  const label = catalogLabel.trim();
+  if (!slot || !label) return false;
+  if (isShopifyTaxonomyGid(slot) || isShopifyTaxonomyGid(label)) {
+    return slot === label;
   }
-  return false;
+  return normalizeTaxonomyLabelKey(slot) === normalizeTaxonomyLabelKey(label);
+}
+
+function pushUniqueLabel(out: string[], seen: Set<string>, raw: string | null | undefined): void {
+  if (!raw?.trim()) return;
+  const t = raw.trim();
+  const dedupe = isShopifyTaxonomyGid(t) ? t : normalizeTaxonomyLabelKey(t);
+  if (seen.has(dedupe)) return;
+  seen.add(dedupe);
+  out.push(t);
+}
+
+/** Discrete labels from variant options + shopify.jewelry-material / custom.metal facts. */
+export function listProductTaxonomyMaterialLabels(product: ProductFacts): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const v of product.variants) {
+    pushUniqueLabel(out, seen, v.metal);
+  }
+  for (const m of product.metals) {
+    for (const part of m.split(',')) {
+      pushUniqueLabel(out, seen, part);
+    }
+  }
+  const customMetal = product.metafields['custom.metal'];
+  if (typeof customMetal === 'string') {
+    for (const part of customMetal.split(',')) {
+      pushUniqueLabel(out, seen, part);
+    }
+  }
+  const jewelryMaterial = product.metafields['shopify.jewelry-material'];
+  if (typeof jewelryMaterial === 'string') {
+    for (const part of jewelryMaterial.split(',')) {
+      pushUniqueLabel(out, seen, part);
+    }
+  } else if (Array.isArray(jewelryMaterial)) {
+    for (const entry of jewelryMaterial) {
+      pushUniqueLabel(out, seen, String(entry));
+    }
+  }
+  return out;
 }
 
 export function variantMetalMatchesSlotTokens(
   variantMetal: string | null | undefined,
-  metalTokens: string[],
+  metalSlots: string[],
 ): boolean {
-  if (!metalTokens.length) return true;
+  if (!metalSlots.length) return true;
   if (!variantMetal?.trim()) return false;
-  return materialLabelMatchesSlotTokens(variantMetal.trim(), metalTokens);
-}
-
-/** Fakt materiału produktu (nie opcja wariantu): metals[] + znane metapola. */
-export function productMaterialFactText(product: ProductFacts): string {
-  const chunks: string[] = [];
-  for (const m of product.metals) {
-    if (m?.trim()) chunks.push(m.trim());
-  }
-  const customMetal = product.metafields['custom.metal'];
-  if (typeof customMetal === 'string' && customMetal.trim()) chunks.push(customMetal.trim());
-  const jewelryMaterial = product.metafields['shopify.jewelry-material'];
-  if (typeof jewelryMaterial === 'string' && jewelryMaterial.trim()) {
-    chunks.push(jewelryMaterial.trim());
-  } else if (Array.isArray(jewelryMaterial)) {
-    for (const entry of jewelryMaterial) {
-      if (String(entry).trim()) chunks.push(String(entry).trim());
-    }
-  }
-  return chunks.join(', ');
+  const label = variantMetal.trim();
+  return metalSlots.some((slot) => taxonomyLabelsExactMatch(slot, label));
 }
 
 export function productFactsMaterialMatchesTokens(
   product: ProductFacts,
-  metalTokens: string[],
+  metalSlots: string[],
 ): boolean {
-  return materialLabelMatchesSlotTokens(productMaterialFactText(product), metalTokens);
+  const labels = listProductTaxonomyMaterialLabels(product);
+  return metalSlots.some((slot) => labels.some((label) => taxonomyLabelsExactMatch(slot, label)));
+}
+
+/** @deprecated use listProductTaxonomyMaterialLabels */
+export function productMaterialFactText(product: ProductFacts): string {
+  return listProductTaxonomyMaterialLabels(product).join(', ');
 }

@@ -8,8 +8,8 @@ import {
 } from '../../facts';
 import {filterProducts} from '../../facts/filter';
 import {
+  listProductTaxonomyMaterialLabels,
   productFactsMaterialMatchesTokens,
-  productMaterialFactText,
   variantMetalMatchesSlotTokens,
 } from '../../facts/metal-match';
 import {moneyFromMinor} from '../../facts/types';
@@ -63,7 +63,7 @@ function hasAnyFilledMetal(variants: VariantFacts[]): boolean {
 }
 
 function hasProductMaterialFact(product: ProductFacts): boolean {
-  return Boolean(productMaterialFactText(product).trim());
+  return listProductTaxonomyMaterialLabels(product).length > 0;
 }
 
 function keepMatchAfterPriceOnly(

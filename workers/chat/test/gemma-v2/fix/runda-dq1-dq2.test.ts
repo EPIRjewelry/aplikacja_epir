@@ -103,7 +103,7 @@ describe('D-Q1 — znaczniki intencji A', () => {
     await stubGemmaGroqCalls({
       intent: {
         state: 'powitanie',
-        slots: {occasion: 'podziękowanie', budget: 'tanio'},
+        slots: {occasion: 'podziękowanie', budget_qualitative: 'tanio'},
       },
     });
     const {namespace} = makeTrackedSessionNamespace();
@@ -212,11 +212,11 @@ describe('D-Q2 — koszyk bez shown po [NZ]', () => {
 
 describe('D-Q1 budżet tys / k', () => {
   it('T-D-Z5-variants: 5 tysięcy, 5 tyś, 3k, 2,5 tys', () => {
-    expect(budgetMinorFromSlots({budget: '5'}, 'mam 5 tysięcy')).toBe(500_000);
-    expect(budgetMinorFromSlots({budget: '5'}, 'budżet 5 tyś')).toBe(500_000);
-    expect(budgetMinorFromSlots({budget: '3'}, 'ok 3k')).toBe(300_000);
-    expect(budgetMinorFromSlots({budget: '2,5'}, 'do 2,5 tys')).toBe(250_000);
-    expect(budgetMinorFromSlots({budget: '2,5'}, 'do 2.5 tys')).toBe(250_000);
+    expect(budgetMinorFromSlots({budget: 5}, 'mam 5 tysięcy')).toBe(500_000);
+    expect(budgetMinorFromSlots({budget: 5}, 'budżet 5 tyś')).toBe(500_000);
+    expect(budgetMinorFromSlots({budget: 3}, 'ok 3k')).toBe(300_000);
+    expect(budgetMinorFromSlots({budget: 2.5}, 'do 2,5 tys')).toBe(250_000);
+    expect(budgetMinorFromSlots({budget: 2.5}, 'do 2.5 tys')).toBe(250_000);
   });
 });
 

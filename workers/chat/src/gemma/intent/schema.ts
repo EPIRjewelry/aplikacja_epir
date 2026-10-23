@@ -29,7 +29,15 @@ export const GEMMA_CONVERSATION_STATE_VALUES = [
 
 const CONVERSATION_STATES = new Set<string>(GEMMA_CONVERSATION_STATE_VALUES);
 
-const SLOT_KEYS = new Set(['budget', 'metal', 'stone', 'product_type', 'occasion', 'recipient']);
+const SLOT_KEYS = new Set([
+  'budget',
+  'budget_qualitative',
+  'metal',
+  'stone',
+  'product_type',
+  'occasion',
+  'recipient',
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -40,10 +48,9 @@ function readNullableString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-function readBudgetSlot(value: unknown): string | number | null {
+function readBudgetSlot(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') return value;
   return null;
 }
 

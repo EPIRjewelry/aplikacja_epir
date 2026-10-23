@@ -34,6 +34,7 @@ describe('E5b gemma intent schema', () => {
       state: 'powitanie',
       slots: {
         budget: null,
+        budget_qualitative: null,
         metal: null,
         stone: null,
         product_type: null,
@@ -54,9 +55,8 @@ describe('E5b gemma intent schema', () => {
   it('T-GEMMA-SCHEMA-1c (Cień): typy pól zgodne z validateGemmaIntent (nullowalność, enumy)', () => {
     const props = GEMMA_INTENT_JSON_SCHEMA.properties as Record<string, Record<string, unknown>>;
     const slots = (props.slots.properties ?? {}) as Record<string, Record<string, unknown>>;
-    expect(slots.budget).toEqual({
-      anyOf: [{type: 'number'}, {type: 'string'}, {type: 'null'}],
-    });
+    expect(slots.budget).toEqual({type: ['number', 'null']});
+    expect(slots.budget_qualitative).toEqual({type: ['string', 'null']});
     for (const key of ['metal', 'stone', 'product_type', 'occasion', 'recipient']) {
       expect(slots[key]).toEqual({type: ['string', 'null']});
     }
@@ -71,7 +71,15 @@ describe('E5b gemma intent schema', () => {
     // Każda wartość dopuszczona przez schemat przechodzi walidator (i odwrotnie dla enumów).
     const base = {
       state: 'koszyk',
-      slots: {budget: null, metal: null, stone: null, product_type: null, occasion: null, recipient: null},
+      slots: {
+        budget: null,
+        budget_qualitative: null,
+        metal: null,
+        stone: null,
+        product_type: null,
+        occasion: null,
+        recipient: null,
+      },
       product_ref: null,
       variant_choice: null,
       cart_action: null,

@@ -81,6 +81,10 @@ function mergeSlots(prev: GemmaSlots, incoming: GemmaSlots): GemmaSlots {
       if (Number.isFinite(v) && v > 0) out.budget = v;
       continue;
     }
+    if (key === 'budget_qualitative' && typeof v === 'string' && v.trim()) {
+      out.budget_qualitative = v.trim();
+      continue;
+    }
     if (typeof v === 'string' && v.trim()) {
       const trimmed = v.trim();
       if (!shouldPersistSlotInSession(key, trimmed)) continue;
@@ -99,15 +103,12 @@ export function isNeedKnown(slots: GemmaSlots): boolean {
 }
 
 function budgetSlotPresent(slots: GemmaSlots): boolean {
-  const b = slots.budget;
-  if (typeof b === 'number') return Number.isFinite(b) && b > 0;
-  return Boolean(b?.trim());
+  if (typeof slots.budget === 'number') return Number.isFinite(slots.budget) && slots.budget > 0;
+  return Boolean(slots.budget_qualitative?.trim());
 }
 
 function hasQualitativeBudget(slots: GemmaSlots): boolean {
-  if (typeof slots.budget === 'number') return false;
-  const b = slots.budget?.trim().toLowerCase() ?? '';
-  return b.length > 0;
+  return Boolean(slots.budget_qualitative?.trim()) && slots.budget == null;
 }
 
 export function slotsSufficientForSearch(slots: GemmaSlots): boolean {

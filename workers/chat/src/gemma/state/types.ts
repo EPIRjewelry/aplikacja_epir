@@ -10,8 +10,10 @@ export type GemmaConversationState =
 export type FormOfAddress = 'unknown' | 'pan' | 'pani';
 
 export type GemmaSlots = {
-  /** PLN (liczba z intencji A) lub słowo jakościowe (np. tanio); null = brak. */
-  budget?: string | number | null;
+  /** Kwota budżetu w PLN z intencji A (structured); null = brak liczby. */
+  budget?: number | null;
+  /** Jakościowy budżet (tanio, luksus, …) — osobne pole, nie `budget` string. */
+  budget_qualitative?: string | null;
   metal?: string | null;
   stone?: string | null;
   product_type?: string | null;

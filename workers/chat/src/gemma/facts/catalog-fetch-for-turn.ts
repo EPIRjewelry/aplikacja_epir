@@ -24,7 +24,7 @@ export async function fetchGemmaCatalogMatchesForTurn(params: {
   userCorpus: string;
   clientRequest?: Request;
 }): Promise<GemmaCatalogPricedMatch[]> {
-  const qualitative = isQualitativeBudget(params.slots, params.userCorpus);
+  const qualitative = isQualitativeBudget(params.slots);
   const filters = slotsToCatalogFilters(params.slots, params.userCorpus);
   const browseQualitative = qualitative && Boolean(filters.ucpBrowseInStockAvailable);
   const fetchLimit = browseQualitative

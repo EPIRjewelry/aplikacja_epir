@@ -6,9 +6,18 @@ const nullString = {type: ['string', 'null'] as const};
 const slotsSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['budget', 'metal', 'stone', 'product_type', 'occasion', 'recipient'],
+  required: [
+    'budget',
+    'budget_qualitative',
+    'metal',
+    'stone',
+    'product_type',
+    'occasion',
+    'recipient',
+  ],
   properties: {
-    budget: {anyOf: [{type: 'number'}, {type: 'string'}, {type: 'null'}]},
+    budget: {type: ['number', 'null'] as const},
+    budget_qualitative: nullString,
     metal: nullString,
     stone: nullString,
     product_type: nullString,
