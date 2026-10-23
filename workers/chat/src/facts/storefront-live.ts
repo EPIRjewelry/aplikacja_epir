@@ -749,8 +749,9 @@ async function productNodeToFacts(
 export type StorefrontProductSearchRef = {id: string; handle?: string};
 
 /**
- * Storefront `products(query:)` — site-like ranking (complement UCP when facets are set).
- * @see https://shopify.dev/docs/api/storefront/latest/queries/products
+ * Storefront full-text `search` (PRODUCT) — relevance ranking for site-like results.
+ * Do not use `products(query:)` for free-text (structured filters / sortKey ID).
+ * @see https://shopify.dev/docs/api/storefront/latest/queries/search
  */
 export async function searchStorefrontProductRefsByQuery(
   env: Env,
@@ -763,11 +764,13 @@ export async function searchStorefrontProductRefsByQuery(
   if (!q || !hasStorefrontCatalogToken(env, channel)) return [];
   const limit = Math.max(1, Math.min(Math.trunc(first) || 10, 50));
   const query = `
-    query ProductsByQueryLive($query: String!, $first: Int!) @inContext(country: PL, language: PL) {
-      products(first: $first, query: $query) {
+    query SearchProductsLive($query: String!, $first: Int!) @inContext(country: PL, language: PL) {
+      search(query: $query, first: $first, types: [PRODUCT]) {
         nodes {
-          id
-          handle
+          ... on Product {
+            id
+            handle
+          }
         }
       }
     }
@@ -780,7 +783,7 @@ export async function searchStorefrontProductRefsByQuery(
       {query: q, first: limit},
       options,
     );
-    const nodes = (data.products as {nodes?: Array<{id?: string; handle?: string} | null>} | null)
+    const nodes = (data.search as {nodes?: Array<{id?: string; handle?: string} | null>} | null)
       ?.nodes;
     const out: StorefrontProductSearchRef[] = [];
     const seen = new Set<string>();
@@ -793,7 +796,7 @@ export async function searchStorefrontProductRefsByQuery(
     }
     console.log(
       JSON.stringify({
-        tag: 'facts.storefront_products_query',
+        tag: 'facts.storefront_search',
         channel,
         query_preview: q.slice(0, 80),
         first: limit,
@@ -804,7 +807,7 @@ export async function searchStorefrontProductRefsByQuery(
   } catch (err) {
     console.warn(
       JSON.stringify({
-        tag: 'facts.storefront_products_query_error',
+        tag: 'facts.storefront_search_error',
         channel,
         reason: err instanceof Error ? err.message.slice(0, 120) : 'error',
       }),

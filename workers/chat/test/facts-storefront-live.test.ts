@@ -1,5 +1,8 @@
 import {describe, expect, it, vi, afterEach} from 'vitest';
-import {fetchProductFactsLive} from '../src/facts/storefront-live';
+import {
+  fetchProductFactsLive,
+  searchStorefrontProductRefsByQuery,
+} from '../src/facts/storefront-live';
 import {SHOPIFY_STOREFRONT_API_VERSION} from '../src/config/shopify-api-version';
 import type {Env} from '../src/config/bindings';
 
@@ -325,6 +328,49 @@ describe('fetchProductFactsLive', () => {
     expect(hydrationStats.null_id).toBe(1);
     expect(hydrationStats.id_fallback_ok).toBe(0);
     expect(hydrationStats.handle_fallback_ok).toBe(1);
+  });
+
+  it('searchStorefrontProductRefsByQuery uses search(types:[PRODUCT]), not products(query:)', async () => {
+    const seenBodies: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const body = typeof init?.body === 'string' ? init.body : '';
+      seenBodies.push(body);
+      return new Response(
+        JSON.stringify({
+          data: {
+            search: {
+              nodes: [
+                {
+                  id: 'gid://shopify/Product/6836886012009',
+                  handle: 'pierscionek-srebrny-z-granatem',
+                },
+              ],
+            },
+          },
+        }),
+        {status: 200},
+      );
+    });
+    const refs = await searchStorefrontProductRefsByQuery(
+      {
+        SHOP_DOMAIN: 'example.myshopify.com',
+        SHOPIFY_STOREFRONT_TOKEN: 'public-epir',
+      } as Env,
+      'epir-online-store',
+      'pierścionek srebro granat',
+      24,
+    );
+    expect(seenBodies.some((b) => b.includes('SearchProductsLive'))).toBe(true);
+    expect(seenBodies.some((b) => b.includes('search(') && b.includes('types: [PRODUCT]'))).toBe(
+      true,
+    );
+    expect(seenBodies.some((b) => b.includes('products('))).toBe(false);
+    expect(refs).toEqual([
+      {
+        id: 'gid://shopify/Product/6836886012009',
+        handle: 'pierscionek-srebrny-z-granatem',
+      },
+    ]);
   });
 
   it('counts null_nodes when Storefront returns a null node', async () => {

@@ -27,10 +27,10 @@ function silverGarnetRing(handle: string, minor: number) {
   };
 }
 
-describe('UCP + Storefront products(query:) merge (S3)', () => {
+describe('UCP + Storefront search(PRODUCT) merge (S3)', () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it('T-S3-SF-MERGE-1: UCP bez targetu + SF query z targetem → hyd zawiera @340', async () => {
+  it('T-S3-SF-MERGE-1: UCP bez targetu + SF search z targetem → hyd zawiera @340', async () => {
     const galazki = silverGarnetRing('pierscionek-galazki-z-granatem', 32_000);
     const kwiat = silverGarnetRing('pierscionek-kwiat-z-granatem', 32_000);
     const target = silverGarnetRing('pierscionek-srebrny-z-granatem', 34_000);
