@@ -187,12 +187,18 @@ function selectMatchesForGemmaPostUcp(
 
 export type GemmaCatalogPricedMatch = {match: ProductMatch; minMinor: number};
 
+/** Optional out-param: ranked suggest handles when metal∧stone∧budget suggest path ran. */
+export type GemmaCatalogSearchMeta = {
+  suggestHandlesRanked?: string[];
+};
+
 export async function searchGemmaCatalog(
   env: Env,
   channelId: BuyerChannelId,
   filters: GemmaCatalogSearchFilters,
   limit: number,
   clientRequest?: Request,
+  meta?: GemmaCatalogSearchMeta,
 ): Promise<ProductMatch[]> {
   const started = Date.now();
   const catalogChannel = catalogSnapshotChannel(channelId);
@@ -282,16 +288,15 @@ export async function searchGemmaCatalog(
       const haveIds = new Set(
         matches.map((m) => m.product.productId).filter((id): id is string => Boolean(id)),
       );
-      const haveHandles = new Set(
-        matches.map((m) => m.product.handle?.trim()).filter((h): h is string => Boolean(h)),
-      );
       suggestHandles = await fetchShopSuggestProductHandles(
         channelId,
         queryText,
         Math.min(limit, 10),
       );
+      if (meta && suggestHandles.length) {
+        meta.suggestHandlesRanked = [...suggestHandles];
+      }
       for (const handle of suggestHandles) {
-        if (haveHandles.has(handle)) continue;
         const factsByHandle = await fetchProductFactsByHandle(env, catalogChannel, handle, {
           clientRequest,
           urlChannel: channelId,
@@ -299,19 +304,26 @@ export async function searchGemmaCatalog(
         if (!factsByHandle) continue;
         const extra = filterProducts([factsByHandle], {});
         if (!extra.length) continue;
+        const fresh = extra[0]!;
         const pid = factsByHandle.productId;
-        if (pid && haveIds.has(pid)) {
-          matches = matches.map((m) => (m.product.productId === pid ? extra[0]! : m));
+        const resolvedHandle = factsByHandle.handle?.trim() || handle;
+        const idxByPid =
+          pid ? matches.findIndex((m) => m.product.productId === pid) : -1;
+        const idxByHandle = matches.findIndex((m) => {
+          const mh = m.product.handle?.trim();
+          return mh === handle || mh === resolvedHandle;
+        });
+        const replaceIdx = idxByPid >= 0 ? idxByPid : idxByHandle;
+        if (replaceIdx >= 0) {
+          matches = matches.map((m, i) => (i === replaceIdx ? fresh : m));
           suggestUpgraded += 1;
-          haveHandles.add(handle);
-          const resolvedHandle = factsByHandle.handle?.trim();
-          if (resolvedHandle) haveHandles.add(resolvedHandle);
-          continue;
+        } else {
+          matches = [...matches, fresh];
+          suggestMergeNew += 1;
         }
-        suggestMergeNew += extra.length;
-        matches = [...matches, ...extra];
         if (pid) haveIds.add(pid);
         haveHandles.add(handle);
+        if (resolvedHandle) haveHandles.add(resolvedHandle);
       }
     }
 

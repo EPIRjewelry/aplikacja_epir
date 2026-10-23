@@ -16,8 +16,11 @@ import {
 } from '../actions/slots-to-filters';
 import {isCustomOrderProductType} from '../state/machine';
 import type {GemmaSlots} from '../state/types';
-import {searchGemmaCatalog} from './catalog-search';
-import type {GemmaCatalogPricedMatch} from './catalog-search';
+import {
+  searchGemmaCatalog,
+  type GemmaCatalogPricedMatch,
+  type GemmaCatalogSearchMeta,
+} from './catalog-search';
 
 function priceMinorOf(v: MoneyPln | number | undefined): number | undefined {
   if (v === undefined) return undefined;
@@ -53,6 +56,35 @@ export function sortMatchesClosestToPriceMax(
   });
 }
 
+/**
+ * When suggest path ran: site rank first, then closest-to-priceMax among ties / non-suggest.
+ * Avoids „do 400 zł” display favoring 380 over suggest #3 @340.
+ */
+export function sortMatchesWithSuggestRankThenPriceMax(
+  priced: GemmaCatalogPricedMatch[],
+  priceMaxMinor: number,
+  suggestHandlesRanked: string[],
+): GemmaCatalogPricedMatch[] {
+  if (!suggestHandlesRanked.length) {
+    return sortMatchesClosestToPriceMax(priced, priceMaxMinor);
+  }
+  const rankByHandle = new Map<string, number>();
+  suggestHandlesRanked.forEach((h, i) => rankByHandle.set(h, i));
+  const tailRank = suggestHandlesRanked.length;
+
+  return [...priced].sort((a, b) => {
+    const ha = a.match.product.handle?.trim() ?? '';
+    const hb = b.match.product.handle?.trim() ?? '';
+    const ra = rankByHandle.has(ha) ? rankByHandle.get(ha)! : tailRank;
+    const rb = rankByHandle.has(hb) ? rankByHandle.get(hb)! : tailRank;
+    if (ra !== rb) return ra - rb;
+    const da = Math.abs(a.minMinor - priceMaxMinor);
+    const db = Math.abs(b.minMinor - priceMaxMinor);
+    if (da !== db) return da - db;
+    return a.minMinor - b.minMinor;
+  });
+}
+
 /** Jedyna ścieżka v2: filtry, limit UCP, sort po cenie, slice do wyświetlenia. */
 export async function fetchGemmaCatalogMatchesForTurn(params: {
   env: Env;
@@ -65,12 +97,14 @@ export async function fetchGemmaCatalogMatchesForTurn(params: {
   const filters = slotsToCatalogFilters(params.slots, params.userCorpus);
   const browseQualitative = qualitative && Boolean(filters.ucpBrowseInStockAvailable);
   const fetchLimit = resolveGemmaCatalogFetchLimit(params.slots, browseQualitative);
+  const searchMeta: GemmaCatalogSearchMeta = {};
   const matches = await searchGemmaCatalog(
     params.env,
     params.channelId,
     filters,
     fetchLimit,
     params.clientRequest,
+    searchMeta,
   );
   let priced: GemmaCatalogPricedMatch[];
   if (qualitative && isLuxuryQualitativeBudget(params.slots)) {
@@ -81,7 +115,12 @@ export async function fetchGemmaCatalogMatchesForTurn(params: {
     priced = attachMinMinorToMatches(matches);
     const maxMinor = priceMinorOf(filters.priceMax);
     if (typeof maxMinor === 'number' && Number.isFinite(maxMinor)) {
-      priced = sortMatchesClosestToPriceMax(priced, maxMinor);
+      const suggestRanked = searchMeta.suggestHandlesRanked;
+      if (suggestRanked?.length) {
+        priced = sortMatchesWithSuggestRankThenPriceMax(priced, maxMinor, suggestRanked);
+      } else {
+        priced = sortMatchesClosestToPriceMax(priced, maxMinor);
+      }
     }
   }
   return priced.slice(0, GEMMA_CATALOG_DISPLAY_LIMIT);

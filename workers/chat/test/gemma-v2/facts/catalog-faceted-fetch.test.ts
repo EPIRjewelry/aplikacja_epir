@@ -1,8 +1,10 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
+import {attachMinMinorToMatches} from '../../../src/gemma/actions/slots-to-filters';
 import {
   fetchGemmaCatalogMatchesForTurn,
   resolveGemmaCatalogFetchLimit,
   sortMatchesClosestToPriceMax,
+  sortMatchesWithSuggestRankThenPriceMax,
   slotsHaveProductTypeMetalAndStone,
 } from '../../../src/gemma/facts/catalog-fetch-for-turn';
 import {
@@ -111,6 +113,26 @@ describe('faceted UCP fetch (S3 PT∧metal∧stone)', () => {
       {match: fictionalMatchFromProduct(ringProduct('b', 34_000)), minMinor: 34_000},
     ];
     const sorted = sortMatchesClosestToPriceMax(priced, 34_000);
+    expect(sorted[0].minMinor).toBe(34_000);
+  });
+
+  it('T-SUGGEST-SORT-1: suggest rank #3 @340 przed kora #6 @380 przy priceMax 400', () => {
+    const target = ringProduct('pierscionek-srebrny-z-granatem', 34_000);
+    const kora = ringProduct('pierscionek-z-granatem-w-korze', 38_000);
+    const priced = attachMinMinorToMatches([
+      fictionalMatchFromProduct(kora),
+      fictionalMatchFromProduct(target),
+    ]);
+    const suggestOrder = [
+      'srebrny-pierscionek-z-granatem',
+      'pierscionek-galazki-z-granatem',
+      'pierscionek-srebrny-z-granatem',
+      'pierscionek-pozlacany-z-owalnym-granatem-galazka',
+      'pierscionek-kwiat-z-granatem',
+      'pierscionek-z-granatem-w-korze',
+    ];
+    const sorted = sortMatchesWithSuggestRankThenPriceMax(priced, 40_000, suggestOrder);
+    expect(sorted[0].match.product.handle).toBe('pierscionek-srebrny-z-granatem');
     expect(sorted[0].minMinor).toBe(34_000);
   });
 });

@@ -219,4 +219,70 @@ describe('UCP + SF search + shop suggest merge (S3)', () => {
     const target = out.find((m) => m.product.handle === 'pierscionek-srebrny-z-granatem');
     expect(target?.matchingPriceRange.min.minor).toBe(34_000);
   });
+
+  it('T-S3-SUGGEST-HAVE-HANDLE-1: haveHandles ma target → Ajax upgrade @340 (nie skip)', async () => {
+    const weakOnHandle = {
+      ...silverGarnetRing('pierscionek-srebrny-z-granatem', 32_000),
+      productId: 'gid://shopify/Product/6836886012009',
+      variants: [
+        {
+          ...fictionalMultiVariantProduct().variants[0],
+          metal: null,
+          price: moneyFromMinor(32_000),
+          variantId: 'gid://shopify/ProductVariant/weak-same-handle',
+        },
+      ],
+    };
+    const upgraded = productFactsFromShopAjaxJson(
+      fictionalAjaxSilverGarnetRing(),
+      'epir-online-store',
+      'pierscionek-srebrny-z-granatem',
+      'https://epirbizuteria.pl',
+    )!;
+
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [fictionalMatchFromProduct(weakOnHandle)],
+        total: 1,
+        facets: {
+          total: 1,
+          byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
+    vi.spyOn(storefrontLive, 'searchStorefrontProductRefsByQuery').mockResolvedValue([]);
+    vi.spyOn(shopSuggest, 'fetchShopSuggestProductHandles').mockResolvedValue([
+      'pierscionek-srebrny-z-granatem',
+    ]);
+    const byHandleSpy = vi
+      .spyOn(storefrontLive, 'fetchProductFactsByHandle')
+      .mockResolvedValue(upgraded);
+
+    const out = await searchGemmaCatalog(
+      {
+        SHOP_DOMAIN: 'epir-ai.myshopify.com',
+        PRIVATE_STOREFRONT_API_TOKEN: 't',
+      } as never,
+      'epir-online-store',
+      {
+        text: 'srebro granat',
+        metal: ['srebrny'],
+        stone: ['granat'],
+        priceMax: moneyFromMinor(34_000),
+      },
+      24,
+    );
+
+    expect(byHandleSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      'pierscionek-srebrny-z-granatem',
+      expect.anything(),
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].matchingPriceRange.min.minor).toBe(34_000);
+  });
 });
