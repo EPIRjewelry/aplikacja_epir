@@ -27,6 +27,14 @@ describe('detectPolicyInformationIntent', () => {
     expect(detectPolicyInformationIntent('telefon?').match).toBe(true);
   });
 
+  it('wykrywa PL: wizyta / przymierka / na żywo', () => {
+    expect(detectPolicyInformationIntent('Czy mogę obejrzeć pierścionek na żywo?').match).toBe(
+      true,
+    );
+    expect(detectPolicyInformationIntent('Chciałabym umówić wizytę w pracowni').match).toBe(true);
+    expect(detectPolicyInformationIntent('Czy jest przymierka w salonie?').match).toBe(true);
+  });
+
   it('nie wykrywa neutralnej prośby o produkt', () => {
     expect(detectPolicyInformationIntent('Pokaż mi złote pierścionki z brylantem').match).toBe(false);
   });

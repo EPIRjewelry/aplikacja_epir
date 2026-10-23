@@ -37,6 +37,13 @@ const POLICY_MARKERS_PL = [
   'gdzie jesteście',
   'gdzie jestescie',
   'dojazd',
+  'wizyt',
+  'przymier',
+  'obejrze',
+  'na żywo',
+  'umówien',
+  'umowien',
+  'spotkanie w pracowni',
 ];
 
 const POLICY_MARKERS_EN = [
@@ -58,6 +65,11 @@ const POLICY_MARKERS_EN = [
   'phone number',
   'opening hours',
   'store address',
+  'visit',
+  'try on',
+  'try-on',
+  'in person',
+  'appointment',
 ];
 
 /** Samo „Kontakt" / „Contact" bez dodatkowego kontekstu produktowego. */

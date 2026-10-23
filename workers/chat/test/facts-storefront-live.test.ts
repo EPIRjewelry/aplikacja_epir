@@ -1,5 +1,8 @@
 import {describe, expect, it, vi, afterEach} from 'vitest';
-import {fetchProductFactsLive} from '../src/facts/storefront-live';
+import {
+  fetchProductFactsLive,
+  searchStorefrontProductRefsByQuery,
+} from '../src/facts/storefront-live';
 import {SHOPIFY_STOREFRONT_API_VERSION} from '../src/config/shopify-api-version';
 import type {Env} from '../src/config/bindings';
 
@@ -216,6 +219,7 @@ describe('fetchProductFactsLive', () => {
         },
       ]),
     );
+    const hydrationStats = {null_nodes: 0, normalize_null: 0, no_url: 0};
     const products = await fetchProductFactsLive(
       {
         SHOP_DOMAIN: 'example.myshopify.com',
@@ -223,8 +227,196 @@ describe('fetchProductFactsLive', () => {
       } as Env,
       'epir-online-store',
       ['gid://shopify/Product/3'],
+      {hydrationStats},
     );
     expect(products).toHaveLength(0);
+    expect(hydrationStats.no_url).toBe(1);
+  });
+
+  it('recovers product via product(id:) when nodes batch returns null', async () => {
+    const productNode = {
+      id: 'gid://shopify/Product/miss-batch',
+      handle: 'recovered',
+      title: 'Recovered',
+      productType: 'Ring',
+      onlineStoreUrl: 'https://epirbizuteria.pl/products/recovered',
+      collections: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: []},
+      variants: {
+        pageInfo: {hasNextPage: false, endCursor: null},
+        nodes: [mkVariantNode('gid://shopify/ProductVariant/miss-batch', '10.00')],
+      },
+      metafields: [],
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const body = typeof init?.body === 'string' ? init.body : '';
+      if (body.includes('ProductNodesLive')) {
+        return nodesResponse([null]);
+      }
+      if (body.includes('ProductByIdLive')) {
+        return new Response(JSON.stringify({data: {product: productNode}}), {status: 200});
+      }
+      return nodesResponse([productNode]);
+    });
+    const hydrationStats = {null_nodes: 0, normalize_null: 0, no_url: 0};
+    const products = await fetchProductFactsLive(
+      {
+        SHOP_DOMAIN: 'example.myshopify.com',
+        SHOPIFY_STOREFRONT_TOKEN: 'public-epir',
+      } as Env,
+      'epir-online-store',
+      ['gid://shopify/Product/miss-batch'],
+      {hydrationStats},
+    );
+    expect(products).toHaveLength(1);
+    expect(products[0].handle).toBe('recovered');
+    expect(hydrationStats.null_nodes).toBe(0);
+    expect(hydrationStats.id_fallback_ok).toBe(1);
+  });
+
+  it('recovers product via handle when nodes and product(id:) fail', async () => {
+    const productNode = {
+      id: 'gid://shopify/Product/target-ring',
+      handle: 'pierscionek-srebrny-z-granatem',
+      title: 'Pierścionek srebrny z granatem',
+      productType: 'Pierścionek',
+      onlineStoreUrl: 'https://epirbizuteria.pl/products/pierscionek-srebrny-z-granatem',
+      collections: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: []},
+      variants: {
+        pageInfo: {hasNextPage: false, endCursor: null},
+        nodes: [mkVariantNode('gid://shopify/ProductVariant/target-ring', '340.00')],
+      },
+      metafields: [],
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const body = typeof init?.body === 'string' ? init.body : '';
+      if (body.includes('ProductNodesLive')) {
+        return nodesResponse([null]);
+      }
+      if (body.includes('ProductByIdLive')) {
+        return new Response(JSON.stringify({data: {product: null}}), {status: 200});
+      }
+      if (body.includes('ProductByHandleLive')) {
+        return new Response(JSON.stringify({data: {product: productNode}}), {status: 200});
+      }
+      return nodesResponse([null]);
+    });
+    const hydrationStats = {
+      null_nodes: 0,
+      normalize_null: 0,
+      no_url: 0,
+      null_id: 0,
+      id_fallback_ok: 0,
+      handle_fallback_ok: 0,
+    };
+    const products = await fetchProductFactsLive(
+      {
+        SHOP_DOMAIN: 'example.myshopify.com',
+        SHOPIFY_STOREFRONT_TOKEN: 'public-epir',
+      } as Env,
+      'epir-online-store',
+      ['gid://shopify/Product/target-ring'],
+      {
+        hydrationStats,
+        productHandlesById: {
+          'gid://shopify/Product/target-ring': 'pierscionek-srebrny-z-granatem',
+        },
+      },
+    );
+    expect(products).toHaveLength(1);
+    expect(products[0].handle).toBe('pierscionek-srebrny-z-granatem');
+    expect(hydrationStats.null_nodes).toBe(0);
+    expect(hydrationStats.null_id).toBe(1);
+    expect(hydrationStats.id_fallback_ok).toBe(0);
+    expect(hydrationStats.handle_fallback_ok).toBe(1);
+  });
+
+  it('searchStorefrontProductRefsByQuery uses search(types:[PRODUCT]), not products(query:)', async () => {
+    const seenBodies: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const body = typeof init?.body === 'string' ? init.body : '';
+      seenBodies.push(body);
+      return new Response(
+        JSON.stringify({
+          data: {
+            search: {
+              nodes: [
+                {
+                  id: 'gid://shopify/Product/6836886012009',
+                  handle: 'pierscionek-srebrny-z-granatem',
+                },
+              ],
+            },
+          },
+        }),
+        {status: 200},
+      );
+    });
+    const refs = await searchStorefrontProductRefsByQuery(
+      {
+        SHOP_DOMAIN: 'example.myshopify.com',
+        SHOPIFY_STOREFRONT_TOKEN: 'public-epir',
+      } as Env,
+      'epir-online-store',
+      'pierścionek srebro granat',
+      24,
+    );
+    expect(seenBodies.some((b) => b.includes('SearchProductsLive'))).toBe(true);
+    expect(seenBodies.some((b) => b.includes('search(') && b.includes('types: [PRODUCT]'))).toBe(
+      true,
+    );
+    expect(seenBodies.some((b) => b.includes('products('))).toBe(false);
+    expect(refs).toEqual([
+      {
+        id: 'gid://shopify/Product/6836886012009',
+        handle: 'pierscionek-srebrny-z-granatem',
+      },
+    ]);
+  });
+
+  it('counts null_nodes when Storefront returns a null node', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      nodesResponse([
+        {
+          id: 'gid://shopify/Product/n1',
+          handle: 'ok-a',
+          title: 'Ok A',
+          productType: 'Ring',
+          onlineStoreUrl: 'https://epirbizuteria.pl/products/ok-a',
+          collections: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: []},
+          variants: {
+            pageInfo: {hasNextPage: false, endCursor: null},
+            nodes: [mkVariantNode('gid://shopify/ProductVariant/n1', '10.00')],
+          },
+          metafields: [],
+        },
+        null,
+        {
+          id: 'gid://shopify/Product/n3',
+          handle: 'ok-b',
+          title: 'Ok B',
+          productType: 'Ring',
+          onlineStoreUrl: 'https://epirbizuteria.pl/products/ok-b',
+          collections: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: []},
+          variants: {
+            pageInfo: {hasNextPage: false, endCursor: null},
+            nodes: [mkVariantNode('gid://shopify/ProductVariant/n3', '12.00')],
+          },
+          metafields: [],
+        },
+      ]),
+    );
+    const hydrationStats = {null_nodes: 0, normalize_null: 0, no_url: 0};
+    const products = await fetchProductFactsLive(
+      {
+        SHOP_DOMAIN: 'example.myshopify.com',
+        SHOPIFY_STOREFRONT_TOKEN: 'public-epir',
+      } as Env,
+      'epir-online-store',
+      ['gid://shopify/Product/n1', 'gid://shopify/Product/n2', 'gid://shopify/Product/n3'],
+      {hydrationStats},
+    );
+    expect(products).toHaveLength(2);
+    expect(hydrationStats.null_nodes).toBe(1);
   });
 
   it('epir-online-store with SHOPIFY_STOREFRONT_TOKEN uses public header, no Buyer-IP', async () => {

@@ -179,6 +179,36 @@ describe('buyer kb-policies', () => {
     if (r.ok) expect(r.answer).toContain('500 zł');
   });
 
+  it('parses MCP answers[] with topic/body (harmony smoke shape)', async () => {
+    vi.spyOn(mcp, 'callMcpToolDirect').mockResolvedValue({
+      result: {
+        answers: [{ topic: 'Telefon', body: 'Fikcyjny numer kontaktowy w FAQ testowym.' }],
+      },
+    });
+    const r = await searchShopPoliciesViaMcp({} as import('../src/config/bindings').Env, 'telefon');
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.answer).toContain('Fikcyjny numer');
+      expect(r.answer).toContain('Telefon');
+    }
+  });
+
+  it('parses visit FAQ via results[] question/answer', async () => {
+    vi.spyOn(mcp, 'callMcpToolDirect').mockResolvedValue({
+      result: {
+        results: [
+          {
+            question: 'Czy mogę obejrzeć biżuterię na żywo?',
+            answer: 'Wizyty w pracowni po wcześniejszym umówieniu.',
+          },
+        ],
+      },
+    });
+    const r = await searchShopPoliciesViaMcp({} as import('../src/config/bindings').Env, 'wizyta');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.answer).toContain('umówieniu');
+  });
+
   it('empty JSON array in content ⇒ empty reason', async () => {
     vi.spyOn(mcp, 'callMcpToolDirect').mockResolvedValue({
       result: {
