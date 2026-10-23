@@ -50,7 +50,12 @@ describe('Runda 4db2a00 — Cień', () => {
     vi.spyOn(await import('../../../src/ai-client'), 'getGroqResponse').mockImplementation(
       async (_m, _e, opts) => {
         if (opts?.timingLabel === 'buyer_gemma_intent') {
-          return JSON.stringify(fictionalGemmaIntent({state: 'propozycje', slots: {budget: 3000}}));
+          return JSON.stringify(
+            fictionalGemmaIntent({
+              state: 'propozycje',
+              slots: {product_type: 'pierścionek', budget: 3000},
+            }),
+          );
         }
         return JSON.stringify({text: 'Polecam {{g1}}.', product_refs: ['g1']});
       },
