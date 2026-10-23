@@ -1,26 +1,36 @@
 import {normalizeBuyerMetalTermKey} from './metal-buyer-taxonomy';
 import {taxonomyLabelsExactMatch} from './metal-match';
 
-/** Exact `product.productType` values on epir-online-store (Admin SSOT). */
+/**
+ * Exact `product.productType` values on epir-online-store (Admin / feed SSOT).
+ * @see epir-marketing-ingest/config/mapping.json `googleProductCategory.byProductType`
+ * + `heroProductTypes` — no plural `Pierścionki` in Admin.
+ */
 export const EPIR_ONLINE_STORE_PRODUCT_TYPES = {
-  rings: 'Pierścionki',
+  ring: 'Pierścionek',
+  engagementRing: 'Pierścionek zaręczynowy',
   earrings: 'Kolczyki',
-  bracelets: 'Bransoletki',
-  necklaces: 'Naszyjniki',
-  pendants: 'Wisiorki',
+  bracelet: 'Bransoletka',
+  necklace: 'Naszyjnik',
+  weddingBand: 'Obrączka',
 } as const;
 
+const RING_LABELS: readonly string[] = [
+  EPIR_ONLINE_STORE_PRODUCT_TYPES.ring,
+  EPIR_ONLINE_STORE_PRODUCT_TYPES.engagementRing,
+];
+
 const BUYER_TERM_TO_PRODUCT_TYPE: Readonly<Record<string, readonly string[]>> = {
-  pierscionek: [EPIR_ONLINE_STORE_PRODUCT_TYPES.rings],
-  pierscionki: [EPIR_ONLINE_STORE_PRODUCT_TYPES.rings],
+  pierscionek: RING_LABELS,
+  pierscionki: RING_LABELS,
   kolczyk: [EPIR_ONLINE_STORE_PRODUCT_TYPES.earrings],
   kolczyki: [EPIR_ONLINE_STORE_PRODUCT_TYPES.earrings],
-  bransoletka: [EPIR_ONLINE_STORE_PRODUCT_TYPES.bracelets],
-  bransoletki: [EPIR_ONLINE_STORE_PRODUCT_TYPES.bracelets],
-  naszyjnik: [EPIR_ONLINE_STORE_PRODUCT_TYPES.necklaces],
-  naszyjniki: [EPIR_ONLINE_STORE_PRODUCT_TYPES.necklaces],
-  wisiorek: [EPIR_ONLINE_STORE_PRODUCT_TYPES.pendants],
-  wisiorki: [EPIR_ONLINE_STORE_PRODUCT_TYPES.pendants],
+  bransoletka: [EPIR_ONLINE_STORE_PRODUCT_TYPES.bracelet],
+  bransoletki: [EPIR_ONLINE_STORE_PRODUCT_TYPES.bracelet],
+  naszyjnik: [EPIR_ONLINE_STORE_PRODUCT_TYPES.necklace],
+  naszyjniki: [EPIR_ONLINE_STORE_PRODUCT_TYPES.necklace],
+  obraczka: [EPIR_ONLINE_STORE_PRODUCT_TYPES.weddingBand],
+  obraczki: [EPIR_ONLINE_STORE_PRODUCT_TYPES.weddingBand],
 };
 
 export function expandBuyerProductTypeSlotToExactTypes(slotValue: string): string[] {
@@ -52,7 +62,8 @@ export function productFactsProductTypeMatchesSlots(
 ): boolean {
   if (!productTypeSlots.length) return true;
   const pt = productType?.trim();
-  if (!pt) return false;
+  /** Soft-keep when Admin productType missing — parity metal/stone. */
+  if (!pt) return true;
   const expanded = expandProductTypeSlotsForMatching(productTypeSlots);
   return expanded.some((slot) => taxonomyLabelsExactMatch(slot, pt));
 }

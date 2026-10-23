@@ -15,7 +15,7 @@ describe('Gemma post-UCP — product_type + stone exact', () => {
     const ring = {
       ...base,
       handle: 'pierscionek-srebrny-z-granatem',
-      productType: 'Pierścionki',
+      productType: 'Pierścionek',
       stones: ['Granat'],
       variants: [
         {
@@ -105,6 +105,69 @@ describe('Gemma post-UCP — product_type + stone exact', () => {
     expect(out[0].matchingVariants[0].metal).toBe('złoto 585');
     expect(out[0].matchingVariants[0].variantId).toBe('v585a');
     expect(out[0].isFlat).toBe(true);
+  });
+
+  it('T-GEMMA-PT-SOFT-1: pusty productType + slot pierścionek → keep', async () => {
+    const product = {...fictionalMultiVariantProduct(), productType: null};
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [fictionalMatchFromProduct(product)],
+        total: 1,
+        facets: {
+          total: 1,
+          byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
+    const out = await searchGemmaCatalog(
+      {SHOP_DOMAIN: 'x'} as never,
+      'epir-online-store',
+      {productType: ['pierścionek'], metal: ['złoto'], priceMax: moneyFromMinor(500_000)},
+      10,
+    );
+    expect(out).toHaveLength(1);
+  });
+
+  it('T-GEMMA-PT-EXACT-1: Admin label Pierścionek matchuje slot pierścionek', async () => {
+    const product = {
+      ...fictionalMultiVariantProduct(),
+      productType: 'Pierścionek',
+      variants: [
+        {
+          ...fictionalMultiVariantProduct().variants[0],
+          metal: 'złoto 585',
+          price: moneyFromMinor(256_000),
+        },
+      ],
+    };
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [fictionalMatchFromProduct(product)],
+        total: 1,
+        facets: {
+          total: 1,
+          byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
+    const out = await searchGemmaCatalog(
+      {SHOP_DOMAIN: 'x'} as never,
+      'epir-online-store',
+      {
+        productType: ['pierścionek'],
+        metal: ['złoto'],
+        priceMax: moneyFromMinor(500_000),
+      },
+      10,
+    );
+    expect(out.length).toBeGreaterThanOrEqual(1);
+    expect(out[0].product.productType).toBe('Pierścionek');
   });
 
   it('T-GEMMA-STONE-SOFT-1: stones=[] + slot kamień → soft keep', async () => {
