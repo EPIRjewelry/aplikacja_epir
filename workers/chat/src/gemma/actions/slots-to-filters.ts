@@ -111,11 +111,27 @@ const MIN_BUDGET_MARKERS = [
   'nie mniej niż',
 ];
 
+function escapeRegExpLiteral(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Kwota PLN jako literał regex (kropka dziesiętna nie jest `.` wildcard). */
+function budgetAmountRegexAlternatives(pln: number): string[] {
+  const raw = String(pln);
+  const patterns = new Set<string>();
+  patterns.add(escapeRegExpLiteral(raw));
+  if (raw.includes('.')) {
+    patterns.add(escapeRegExpLiteral(raw.replace('.', ',')));
+    const [intPart, frac = ''] = raw.split('.');
+    patterns.add(`${escapeRegExpLiteral(intPart)}[.,]${escapeRegExpLiteral(frac)}`);
+  }
+  return [...patterns];
+}
+
 function corpusHasMinBudgetMarker(userCorpus: string, pln: number): boolean {
   const corpus = normalizeBudgetCorpus(userCorpus).toLowerCase();
-  const amounts = [String(pln), String(pln).replace('.', '[.,]')];
   for (const marker of MIN_BUDGET_MARKERS) {
-    for (const amount of amounts) {
+    for (const amount of budgetAmountRegexAlternatives(pln)) {
       const re = new RegExp(`(?<!\\p{L})${marker}\\s+${amount}(?!\\p{L})`, 'iu');
       if (re.test(corpus)) return true;
     }
@@ -125,11 +141,10 @@ function corpusHasMinBudgetMarker(userCorpus: string, pln: number): boolean {
     const impliedPln = corpusThousand * 1000;
     if (Math.abs(corpusThousand - pln) < 0.001 || Math.abs(impliedPln - pln) < 0.01) {
       for (const marker of MIN_BUDGET_MARKERS) {
-        const re = new RegExp(
-          `(?<!\\p{L})${marker}\\s+${String(corpusThousand).replace('.', '[.,]')}(?!\\p{L})`,
-          'iu',
-        );
-        if (re.test(corpus)) return true;
+        for (const amount of budgetAmountRegexAlternatives(corpusThousand)) {
+          const re = new RegExp(`(?<!\\p{L})${marker}\\s+${amount}(?!\\p{L})`, 'iu');
+          if (re.test(corpus)) return true;
+        }
       }
     }
   }

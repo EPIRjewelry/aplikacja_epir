@@ -796,7 +796,12 @@ describe('runda-6a9c6bd — koszyk (#11–15)', () => {
       form_of_address: 'unknown',
       turn: 1,
     });
-    await stubGemmaIntentJson({cart_action: 'add', cart_consent: false, product_ref: 'g1'});
+    await stubGemmaIntentJson({
+      state: 'koszyk',
+      cart_action: 'add',
+      cart_consent: false,
+      product_ref: 'g1',
+    });
     const spy = vi.spyOn(execute, 'executeBuyerTool');
     const reply = await composeGemmaReply(
       env,

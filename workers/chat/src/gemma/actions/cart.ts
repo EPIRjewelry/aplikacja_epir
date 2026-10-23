@@ -179,13 +179,22 @@ export async function runCartAction(ctx: GemmaActionContext): Promise<GemmaCartF
   }
 
   if (intent.cart_action === 'add' || intent.cart_action === 'change') {
-    const handle = resolveCartHandle(ctx);
-    if (!handle) {
+    const ref = intent.product_ref?.trim();
+    const shownFromRef = ref
+      ? ctx.prev.shown.find((s) => s.ref === ref || s.handle === ref)
+      : undefined;
+
+    if (intent.cart_consent !== true) {
+      const consentUrl = shownFromRef?.url?.trim() || productUrl;
+      if (shownFromRef || resolveCartHandle(ctx)) {
+        return {needsConsent: true, productUrl: consentUrl};
+      }
       return {productUnresolved: true};
     }
 
-    if (intent.cart_consent !== true) {
-      return {needsConsent: true, productUrl};
+    const handle = resolveCartHandle(ctx);
+    if (!handle) {
+      return {productUnresolved: true};
     }
 
     const product = await resolveProductForCart(ctx);
