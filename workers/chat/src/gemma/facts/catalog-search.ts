@@ -228,6 +228,7 @@ export async function searchGemmaCatalog(
     let matches = repoMatches;
     let sfMergeNew = 0;
     let suggestMergeNew = 0;
+    let suggestUpgraded = 0;
 
     const priceFilterActiveEarly = priceMin !== undefined || priceMax !== undefined;
     /** PT ∧ metal ∧ stone: doklej Storefront search(PRODUCT) — UCP ranking ≠ SF. */
@@ -288,15 +289,20 @@ export async function searchGemmaCatalog(
             urlChannel: channelId,
           });
           if (!factsByHandle) continue;
-          if (haveIds.has(factsByHandle.productId)) {
-            haveHandles.add(handle);
-            continue;
-          }
           const extra = filterProducts([factsByHandle], {});
           if (!extra.length) continue;
+          const pid = factsByHandle.productId;
+          if (pid && haveIds.has(pid)) {
+            matches = matches.map((m) => (m.product.productId === pid ? extra[0]! : m));
+            suggestUpgraded += 1;
+            haveHandles.add(handle);
+            const resolvedHandle = factsByHandle.handle?.trim();
+            if (resolvedHandle) haveHandles.add(resolvedHandle);
+            continue;
+          }
           suggestMergeNew += extra.length;
           matches = [...matches, ...extra];
-          haveIds.add(factsByHandle.productId);
+          if (pid) haveIds.add(pid);
           haveHandles.add(handle);
         }
       }
@@ -310,6 +316,7 @@ export async function searchGemmaCatalog(
           merged_new: sfMergeNew,
           suggest_handles: suggestHandles.length,
           suggest_merged_new: suggestMergeNew,
+          suggest_upgraded: suggestUpgraded,
           after_merge: matches.length,
         }),
       );
@@ -367,6 +374,7 @@ export async function searchGemmaCatalog(
         product_type_filter_active: productTypeFilterApplied,
         sf_merge_new: sfMergeNew,
         suggest_merged_new: suggestMergeNew,
+        suggest_upgraded: suggestUpgraded,
         hydrated_handles: hydratedHandles,
         duration_ms: Date.now() - started,
       }),
