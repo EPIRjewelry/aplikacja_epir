@@ -23,18 +23,12 @@ function parseLeadingAmountBeforeThousand(corpus: string): number | undefined {
   return Number.isFinite(pln) && pln > 0 ? pln : undefined;
 }
 
-function corpusConfirmsBudgetViaThousandWord(pln: number, userCorpus: string): boolean {
-  const corpusAmount = parseLeadingAmountBeforeThousand(normalizeBudgetCorpus(userCorpus));
-  if (corpusAmount === undefined) return false;
-  return Math.abs(corpusAmount * 1000 - pln) < 0.01;
-}
-
-function thousandMultiplierInCorpus(pln: number, userCorpus: string): boolean {
+/** ×1000 tylko gdy slot to liczba przed „tys” (np. 5 + „5 tysięcy”), nie pełne PLN (5000). */
+function shouldApplyThousandMultiplier(pln: number, userCorpus: string): boolean {
   const corpus = normalizeBudgetCorpus(userCorpus).toLowerCase();
   const corpusAmount = parseLeadingAmountBeforeThousand(corpus);
   if (corpusAmount !== undefined) {
-    const impliedPln = corpusAmount * 1000;
-    if (Math.abs(impliedPln - pln) < 0.01) return false;
+    if (Math.abs(corpusAmount * 1000 - pln) < 0.01) return false;
     if (Math.abs(corpusAmount - pln) < 0.001) return true;
   }
   const amountLiteral = String(pln).replace('.', '\\.');
@@ -46,7 +40,7 @@ function thousandMultiplierInCorpus(pln: number, userCorpus: string): boolean {
 }
 
 function minorFromBudgetPln(pln: number, userCorpus: string): number {
-  if (thousandMultiplierInCorpus(pln, userCorpus) || corpusConfirmsBudgetViaThousandWord(pln, userCorpus)) {
+  if (shouldApplyThousandMultiplier(pln, userCorpus)) {
     return Math.round(pln * 1000 * 100);
   }
   return Math.round(pln * 100);
@@ -109,20 +103,21 @@ function parseRangeBounds(
 }
 
 const MIN_BUDGET_MARKERS = [
-  'od ',
-  'powyżej ',
-  'ponad ',
-  'minimum ',
-  'co najmniej ',
-  'nie mniej niż ',
+  'od',
+  'powyżej',
+  'ponad',
+  'minimum',
+  'co najmniej',
+  'nie mniej niż',
 ];
 
 function corpusHasMinBudgetMarker(userCorpus: string, pln: number): boolean {
   const corpus = normalizeBudgetCorpus(userCorpus).toLowerCase();
-  const variants = [String(pln), String(pln).replace('.', ',')];
+  const amounts = [String(pln), String(pln).replace('.', '[.,]')];
   for (const marker of MIN_BUDGET_MARKERS) {
-    for (const amount of variants) {
-      if (corpus.includes(marker + amount)) return true;
+    for (const amount of amounts) {
+      const re = new RegExp(`(?<!\\p{L})${marker}\\s+${amount}(?!\\p{L})`, 'iu');
+      if (re.test(corpus)) return true;
     }
   }
   const corpusThousand = parseLeadingAmountBeforeThousand(corpus);
@@ -130,7 +125,11 @@ function corpusHasMinBudgetMarker(userCorpus: string, pln: number): boolean {
     const impliedPln = corpusThousand * 1000;
     if (Math.abs(corpusThousand - pln) < 0.001 || Math.abs(impliedPln - pln) < 0.01) {
       for (const marker of MIN_BUDGET_MARKERS) {
-        if (corpus.includes(marker + String(corpusThousand))) return true;
+        const re = new RegExp(
+          `(?<!\\p{L})${marker}\\s+${String(corpusThousand).replace('.', '[.,]')}(?!\\p{L})`,
+          'iu',
+        );
+        if (re.test(corpus)) return true;
       }
     }
   }

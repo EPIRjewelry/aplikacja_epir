@@ -88,7 +88,11 @@ function mergeSlots(prev: GemmaSlots, incoming: GemmaSlots): GemmaSlots {
     if (typeof v === 'string' && v.trim()) {
       const trimmed = v.trim();
       if (!shouldPersistSlotInSession(key, trimmed)) continue;
-      out[key] = trimmed;
+      if (key === 'metal') out.metal = trimmed;
+      else if (key === 'stone') out.stone = trimmed;
+      else if (key === 'product_type') out.product_type = trimmed;
+      else if (key === 'occasion') out.occasion = trimmed;
+      else if (key === 'recipient') out.recipient = trimmed;
     }
   }
   return out;
@@ -112,7 +116,7 @@ function hasQualitativeBudget(slots: GemmaSlots): boolean {
 }
 
 export function slotsSufficientForSearch(slots: GemmaSlots): boolean {
-  return isNeedKnown(slots) || hasQualitativeBudget(slots);
+  return isNeedKnown(slots) || budgetSlotPresent(slots);
 }
 
 function pickMissingSlot(slots: GemmaSlots): keyof GemmaSlots {

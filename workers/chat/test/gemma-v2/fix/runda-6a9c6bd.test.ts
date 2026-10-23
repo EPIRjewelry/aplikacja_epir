@@ -199,10 +199,12 @@ describe('runda-6a9c6bd — metal i ceny (#5–7)', () => {
     expect(out[0].matchingVariants[0].price.minor).toBe(320_000);
   });
 
-  it('T-6a9c6bd-METAL-3: wariant bez metalu przy slocie metal → produkt zostaje', async () => {
+  it('T-6a9c6bd-METAL-3: wariant bez metalu i bez faktu materiału → soft keep (NZ)', async () => {
     const base = fictionalMultiVariantProduct();
     const product = {
       ...base,
+      metals: [],
+      metafields: {},
       variants: [{...base.variants[0], metal: null, price: moneyFromMinor(100_000)}],
     };
     vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({

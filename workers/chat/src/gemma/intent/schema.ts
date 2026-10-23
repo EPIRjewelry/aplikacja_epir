@@ -67,7 +67,29 @@ function readSlots(value: unknown): GemmaSlots | null {
       continue;
     }
     if (v !== null && v !== undefined && typeof v !== 'string') return null;
-    slots[key as keyof GemmaSlots] = readNullableString(v);
+    const str = readNullableString(v);
+    switch (key) {
+      case 'budget_qualitative':
+        slots.budget_qualitative = str;
+        break;
+      case 'metal':
+        slots.metal = str;
+        break;
+      case 'stone':
+        slots.stone = str;
+        break;
+      case 'product_type':
+        slots.product_type = str;
+        break;
+      case 'occasion':
+        slots.occasion = str;
+        break;
+      case 'recipient':
+        slots.recipient = str;
+        break;
+      default:
+        return null;
+    }
   }
   return slots;
 }
