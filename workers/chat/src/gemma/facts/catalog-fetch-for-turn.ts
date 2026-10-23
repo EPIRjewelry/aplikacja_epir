@@ -1,5 +1,6 @@
 import type {BuyerChannelId} from '../../buyer/channel-switch';
 import type {Env} from '../../config/bindings';
+import type {MoneyPln} from '../../facts/types';
 import {
   GEMMA_CATALOG_DISPLAY_LIMIT,
   GEMMA_FACETED_CATALOG_FETCH_LIMIT,
@@ -17,6 +18,12 @@ import {isCustomOrderProductType} from '../state/machine';
 import type {GemmaSlots} from '../state/types';
 import {searchGemmaCatalog} from './catalog-search';
 import type {GemmaCatalogPricedMatch} from './catalog-search';
+
+function priceMinorOf(v: MoneyPln | number | undefined): number | undefined {
+  if (v === undefined) return undefined;
+  if (typeof v === 'number') return v;
+  return v.minor ?? v.amount_minor;
+}
 
 /** PT ∧ metal ∧ stone — pełniejszy UCP fetch (S3 facet query). */
 export function slotsHaveProductTypeMetalAndStone(slots: GemmaSlots): boolean {
@@ -72,7 +79,7 @@ export async function fetchGemmaCatalogMatchesForTurn(params: {
     priced = sortMatchesByMinVariantPrice(matches, true);
   } else {
     priced = attachMinMinorToMatches(matches);
-    const maxMinor = filters.priceMax?.minor ?? filters.priceMax?.amount_minor;
+    const maxMinor = priceMinorOf(filters.priceMax);
     if (typeof maxMinor === 'number' && Number.isFinite(maxMinor)) {
       priced = sortMatchesClosestToPriceMax(priced, maxMinor);
     }
