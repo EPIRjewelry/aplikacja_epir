@@ -6,9 +6,13 @@ import {
   fictionalMatchFromProduct,
   fictionalMultiVariantProduct,
 } from '../fixtures/fictional-catalog-products';
+import {suppressCatalogLiveMergeMocks} from '../helpers/suppress-catalog-live-merge';
 
 describe('Gemma post-UCP — product_type + stone exact', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    suppressCatalogLiveMergeMocks();
+  });
 
   it('T-GEMMA-PT-ST-1: pierścionek + granat + srebrny → tylko pierścionek z granatem', async () => {
     const base = fictionalMultiVariantProduct();

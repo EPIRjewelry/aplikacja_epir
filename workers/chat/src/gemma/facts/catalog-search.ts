@@ -10,6 +10,7 @@ import {filterProducts} from '../../facts/filter';
 import {
   fetchProductFactsByHandle,
   fetchProductFactsLive,
+  hasStorefrontCatalogToken,
   searchStorefrontProductRefsByQuery,
 } from '../../facts/storefront-live';
 import {fetchShopSuggestProductHandles} from '../../facts/shop-suggest';
@@ -237,7 +238,8 @@ export async function searchGemmaCatalog(
       Boolean(text?.trim());
     /** PT ∧ metal ∧ stone ∧ budget: dodatkowo Ajax/Predictive suggest (site ranking). */
     const facetedWithBudget = facetedSearch && priceFilterActiveEarly;
-    if (facetedSearch && text?.trim()) {
+    const storefrontLiveEnabled = hasStorefrontCatalogToken(env, catalogChannel);
+    if (facetedSearch && text?.trim() && storefrontLiveEnabled) {
       const queryText = text.trim();
       const sfRefs = await searchStorefrontProductRefsByQuery(
         env,

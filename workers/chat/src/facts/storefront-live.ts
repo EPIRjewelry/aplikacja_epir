@@ -826,30 +826,41 @@ export async function fetchProductFactsByHandle(
   const h = handle.trim();
   if (!h) return null;
 
-  if (hasStorefrontCatalogToken(env, channel)) {
-    const query = `
+  if (!hasStorefrontCatalogToken(env, channel)) {
+    console.log(
+      JSON.stringify({
+        tag: 'facts.product_by_handle',
+        channel,
+        byHandle: false,
+        handle: h,
+        reason: 'no_storefront_token',
+      }),
+    );
+    return null;
+  }
+
+  const query = `
     query ProductByHandleLive($handle: String!) @inContext(country: PL, language: PL) {
       product(handle: $handle) {
         ${PRODUCT_NODE_FIELDS}
       }
     }
   `;
-    try {
-      const data = await storefrontGraphqlRetry(env, channel, query, {handle: h}, options);
-      const raw = data.product as Record<string, unknown> | null;
-      if (raw && isRecord(raw)) {
-        const facts = await productNodeToFacts(env, channel, raw, options);
-        if (facts) return facts;
-      }
-    } catch (err) {
-      console.warn(
-        JSON.stringify({
-          tag: 'facts.product_by_handle_error',
-          channel,
-          reason: err instanceof Error ? err.message : String(err),
-        }),
-      );
+  try {
+    const data = await storefrontGraphqlRetry(env, channel, query, {handle: h}, options);
+    const raw = data.product as Record<string, unknown> | null;
+    if (raw && isRecord(raw)) {
+      const facts = await productNodeToFacts(env, channel, raw, options);
+      if (facts) return facts;
     }
+  } catch (err) {
+    console.warn(
+      JSON.stringify({
+        tag: 'facts.product_by_handle_error',
+        channel,
+        reason: err instanceof Error ? err.message : String(err),
+      }),
+    );
   }
 
   const urlChannel = options?.urlChannel ?? channel;

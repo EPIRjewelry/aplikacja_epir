@@ -1,6 +1,7 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {searchGemmaCatalog} from '../../../src/gemma/facts/catalog-search';
 import * as facts from '../../../src/facts';
+import * as shopSuggest from '../../../src/facts/shop-suggest';
 import * as storefrontLive from '../../../src/facts/storefront-live';
 import {moneyFromMinor} from '../../../src/facts/types';
 import {
@@ -54,6 +55,7 @@ describe('UCP + Storefront search(PRODUCT) merge (S3)', () => {
       {id: galazki.productId, handle: galazki.handle},
     ]);
     vi.spyOn(storefrontLive, 'fetchProductFactsLive').mockResolvedValue([target]);
+    vi.spyOn(shopSuggest, 'fetchShopSuggestProductHandles').mockResolvedValue([]);
 
     const out = await searchGemmaCatalog(
       {SHOP_DOMAIN: 'x', PRIVATE_STOREFRONT_API_TOKEN: 't'} as never,
