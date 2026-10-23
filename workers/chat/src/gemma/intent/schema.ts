@@ -40,12 +40,25 @@ function readNullableString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
+function readBudgetSlot(value: unknown): string | number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') return value;
+  return null;
+}
+
 function readSlots(value: unknown): GemmaSlots | null {
   if (!isRecord(value)) return null;
   const slots: GemmaSlots = {};
   for (const key of Object.keys(value)) {
     if (!SLOT_KEYS.has(key)) return null;
     const v = value[key];
+    if (key === 'budget') {
+      const budget = readBudgetSlot(v);
+      if (budget === null && v !== null && v !== undefined) return null;
+      slots.budget = budget;
+      continue;
+    }
     if (v !== null && v !== undefined && typeof v !== 'string') return null;
     slots[key as keyof GemmaSlots] = readNullableString(v);
   }

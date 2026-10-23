@@ -7,6 +7,7 @@ import type {
   VariantFacts,
   VariantStoneOrigin,
 } from './types';
+import {variantMetalMatchesSlotTokens} from './metal-match';
 import {moneyFromMinor} from './types';
 
 function normalizeText(text: string): string {
@@ -33,9 +34,7 @@ function variantMatchesFilters(v: VariantFacts, filters: CatalogFilters): boolea
   }
 
   if (filters.metal?.length) {
-    if (!v.metal) return false;
-    const vMetal = v.metal.trim().toLowerCase();
-    if (!filters.metal.some((m) => vMetal.includes(m.toLowerCase()))) return false;
+    if (!variantMetalMatchesSlotTokens(v.metal, filters.metal)) return false;
   }
 
   const min = priceMinor(filters.priceMin);

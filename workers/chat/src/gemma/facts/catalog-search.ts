@@ -7,6 +7,11 @@ import {
   getCatalogRepository,
 } from '../../facts';
 import {filterProducts} from '../../facts/filter';
+import {
+  productFactsMaterialMatchesTokens,
+  productMaterialFactText,
+  variantMetalMatchesSlotTokens,
+} from '../../facts/metal-match';
 import {moneyFromMinor} from '../../facts/types';
 import type {MoneyPln, ProductFacts, ProductMatch, VariantFacts} from '../../facts/types';
 import {filterProductMatchesByZareczynyTag} from './assortment';
@@ -38,12 +43,6 @@ function priceMinorOf(v: MoneyPln | number | undefined): number | undefined {
   return v.minor ?? v.amount_minor;
 }
 
-function variantMatchesMetalTokens(v: VariantFacts, metalTokens: string[]): boolean {
-  if (!v.metal) return false;
-  const vMetal = v.metal.trim().toLowerCase();
-  return metalTokens.some((m) => vMetal.includes(m.toLowerCase()));
-}
-
 function variantMatchesPriceBounds(
   v: VariantFacts,
   priceMin: MoneyPln | number | undefined,
@@ -63,54 +62,8 @@ function hasAnyFilledMetal(variants: VariantFacts[]): boolean {
   return variants.some((v) => Boolean(v.metal?.trim()));
 }
 
-function normalizeMaterialText(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim();
-}
-
-function materialWords(text: string): Set<string> {
-  const normalized = normalizeMaterialText(text);
-  if (!normalized) return new Set();
-  const parts = normalized.split(/[^a-z0-9]+/u).filter(Boolean);
-  return new Set(parts);
-}
-
-/** Fakt materiału produktu (nie opcja wariantu): metals[] + znane metapola. */
-function productMaterialFactText(product: ProductFacts): string {
-  const chunks: string[] = [];
-  for (const m of product.metals) {
-    if (m?.trim()) chunks.push(m.trim());
-  }
-  const customMetal = product.metafields['custom.metal'];
-  if (typeof customMetal === 'string' && customMetal.trim()) chunks.push(customMetal.trim());
-  const jewelryMaterial = product.metafields['shopify.jewelry-material'];
-  if (typeof jewelryMaterial === 'string' && jewelryMaterial.trim()) {
-    chunks.push(jewelryMaterial.trim());
-  } else if (Array.isArray(jewelryMaterial)) {
-    for (const entry of jewelryMaterial) {
-      if (String(entry).trim()) chunks.push(String(entry).trim());
-    }
-  }
-  return chunks.join(', ');
-}
-
 function hasProductMaterialFact(product: ProductFacts): boolean {
   return Boolean(productMaterialFactText(product).trim());
-}
-
-/** Slot metalu vs fakt produktu — całe słowo (np. złoto ≠ złocone). */
-function productMaterialMatchesMetalTokens(haystack: string, metalTokens: string[]): boolean {
-  const words = materialWords(haystack);
-  if (!words.size) return false;
-  for (const token of metalTokens) {
-    const tokenWords = [...materialWords(token)];
-    if (!tokenWords.length) continue;
-    if (tokenWords.every((w) => words.has(w))) return true;
-  }
-  return false;
 }
 
 function keepMatchAfterPriceOnly(
@@ -126,7 +79,7 @@ function keepMatchAfterPriceOnly(
 
 /**
  * SSOT: wariant z v.metal → metal ∧ budżet na wariantach.
- * Brak v.metal + fakt materiału produktu → slot musi pasować (całe słowo), potem cena.
+ * Brak v.metal + fakt materiału produktu → slot musi pasować (tokeny etykiety), potem cena.
  * Brak obu → soft keep po cenie (NZ).
  */
 function selectMatchesForMetalAndBudget(
@@ -148,7 +101,7 @@ function selectMatchesForMetalAndBudget(
       metalFilterApplied = true;
       const narrowed = variants.filter(
         (v) =>
-          variantMatchesMetalTokens(v, metalTokens) &&
+          variantMetalMatchesSlotTokens(v.metal, metalTokens) &&
           variantMatchesPriceBounds(v, priceMin, priceMax),
       );
       if (!narrowed.length) continue;
@@ -158,17 +111,7 @@ function selectMatchesForMetalAndBudget(
 
     if (hasProductMaterialFact(match.product)) {
       metalFilterApplied = true;
-      const haystack = productMaterialFactText(match.product);
-      if (!productMaterialMatchesMetalTokens(haystack, metalTokens)) continue;
-      const kept = keepMatchAfterPriceOnly(match, priceMin, priceMax, priceActive);
-      if (kept) next.push(kept);
-      continue;
-    }
-
-    if (hasProductMaterialFact(match.product)) {
-      metalFilterApplied = true;
-      const haystack = productMaterialFactText(match.product);
-      if (!productMaterialMatchesMetalTokens(haystack, metalTokens)) continue;
+      if (!productFactsMaterialMatchesTokens(match.product, metalTokens)) continue;
       const kept = keepMatchAfterPriceOnly(match, priceMin, priceMax, priceActive);
       if (kept) next.push(kept);
       continue;

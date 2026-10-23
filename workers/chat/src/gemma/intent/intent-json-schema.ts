@@ -8,7 +8,7 @@ const slotsSchema = {
   additionalProperties: false,
   required: ['budget', 'metal', 'stone', 'product_type', 'occasion', 'recipient'],
   properties: {
-    budget: nullString,
+    budget: {anyOf: [{type: 'number'}, {type: 'string'}, {type: 'null'}]},
     metal: nullString,
     stone: nullString,
     product_type: nullString,

@@ -122,14 +122,16 @@ export async function executeCatalogMcpLiveSearch(
   const filterIgnored = parseUcpFilterIgnoredMessages(mcpOut);
   const ids = [...new Set(parseUcpSearchProductIds(mcpOut))];
   const logStages = Boolean(options?.throwOnMcpError);
+  const metalFilterActive = Boolean(filters.metal?.length);
+  const stoneFilterActive = Boolean(filters.stone?.length);
   if (logStages) {
     console.log(
       JSON.stringify({
         tag: 'gemma.catalog.stage',
         stage: 'ucp_ids',
         ucp_ids: ids.length,
-        filter_metal_active: false,
-        filter_stone_active: false,
+        filter_metal_active: metalFilterActive,
+        filter_stone_active: stoneFilterActive,
         price_filter_active: Boolean(filters.priceMin ?? filters.priceMax),
       }),
     );
@@ -163,9 +165,15 @@ export async function executeCatalogMcpLiveSearch(
     );
   }
   const postUcpFilters = {...filters, text: undefined, priceMin: undefined, priceMax: undefined};
-  if (options?.throwOnMcpError) {
-    postUcpFilters.metal = undefined;
-    postUcpFilters.stone = undefined;
+  if (logStages && (metalFilterActive || stoneFilterActive)) {
+    console.log(
+      JSON.stringify({
+        tag: 'gemma.catalog.stage',
+        stage: 'post_ucp_local_metal_stone',
+        filter_metal_active: metalFilterActive,
+        filter_stone_active: stoneFilterActive,
+      }),
+    );
   }
   const matches = filterProducts(facts, postUcpFilters);
   if (logStages) {

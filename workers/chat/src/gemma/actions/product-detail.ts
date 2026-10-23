@@ -26,7 +26,7 @@ export async function runProductDetailAction(ctx: GemmaActionContext): Promise<{
     return {product: null, shownPatch: null, selected: {productId: '', variantId: null}};
   }
   const variantIds = product.variants.map((v) => v.variantId).filter(Boolean);
-  const url = product.url?.trim() || `/products/${product.handle}`;
+  const url = product.url?.trim() ?? '';
   const shownPatch: GemmaShownRef = {
     ref: ref || 'detail',
     productId: product.productId,

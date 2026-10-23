@@ -47,6 +47,7 @@ describe('E4 slots-to-filters', () => {
 
   it('T-E4-BUDGET-2: numeric budget only when digits appear in user corpus', () => {
     const corpus = 'szukam prezentu do 500 zł';
+    expect(budgetMinorFromSlots({budget: 500}, corpus)).toBe(50_000);
     expect(budgetMinorFromSlots({budget: '500'}, corpus)).toBe(50_000);
     const filters = slotsToCatalogFilters({budget: '500'}, corpus);
     expect(filters.priceMax).toEqual(moneyFromMinor(50_000));

@@ -11,7 +11,7 @@ import {GEMMA_INTENT_RESPONSE_FORMAT} from './intent-json-schema';
 const INTENT_SYSTEM = `Jesteś parserem intencji Gemma v2. Odpowiadasz WYŁĄCZNIE jednym obiektem JSON (bez markdown).
 Pola (wszystkie wymagane): state, slots, product_ref, variant_choice, cart_action, cart_consent, policy_query, safety.
 state: jeden z powitanie|potrzeby|propozycje|szczegoly|koszyk|polityki_kontakt|odmowa.
-slots: obiekt z opcjonalnymi kluczami budget, metal, stone, product_type, occasion, recipient (string lub null).
+slots: obiekt z opcjonalnymi kluczami budget (liczba PLN lub string jakościowy np. tanio/luksus, lub null), metal, stone, product_type, occasion, recipient (string lub null).
 product_ref, variant_choice, policy_query: string lub null.
 cart_action: add|change|remove|show lub null.
 cart_consent: boolean lub null.

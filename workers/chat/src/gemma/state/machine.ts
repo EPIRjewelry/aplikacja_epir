@@ -76,8 +76,13 @@ function mergeSlots(prev: GemmaSlots, incoming: GemmaSlots): GemmaSlots {
   const out: GemmaSlots = {...prev};
   for (const key of Object.keys(incoming) as (keyof GemmaSlots)[]) {
     const v = incoming[key];
-    if (v !== null && v !== undefined && String(v).trim()) {
-      const trimmed = String(v).trim();
+    if (v === null || v === undefined) continue;
+    if (key === 'budget' && typeof v === 'number') {
+      if (Number.isFinite(v) && v > 0) out.budget = v;
+      continue;
+    }
+    if (typeof v === 'string' && v.trim()) {
+      const trimmed = v.trim();
       if (!shouldPersistSlotInSession(key, trimmed)) continue;
       out[key] = trimmed;
     }
@@ -93,7 +98,14 @@ export function isNeedKnown(slots: GemmaSlots): boolean {
   );
 }
 
+function budgetSlotPresent(slots: GemmaSlots): boolean {
+  const b = slots.budget;
+  if (typeof b === 'number') return Number.isFinite(b) && b > 0;
+  return Boolean(b?.trim());
+}
+
 function hasQualitativeBudget(slots: GemmaSlots): boolean {
+  if (typeof slots.budget === 'number') return false;
   const b = slots.budget?.trim().toLowerCase() ?? '';
   return b.length > 0;
 }
@@ -106,7 +118,7 @@ function pickMissingSlot(slots: GemmaSlots): keyof GemmaSlots {
   if (!slots.product_type?.trim() && !slots.occasion?.trim() && !slots.recipient?.trim()) {
     return 'product_type';
   }
-  if (!slots.budget?.trim()) return 'budget';
+  if (!budgetSlotPresent(slots)) return 'budget';
   return 'metal';
 }
 

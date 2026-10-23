@@ -54,7 +54,10 @@ describe('E5b gemma intent schema', () => {
   it('T-GEMMA-SCHEMA-1c (Cień): typy pól zgodne z validateGemmaIntent (nullowalność, enumy)', () => {
     const props = GEMMA_INTENT_JSON_SCHEMA.properties as Record<string, Record<string, unknown>>;
     const slots = (props.slots.properties ?? {}) as Record<string, Record<string, unknown>>;
-    for (const key of ['budget', 'metal', 'stone', 'product_type', 'occasion', 'recipient']) {
+    expect(slots.budget).toEqual({
+      anyOf: [{type: 'number'}, {type: 'string'}, {type: 'null'}],
+    });
+    for (const key of ['metal', 'stone', 'product_type', 'occasion', 'recipient']) {
       expect(slots[key]).toEqual({type: ['string', 'null']});
     }
     for (const key of ['product_ref', 'variant_choice', 'policy_query']) {
@@ -85,6 +88,13 @@ describe('E5b gemma intent schema', () => {
     for (const c of [true, false, null]) {
       expect('kind' in validateGemmaIntent({...base, cart_consent: c})).toBe(false);
     }
+    expect(
+      'kind' in
+        validateGemmaIntent({
+          ...base,
+          slots: {...base.slots, budget: 5000},
+        }),
+    ).toBe(false);
   });
 
   it('T-GEMMA-SCHEMA-1d (Cień): tylko słowa kluczowe z dokumentacji Groq strict', () => {
