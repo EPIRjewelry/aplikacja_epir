@@ -33,6 +33,16 @@ export const WAREHOUSE_QUERY_IDS = [
 
 export type WarehouseQueryId = (typeof WAREHOUSE_QUERY_IDS)[number];
 
+/**
+ * queryId dla `EPIR_READONLY_ANALYTICS_KEY`.
+ * Q3_TOP_CHAT_QUESTIONS zwraca treść wiadomości — tylko pełny klucz panelu.
+ */
+export const READONLY_WAREHOUSE_QUERY_IDS = WAREHOUSE_QUERY_IDS.filter(
+  (id): id is Exclude<WarehouseQueryId, 'Q3_TOP_CHAT_QUESTIONS'> => id !== 'Q3_TOP_CHAT_QUESTIONS',
+);
+
+export type ReadonlyWarehouseQueryId = (typeof READONLY_WAREHOUSE_QUERY_IDS)[number];
+
 export type D1DatabaseKey = keyof typeof D1_DATABASES;
 
 const SAMPLE_COLUMNS: Record<string, readonly string[]> = {
