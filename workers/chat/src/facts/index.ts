@@ -93,6 +93,11 @@ export {buildUcpSearchCatalogArgs, CATALOG_SEARCH_SERVER_LIMIT, parseUcpFilterIg
 export {formatMatchBlock, formatProductsBlock, PAGE_PRODUCT_HEADER} from './format-product-block';
 export {normalizeProduct} from './normalize';
 export {
+  extractHandlesFromSuggestJson,
+  fetchShopSuggestProductHandles,
+  handleFromProductPath,
+} from './shop-suggest';
+export {
   fetchProductFactsByHandle,
   fetchProductFactsForVariantIds,
   searchStorefrontProductRefsByQuery,

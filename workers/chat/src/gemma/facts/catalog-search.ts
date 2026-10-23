@@ -8,9 +8,11 @@ import {
 } from '../../facts';
 import {filterProducts} from '../../facts/filter';
 import {
+  fetchProductFactsByHandle,
   fetchProductFactsLive,
   searchStorefrontProductRefsByQuery,
 } from '../../facts/storefront-live';
+import {fetchShopSuggestProductHandles} from '../../facts/shop-suggest';
 import {metalSlotsAreAssayScoped} from '../../facts/metal-buyer-taxonomy';
 import {
   listProductTaxonomyMaterialLabels,
@@ -224,25 +226,30 @@ export async function searchGemmaCatalog(
     const {matches: repoMatches} = await repo.search(ucpFilters, limit);
     let matches = repoMatches;
     let sfMergeNew = 0;
+    let suggestMergeNew = 0;
 
-    /** PT ∧ metal ∧ stone: doklej Storefront products(query:) — UCP ranking ≠ site suggest. */
+    const priceFilterActiveEarly = priceMin !== undefined || priceMax !== undefined;
+    /** PT ∧ metal ∧ stone: doklej Storefront search(PRODUCT) — UCP ranking ≠ SF. */
     const facetedSearch =
       Boolean(metal?.length) &&
       Boolean(stone?.length) &&
       Boolean(productType?.length) &&
       Boolean(text?.trim());
+    /** PT ∧ metal ∧ stone ∧ budget: dodatkowo Ajax/Predictive suggest (site ranking). */
+    const facetedWithBudget = facetedSearch && priceFilterActiveEarly;
     if (facetedSearch && text?.trim()) {
+      const queryText = text.trim();
       const sfRefs = await searchStorefrontProductRefsByQuery(
         env,
         catalogChannel,
-        text.trim(),
+        queryText,
         limit,
         {clientRequest, urlChannel: channelId},
       );
-      const have = new Set(
+      const haveIds = new Set(
         matches.map((m) => m.product.productId).filter((id): id is string => Boolean(id)),
       );
-      const need = sfRefs.filter((r) => !have.has(r.id));
+      const need = sfRefs.filter((r) => !haveIds.has(r.id));
       if (need.length) {
         const handles: Record<string, string> = {};
         for (const r of need) {
@@ -257,7 +264,41 @@ export async function searchGemmaCatalog(
         const extraMatches = filterProducts(extraFacts, {});
         sfMergeNew = extraMatches.length;
         matches = [...matches, ...extraMatches];
+        for (const m of extraMatches) {
+          if (m.product.productId) haveIds.add(m.product.productId);
+        }
       }
+
+      let suggestHandles: string[] = [];
+      if (facetedWithBudget) {
+        const haveHandles = new Set(
+          matches.map((m) => m.product.handle?.trim()).filter((h): h is string => Boolean(h)),
+        );
+        suggestHandles = await fetchShopSuggestProductHandles(
+          channelId,
+          queryText,
+          Math.min(limit, 10),
+        );
+        for (const handle of suggestHandles) {
+          if (haveHandles.has(handle)) continue;
+          const factsByHandle = await fetchProductFactsByHandle(env, catalogChannel, handle, {
+            clientRequest,
+            urlChannel: channelId,
+          });
+          if (!factsByHandle) continue;
+          if (haveIds.has(factsByHandle.productId)) {
+            haveHandles.add(handle);
+            continue;
+          }
+          const extra = filterProducts([factsByHandle], {});
+          if (!extra.length) continue;
+          suggestMergeNew += extra.length;
+          matches = [...matches, ...extra];
+          haveIds.add(factsByHandle.productId);
+          haveHandles.add(handle);
+        }
+      }
+
       console.log(
         JSON.stringify({
           tag: 'gemma.catalog.stage',
@@ -265,6 +306,8 @@ export async function searchGemmaCatalog(
           ucp_matches: repoMatches.length,
           sf_refs: sfRefs.length,
           merged_new: sfMergeNew,
+          suggest_handles: suggestHandles.length,
+          suggest_merged_new: suggestMergeNew,
           after_merge: matches.length,
         }),
       );
@@ -321,6 +364,7 @@ export async function searchGemmaCatalog(
         stone_filter_active: stoneFilterApplied,
         product_type_filter_active: productTypeFilterApplied,
         sf_merge_new: sfMergeNew,
+        suggest_merged_new: suggestMergeNew,
         hydrated_handles: hydratedHandles,
         duration_ms: Date.now() - started,
       }),
