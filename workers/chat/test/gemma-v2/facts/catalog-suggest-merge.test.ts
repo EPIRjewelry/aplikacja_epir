@@ -352,10 +352,10 @@ describe('UCP + SF search + shop suggest merge (S3)', () => {
       24,
     );
 
+    expect(ajaxSpy).toHaveBeenCalled();
+    expect(byHandleSpy).not.toHaveBeenCalled();
     expect(out).toHaveLength(1);
     expect(out[0].product.handle).toBe('pierscionek-srebrny-z-granatem');
     expect(out[0].matchingPriceRange.min.minor).toBe(34_000);
-    expect(onlyWeak).toBeDefined();
-    void outBeforeUpgrade;
   });
 });
