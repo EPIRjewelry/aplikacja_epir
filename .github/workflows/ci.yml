@@ -128,6 +128,10 @@ jobs:
         if: steps.changes.outputs.relevant == 'true'
         run: npm run build -w ${{ matrix.app }}
 
+      - name: Run tests (zareczyny)
+        if: steps.changes.outputs.relevant == 'true' && matrix.app == 'zareczyny'
+        run: npm test -w zareczyny
+
       - name: Skip (no relevant changes)
         if: steps.changes.outputs.relevant != 'true'
         run: echo "No app/package changes for ${{ matrix.app }} - skipping build"

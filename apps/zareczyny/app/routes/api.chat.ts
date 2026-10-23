@@ -12,6 +12,9 @@ import {
   ZARECZYNY_CHANNEL,
   ZARECZYNY_STOREFRONT_ID,
 } from '~/lib/chat-widget-context';
+import {getLoggedInCustomerGid} from '~/lib/customer-account-gid.server';
+
+const EPIR_LOGGED_IN_CUSTOMER_ID_HEADER = 'X-EPIR-LOGGED-IN-CUSTOMER-ID';
 
 const CHAT_S2S_URL = 'https://asystent.epirbizuteria.pl/chat';
 const MISSING_SECRET_ERROR =
@@ -63,16 +66,26 @@ export async function action({request, context}: ActionFunctionArgs) {
     return json({error: 'Empty body'}, {status: 400});
   }
 
+  const upstreamHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-EPIR-SHARED-SECRET': secret,
+    'X-EPIR-STOREFRONT-ID': ZARECZYNY_STOREFRONT_ID,
+    'X-EPIR-CHANNEL': ZARECZYNY_CHANNEL,
+  };
+
+  const customerGid = await getLoggedInCustomerGid(
+    context.customerAccount,
+    context.session,
+  );
+  if (customerGid) {
+    upstreamHeaders[EPIR_LOGGED_IN_CUSTOMER_ID_HEADER] = customerGid;
+  }
+
   let upstream: Response;
   try {
     upstream = await fetch(CHAT_S2S_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-EPIR-SHARED-SECRET': secret,
-        'X-EPIR-STOREFRONT-ID': ZARECZYNY_STOREFRONT_ID,
-        'X-EPIR-CHANNEL': ZARECZYNY_CHANNEL,
-      },
+      headers: upstreamHeaders,
       body: bodyText,
     });
   } catch (err) {

@@ -48,6 +48,7 @@ import {
   ZARECZYNY_STOREFRONT_ID,
 } from '~/lib/chat-widget-context';
 import {loadZareczynyPersonaUi} from '~/lib/persona-ui.server';
+import {isCaaConfigured} from '~/lib/caa-config.server';
 import {
   filterCollectionsForNav,
   parseCollectionFilter,
@@ -181,6 +182,7 @@ export async function loader({context, request}: LoaderFunctionArgs) {
     storefrontApiVersion: context.env.PUBLIC_STOREFRONT_API_VERSION || '2025-10',
     shopAnalytics,
     analyticsConsent,
+    caaLoginEnabled: isCaaConfigured(context.env),
   });
 }
 

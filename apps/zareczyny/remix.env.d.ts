@@ -1,8 +1,10 @@
 /// <reference types="@remix-run/dev" />
 /// <reference types="@remix-run/cloudflare" />
 
-import type {Storefront} from '@shopify/hydrogen';
-import {HydrogenCloudflareSession} from './src/session';
+import type {Storefront, createCustomerAccountClient} from '@shopify/hydrogen';
+import type {EpirZareczynySession} from './src/session';
+
+type ZareczynyCustomerAccount = ReturnType<typeof createCustomerAccountClient>;
 
 declare global {
   /**
@@ -14,7 +16,7 @@ declare global {
    * Declare expected Env parameter in fetch handler.
    */
   interface Env {
-    SESSION_SECRET: string;
+    SESSION_SECRET?: string;
     BRAND?: string;
     COLLECTION_FILTER?: string;
     /** Kolekcja „hub” (np. łącząca złote/srebrne) — ukrywana w nawigacji; linki widoczne to podkolekcje. */
@@ -42,6 +44,9 @@ declare global {
      * Wtedy renderuje się Shop Pay na karcie produktu; w przeciwnym razie tylko „Do koszyka” (checkoutUrl).
      */
     SHOP_PAY_ENABLED?: string;
+    /** Customer Account API (Hydrogen) — public client id; `[vars]` only, never a Pages Secret. */
+    PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID?: string;
+    SHOP_ID?: string;
     /** @deprecated — Hydrogen używa `/api/chat` (BFF). Zostawione dla starych env. */
     CHAT_API_URL?: string;
     /** Ten sam sekret co `EPIR_CHAT_SHARED_SECRET` na workerze czatu — proxy S2S `/chat`. */
@@ -57,8 +62,9 @@ declare global {
 declare module '@remix-run/cloudflare' {
   export interface AppLoadContext {
     cloudflare: EventContext<Env, string, unknown>;
-    session: HydrogenCloudflareSession;
+    session: EpirZareczynySession;
     storefront: Storefront;
+    customerAccount: ZareczynyCustomerAccount | null;
     env: Env;
   }
 }

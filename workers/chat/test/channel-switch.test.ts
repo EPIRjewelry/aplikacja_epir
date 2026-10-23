@@ -79,34 +79,57 @@ describe('buyer turn channel gate', () => {
     expect(((await offRes.json()) as {type: string}).type).toBe('unavailable');
     expect(spy).not.toHaveBeenCalled();
 
-    for (const mode of ['on', 'internal'] as const) {
-      spy.mockClear();
-      const kv = {
-        async get(key: string) {
-          return key.includes('epir-online-store') ? mode : null;
-        },
-      } as KVNamespace;
-      const turnBody = {messages: [{role: 'user', content: 'Szukam pierścionka'}]};
-      const res = await handleBuyerTurn(
-        new Request('https://x/chat', {
-          method: 'POST',
-          body: JSON.stringify(turnBody),
-          headers: {'Content-Type': 'application/json'},
-        }),
-        {
-          GEMMA_RUNTIME_KV: kv,
-          ALLOWED_ORIGIN: '*',
-          SHOP_DOMAIN: 'shop.myshopify.com',
-        } as import('../src/config/bindings').Env,
-        lock({}),
-        turnBody,
-      );
-      expect(res.status).toBe(200);
-      const json = (await res.json()) as {type: string; reply?: string};
-      expect(json.type).toBe('message');
-      expect(json.reply).toBe('odpowiedź testowa');
-      expect(spy).toHaveBeenCalled();
-    }
+    spy.mockClear();
+    const onKv = {
+      async get(key: string) {
+        return key.includes('epir-online-store') ? 'on' : null;
+      },
+    } as KVNamespace;
+    const onBody = {messages: [{role: 'user', content: 'Szukam pierścionka'}]};
+    const onRes = await handleBuyerTurn(
+      new Request('https://x/chat', {
+        method: 'POST',
+        body: JSON.stringify(onBody),
+        headers: {'Content-Type': 'application/json'},
+      }),
+      {
+        GEMMA_RUNTIME_KV: onKv,
+        ALLOWED_ORIGIN: '*',
+        SHOP_DOMAIN: 'shop.myshopify.com',
+      } as import('../src/config/bindings').Env,
+      lock({}),
+      onBody,
+    );
+    expect(onRes.status).toBe(200);
+    const onJson = (await onRes.json()) as {type: string; reply?: string};
+    expect(onJson.type).toBe('message');
+    expect(onJson.reply).toBe('odpowiedź testowa');
+    expect(spy).toHaveBeenCalled();
+
+    spy.mockClear();
+    const internalKv = {
+      async get(key: string) {
+        return key.includes('epir-online-store') ? 'internal' : null;
+      },
+    } as KVNamespace;
+    const internalBody = {messages: [{role: 'user', content: 'Szukam pierścionka'}]};
+    const internalRes = await handleBuyerTurn(
+      new Request('https://x/chat', {
+        method: 'POST',
+        body: JSON.stringify(internalBody),
+        headers: {'Content-Type': 'application/json'},
+      }),
+      {
+        GEMMA_RUNTIME_KV: internalKv,
+        ALLOWED_ORIGIN: '*',
+        SHOP_DOMAIN: 'shop.myshopify.com',
+      } as import('../src/config/bindings').Env,
+      lock({}),
+      internalBody,
+    );
+    expect(internalRes.status).toBe(200);
+    expect(((await internalRes.json()) as {type: string}).type).toBe('unavailable');
+    expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
 });

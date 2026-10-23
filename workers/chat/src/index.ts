@@ -249,6 +249,7 @@ type S2SChatAuthorizationResult =
 const EPIR_SHARED_SECRET_HEADER = 'X-EPIR-SHARED-SECRET';
 const EPIR_STOREFRONT_HEADER = 'X-EPIR-STOREFRONT-ID';
 const EPIR_CHANNEL_HEADER = 'X-EPIR-CHANNEL';
+const EPIR_LOGGED_IN_CUSTOMER_ID_HEADER = 'X-EPIR-LOGGED-IN-CUSTOMER-ID';
 
 const REPLAY_PROTECTION_SHARD_NAME = 'replay-protection:v1:global';
 const SESSION_DO_FALLBACK_SHARD_NAME = 'session:v1:fallback';
@@ -1618,6 +1619,28 @@ export class SessionDO {
       return new Response('ok');
     }
 
+    if (method === 'GET' && pathname.endsWith('/gemma-state')) {
+      const { readGemmaStateRow } = await import('./gemma/session-do-gemma-state');
+      const state = readGemmaStateRow(this.sql);
+      return new Response(JSON.stringify(state), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (method === 'POST' && pathname.endsWith('/gemma-state')) {
+      const { readGemmaStateRow, mergeGemmaStatePost, writeGemmaStateRow } = await import(
+        './gemma/session-do-gemma-state'
+      );
+      const body = await request.json().catch(() => null);
+      const prev = readGemmaStateRow(this.sql);
+      const merged = mergeGemmaStatePost(prev, body);
+      if ('error' in merged) {
+        return new Response(merged.error, { status: 400 });
+      }
+      writeGemmaStateRow(this.sql, merged);
+      return new Response('ok');
+    }
+
     // POST /append
     if (method === 'POST' && pathname.endsWith('/append')) {
       const payload = (await request.json().catch(() => null)) as HistoryEntry | null;
@@ -2897,7 +2920,24 @@ async function handleChat(
   );
 
   if (!isOperatorChannel(payload.channel)) {
-    return handleBuyerTurn(request, env, brandLock, raw);
+    const buyerUrl = new URL(request.url);
+    let loggedInCustomerIdForBuyer: string | null = null;
+    if (ingressOptions?.appProxyVerified === true) {
+      loggedInCustomerIdForBuyer = normalizeOptionalString(
+        buyerUrl.searchParams.get('logged_in_customer_id'),
+      );
+    } else if (
+      contextOverride?.channel === 'hydrogen-zareczyny' &&
+      contextOverride?.storefrontId === 'zareczyny'
+    ) {
+      loggedInCustomerIdForBuyer = normalizeOptionalString(
+        request.headers.get(EPIR_LOGGED_IN_CUSTOMER_ID_HEADER),
+      );
+    }
+    return handleBuyerTurn(request, env, brandLock, raw, {
+      appProxyVerified: ingressOptions?.appProxyVerified,
+      loggedInCustomerId: loggedInCustomerIdForBuyer,
+    });
   }
 
   // [TOKEN VAULT] Bez zmian

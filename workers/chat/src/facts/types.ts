@@ -65,6 +65,8 @@ export type ProductFacts = {
   title: string;
   vendor: string;
   productType: string | null;
+  /** Storefront Product.giftCard */
+  giftCard?: boolean;
   url: string;
   image: ProductImageFact | null;
   collections: {handle: string; title: string}[];

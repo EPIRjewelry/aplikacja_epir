@@ -18,6 +18,7 @@ import {
   readEpirSessionIdFromCookieHeader,
   withStorefrontCartInput,
 } from '@epir/utils';
+import {appendSessionCookie} from '~/lib/append-session-cookie';
 
 export const meta: MetaFunction<typeof loader> = ({data}) =>
   getSeoMeta({
@@ -115,13 +116,14 @@ export async function action({request, context}: LoaderFunctionArgs) {
       }
 
       if (!result?.cart?.id) {
+        await appendSessionCookie(headers, session);
         return json(
           {
             error: 'Nie udało się zapisać koszyka.',
             cart: result?.cart ?? null,
             errors: result?.errors,
           },
-          {status: 400, headers: {'Set-Cookie': await session.commit()}},
+          {status: 400, headers},
         );
       }
       cartId = result.cart.id;
@@ -129,7 +131,7 @@ export async function action({request, context}: LoaderFunctionArgs) {
 
       // Zapisz cartId w sesji OD RAZU dla obu akcji (kazka tak robi)
       session.set('cartId', cartId);
-      headers.set('Set-Cookie', await session.commit());
+      await appendSessionCookie(headers, session);
 
       if (cartAction === 'BUY_NOW') {
         const checkoutUrl = result.cart.checkoutUrl;
@@ -168,6 +170,8 @@ export async function action({request, context}: LoaderFunctionArgs) {
     }
     case 'REMOVE_FROM_CART': {
       if (!cartId) {
+        const errHeaders = new Headers();
+        await appendSessionCookie(errHeaders, session);
         return json(
           {
             error: 'Brak identyfikatora koszyka w sesji',
@@ -176,7 +180,7 @@ export async function action({request, context}: LoaderFunctionArgs) {
           },
           {
             status: 400,
-            headers: {'Set-Cookie': await session.commit()},
+            headers: errHeaders,
           },
         );
       }
@@ -198,7 +202,7 @@ export async function action({request, context}: LoaderFunctionArgs) {
       const syncCartId = formData.get('cartId');
       if (typeof syncCartId === 'string' && syncCartId.startsWith('gid://shopify/Cart/')) {
         session.set('cartId', syncCartId);
-        headers.set('Set-Cookie', await session.commit());
+        await appendSessionCookie(headers, session);
         cartId = syncCartId;
       }
       return json({ok: true, cartId}, {headers});
@@ -208,16 +212,18 @@ export async function action({request, context}: LoaderFunctionArgs) {
   }
 
   if (typeof cartId !== 'string' || cartId.length === 0) {
+    const errHeaders = new Headers();
+    await appendSessionCookie(errHeaders, session);
     return json(
       {error: 'Brak id koszyka', cart: null, errors: []},
-      {status: 500, headers: {'Set-Cookie': await session.commit()}},
+      {status: 500, headers: errHeaders},
     );
   }
   /**
    * The Cart ID may change after each mutation. We need to update it each time in the session.
    */
   session.set('cartId', cartId);
-  headers.set('Set-Cookie', await session.commit());
+  await appendSessionCookie(headers, session);
 
   const {cart, errors} = result;
   return json({cart, errors}, {status, headers});
