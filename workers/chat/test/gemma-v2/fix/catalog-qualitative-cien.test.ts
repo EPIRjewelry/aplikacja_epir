@@ -127,6 +127,7 @@ describe('Cień catalog qualitative fix', () => {
       expect.objectContaining({ucpBrowseInStockAvailable: true}),
       250,
       expect.anything(),
+      expect.anything(),
     );
     expect(reply).not.toBe(epirCatalogEmptyReply('epir-online-store'));
   });
