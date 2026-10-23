@@ -250,6 +250,10 @@ export async function searchGemmaCatalog(
       Boolean(stone?.length) &&
       priceFilterActiveEarly &&
       Boolean(queryText);
+    /** Sam productType + tekst (np. „naszyjnik”) — suggest gdy UCP nie zwraca trafień. */
+    const suggestFacetedWithProductType =
+      Boolean(productType?.length) && Boolean(queryText) && !suggestFacetedWithBudget;
+    const suggestFacetedMerge = suggestFacetedWithBudget || suggestFacetedWithProductType;
     const storefrontLiveEnabled = hasStorefrontCatalogToken(env, catalogChannel);
     let sfRefsCount = 0;
     let suggestHandles: string[] = [];
@@ -284,7 +288,7 @@ export async function searchGemmaCatalog(
       }
     }
 
-    if (suggestFacetedWithBudget && queryText && storefrontLiveEnabled) {
+    if (suggestFacetedMerge && queryText && storefrontLiveEnabled) {
       const haveIds = new Set(
         matches.map((m) => m.product.productId).filter((id): id is string => Boolean(id)),
       );
@@ -329,7 +333,7 @@ export async function searchGemmaCatalog(
     if (
       queryText &&
       storefrontLiveEnabled &&
-      (facetedSearch || suggestFacetedWithBudget)
+      (facetedSearch || suggestFacetedMerge)
     ) {
       console.log(
         JSON.stringify({

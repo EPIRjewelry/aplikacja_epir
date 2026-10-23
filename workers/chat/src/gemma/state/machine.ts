@@ -1,3 +1,4 @@
+import {detectCustomStoneOrOrderKbIntent} from '../intent/policy-intent-heuristic';
 import type {GemmaIntent} from '../intent/schema';
 import type {
   GemmaConversationState,
@@ -79,6 +80,7 @@ export function intentPolicyQueryShouldUseCatalog(
 ): boolean {
   const q = intent.policy_query?.trim();
   if (!q) return false;
+  if (detectCustomStoneOrOrderKbIntent(q)) return false;
   const hasCatalogContext =
     Boolean(mergedSlots.metal?.trim() || intent.slots.metal?.trim()) ||
     Boolean(mergedSlots.stone?.trim() || intent.slots.stone?.trim()) ||

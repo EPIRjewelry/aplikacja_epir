@@ -158,6 +158,21 @@ describe('E3 transitionGemmaState', () => {
     expect(out.slots.metal).toBe('585');
   });
 
+  it('T-S3-KB-CAT-1: wymiana kamienia z policy_query → kb_policies not catalog', () => {
+    const out = transitionGemmaState(
+      {
+        ...DEFAULT_GEMMA_SESSION_STATE,
+        slots: {stone: 'granat', product_type: 'pierścionek'},
+      },
+      fictionalGemmaIntent({
+        policy_query: 'ametyst albo szafir — ile kosztuje wymiana?',
+        slots: {stone: 'szafir'},
+      }),
+    );
+    expect(out.allowedActions).toContain('kb_policies');
+    expect(out.allowedActions).not.toContain('search_catalog');
+  });
+
   it('T-E3-POLICY-CAT-1: cena szafiru w 585 → search_catalog not kb', () => {
     const intent = fictionalGemmaIntent({
       policy_query: 'a w 585 ile kosztuje szafir?',

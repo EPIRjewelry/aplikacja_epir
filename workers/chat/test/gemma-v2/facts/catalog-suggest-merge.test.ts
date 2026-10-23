@@ -358,4 +358,47 @@ describe('UCP + SF search + shop suggest merge (S3)', () => {
     expect(out[0].product.handle).toBe('pierscionek-srebrny-z-granatem');
     expect(out[0].matchingPriceRange.min.minor).toBe(34_000);
   });
+
+  it('T-NASZYJNIK-SUGGEST-1: productType naszyjnik bez metal/stone/budget → suggest merge', async () => {
+    const necklace = {
+      ...fictionalMultiVariantProduct(),
+      productId: 'gid://shopify/Product/necklace-1',
+      handle: 'naszyjnik-organiczny-fikcyjny',
+      productType: 'Naszyjnik',
+      title: 'Naszyjnik organiczny fikcyjny',
+    };
+
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [],
+        total: 0,
+        facets: {
+          total: 0,
+          byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
+    const suggestSpy = vi
+      .spyOn(shopSuggest, 'fetchShopSuggestProductHandles')
+      .mockResolvedValue([necklace.handle]);
+    vi.spyOn(shopProductJs, 'fetchProductFactsFromShopAjax').mockResolvedValue(necklace);
+    vi.spyOn(storefrontLive, 'searchStorefrontProductRefsByQuery');
+
+    const out = await searchGemmaCatalog(
+      {
+        SHOP_DOMAIN: 'epir-ai.myshopify.com',
+        PRIVATE_STOREFRONT_API_TOKEN: 't',
+      } as never,
+      'epir-online-store',
+      {text: 'naszyjnik', productType: ['naszyjnik']},
+      6,
+    );
+
+    expect(suggestSpy).toHaveBeenCalledWith('epir-online-store', 'naszyjnik', expect.any(Number));
+    expect(out.length).toBeGreaterThan(0);
+    expect(out[0]!.product.handle).toBe(necklace.handle);
+  });
 });

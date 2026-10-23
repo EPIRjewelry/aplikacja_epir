@@ -5,7 +5,10 @@ import {BuyerTurnOverloadError} from '../buyer/buyer-llm-retry';
 import {appendBuyerSessionMessage, readBuyerSessionHistory} from '../buyer/session-history';
 import {detectJailbreakOrHarmIntent} from '../intent/jailbreak-prefilter';
 import {extractGemmaIntent} from './intent/extract-intent';
-import {coerceGemmaPolicyIntentFromHeuristic} from './intent/policy-intent-heuristic';
+import {
+  coerceGemmaCustomStoneKbIntent,
+  coerceGemmaPolicyIntentFromHeuristic,
+} from './intent/policy-intent-heuristic';
 import {detectFormOfAddressFromText} from './profiles/epir';
 import {runGemmaAllowedActions} from './actions/run';
 import {buildEpirActionReply} from './actions/reply';
@@ -104,7 +107,10 @@ async function runInsideGate(
   let prev = await readGemmaState(env, sessionId);
   prev = applyFormOfAddress(prev, userText);
 
-  const intent = coerceGemmaPolicyIntentFromHeuristic(intentResult.intent, userText);
+  const intent = coerceGemmaCustomStoneKbIntent(
+    coerceGemmaPolicyIntentFromHeuristic(intentResult.intent, userText),
+    userText,
+  );
   const transitioned = transitionGemmaState(prev, intent);
   const userCorpus = [
     userText,

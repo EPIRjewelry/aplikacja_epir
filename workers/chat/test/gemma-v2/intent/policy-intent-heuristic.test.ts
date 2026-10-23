@@ -1,5 +1,8 @@
 import {describe, expect, it} from 'vitest';
-import {coerceGemmaPolicyIntentFromHeuristic} from '../../../src/gemma/intent/policy-intent-heuristic';
+import {
+  coerceGemmaCustomStoneKbIntent,
+  coerceGemmaPolicyIntentFromHeuristic,
+} from '../../../src/gemma/intent/policy-intent-heuristic';
 import {fictionalGemmaIntent} from '../fixtures/gemma-intent';
 
 describe('coerceGemmaPolicyIntentFromHeuristic', () => {
@@ -15,6 +18,22 @@ describe('coerceGemmaPolicyIntentFromHeuristic', () => {
     const intent = fictionalGemmaIntent({policy_query: 'wysyłka', state: 'polityki_kontakt'});
     const out = coerceGemmaPolicyIntentFromHeuristic(intent, 'telefon?');
     expect(out.policy_query).toBe('wysyłka');
+  });
+
+  it('T-S3-KB-HEUR-1: wymiana kamienia → polityki_kontakt + policy_query', () => {
+    const userText = 'Czy mogę zamówić ten pierścionek z innym kamieniem zamiast granatu?';
+    const intent = fictionalGemmaIntent({policy_query: null, state: 'propozycje'});
+    const out = coerceGemmaCustomStoneKbIntent(intent, userText);
+    expect(out.state).toBe('polityki_kontakt');
+    expect(out.policy_query).toBe(userText);
+  });
+
+  it('T-S3-KB-HEUR-2: jak zamówić → KB (FAQ custom)', () => {
+    const userText = 'Jak zamówić? Czy trzeba dzwonić?';
+    const intent = fictionalGemmaIntent({policy_query: null, state: 'propozycje'});
+    const out = coerceGemmaCustomStoneKbIntent(intent, userText);
+    expect(out.state).toBe('polityki_kontakt');
+    expect(out.policy_query).toBe(userText);
   });
 
   it('nie wymusza KB na neutralnym zapytaniu katalogowym', () => {
