@@ -147,15 +147,26 @@ function hasQualitativeBudget(slots: GemmaSlots): boolean {
 }
 
 /**
- * Search requires a product facet for UCP text (metal / stone / type / need).
- * Budget alone is not enough — empty catalogTextFromSlots → null_nodes lottery.
+ * Search needs a product facet (metal/stone/type/need) **or** qualitative budget browse
+ * (tanio/luksus). Numeric budget alone is not enough — empty UCP text → null_nodes.
  */
 export function slotsSufficientForSearch(slots: GemmaSlots): boolean {
-  return intentHasSearchableProductSlots(slots);
+  return intentHasSearchableProductSlots(slots) || hasQualitativeBudget(slots);
+}
+
+function hasNumericBudget(slots: GemmaSlots): boolean {
+  return typeof slots.budget === 'number' && Number.isFinite(slots.budget) && slots.budget > 0;
+}
+
+function hasProductFacetSlot(slots: GemmaSlots): boolean {
+  if (slots.metal?.trim()) return true;
+  if (slots.stone?.trim()) return true;
+  if (slots.product_type?.trim() && !isCustomOrderProductType(slots.product_type)) return true;
+  return false;
 }
 
 function pickMissingSlot(slots: GemmaSlots): keyof GemmaSlots {
-  if (budgetSlotPresent(slots) && !slots.metal?.trim()) {
+  if (hasNumericBudget(slots) && !hasProductFacetSlot(slots)) {
     return 'metal';
   }
   if (!slots.product_type?.trim() && !slots.occasion?.trim() && !slots.recipient?.trim()) {

@@ -98,6 +98,20 @@ describe('E3 transitionGemmaState', () => {
     expect(out.missingSlot).toBe('metal');
   });
 
+  it('T-E3-SUFF-QUAL-1: budget_qualitative tanio/luksus → search bez metalu', () => {
+    expect(slotsSufficientForSearch({budget_qualitative: 'tanio'})).toBe(true);
+    expect(slotsSufficientForSearch({budget_qualitative: 'luksusowa', budget: null})).toBe(true);
+    const out = transitionGemmaState(
+      DEFAULT_GEMMA_SESSION_STATE,
+      fictionalGemmaIntent({
+        state: 'propozycje',
+        slots: {budget_qualitative: 'tanio', budget: null},
+      }),
+    );
+    expect(out.allowedActions).toContain('search_catalog');
+    expect(out.missingSlot).toBeUndefined();
+  });
+
   it('T-E3-SUFF-BUD-2: budget=5000 + metal złoto → search_catalog + text z metalem', () => {
     expect(slotsSufficientForSearch({budget: 5000, metal: 'złoto'})).toBe(true);
     const out = transitionGemmaState(

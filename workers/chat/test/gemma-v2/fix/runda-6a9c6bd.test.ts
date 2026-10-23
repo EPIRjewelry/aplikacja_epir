@@ -882,7 +882,7 @@ describe('runda-6a9c6bd — KB (#1–3)', () => {
 
   it('T-6a9c6bd-PROMPT-METAL-BUDGET: złoty→metal złoto; kwota bez kasowania metalu', () => {
     expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/złoty\/złoto → „złoto”/i);
-    expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/metal=\\"złoto\\", budget=2500/i);
+    expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/metal="złoto", budget=2500/);
     expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/NIE kasuj slots\.metal/i);
   });
 
