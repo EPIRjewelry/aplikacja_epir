@@ -8,7 +8,9 @@
  */
 import {describe, expect, it} from 'vitest';
 import {
+  catalogTextFromSlots,
   intentPolicyQueryShouldUseCatalog,
+  slotsSufficientForSearch,
   transitionGemmaState,
 } from '../../../src/gemma/state/machine';
 import {DEFAULT_GEMMA_SESSION_STATE} from '../../../src/gemma/state/types';
@@ -83,6 +85,48 @@ describe('E3 transitionGemmaState', () => {
       fictionalGemmaIntent({state: 'potrzeby', slots: {}}),
     );
     expect(out.nextState).toBe('propozycje');
+  });
+
+  it('T-E3-SUFF-BUD-1: sam budget=5000 nie wystarcza do search_catalog', () => {
+    expect(slotsSufficientForSearch({budget: 5000})).toBe(false);
+    const out = transitionGemmaState(
+      DEFAULT_GEMMA_SESSION_STATE,
+      fictionalGemmaIntent({state: 'propozycje', slots: {budget: 5000}}),
+    );
+    expect(out.allowedActions).not.toContain('search_catalog');
+    expect(out.nextState).toBe('potrzeby');
+    expect(out.missingSlot).toBe('metal');
+  });
+
+  it('T-E3-SUFF-BUD-2: budget=5000 + metal złoto → search_catalog + text z metalem', () => {
+    expect(slotsSufficientForSearch({budget: 5000, metal: 'złoto'})).toBe(true);
+    const out = transitionGemmaState(
+      DEFAULT_GEMMA_SESSION_STATE,
+      fictionalGemmaIntent({
+        state: 'propozycje',
+        slots: {budget: 5000, metal: 'złoto'},
+      }),
+    );
+    expect(out.allowedActions).toContain('search_catalog');
+    expect(catalogTextFromSlots(out.slots)).toMatch(/złoto/i);
+  });
+
+  it('T-E3-SUFF-S2: „5 tysięcy” po metalu złoto — metal zostaje, text niepusty', () => {
+    const out = transitionGemmaState(
+      {
+        ...DEFAULT_GEMMA_SESSION_STATE,
+        state: 'propozycje',
+        slots: {metal: 'złoto', budget: 2500},
+      },
+      fictionalGemmaIntent({
+        state: 'propozycje',
+        slots: {budget: 5000},
+      }),
+    );
+    expect(out.slots.metal).toBe('złoto');
+    expect(out.slots.budget).toBe(5000);
+    expect(out.allowedActions).toContain('search_catalog');
+    expect(catalogTextFromSlots(out.slots)).toMatch(/złoto/i);
   });
 
   it('T-E3-MERGE-BUD-1: intent slots.budget null clears inherited budget', () => {

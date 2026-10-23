@@ -880,6 +880,12 @@ describe('runda-6a9c6bd — KB (#1–3)', () => {
     expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/cart_action=add, cart_consent=false/i);
   });
 
+  it('T-6a9c6bd-PROMPT-METAL-BUDGET: złoty→metal złoto; kwota bez kasowania metalu', () => {
+    expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/złoty\/złoto → „złoto”/i);
+    expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/metal=\\"złoto\\", budget=2500/i);
+    expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/NIE kasuj slots\.metal/i);
+  });
+
   it('T-6a9c6bd-KB-4: kb_fact_dropped → epirKbAnswerReply, nie deterministicReply', async () => {
     const ai = await import('../../../src/ai-client');
     vi.spyOn(ai, 'getGroqResponse').mockResolvedValue(

@@ -146,11 +146,18 @@ function hasQualitativeBudget(slots: GemmaSlots): boolean {
   return Boolean(slots.budget_qualitative?.trim()) && slots.budget == null;
 }
 
+/**
+ * Search requires a product facet for UCP text (metal / stone / type / need).
+ * Budget alone is not enough — empty catalogTextFromSlots → null_nodes lottery.
+ */
 export function slotsSufficientForSearch(slots: GemmaSlots): boolean {
-  return isNeedKnown(slots) || budgetSlotPresent(slots);
+  return intentHasSearchableProductSlots(slots);
 }
 
 function pickMissingSlot(slots: GemmaSlots): keyof GemmaSlots {
+  if (budgetSlotPresent(slots) && !slots.metal?.trim()) {
+    return 'metal';
+  }
   if (!slots.product_type?.trim() && !slots.occasion?.trim() && !slots.recipient?.trim()) {
     return 'product_type';
   }
