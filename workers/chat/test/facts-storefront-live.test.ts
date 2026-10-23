@@ -230,6 +230,45 @@ describe('fetchProductFactsLive', () => {
     expect(hydrationStats.no_url).toBe(1);
   });
 
+  it('recovers product via product(id:) when nodes batch returns null', async () => {
+    const productNode = {
+      id: 'gid://shopify/Product/miss-batch',
+      handle: 'recovered',
+      title: 'Recovered',
+      productType: 'Ring',
+      onlineStoreUrl: 'https://epirbizuteria.pl/products/recovered',
+      collections: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: []},
+      variants: {
+        pageInfo: {hasNextPage: false, endCursor: null},
+        nodes: [mkVariantNode('gid://shopify/ProductVariant/miss-batch', '10.00')],
+      },
+      metafields: [],
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const body = typeof init?.body === 'string' ? init.body : '';
+      if (body.includes('ProductNodesLive')) {
+        return nodesResponse([null]);
+      }
+      if (body.includes('ProductByIdLive')) {
+        return new Response(JSON.stringify({data: {product: productNode}}), {status: 200});
+      }
+      return nodesResponse([productNode]);
+    });
+    const hydrationStats = {null_nodes: 0, normalize_null: 0, no_url: 0};
+    const products = await fetchProductFactsLive(
+      {
+        SHOP_DOMAIN: 'example.myshopify.com',
+        SHOPIFY_STOREFRONT_TOKEN: 'public-epir',
+      } as Env,
+      'epir-online-store',
+      ['gid://shopify/Product/miss-batch'],
+      {hydrationStats},
+    );
+    expect(products).toHaveLength(1);
+    expect(products[0].handle).toBe('recovered');
+    expect(hydrationStats.null_nodes).toBe(0);
+  });
+
   it('counts null_nodes when Storefront returns a null node', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       nodesResponse([

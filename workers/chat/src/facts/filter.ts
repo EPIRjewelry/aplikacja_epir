@@ -8,6 +8,8 @@ import type {
   VariantStoneOrigin,
 } from './types';
 import {variantMetalMatchesSlotTokens} from './metal-match';
+import {productFactsProductTypeMatchesSlots} from './product-type-buyer-taxonomy';
+import {productFactsStoneMatchesSlots} from './stone-buyer-taxonomy';
 import {moneyFromMinor} from './types';
 
 function normalizeText(text: string): string {
@@ -75,12 +77,10 @@ export function filterProducts(products: ProductFacts[], filters: CatalogFilters
   for (const product of products) {
     if (filters.text && !productMatchesText(product, filters.text)) continue;
     if (filters.productType?.length) {
-      if (!product.productType || !filters.productType.includes(product.productType)) continue;
+      if (!productFactsProductTypeMatchesSlots(product.productType, filters.productType)) continue;
     }
     if (filters.stone?.length) {
-      if (!filters.stone.some((s) => product.stones.map((x) => x.toLowerCase()).includes(s.toLowerCase()))) {
-        continue;
-      }
+      if (!productFactsStoneMatchesSlots(product, filters.stone)) continue;
     }
 
     const matching = product.variants.filter((v) => variantMatchesFilters(v, filters));

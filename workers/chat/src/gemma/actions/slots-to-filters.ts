@@ -1,5 +1,5 @@
 import {moneyFromMinor} from '../../facts/types';
-import {catalogTextFromSlots} from '../state/machine';
+import {catalogTextFromSlots, isCustomOrderProductType} from '../state/machine';
 import type {GemmaSlots} from '../state/types';
 import type {GemmaCatalogSearchFilters} from '../facts/types';
 import {customerRequestsGiftCard} from '../facts/gift-card-catalog';
@@ -184,6 +184,9 @@ export function slotsToCatalogFilters(
   const filters: GemmaCatalogSearchFilters = {text: text || undefined};
   if (slots.metal?.trim()) filters.metal = [slots.metal.trim()];
   if (slots.stone?.trim()) filters.stone = [slots.stone.trim()];
+  if (slots.product_type?.trim() && !isCustomOrderProductType(slots.product_type)) {
+    filters.productType = [slots.product_type.trim()];
+  }
   if (bounds.priceMin !== undefined) filters.priceMin = bounds.priceMin;
   if (bounds.priceMax !== undefined) filters.priceMax = bounds.priceMax;
   if (qualitative && !text) {

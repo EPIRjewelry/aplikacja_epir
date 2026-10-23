@@ -106,6 +106,18 @@ export function expandBuyerMetalSlotToExactLabels(slotValue: string): string[] {
   return [slot];
 }
 
+const ASSAY_BUYER_TERM_KEYS = new Set(['585', '333', '750']);
+
+/** Slot metalu to pojedyncza próba (585/333/750), nie ogólne „złoto”. */
+export function metalSlotIsAssayScoped(slotValue: string): boolean {
+  const key = normalizeBuyerMetalTermKey(slotValue.trim());
+  return ASSAY_BUYER_TERM_KEYS.has(key);
+}
+
+export function metalSlotsAreAssayScoped(metalSlots: string[]): boolean {
+  return metalSlots.some((s) => metalSlotIsAssayScoped(s));
+}
+
 export function expandMetalSlotsForMatching(metalSlots: string[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();

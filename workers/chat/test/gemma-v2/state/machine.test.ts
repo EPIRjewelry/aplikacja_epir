@@ -7,7 +7,10 @@
  * - **M-E3-13** — ignoruj cart_consent → TRANS-5 FAIL
  */
 import {describe, expect, it} from 'vitest';
-import {transitionGemmaState} from '../../../src/gemma/state/machine';
+import {
+  intentPolicyQueryShouldUseCatalog,
+  transitionGemmaState,
+} from '../../../src/gemma/state/machine';
 import {DEFAULT_GEMMA_SESSION_STATE} from '../../../src/gemma/state/types';
 import {fictionalGemmaIntent} from '../fixtures/gemma-intent';
 
@@ -80,6 +83,45 @@ describe('E3 transitionGemmaState', () => {
       fictionalGemmaIntent({state: 'potrzeby', slots: {}}),
     );
     expect(out.nextState).toBe('propozycje');
+  });
+
+  it('T-E3-MERGE-BUD-1: intent slots.budget null clears inherited budget', () => {
+    const out = transitionGemmaState(
+      {
+        ...DEFAULT_GEMMA_SESSION_STATE,
+        slots: {budget: 3000, metal: '585'},
+      },
+      fictionalGemmaIntent({
+        state: 'propozycje',
+        slots: {budget: null},
+      }),
+    );
+    expect(out.slots.budget).toBeUndefined();
+    expect(out.slots.metal).toBe('585');
+  });
+
+  it('T-E3-POLICY-CAT-1: cena szafiru w 585 → search_catalog not kb', () => {
+    const intent = fictionalGemmaIntent({
+      policy_query: 'a w 585 ile kosztuje szafir?',
+      slots: {budget: null, stone: 'szafir'},
+    });
+    expect(
+      intentPolicyQueryShouldUseCatalog(intent, {
+        ...DEFAULT_GEMMA_SESSION_STATE.slots,
+        metal: '585',
+        budget: 3000,
+      }),
+    ).toBe(true);
+    const out = transitionGemmaState(
+      {
+        ...DEFAULT_GEMMA_SESSION_STATE,
+        slots: {metal: '585', budget: 3000},
+      },
+      intent,
+    );
+    expect(out.allowedActions).toContain('search_catalog');
+    expect(out.allowedActions).not.toContain('kb_policies');
+    expect(out.slots.budget).toBeUndefined();
   });
 
   it('T-E3-GE-GZ-1: same transition for GE and GZ channel context (machine is channel-agnostic)', () => {

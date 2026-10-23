@@ -493,6 +493,36 @@ async function fetchProductNodesBatch(
   return nodes ?? [];
 }
 
+/** Fallback gdy `nodes(ids:)` zwraca null — pojedynczy `product(id:)` (Storefront API). */
+async function fetchProductNodeById(
+  env: Env,
+  channel: BuyerChannelId,
+  productId: string,
+  options?: FetchStorefrontLiveOptions,
+): Promise<Record<string, unknown> | null> {
+  const query = `
+    query ProductByIdLive($id: ID!) @inContext(country: PL, language: PL) {
+      product(id: $id) {
+        ${PRODUCT_NODE_FIELDS}
+      }
+    }
+  `;
+  try {
+    const data = await storefrontGraphqlRetry(env, channel, query, {id: productId}, options);
+    const raw = data.product as Record<string, unknown> | null;
+    return raw && isRecord(raw) ? raw : null;
+  } catch (err) {
+    console.log(
+      JSON.stringify({
+        tag: 'facts.product_by_id_fallback_error',
+        channel,
+        reason: err instanceof Error ? err.message.slice(0, 120) : 'error',
+      }),
+    );
+    return null;
+  }
+}
+
 export async function fetchProductFactsLive(
   env: Env,
   channel: BuyerChannelId,
@@ -518,10 +548,22 @@ export async function fetchProductFactsLive(
     const nodes = await fetchProductNodesBatch(env, channel, batch, options);
     for (let j = 0; j < batch.length; j++) {
       const requestedId = batch[j];
-      const raw = nodes[j];
+      let raw = nodes[j];
       if (!raw || !isRecord(raw)) {
-        options?.hydrationStats && (options.hydrationStats.null_nodes += 1);
-        continue;
+        const fallback = await fetchProductNodeById(env, channel, requestedId, options);
+        if (fallback) {
+          raw = fallback;
+          console.log(
+            JSON.stringify({
+              tag: 'facts.hydration.product_id_fallback',
+              channel,
+              product_id: requestedId,
+            }),
+          );
+        } else {
+          options?.hydrationStats && (options.hydrationStats.null_nodes += 1);
+          continue;
+        }
       }
       const productId = typeof raw.id === 'string' ? raw.id : requestedId;
 

@@ -4,7 +4,7 @@ import type {ProductMatch} from '../../facts/types';
 /** Filtry wyszukiwania Gemma v2 — budżet nie idzie do UCP (E2b). */
 export type GemmaCatalogSearchFilters = Pick<
   CatalogFilters,
-  'text' | 'ucpIntent' | 'metal' | 'stone' | 'priceMin' | 'priceMax' | 'available'
+  'text' | 'ucpIntent' | 'metal' | 'stone' | 'productType' | 'priceMin' | 'priceMax' | 'available'
 > & {
   /** Browse bez query + filtr available (D1) — tylko Gemma, nie legacy CatalogFilters. */
   ucpBrowseInStockAvailable?: boolean;

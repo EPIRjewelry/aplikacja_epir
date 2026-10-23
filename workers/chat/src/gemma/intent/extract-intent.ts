@@ -20,7 +20,7 @@ Zasady:
 - Gdy klient tylko dziękuje lub domyka rozmowę bez nowej prośby: state=powitanie, slots.occasion=podziękowanie, cart_action=null, bez nowego wyszukiwania.
 - Gdy klient pyta o biżuterię na zamówienie indywidualne, odcisk palca lub własny projekt: state=propozycje, slots.product_type=zamówienie indywidualne, cart_action=null.
 - Gdy klient szuka luksusowej biżuterii bez kwoty: slots.budget_qualitative zawiera słowo luksus (np. luksus, luksusowa), slots.budget=null.
-- policy_query: pełne pytanie klienta w języku naturalnym (całe zdanie), nie pojedyncze słowo-klucz.
+- policy_query: pełne pytanie klienta w języku naturalnym (całe zdanie), nie pojedyncze słowo-klucz — tylko polityki sklepu (zwroty, wysyłka, regulamin). NIE policy_query gdy klient pyta o cenę biżuterii / kamienia w kontekście metalu lub próby (np. „ile kosztuje szafir w 585”): state=propozycje, policy_query=null, zachowaj/uzupełnij slots.metal i slots.stone — to wyszukiwanie katalogu.
 - Kolejne pytanie o zamówienie indywidualne (czas realizacji, cena, materiał, możliwości): ustaw policy_query na to pytanie, bez slots.product_type=zamówienie indywidualne.
 - cart_action=show tylko gdy klient prosi o pokazanie lub podsumowanie koszyka; „pokaż coś z…” / propozycje z katalogu to wyszukiwanie (cart_action=null).
 - „dodaj do koszyka” / „wrzuć do koszyka” → cart_action=add, cart_consent=true.
