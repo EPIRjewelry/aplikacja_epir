@@ -152,6 +152,7 @@ describe('Cień catalog qualitative fix', () => {
       expect.objectContaining({text: expect.stringMatching(/żona|tanio/i)}),
       6,
       expect.anything(),
+      expect.anything(),
     );
   });
 
