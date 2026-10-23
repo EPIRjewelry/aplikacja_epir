@@ -60,9 +60,10 @@ export class InpsaApiClient {
     status: number;
     body: InpsaOrdersEventsResponse | null;
   }> {
-    const { accessToken } = await this.oauth.getAccessToken();
+    // Fail fast on config before OAuth (clearer ops errors when org id unset).
     const organizationId = resolveInpsaOrganizationId(this.env.INPSA_ORGANIZATION_ID);
     const eventsPath = buildOrdersEventsRelativePath(organizationId);
+    const { accessToken } = await this.oauth.getAccessToken();
     const url = new URL(joinInpsaApiUrl(this.apiBase(), eventsPath));
     if (options.limit != null) url.searchParams.set('limit', String(options.limit));
     if (options.cursor) url.searchParams.set('cursor', options.cursor);

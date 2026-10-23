@@ -59,15 +59,21 @@ describe('InpsaOAuthClient', () => {
   });
 
   it('refetches when cache is inside refresh skew', async () => {
-    const fetchFn = mockFetchToken(1);
+    vi.useFakeTimers();
+    const fetchFn = mockFetchToken(300);
     const client = new InpsaOAuthClient(baseEnv, fetchFn);
 
-    await client.getAccessToken();
-    await new Promise((r) => setTimeout(r, INPSA_TOKEN_REFRESH_SKEW_MS + 50));
-    const again = await client.getAccessToken();
+    try {
+      await client.getAccessToken();
+      // Advance into the last INPSA_TOKEN_REFRESH_SKEW_MS of the 300s TTL.
+      await vi.advanceTimersByTimeAsync(300_000 - INPSA_TOKEN_REFRESH_SKEW_MS + 1);
+      const again = await client.getAccessToken();
 
-    expect(again.fromCache).toBe(false);
-    expect(fetchFn).toHaveBeenCalledTimes(2);
+      expect(again.fromCache).toBe(false);
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('uses default TTL when expires_in missing', async () => {
