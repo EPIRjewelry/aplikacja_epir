@@ -27,6 +27,12 @@ describe('detectPolicyInformationIntent', () => {
     expect(detectPolicyInformationIntent('telefon?').match).toBe(true);
   });
 
+  it('wykrywa PL: wizyta, przymiarka, na żywo', () => {
+    expect(detectPolicyInformationIntent('mogę obejrzeć na żywo?').match).toBe(true);
+    expect(detectPolicyInformationIntent('czy mogę przyjść na przymiarkę?').match).toBe(true);
+    expect(detectPolicyInformationIntent('chciałbym umówić wizytę w pracowni').match).toBe(true);
+  });
+
   it('nie wykrywa neutralnej prośby o produkt', () => {
     expect(detectPolicyInformationIntent('Pokaż mi złote pierścionki z brylantem').match).toBe(false);
   });

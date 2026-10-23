@@ -22,12 +22,44 @@ describe('E3 parseIntentJson', () => {
     expect(out.ok).toBe(false);
   });
 
-  it('T-E3-INTENT-2b: invalid slots type fails', () => {
+  it('T-E3-INTENT-2b: numeric budget in slots parses (commission A)', () => {
     const out = parseIntentJson(
       fictionalGemmaIntentJson({
-        slots: {budget: 123 as unknown as string},
+        slots: {budget: 123},
       }),
     );
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.intent.slots.budget).toBe(123);
+    }
+  });
+
+  it('T-E3-INTENT-2c: invalid slots budget type fails', () => {
+    const raw = JSON.parse(fictionalGemmaIntentJson()) as Record<string, unknown>;
+    const slots = raw.slots as Record<string, unknown>;
+    slots.budget = true;
+    const out = parseIntentJson(JSON.stringify(raw));
+    expect(out.ok).toBe(false);
+  });
+
+  it('T-E3-INTENT-2d: budget_qualitative string parses; budget stays null', () => {
+    const out = parseIntentJson(
+      fictionalGemmaIntentJson({
+        slots: {budget_qualitative: 'tanio', budget: null},
+      }),
+    );
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.intent.slots.budget_qualitative).toBe('tanio');
+      expect(out.intent.slots.budget).toBeNull();
+    }
+  });
+
+  it('T-E3-INTENT-2e: string in budget slot fails (no legacy string budget)', () => {
+    const raw = JSON.parse(fictionalGemmaIntentJson()) as Record<string, unknown>;
+    const slots = raw.slots as Record<string, unknown>;
+    slots.budget = 'tanio';
+    const out = parseIntentJson(JSON.stringify(raw));
     expect(out.ok).toBe(false);
   });
 });

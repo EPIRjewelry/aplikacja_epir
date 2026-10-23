@@ -7,6 +7,24 @@ import {
   getCatalogRepository,
 } from '../../facts';
 import {filterProducts} from '../../facts/filter';
+import {
+  fetchProductFactsLive,
+  hasStorefrontCatalogToken,
+  searchStorefrontProductRefsByQuery,
+} from '../../facts/storefront-live';
+import {fetchProductFactsFromShopAjax} from '../../facts/shop-product-js';
+import {fetchShopSuggestProductHandles} from '../../facts/shop-suggest';
+import {metalSlotsAreAssayScoped} from '../../facts/metal-buyer-taxonomy';
+import {
+  listProductTaxonomyMaterialLabels,
+  productFactsMaterialMatchesTokens,
+  variantMetalMatchesSlotTokens,
+} from '../../facts/metal-match';
+import {productFactsProductTypeMatchesSlots} from '../../facts/product-type-buyer-taxonomy';
+import {
+  productFactsStoneMatchesSlots,
+  productHasStoneTaxonomyData,
+} from '../../facts/stone-buyer-taxonomy';
 import {moneyFromMinor} from '../../facts/types';
 import type {MoneyPln, ProductFacts, ProductMatch, VariantFacts} from '../../facts/types';
 import {filterProductMatchesByZareczynyTag} from './assortment';
@@ -38,10 +56,8 @@ function priceMinorOf(v: MoneyPln | number | undefined): number | undefined {
   return v.minor ?? v.amount_minor;
 }
 
-function variantMatchesMetalTokens(v: VariantFacts, metalTokens: string[]): boolean {
-  if (!v.metal) return false;
-  const vMetal = v.metal.trim().toLowerCase();
-  return metalTokens.some((m) => vMetal.includes(m.toLowerCase()));
+function variantPriceMinor(v: VariantFacts): number {
+  return v.price?.minor ?? v.price?.amount_minor ?? 0;
 }
 
 function variantMatchesPriceBounds(
@@ -63,54 +79,8 @@ function hasAnyFilledMetal(variants: VariantFacts[]): boolean {
   return variants.some((v) => Boolean(v.metal?.trim()));
 }
 
-function normalizeMaterialText(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim();
-}
-
-function materialWords(text: string): Set<string> {
-  const normalized = normalizeMaterialText(text);
-  if (!normalized) return new Set();
-  const parts = normalized.split(/[^a-z0-9]+/u).filter(Boolean);
-  return new Set(parts);
-}
-
-/** Fakt materiału produktu (nie opcja wariantu): metals[] + znane metapola. */
-function productMaterialFactText(product: ProductFacts): string {
-  const chunks: string[] = [];
-  for (const m of product.metals) {
-    if (m?.trim()) chunks.push(m.trim());
-  }
-  const customMetal = product.metafields['custom.metal'];
-  if (typeof customMetal === 'string' && customMetal.trim()) chunks.push(customMetal.trim());
-  const jewelryMaterial = product.metafields['shopify.jewelry-material'];
-  if (typeof jewelryMaterial === 'string' && jewelryMaterial.trim()) {
-    chunks.push(jewelryMaterial.trim());
-  } else if (Array.isArray(jewelryMaterial)) {
-    for (const entry of jewelryMaterial) {
-      if (String(entry).trim()) chunks.push(String(entry).trim());
-    }
-  }
-  return chunks.join(', ');
-}
-
 function hasProductMaterialFact(product: ProductFacts): boolean {
-  return Boolean(productMaterialFactText(product).trim());
-}
-
-/** Slot metalu vs fakt produktu — całe słowo (np. złoto ≠ złocone). */
-function productMaterialMatchesMetalTokens(haystack: string, metalTokens: string[]): boolean {
-  const words = materialWords(haystack);
-  if (!words.size) return false;
-  for (const token of metalTokens) {
-    const tokenWords = [...materialWords(token)];
-    if (!tokenWords.length) continue;
-    if (tokenWords.every((w) => words.has(w))) return true;
-  }
-  return false;
+  return listProductTaxonomyMaterialLabels(product).length > 0;
 }
 
 function keepMatchAfterPriceOnly(
@@ -124,64 +94,103 @@ function keepMatchAfterPriceOnly(
   return priced[0] ?? null;
 }
 
+/** Próba 585/333/750 — jedna cena wariantu (najtańszy w budżecie), nie widełki rozmiarów. */
+function collapseAssayScopedMatch(match: ProductMatch, metalSlots: string[]): ProductMatch {
+  if (!metalSlotsAreAssayScoped(metalSlots)) return match;
+  const variants = match.matchingVariants;
+  if (variants.length <= 1) return match;
+  const cheapest = variants.reduce((best, v) =>
+    variantPriceMinor(v) < variantPriceMinor(best) ? v : best,
+  );
+  return rebuildProductMatch(match.product, [cheapest]);
+}
+
 /**
- * SSOT: wariant z v.metal → metal ∧ budżet na wariantach.
- * Brak v.metal + fakt materiału produktu → slot musi pasować (całe słowo), potem cena.
- * Brak obu → soft keep po cenie (NZ).
+ * Post-UCP Gemma: exact productType + stone (taxonomy labels), metal ∧ twardy budżet.
  */
-function selectMatchesForMetalAndBudget(
+function selectMatchesForGemmaPostUcp(
   matches: ProductMatch[],
   opts: {
-    metal: string[];
+    metal?: string[];
+    productType?: string[];
+    stone?: string[];
     priceMin?: MoneyPln | number;
     priceMax?: MoneyPln | number;
   },
-): {matches: ProductMatch[]; metalFilterApplied: boolean} {
-  const {metal: metalTokens, priceMin, priceMax} = opts;
+): {
+  matches: ProductMatch[];
+  metalFilterApplied: boolean;
+  stoneFilterApplied: boolean;
+  productTypeFilterApplied: boolean;
+} {
+  const metalTokens = opts.metal ?? [];
+  const productTypeTokens = opts.productType ?? [];
+  const stoneTokens = opts.stone ?? [];
+  const {priceMin, priceMax} = opts;
   const priceActive = priceMin !== undefined || priceMax !== undefined;
+  const metalActive = metalTokens.length > 0;
   let metalFilterApplied = false;
+  let stoneFilterApplied = false;
+  let productTypeFilterApplied = false;
   const next: ProductMatch[] = [];
 
   for (const match of matches) {
+    if (productTypeTokens.length) {
+      productTypeFilterApplied = true;
+      if (!productFactsProductTypeMatchesSlots(match.product.productType, productTypeTokens)) {
+        continue;
+      }
+    }
+    if (stoneTokens.length && productHasStoneTaxonomyData(match.product)) {
+      stoneFilterApplied = true;
+      if (!productFactsStoneMatchesSlots(match.product, stoneTokens)) continue;
+    }
+
     const variants = match.product.variants;
-    if (hasAnyFilledMetal(variants)) {
-      metalFilterApplied = true;
-      const narrowed = variants.filter(
-        (v) =>
-          variantMatchesMetalTokens(v, metalTokens) &&
-          variantMatchesPriceBounds(v, priceMin, priceMax),
-      );
-      if (!narrowed.length) continue;
-      next.push(rebuildProductMatch(match.product, narrowed));
-      continue;
-    }
+    if (metalActive) {
+      if (hasAnyFilledMetal(variants)) {
+        metalFilterApplied = true;
+        const narrowed = variants.filter(
+          (v) =>
+            variantMetalMatchesSlotTokens(v.metal, metalTokens) &&
+            variantMatchesPriceBounds(v, priceMin, priceMax),
+        );
+        if (!narrowed.length) continue;
+        next.push(collapseAssayScopedMatch(rebuildProductMatch(match.product, narrowed), metalTokens));
+        continue;
+      }
 
-    if (hasProductMaterialFact(match.product)) {
-      metalFilterApplied = true;
-      const haystack = productMaterialFactText(match.product);
-      if (!productMaterialMatchesMetalTokens(haystack, metalTokens)) continue;
+      if (hasProductMaterialFact(match.product)) {
+        metalFilterApplied = true;
+        if (!productFactsMaterialMatchesTokens(match.product, metalTokens)) continue;
+        const kept = keepMatchAfterPriceOnly(match, priceMin, priceMax, priceActive);
+        if (kept) next.push(collapseAssayScopedMatch(kept, metalTokens));
+        continue;
+      }
+
       const kept = keepMatchAfterPriceOnly(match, priceMin, priceMax, priceActive);
-      if (kept) next.push(kept);
+      if (kept) next.push(collapseAssayScopedMatch(kept, metalTokens));
       continue;
     }
 
-    if (hasProductMaterialFact(match.product)) {
-      metalFilterApplied = true;
-      const haystack = productMaterialFactText(match.product);
-      if (!productMaterialMatchesMetalTokens(haystack, metalTokens)) continue;
-      const kept = keepMatchAfterPriceOnly(match, priceMin, priceMax, priceActive);
-      if (kept) next.push(kept);
+    if (priceActive) {
+      const priced = filterProducts([match.product], {priceMin, priceMax});
+      if (priced[0]) next.push(priced[0]);
       continue;
     }
 
-    const kept = keepMatchAfterPriceOnly(match, priceMin, priceMax, priceActive);
-    if (kept) next.push(kept);
+    next.push(match);
   }
 
-  return {matches: next, metalFilterApplied};
+  return {matches: next, metalFilterApplied, stoneFilterApplied, productTypeFilterApplied};
 }
 
 export type GemmaCatalogPricedMatch = {match: ProductMatch; minMinor: number};
+
+/** Optional out-param: ranked suggest handles when metal∧stone∧budget suggest path ran. */
+export type GemmaCatalogSearchMeta = {
+  suggestHandlesRanked?: string[];
+};
 
 export async function searchGemmaCatalog(
   env: Env,
@@ -189,6 +198,7 @@ export async function searchGemmaCatalog(
   filters: GemmaCatalogSearchFilters,
   limit: number,
   clientRequest?: Request,
+  meta?: GemmaCatalogSearchMeta,
 ): Promise<ProductMatch[]> {
   const started = Date.now();
   const catalogChannel = catalogSnapshotChannel(channelId);
@@ -198,6 +208,8 @@ export async function searchGemmaCatalog(
     text,
     ucpIntent,
     metal,
+    stone,
+    productType,
     ucpBrowseInStockAvailable,
     available,
     excludeGiftCards,
@@ -220,31 +232,156 @@ export async function searchGemmaCatalog(
     });
     const {matches: repoMatches} = await repo.search(ucpFilters, limit);
     let matches = repoMatches;
+    let sfMergeNew = 0;
+    let suggestMergeNew = 0;
+    let suggestUpgraded = 0;
+
+    const priceFilterActiveEarly = priceMin !== undefined || priceMax !== undefined;
+    const queryText = text?.trim() ?? '';
+    /** PT ∧ metal ∧ stone: doklej Storefront search(PRODUCT) — UCP ranking ≠ SF. */
+    const facetedSearch =
+      Boolean(metal?.length) &&
+      Boolean(stone?.length) &&
+      Boolean(productType?.length) &&
+      Boolean(queryText);
+    /** metal ∧ stone ∧ budget: Ajax/Predictive suggest + handle/.js upgrade (bez wymogu PT). */
+    const suggestFacetedWithBudget =
+      Boolean(metal?.length) &&
+      Boolean(stone?.length) &&
+      priceFilterActiveEarly &&
+      Boolean(queryText);
+    const storefrontLiveEnabled = hasStorefrontCatalogToken(env, catalogChannel);
+    let sfRefsCount = 0;
+    let suggestHandles: string[] = [];
+
+    if (facetedSearch && queryText && storefrontLiveEnabled) {
+      const sfRefs = await searchStorefrontProductRefsByQuery(
+        env,
+        catalogChannel,
+        queryText,
+        limit,
+        {clientRequest, urlChannel: channelId},
+      );
+      sfRefsCount = sfRefs.length;
+      const haveIds = new Set(
+        matches.map((m) => m.product.productId).filter((id): id is string => Boolean(id)),
+      );
+      const need = sfRefs.filter((r) => !haveIds.has(r.id));
+      if (need.length) {
+        const handles: Record<string, string> = {};
+        for (const r of need) {
+          if (r.handle?.trim()) handles[r.id] = r.handle.trim();
+        }
+        const extraFacts = await fetchProductFactsLive(
+          env,
+          catalogChannel,
+          need.map((r) => r.id),
+          {clientRequest, urlChannel: channelId, productHandlesById: handles},
+        );
+        const extraMatches = filterProducts(extraFacts, {});
+        sfMergeNew = extraMatches.length;
+        matches = [...matches, ...extraMatches];
+      }
+    }
+
+    if (suggestFacetedWithBudget && queryText && storefrontLiveEnabled) {
+      const haveIds = new Set(
+        matches.map((m) => m.product.productId).filter((id): id is string => Boolean(id)),
+      );
+      suggestHandles = await fetchShopSuggestProductHandles(
+        channelId,
+        queryText,
+        Math.min(limit, 10),
+      );
+      if (meta && suggestHandles.length) {
+        meta.suggestHandlesRanked = [...suggestHandles];
+      }
+      for (const handle of suggestHandles) {
+        const factsByHandle = await fetchProductFactsFromShopAjax(
+          catalogChannel,
+          handle,
+          channelId,
+        );
+        if (!factsByHandle) continue;
+        const extra = filterProducts([factsByHandle], {});
+        if (!extra.length) continue;
+        const fresh = extra[0]!;
+        const pid = factsByHandle.productId;
+        const resolvedHandle = factsByHandle.handle?.trim() || handle;
+        const idxByPid =
+          pid ? matches.findIndex((m) => m.product.productId === pid) : -1;
+        const idxByHandle = matches.findIndex((m) => {
+          const mh = m.product.handle?.trim();
+          return mh === handle || mh === resolvedHandle;
+        });
+        const replaceIdx = idxByPid >= 0 ? idxByPid : idxByHandle;
+        if (replaceIdx >= 0) {
+          matches = matches.map((m, i) => (i === replaceIdx ? fresh : m));
+          suggestUpgraded += 1;
+        } else {
+          matches = [...matches, fresh];
+          suggestMergeNew += 1;
+        }
+        if (pid) haveIds.add(pid);
+      }
+    }
+
+    if (
+      queryText &&
+      storefrontLiveEnabled &&
+      (facetedSearch || suggestFacetedWithBudget)
+    ) {
+      console.log(
+        JSON.stringify({
+          tag: 'gemma.catalog.stage',
+          stage: facetedSearch ? 'sf_query_merge' : 'suggest_merge',
+          ucp_matches: repoMatches.length,
+          sf_refs: sfRefsCount,
+          merged_new: sfMergeNew,
+          suggest_handles: suggestHandles.length,
+          suggest_merged_new: suggestMergeNew,
+          suggest_upgraded: suggestUpgraded,
+          after_merge: matches.length,
+        }),
+      );
+    }
 
     if (excludeGiftCards) {
       matches = filterOutGiftCardMatches(matches);
     }
 
-    let out: ProductMatch[] = matches;
     const priceFilterActive = priceMin !== undefined || priceMax !== undefined;
-    const metalSlotActive = Boolean(metal?.length);
-    let metalFilterApplied = false;
+    const localPostUcpActive =
+      Boolean(metal?.length) ||
+      Boolean(stone?.length) ||
+      Boolean(productType?.length) ||
+      priceFilterActive;
 
-    if (metalSlotActive && metal) {
-      const selected = selectMatchesForMetalAndBudget(matches, {
+    let out: ProductMatch[] = matches;
+    let metalFilterApplied = false;
+    let stoneFilterApplied = false;
+    let productTypeFilterApplied = false;
+
+    if (localPostUcpActive) {
+      const selected = selectMatchesForGemmaPostUcp(matches, {
         metal,
+        stone,
+        productType,
         priceMin,
         priceMax,
       });
       out = selected.matches;
       metalFilterApplied = selected.metalFilterApplied;
-    } else if (priceFilterActive) {
-      const products = matches.map((m) => m.product);
-      out = filterProducts(products, {priceMin, priceMax});
+      stoneFilterApplied = selected.stoneFilterApplied;
+      productTypeFilterApplied = selected.productTypeFilterApplied;
     }
 
     const afterPrice = out.length;
     const result = await filterProductMatchesByZareczynyTag(env, channelId, out, clientRequest);
+    const hydratedHandles = result
+      .map((m) => m.product.handle)
+      .filter((h): h is string => Boolean(h?.trim()))
+      .slice(0, 24);
 
     console.log(
       JSON.stringify({
@@ -257,7 +394,12 @@ export async function searchGemmaCatalog(
         after_price: afterPrice,
         price_filter_active: priceFilterActive,
         metal_filter_active: metalFilterApplied,
-        stone_filter_active: false,
+        stone_filter_active: stoneFilterApplied,
+        product_type_filter_active: productTypeFilterApplied,
+        sf_merge_new: sfMergeNew,
+        suggest_merged_new: suggestMergeNew,
+        suggest_upgraded: suggestUpgraded,
+        hydrated_handles: hydratedHandles,
         duration_ms: Date.now() - started,
       }),
     );

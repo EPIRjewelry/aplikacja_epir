@@ -116,7 +116,7 @@ describe('E2b catalog search pipeline', () => {
     const out = await searchGemmaCatalog(
       {SHOP_DOMAIN: 'fikcyjny.myshopify.com'} as import('../../../src/config/bindings').Env,
       'epir-online-store',
-      {text: 'fikcyjne złoto', metal: ['złoto'], priceMax: moneyFromMinor(300_000)},
+      {text: 'fikcyjne złoto', metal: ['złoto 585'], priceMax: moneyFromMinor(300_000)},
       10,
     );
 

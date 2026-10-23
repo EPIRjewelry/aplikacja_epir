@@ -55,7 +55,14 @@ describe('E4 catalog action', () => {
       },
     };
     await runCatalogAction(ctx);
-    expect(spy).toHaveBeenCalledWith(expect.anything(), 'epir-zareczyny', expect.anything(), 6, ctx.request);
+    expect(spy).toHaveBeenCalledWith(
+      expect.anything(),
+      'epir-zareczyny',
+      expect.anything(),
+      6,
+      ctx.request,
+      expect.anything(),
+    );
   });
 
   it('T-E4-CAT-2: uses searchGemmaCatalog not executeBuyerTool search_catalog', async () => {

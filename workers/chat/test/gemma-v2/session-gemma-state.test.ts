@@ -56,10 +56,10 @@ describe('E3 gemma-state SessionDO', () => {
     const {env} = makeEnv('sess_e3_state_2');
     const sid = 'sess_e3_state_2';
     const base = await readGemmaState(env, sid);
-    await writeGemmaState(env, sid, {...base, turn: base.turn + 1, slots: {budget: 'fikcyjny'}});
+    await writeGemmaState(env, sid, {...base, turn: base.turn + 1, slots: {budget_qualitative: 'fikcyjny'}});
     const after = await readGemmaState(env, sid);
     expect(after.turn).toBe(1);
-    expect(after.slots.budget).toBe('fikcyjny');
+    expect(after.slots.budget_qualitative).toBe('fikcyjny');
   });
 
   it('T-E5-STATE-1: POST rejects nested invalid slots', async () => {

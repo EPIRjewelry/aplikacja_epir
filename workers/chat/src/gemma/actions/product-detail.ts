@@ -25,8 +25,11 @@ export async function runProductDetailAction(ctx: GemmaActionContext): Promise<{
   if (!product) {
     return {product: null, shownPatch: null, selected: {productId: '', variantId: null}};
   }
+  const url = product.url?.trim();
+  if (!url) {
+    return {product: null, shownPatch: null, selected: {productId: '', variantId: null}};
+  }
   const variantIds = product.variants.map((v) => v.variantId).filter(Boolean);
-  const url = product.url?.trim() || `/products/${product.handle}`;
   const shownPatch: GemmaShownRef = {
     ref: ref || 'detail',
     productId: product.productId,

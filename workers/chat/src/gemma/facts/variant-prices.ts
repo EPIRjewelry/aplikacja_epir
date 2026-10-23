@@ -1,3 +1,4 @@
+import {variantMetalMatchesSlotTokens} from '../../facts/metal-match';
 import type {MoneyPln, ProductMatch} from '../../facts/types';
 import type {GemmaVariantPriceFacts, GemmaVariantPriceLine} from './types';
 
@@ -46,13 +47,6 @@ function priceMinor(v: {price?: {minor?: number; amount_minor?: number}}): numbe
   return v.price?.minor ?? v.price?.amount_minor ?? 0;
 }
 
-function variantMatchesMetal(v: {metal?: string | null}, metal: string[]): boolean {
-  if (!metal.length) return true;
-  if (!v.metal) return false;
-  const vMetal = v.metal.trim().toLowerCase();
-  return metal.some((m) => vMetal.includes(m.toLowerCase()));
-}
-
 /** Warianty pasujące do metalu, ale powyżej priceMax — fakt „ponad budżet” dla modelu B (D6). */
 export function overBudgetMetalPriceLines(
   match: ProductMatch,
@@ -68,7 +62,7 @@ export function overBudgetMetalPriceLines(
   const lines: GemmaVariantPriceLine[] = [];
   for (const v of match.product.variants) {
     const id = v.variantId || v.variant_id || '';
-    if (!variantMatchesMetal(v, metal)) continue;
+    if (!variantMetalMatchesSlotTokens(v.metal, metal)) continue;
     const minor = priceMinor(v);
     if (minor <= maxMinor) continue;
     if (inBudgetIds.has(id)) continue;

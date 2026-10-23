@@ -182,12 +182,12 @@ describe('runda-6a9c6bd — metal i ceny (#5–7)', () => {
     expect(out).toHaveLength(0);
   });
 
-  it('T-PRODUCT-METAL-GALAZKI-3: fakt srebro/złocone, slot srebro → 1 wariant @ 3200', async () => {
+  it('T-PRODUCT-METAL-GALAZKI-3: fakt srebro/złocone, slot srebro 925 (exact label) → 1 wariant @ 3200', async () => {
     await mockRepoWithProduct(fictionalLesneGalazkiProduct());
     const out = await searchGemmaCatalog(
       {SHOP_DOMAIN: 'x'} as never,
       'epir-online-store',
-      {metal: ['srebro']},
+      {metal: ['srebro 925']},
       10,
     );
     expect(out).toHaveLength(1);
@@ -199,10 +199,12 @@ describe('runda-6a9c6bd — metal i ceny (#5–7)', () => {
     expect(out[0].matchingVariants[0].price.minor).toBe(320_000);
   });
 
-  it('T-6a9c6bd-METAL-3: wariant bez metalu przy slocie metal → produkt zostaje', async () => {
+  it('T-6a9c6bd-METAL-3: wariant bez metalu i bez faktu materiału → soft keep (NZ)', async () => {
     const base = fictionalMultiVariantProduct();
     const product = {
       ...base,
+      metals: [],
+      metafields: {},
       variants: [{...base.variants[0], metal: null, price: moneyFromMinor(100_000)}],
     };
     vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
@@ -342,12 +344,12 @@ describe('runda-6a9c6bd — metal i ceny (#5–7)', () => {
     const out = await searchGemmaCatalog(
       {SHOP_DOMAIN: 'x'} as never,
       'epir-online-store',
-      {metal: ['585'], priceMax: moneyFromMinor(300_000)},
+      {metal: ['złoto 585'], priceMax: moneyFromMinor(300_000)},
       10,
     );
     expect(out).toHaveLength(0);
     for (const m of out) {
-      expect(m.matchingVariants.some((v) => v.metal?.includes('333'))).toBe(false);
+      expect(m.matchingVariants.some((v) => v.metal === 'złoto 333')).toBe(false);
       expect(m.matchingVariants.some((v) => (v.price.minor ?? 0) === 261_000)).toBe(false);
       expect(m.matchingVariantIds).not.toContain('gid://shopify/ProductVariant/jm-333');
     }
@@ -399,7 +401,7 @@ describe('runda-6a9c6bd — metal i ceny (#5–7)', () => {
     const out = await searchGemmaCatalog(
       {SHOP_DOMAIN: 'x'} as never,
       'epir-online-store',
-      {metal: ['585'], priceMax: moneyFromMinor(300_000)},
+      {metal: ['złoto 585'], priceMax: moneyFromMinor(300_000)},
       10,
     );
     expect(out).toHaveLength(1);
@@ -440,29 +442,29 @@ describe('runda-6a9c6bd — metal i ceny (#5–7)', () => {
 describe('runda-6a9c6bd — budżet (a)(b) (#9–10)', () => {
   it('T-6a9c6bd-BUD-1: 5000 + do 5 tysięcy → max 500000', () => {
     const corpus = 'pierścionek do 5 tysięcy';
-    expect(budgetMinorFromSlots({budget: '5000'}, corpus)).toBe(500_000);
-    expect(budgetPriceBoundsFromSlots({budget: '5000'}, corpus).priceMax).toEqual(
+    expect(budgetMinorFromSlots({budget: 5000}, corpus)).toBe(500_000);
+    expect(budgetPriceBoundsFromSlots({budget: 5000}, corpus).priceMax).toEqual(
       moneyFromMinor(500_000),
     );
   });
 
   it('T-6a9c6bd-BUD-2: 2,50 tys → 250000 groszy', () => {
     const corpus = 'do 2,50 tys zł';
-    expect(budgetMinorFromSlots({budget: '2,50'}, corpus)).toBe(250_000);
+    expect(budgetMinorFromSlots({budget: 2.5}, corpus)).toBe(250_000);
   });
 
   it('T-6a9c6bd-BUD-3: 2,55 zł → 255 groszy', () => {
-    expect(budgetMinorFromSlots({budget: '2,55'}, 'kwota 2,55 zł')).toBe(255);
+    expect(budgetMinorFromSlots({budget: 2.55}, 'kwota 2,55 zł')).toBe(255);
   });
 
   it('T-6a9c6bd-BUD-4: od 5 tysięcy → priceMin', () => {
-    const bounds = budgetPriceBoundsFromSlots({budget: '5000'}, 'budżet od 5 tysięcy');
+    const bounds = budgetPriceBoundsFromSlots({budget: 5000}, 'budżet od 5 tysięcy');
     expect(bounds.priceMin).toEqual(moneyFromMinor(500_000));
     expect(bounds.priceMax).toBeUndefined();
   });
 
   it('T-6a9c6bd-BUD-5: od 1x5 bez min', () => {
-    const bounds = budgetPriceBoundsFromSlots({budget: '1.5'}, 'od 1x5 zł');
+    const bounds = budgetPriceBoundsFromSlots({budget: 1.5}, 'od 1x5 zł');
     expect(bounds.priceMin).toBeUndefined();
   });
 });
@@ -794,7 +796,12 @@ describe('runda-6a9c6bd — koszyk (#11–15)', () => {
       form_of_address: 'unknown',
       turn: 1,
     });
-    await stubGemmaIntentJson({cart_action: 'add', cart_consent: false, product_ref: 'g1'});
+    await stubGemmaIntentJson({
+      state: 'koszyk',
+      cart_action: 'add',
+      cart_consent: false,
+      product_ref: 'g1',
+    });
     const spy = vi.spyOn(execute, 'executeBuyerTool');
     const reply = await composeGemmaReply(
       env,
@@ -873,6 +880,12 @@ describe('runda-6a9c6bd — KB (#1–3)', () => {
     expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/cart_action=add, cart_consent=false/i);
   });
 
+  it('T-6a9c6bd-PROMPT-METAL-BUDGET: złoty→metal złoto; kwota bez kasowania metalu', () => {
+    expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/złoty\/złoto → „złoto”/i);
+    expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/metal="złoto", budget=2500/);
+    expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/NIE kasuj slots\.metal/i);
+  });
+
   it('T-6a9c6bd-KB-4: kb_fact_dropped → epirKbAnswerReply, nie deterministicReply', async () => {
     const ai = await import('../../../src/ai-client');
     vi.spyOn(ai, 'getGroqResponse').mockResolvedValue(
@@ -917,7 +930,7 @@ describe('runda-6a9c6bd — routing (#16,#18)', () => {
 
 describe('runda-6a9c6bd — (f) dzięki + budget', () => {
   it('T-6a9c6bd-THANKS-1: podziękowanie bez search', () => {
-    const prev = {...DEFAULT_GEMMA_SESSION_STATE, slots: {budget: '3000'}};
+    const prev = {...DEFAULT_GEMMA_SESSION_STATE, slots: {budget: 3000}};
     const t = transitionGemmaState(prev, fictionalGemmaIntent({
       state: 'powitanie',
       slots: {occasion: 'podziękowanie'},

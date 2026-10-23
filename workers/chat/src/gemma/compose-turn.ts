@@ -5,6 +5,7 @@ import {BuyerTurnOverloadError} from '../buyer/buyer-llm-retry';
 import {appendBuyerSessionMessage, readBuyerSessionHistory} from '../buyer/session-history';
 import {detectJailbreakOrHarmIntent} from '../intent/jailbreak-prefilter';
 import {extractGemmaIntent} from './intent/extract-intent';
+import {applyContactPolicyRouting} from './intent/policy-routing';
 import {detectFormOfAddressFromText} from './profiles/epir';
 import {runGemmaAllowedActions} from './actions/run';
 import {buildEpirActionReply} from './actions/reply';
@@ -103,7 +104,8 @@ async function runInsideGate(
   let prev = await readGemmaState(env, sessionId);
   prev = applyFormOfAddress(prev, userText);
 
-  const transitioned = transitionGemmaState(prev, intentResult.intent);
+  const intent = applyContactPolicyRouting(intentResult.intent, userText);
+  const transitioned = transitionGemmaState(prev, intent);
   const userCorpus = [
     userText,
     ...history.filter((h) => h.role === 'user').map((h) => h.content),
@@ -116,7 +118,7 @@ async function runInsideGate(
     sessionId,
     userText,
     userCorpus,
-    intent: intentResult.intent,
+    intent,
     prev,
     transitioned,
     productHandle: opts?.productHandle,
@@ -150,8 +152,8 @@ async function runInsideGate(
     channelId,
     state: transitioned.nextState,
     missingSlot: transitioned.missingSlot,
-    cartNeedsConsent: cartNeedsConsent(intentResult.intent),
-    intent: intentResult.intent,
+    cartNeedsConsent: cartNeedsConsent(intent),
+    intent,
     outcome: actionOutcome,
   });
 

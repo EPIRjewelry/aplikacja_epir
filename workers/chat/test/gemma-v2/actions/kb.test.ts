@@ -3,7 +3,9 @@
  */
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {runKbAction, kbUnavailableReply} from '../../../src/gemma/actions/kb';
+import {CONTACT_KB_BROAD_QUERY} from '../../../src/gemma/kb-contact-search';
 import {KB_POLICY_UNAVAILABLE_REPLY} from '../../../src/buyer/kb-policies';
+import {epirKbAnswerReply} from '../../../src/gemma/profiles/epir';
 import {DEFAULT_GEMMA_SESSION_STATE} from '../../../src/gemma/state/types';
 import {fictionalGemmaIntent} from '../fixtures/gemma-intent';
 
@@ -62,6 +64,68 @@ describe('E4 KB action', () => {
         outcome,
       }),
     ).toBe(KB_POLICY_UNAVAILABLE_REPLY);
+  });
+
+  it('T-KB-KONTAKT-1: MCP answer z faktami kontaktu trafia do odpowiedzi', async () => {
+    const kb = await import('../../../src/buyer/kb-policies');
+    const phoneAnswer =
+      'Telefon pracowni: 698 718 564. Wspólna infolinia: 696 55 33 46.';
+    vi.spyOn(kb, 'searchShopPoliciesViaMcp').mockResolvedValue({
+      ok: true,
+      answer: phoneAnswer,
+      sources: [{title: 'Kontakt', url: 'https://example.test/pages/kontakt'}],
+      contentHash: 'h-contact',
+    });
+    const userText = 'jaki jest telefon?';
+    const out = await runKbAction({
+      env: {} as never,
+      channelId: 'epir-online-store' as const,
+      request: new Request('https://example.com'),
+      sessionId: 'sess_kb_kontakt',
+      userText,
+      userCorpus: userText,
+      intent: fictionalGemmaIntent({policy_query: userText}),
+      prev: DEFAULT_GEMMA_SESSION_STATE,
+      transitioned: {
+        nextState: 'polityki_kontakt' as const,
+        slots: {},
+        allowedActions: ['kb_policies' as const],
+      },
+    });
+    expect(out?.answer).toBe(phoneAnswer);
+    const {buildEpirActionReply} = await import('../../../src/gemma/actions/reply');
+    expect(
+      buildEpirActionReply({
+        channelId: 'epir-online-store',
+        state: 'polityki_kontakt',
+        intent: fictionalGemmaIntent({policy_query: userText}),
+        outcome: {catalogCards: [], shown: [], kb: out ?? undefined},
+      }),
+    ).toBe(epirKbAnswerReply(phoneAnswer));
+  });
+
+  it('T-KB-KONTAKT-2: broad contact retry po empty, bez wymyślonych numerów przy braku KB', async () => {
+    const kb = await import('../../../src/buyer/kb-policies');
+    const spy = vi.spyOn(kb, 'searchShopPoliciesViaMcp').mockResolvedValue({ok: false, reason: 'empty'});
+    const userText = 'mogę obejrzeć na żywo?';
+    const out = await runKbAction({
+      env: {} as never,
+      channelId: 'epir-online-store' as const,
+      request: new Request('https://example.com'),
+      sessionId: 'sess_kb_empty',
+      userText,
+      userCorpus: userText,
+      intent: fictionalGemmaIntent({policy_query: userText}),
+      prev: DEFAULT_GEMMA_SESSION_STATE,
+      transitioned: {
+        nextState: 'polityki_kontakt' as const,
+        slots: {},
+        allowedActions: ['kb_policies' as const],
+      },
+    });
+    expect(out).toBeNull();
+    expect(spy.mock.calls.map((c) => c[1])).toEqual([userText, CONTACT_KB_BROAD_QUERY]);
+    expect(kbUnavailableReply()).toBe(KB_POLICY_UNAVAILABLE_REPLY);
   });
 
   it('T-E4-KB-3: propozycje turn never calls KB; KB failure reply equals constant', async () => {

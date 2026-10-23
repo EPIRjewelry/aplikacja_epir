@@ -15,7 +15,7 @@ describe('E3 extractGemmaIntent', () => {
     const spy = vi.spyOn(ai, 'getGroqResponse').mockResolvedValue(
       fictionalGemmaIntentJson({
         state: 'propozycje',
-        slots: {recipient: 'żona', budget: 'skromnie'},
+        slots: {recipient: 'żona', budget_qualitative: 'skromnie'},
       }),
     );
     const out = await extractGemmaIntent({

@@ -72,14 +72,58 @@ export function isThanksAckIntent(intent: GemmaIntent): boolean {
   );
 }
 
+/** Cena / kamień w kontekście metalu lub katalogu → search_catalog, nie KB policy_query. */
+export function intentPolicyQueryShouldUseCatalog(
+  intent: GemmaIntent,
+  mergedSlots: GemmaSlots,
+): boolean {
+  const q = intent.policy_query?.trim();
+  if (!q) return false;
+  const hasCatalogContext =
+    Boolean(mergedSlots.metal?.trim() || intent.slots.metal?.trim()) ||
+    Boolean(mergedSlots.stone?.trim() || intent.slots.stone?.trim()) ||
+    Boolean(mergedSlots.product_type?.trim() || intent.slots.product_type?.trim());
+  if (!hasCatalogContext) return false;
+  const lower = q.toLowerCase();
+  if (/\b(ile\s+kosztuje|jaka\s+(jest\s+)?cena|kosztuje)\b/i.test(lower)) return true;
+  if (/\bw\s+585\b/i.test(lower)) return true;
+  if (/\b585\b/.test(lower) && /\b(szafir|rubin|diament|kamie[nń])\b/i.test(lower)) return true;
+  return false;
+}
+
 function mergeSlots(prev: GemmaSlots, incoming: GemmaSlots): GemmaSlots {
   const out: GemmaSlots = {...prev};
   for (const key of Object.keys(incoming) as (keyof GemmaSlots)[]) {
     const v = incoming[key];
-    if (v !== null && v !== undefined && String(v).trim()) {
-      const trimmed = String(v).trim();
+    if (key === 'budget') {
+      if (v === null) {
+        delete out.budget;
+        continue;
+      }
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
+        out.budget = v;
+      }
+      continue;
+    }
+    if (key === 'budget_qualitative') {
+      if (v === null) {
+        delete out.budget_qualitative;
+        continue;
+      }
+      if (typeof v === 'string' && v.trim()) {
+        out.budget_qualitative = v.trim();
+      }
+      continue;
+    }
+    if (v === null || v === undefined) continue;
+    if (typeof v === 'string' && v.trim()) {
+      const trimmed = v.trim();
       if (!shouldPersistSlotInSession(key, trimmed)) continue;
-      out[key] = trimmed;
+      if (key === 'metal') out.metal = trimmed;
+      else if (key === 'stone') out.stone = trimmed;
+      else if (key === 'product_type') out.product_type = trimmed;
+      else if (key === 'occasion') out.occasion = trimmed;
+      else if (key === 'recipient') out.recipient = trimmed;
     }
   }
   return out;
@@ -93,20 +137,42 @@ export function isNeedKnown(slots: GemmaSlots): boolean {
   );
 }
 
-function hasQualitativeBudget(slots: GemmaSlots): boolean {
-  const b = slots.budget?.trim().toLowerCase() ?? '';
-  return b.length > 0;
+function budgetSlotPresent(slots: GemmaSlots): boolean {
+  if (typeof slots.budget === 'number') return Number.isFinite(slots.budget) && slots.budget > 0;
+  return Boolean(slots.budget_qualitative?.trim());
 }
 
+function hasQualitativeBudget(slots: GemmaSlots): boolean {
+  return Boolean(slots.budget_qualitative?.trim()) && slots.budget == null;
+}
+
+/**
+ * Search needs a product facet (metal/stone/type/need) **or** qualitative budget browse
+ * (tanio/luksus). Numeric budget alone is not enough — empty UCP text → null_nodes.
+ */
 export function slotsSufficientForSearch(slots: GemmaSlots): boolean {
-  return isNeedKnown(slots) || hasQualitativeBudget(slots);
+  return intentHasSearchableProductSlots(slots) || hasQualitativeBudget(slots);
+}
+
+function hasNumericBudget(slots: GemmaSlots): boolean {
+  return typeof slots.budget === 'number' && Number.isFinite(slots.budget) && slots.budget > 0;
+}
+
+function hasProductFacetSlot(slots: GemmaSlots): boolean {
+  if (slots.metal?.trim()) return true;
+  if (slots.stone?.trim()) return true;
+  if (slots.product_type?.trim() && !isCustomOrderProductType(slots.product_type)) return true;
+  return false;
 }
 
 function pickMissingSlot(slots: GemmaSlots): keyof GemmaSlots {
+  if (hasNumericBudget(slots) && !hasProductFacetSlot(slots)) {
+    return 'metal';
+  }
   if (!slots.product_type?.trim() && !slots.occasion?.trim() && !slots.recipient?.trim()) {
     return 'product_type';
   }
-  if (!slots.budget?.trim()) return 'budget';
+  if (!budgetSlotPresent(slots)) return 'budget';
   return 'metal';
 }
 
@@ -129,6 +195,21 @@ export function transitionGemmaState(
   }
 
   if (intent.policy_query?.trim()) {
+    if (intentPolicyQueryShouldUseCatalog(intent, mergedSlots)) {
+      return {
+        nextState: 'propozycje',
+        slots: mergedSlots,
+        allowedActions: ['search_catalog'],
+      };
+    }
+    return {
+      nextState: 'polityki_kontakt',
+      slots: mergedSlots,
+      allowedActions: ['kb_policies'],
+    };
+  }
+
+  if (intent.state === 'polityki_kontakt' && !intent.cart_action) {
     return {
       nextState: 'polityki_kontakt',
       slots: mergedSlots,

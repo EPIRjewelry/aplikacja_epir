@@ -56,11 +56,14 @@ export function epirProposalsReply(): string {
   return 'Przygotuję propozycje dopasowane do opisu — proszę o chwilę cierpliwości.';
 }
 
-export function epirCartReply(needsConsent: boolean): string {
+export function epirCartReply(needsConsent: boolean, channelId?: BuyerChannelId): string {
   if (needsConsent) {
     return 'Czy mogę zaktualizować koszyk zgodnie z prośbą?';
   }
-  return 'Zajmę się koszykiem zgodnie z prośbą.';
+  if (channelId) {
+    return epirCartErrorReply(channelId, []);
+  }
+  return 'Nie udało się zaktualizować koszyka.';
 }
 
 export function epirPolicyReply(): string {
@@ -183,7 +186,7 @@ export function buildEpirDeterministicReply(params: {
     case 'propozycje':
       return epirProposalsReply();
     case 'koszyk':
-      return epirCartReply(params.cartNeedsConsent === true);
+      return epirCartReply(params.cartNeedsConsent === true, params.channelId);
     case 'polityki_kontakt':
       return epirPolicyReply();
     case 'szczegoly':

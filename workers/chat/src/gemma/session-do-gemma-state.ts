@@ -9,6 +9,7 @@ import {
 
 const SLOT_KEYS = new Set([
   'budget',
+  'budget_qualitative',
   'metal',
   'stone',
   'product_type',

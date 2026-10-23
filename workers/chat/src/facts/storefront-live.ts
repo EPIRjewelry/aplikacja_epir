@@ -10,6 +10,7 @@ import {
   STOREFRONT_METAFIELD_IDENTIFIERS,
   VARIANT_METAFIELD_IDENTIFIERS,
 } from './field-mapping';
+import {fetchProductFactsFromShopAjax} from './shop-product-js';
 import {normalizeProduct} from './normalize';
 import type {ProductFacts} from './types';
 
@@ -48,6 +49,10 @@ export type HydrationStats = {
   null_nodes: number;
   normalize_null: number;
   no_url: number;
+  /** nodes(ids:) null — before/without successful id or handle fallback. */
+  null_id?: number;
+  id_fallback_ok?: number;
+  handle_fallback_ok?: number;
 };
 
 export type FetchStorefrontLiveOptions = {
@@ -60,6 +65,8 @@ export type FetchStorefrontLiveOptions = {
   browseInStockAvailable?: boolean;
   /** Liczniki utraty węzłów przy hydracji (gemma.catalog.stage). */
   hydrationStats?: HydrationStats;
+  /** UCP product handles keyed by Product GID — handle hydrate after id fallback fails. */
+  productHandlesById?: Record<string, string>;
 };
 
 function resolveProductUrlContext(
@@ -493,6 +500,36 @@ async function fetchProductNodesBatch(
   return nodes ?? [];
 }
 
+/** Fallback gdy `nodes(ids:)` zwraca null — pojedynczy `product(id:)` (Storefront API). */
+async function fetchProductNodeById(
+  env: Env,
+  channel: BuyerChannelId,
+  productId: string,
+  options?: FetchStorefrontLiveOptions,
+): Promise<Record<string, unknown> | null> {
+  const query = `
+    query ProductByIdLive($id: ID!) @inContext(country: PL, language: PL) {
+      product(id: $id) {
+        ${PRODUCT_NODE_FIELDS}
+      }
+    }
+  `;
+  try {
+    const data = await storefrontGraphqlRetry(env, channel, query, {id: productId}, options);
+    const raw = data.product as Record<string, unknown> | null;
+    return raw && isRecord(raw) ? raw : null;
+  } catch (err) {
+    console.log(
+      JSON.stringify({
+        tag: 'facts.product_by_id_fallback_error',
+        channel,
+        reason: err instanceof Error ? err.message.slice(0, 120) : 'error',
+      }),
+    );
+    return null;
+  }
+}
+
 export async function fetchProductFactsLive(
   env: Env,
   channel: BuyerChannelId,
@@ -518,10 +555,53 @@ export async function fetchProductFactsLive(
     const nodes = await fetchProductNodesBatch(env, channel, batch, options);
     for (let j = 0; j < batch.length; j++) {
       const requestedId = batch[j];
-      const raw = nodes[j];
+      let raw = nodes[j];
       if (!raw || !isRecord(raw)) {
-        options?.hydrationStats && (options.hydrationStats.null_nodes += 1);
-        continue;
+        options?.hydrationStats &&
+          (options.hydrationStats.null_id = (options.hydrationStats.null_id ?? 0) + 1);
+        console.log(
+          JSON.stringify({
+            tag: 'facts.hydration.null_id',
+            channel,
+            product_id: requestedId,
+          }),
+        );
+        const fallback = await fetchProductNodeById(env, channel, requestedId, options);
+        if (fallback) {
+          raw = fallback;
+          options?.hydrationStats &&
+            (options.hydrationStats.id_fallback_ok =
+              (options.hydrationStats.id_fallback_ok ?? 0) + 1);
+          console.log(
+            JSON.stringify({
+              tag: 'facts.hydration.id_fallback_ok',
+              channel,
+              product_id: requestedId,
+            }),
+          );
+        } else {
+          const handle = options?.productHandlesById?.[requestedId]?.trim();
+          if (handle) {
+            const byHandle = await fetchProductFactsByHandle(env, channel, handle, options);
+            if (byHandle) {
+              options?.hydrationStats &&
+                (options.hydrationStats.handle_fallback_ok =
+                  (options.hydrationStats.handle_fallback_ok ?? 0) + 1);
+              console.log(
+                JSON.stringify({
+                  tag: 'facts.hydration.handle_fallback_ok',
+                  channel,
+                  product_id: requestedId,
+                  handle,
+                }),
+              );
+              byId.set(requestedId, byHandle);
+              continue;
+            }
+          }
+          options?.hydrationStats && (options.hydrationStats.null_nodes += 1);
+          continue;
+        }
       }
       const productId = typeof raw.id === 'string' ? raw.id : requestedId;
 
@@ -667,6 +747,76 @@ async function productNodeToFacts(
   return facts;
 }
 
+export type StorefrontProductSearchRef = {id: string; handle?: string};
+
+/**
+ * Storefront full-text `search` (PRODUCT) — relevance ranking for site-like results.
+ * Do not use `products(query:)` for free-text (structured filters / sortKey ID).
+ * @see https://shopify.dev/docs/api/storefront/latest/queries/search
+ */
+export async function searchStorefrontProductRefsByQuery(
+  env: Env,
+  channel: BuyerChannelId,
+  queryText: string,
+  first: number,
+  options?: FetchStorefrontLiveOptions,
+): Promise<StorefrontProductSearchRef[]> {
+  const q = queryText.trim();
+  if (!q || !hasStorefrontCatalogToken(env, channel)) return [];
+  const limit = Math.max(1, Math.min(Math.trunc(first) || 10, 50));
+  const query = `
+    query SearchProductsLive($query: String!, $first: Int!) @inContext(country: PL, language: PL) {
+      search(query: $query, first: $first, types: [PRODUCT]) {
+        nodes {
+          ... on Product {
+            id
+            handle
+          }
+        }
+      }
+    }
+  `;
+  try {
+    const data = await storefrontGraphqlRetry(
+      env,
+      channel,
+      query,
+      {query: q, first: limit},
+      options,
+    );
+    const nodes = (data.search as {nodes?: Array<{id?: string; handle?: string} | null>} | null)
+      ?.nodes;
+    const out: StorefrontProductSearchRef[] = [];
+    const seen = new Set<string>();
+    for (const n of nodes ?? []) {
+      if (!n || typeof n.id !== 'string' || !n.id.includes('/Product/')) continue;
+      if (seen.has(n.id)) continue;
+      seen.add(n.id);
+      const handle = typeof n.handle === 'string' && n.handle.trim() ? n.handle.trim() : undefined;
+      out.push(handle ? {id: n.id, handle} : {id: n.id});
+    }
+    console.log(
+      JSON.stringify({
+        tag: 'facts.storefront_search',
+        channel,
+        query_preview: q.slice(0, 80),
+        first: limit,
+        result_count: out.length,
+      }),
+    );
+    return out;
+  } catch (err) {
+    console.warn(
+      JSON.stringify({
+        tag: 'facts.storefront_search_error',
+        channel,
+        reason: err instanceof Error ? err.message.slice(0, 120) : 'error',
+      }),
+    );
+    return [];
+  }
+}
+
 export async function fetchProductFactsByHandle(
   env: Env,
   channel: BuyerChannelId,
@@ -674,7 +824,21 @@ export async function fetchProductFactsByHandle(
   options?: FetchStorefrontLiveOptions,
 ): Promise<ProductFacts | null> {
   const h = handle.trim();
-  if (!h || !hasStorefrontCatalogToken(env, channel)) return null;
+  if (!h) return null;
+
+  if (!hasStorefrontCatalogToken(env, channel)) {
+    console.log(
+      JSON.stringify({
+        tag: 'facts.product_by_handle',
+        channel,
+        byHandle: false,
+        handle: h,
+        reason: 'no_storefront_token',
+      }),
+    );
+    return null;
+  }
+
   const query = `
     query ProductByHandleLive($handle: String!) @inContext(country: PL, language: PL) {
       product(handle: $handle) {
@@ -685,17 +849,10 @@ export async function fetchProductFactsByHandle(
   try {
     const data = await storefrontGraphqlRetry(env, channel, query, {handle: h}, options);
     const raw = data.product as Record<string, unknown> | null;
-    if (!raw || !isRecord(raw)) {
-      console.log(
-        JSON.stringify({
-          tag: 'facts.product_by_handle',
-          channel,
-          byHandle: false,
-        }),
-      );
-      return null;
+    if (raw && isRecord(raw)) {
+      const facts = await productNodeToFacts(env, channel, raw, options);
+      if (facts) return facts;
     }
-    return await productNodeToFacts(env, channel, raw, options);
   } catch (err) {
     console.warn(
       JSON.stringify({
@@ -704,8 +861,32 @@ export async function fetchProductFactsByHandle(
         reason: err instanceof Error ? err.message : String(err),
       }),
     );
-    return null;
   }
+
+  const urlChannel = options?.urlChannel ?? channel;
+  const ajaxFacts = await fetchProductFactsFromShopAjax(channel, h, urlChannel);
+  if (ajaxFacts) {
+    console.log(
+      JSON.stringify({
+        tag: 'facts.product_by_handle',
+        channel,
+        byHandle: true,
+        source: 'shop_ajax_product_js',
+        handle: h,
+      }),
+    );
+    return ajaxFacts;
+  }
+
+  console.log(
+    JSON.stringify({
+      tag: 'facts.product_by_handle',
+      channel,
+      byHandle: false,
+      handle: h,
+    }),
+  );
+  return null;
 }
 
 /**

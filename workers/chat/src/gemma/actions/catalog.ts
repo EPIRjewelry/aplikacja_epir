@@ -1,4 +1,3 @@
-import {resolveUrlForChannel} from '../../buyer/channel-origins';
 import {fetchGemmaCatalogMatchesForTurn} from '../facts/catalog-fetch-for-turn';
 import type {GemmaActionContext, GemmaCatalogCard} from './types';
 import type {GemmaShownRef} from '../state/types';
@@ -21,10 +20,8 @@ export async function runCatalogAction(ctx: GemmaActionContext): Promise<{
   for (const {match, minMinor} of top) {
     const ref = `g${idx++}`;
     const handle = match.product.handle;
-    const url =
-      match.product.url?.trim() ||
-      resolveUrlForChannel(`/products/${handle}`, ctx.channelId) ||
-      `/products/${handle}`;
+    const url = match.product.url?.trim();
+    if (!url) continue;
     const variantIds = (match.matchingVariants.length
       ? match.matchingVariants
       : match.product.variants

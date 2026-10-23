@@ -7,6 +7,9 @@ import type {
   VariantFacts,
   VariantStoneOrigin,
 } from './types';
+import {variantMetalMatchesSlotTokens} from './metal-match';
+import {productFactsProductTypeMatchesSlots} from './product-type-buyer-taxonomy';
+import {productFactsStoneMatchesSlots} from './stone-buyer-taxonomy';
 import {moneyFromMinor} from './types';
 
 function normalizeText(text: string): string {
@@ -33,9 +36,7 @@ function variantMatchesFilters(v: VariantFacts, filters: CatalogFilters): boolea
   }
 
   if (filters.metal?.length) {
-    if (!v.metal) return false;
-    const vMetal = v.metal.trim().toLowerCase();
-    if (!filters.metal.some((m) => vMetal.includes(m.toLowerCase()))) return false;
+    if (!variantMetalMatchesSlotTokens(v.metal, filters.metal)) return false;
   }
 
   const min = priceMinor(filters.priceMin);
@@ -76,12 +77,10 @@ export function filterProducts(products: ProductFacts[], filters: CatalogFilters
   for (const product of products) {
     if (filters.text && !productMatchesText(product, filters.text)) continue;
     if (filters.productType?.length) {
-      if (!product.productType || !filters.productType.includes(product.productType)) continue;
+      if (!productFactsProductTypeMatchesSlots(product.productType, filters.productType)) continue;
     }
     if (filters.stone?.length) {
-      if (!filters.stone.some((s) => product.stones.map((x) => x.toLowerCase()).includes(s.toLowerCase()))) {
-        continue;
-      }
+      if (!productFactsStoneMatchesSlots(product, filters.stone)) continue;
     }
 
     const matching = product.variants.filter((v) => variantMatchesFilters(v, filters));

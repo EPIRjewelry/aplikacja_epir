@@ -25,10 +25,12 @@ export {
   executeCatalogMcpLiveSearch,
   parseMcpErrorCode,
   parseUcpSearchProductIds,
+  parseUcpSearchProductRefs,
+  extractHandleFromUcpProduct,
   CatalogMcpLiveSearchError,
   CatalogMcpTransportEmptyError,
 } from './catalog-mcp-live';
-export type {CatalogMcpLiveSearchOptions} from './catalog-mcp-live';
+export type {CatalogMcpLiveSearchOptions, UcpSearchProductRef} from './catalog-mcp-live';
 
 export async function getCatalogRepository(
   env: Env,
@@ -90,7 +92,23 @@ export async function getCatalogRepository(
 export {buildUcpSearchCatalogArgs, CATALOG_SEARCH_SERVER_LIMIT, parseUcpFilterIgnoredMessages} from './catalog-ucp-args';
 export {formatMatchBlock, formatProductsBlock, PAGE_PRODUCT_HEADER} from './format-product-block';
 export {normalizeProduct} from './normalize';
-export {fetchProductFactsByHandle, fetchProductFactsForVariantIds} from './storefront-live';
+export {
+  extractHandlesFromSuggestJson,
+  fetchShopSuggestProductHandles,
+  handleFromProductPath,
+} from './shop-suggest';
+export {
+  adaptShopAjaxProductJsonForNormalize,
+  fetchProductFactsFromShopAjax,
+  fetchShopAjaxProductJson,
+  productFactsFromShopAjaxJson,
+} from './shop-product-js';
+export {
+  fetchProductFactsByHandle,
+  fetchProductFactsForVariantIds,
+  searchStorefrontProductRefsByQuery,
+} from './storefront-live';
+export type {StorefrontProductSearchRef} from './storefront-live';
 export type {
   ProductFacts,
   VariantFacts,

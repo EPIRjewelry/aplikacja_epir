@@ -27,7 +27,7 @@ describe('Runda 4db2a00 — Cień', () => {
   beforeEach(() => vi.restoreAllMocks());
 
   it('T-D-Z5-1: „mam ok 3 tys” → kwota 3000 zł, nie budżet jakościowy', () => {
-    const minor = budgetMinorFromSlots({budget: '3'}, 'mam ok 3 tys');
+    const minor = budgetMinorFromSlots({budget: 3}, 'mam ok 3 tys');
     expect(minor).toBe(300_000);
   });
 
@@ -50,7 +50,12 @@ describe('Runda 4db2a00 — Cień', () => {
     vi.spyOn(await import('../../../src/ai-client'), 'getGroqResponse').mockImplementation(
       async (_m, _e, opts) => {
         if (opts?.timingLabel === 'buyer_gemma_intent') {
-          return JSON.stringify(fictionalGemmaIntent({state: 'propozycje', slots: {budget: '3000'}}));
+          return JSON.stringify(
+            fictionalGemmaIntent({
+              state: 'propozycje',
+              slots: {product_type: 'pierścionek', budget: 3000},
+            }),
+          );
         }
         return JSON.stringify({text: 'Polecam {{g1}}.', product_refs: ['g1']});
       },
@@ -95,7 +100,7 @@ describe('Runda 4db2a00 — Cień', () => {
     await stubGemmaGroqCalls({
       intent: {
         state: 'powitanie',
-        slots: {occasion: 'podziękowanie', budget: 'tanio'},
+        slots: {occasion: 'podziękowanie', budget_qualitative: 'tanio'},
       },
     });
     const {namespace} = makeTrackedSessionNamespace();
@@ -124,7 +129,7 @@ describe('Runda 4db2a00 — Cień', () => {
     const top = await fetchGemmaCatalogMatchesForTurn({
       env: {} as never,
       channelId: 'epir-online-store',
-      slots: {budget: 'luksusowa biżuteria'},
+      slots: {budget_qualitative: 'luksusowa biżuteria'},
       userCorpus: 'szukam luksusowej biżuterii',
     });
     expect(top[0]?.minMinor).toBeGreaterThan(top[1]?.minMinor ?? 0);
@@ -148,7 +153,7 @@ describe('Runda 4db2a00 — Cień', () => {
       fictionalMatchFromProduct(cheap),
     ]);
     await stubGemmaGroqCalls({
-      intent: {state: 'propozycje', slots: {budget: 'tanio'}},
+      intent: {state: 'propozycje', slots: {budget_qualitative: 'tanio'}},
       formulation: {
         text: 'Polecam {{g1}}.',
         product_refs: ['g1'],
