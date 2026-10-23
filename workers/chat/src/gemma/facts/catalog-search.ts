@@ -231,17 +231,24 @@ export async function searchGemmaCatalog(
     let suggestUpgraded = 0;
 
     const priceFilterActiveEarly = priceMin !== undefined || priceMax !== undefined;
+    const queryText = text?.trim() ?? '';
     /** PT ∧ metal ∧ stone: doklej Storefront search(PRODUCT) — UCP ranking ≠ SF. */
     const facetedSearch =
       Boolean(metal?.length) &&
       Boolean(stone?.length) &&
       Boolean(productType?.length) &&
-      Boolean(text?.trim());
-    /** PT ∧ metal ∧ stone ∧ budget: dodatkowo Ajax/Predictive suggest (site ranking). */
-    const facetedWithBudget = facetedSearch && priceFilterActiveEarly;
+      Boolean(queryText);
+    /** metal ∧ stone ∧ budget: Ajax/Predictive suggest + handle/.js upgrade (bez wymogu PT). */
+    const suggestFacetedWithBudget =
+      Boolean(metal?.length) &&
+      Boolean(stone?.length) &&
+      priceFilterActiveEarly &&
+      Boolean(queryText);
     const storefrontLiveEnabled = hasStorefrontCatalogToken(env, catalogChannel);
-    if (facetedSearch && text?.trim() && storefrontLiveEnabled) {
-      const queryText = text.trim();
+    let sfRefsCount = 0;
+    let suggestHandles: string[] = [];
+
+    if (facetedSearch && queryText && storefrontLiveEnabled) {
       const sfRefs = await searchStorefrontProductRefsByQuery(
         env,
         catalogChannel,
@@ -249,6 +256,7 @@ export async function searchGemmaCatalog(
         limit,
         {clientRequest, urlChannel: channelId},
       );
+      sfRefsCount = sfRefs.length;
       const haveIds = new Set(
         matches.map((m) => m.product.productId).filter((id): id is string => Boolean(id)),
       );
@@ -267,52 +275,57 @@ export async function searchGemmaCatalog(
         const extraMatches = filterProducts(extraFacts, {});
         sfMergeNew = extraMatches.length;
         matches = [...matches, ...extraMatches];
-        for (const m of extraMatches) {
-          if (m.product.productId) haveIds.add(m.product.productId);
-        }
       }
+    }
 
-      let suggestHandles: string[] = [];
-      if (facetedWithBudget) {
-        const haveHandles = new Set(
-          matches.map((m) => m.product.handle?.trim()).filter((h): h is string => Boolean(h)),
-        );
-        suggestHandles = await fetchShopSuggestProductHandles(
-          channelId,
-          queryText,
-          Math.min(limit, 10),
-        );
-        for (const handle of suggestHandles) {
-          if (haveHandles.has(handle)) continue;
-          const factsByHandle = await fetchProductFactsByHandle(env, catalogChannel, handle, {
-            clientRequest,
-            urlChannel: channelId,
-          });
-          if (!factsByHandle) continue;
-          const extra = filterProducts([factsByHandle], {});
-          if (!extra.length) continue;
-          const pid = factsByHandle.productId;
-          if (pid && haveIds.has(pid)) {
-            matches = matches.map((m) => (m.product.productId === pid ? extra[0]! : m));
-            suggestUpgraded += 1;
-            haveHandles.add(handle);
-            const resolvedHandle = factsByHandle.handle?.trim();
-            if (resolvedHandle) haveHandles.add(resolvedHandle);
-            continue;
-          }
-          suggestMergeNew += extra.length;
-          matches = [...matches, ...extra];
-          if (pid) haveIds.add(pid);
+    if (suggestFacetedWithBudget && queryText && storefrontLiveEnabled) {
+      const haveIds = new Set(
+        matches.map((m) => m.product.productId).filter((id): id is string => Boolean(id)),
+      );
+      const haveHandles = new Set(
+        matches.map((m) => m.product.handle?.trim()).filter((h): h is string => Boolean(h)),
+      );
+      suggestHandles = await fetchShopSuggestProductHandles(
+        channelId,
+        queryText,
+        Math.min(limit, 10),
+      );
+      for (const handle of suggestHandles) {
+        if (haveHandles.has(handle)) continue;
+        const factsByHandle = await fetchProductFactsByHandle(env, catalogChannel, handle, {
+          clientRequest,
+          urlChannel: channelId,
+        });
+        if (!factsByHandle) continue;
+        const extra = filterProducts([factsByHandle], {});
+        if (!extra.length) continue;
+        const pid = factsByHandle.productId;
+        if (pid && haveIds.has(pid)) {
+          matches = matches.map((m) => (m.product.productId === pid ? extra[0]! : m));
+          suggestUpgraded += 1;
           haveHandles.add(handle);
+          const resolvedHandle = factsByHandle.handle?.trim();
+          if (resolvedHandle) haveHandles.add(resolvedHandle);
+          continue;
         }
+        suggestMergeNew += extra.length;
+        matches = [...matches, ...extra];
+        if (pid) haveIds.add(pid);
+        haveHandles.add(handle);
       }
+    }
 
+    if (
+      queryText &&
+      storefrontLiveEnabled &&
+      (facetedSearch || suggestFacetedWithBudget)
+    ) {
       console.log(
         JSON.stringify({
           tag: 'gemma.catalog.stage',
-          stage: 'sf_query_merge',
+          stage: facetedSearch ? 'sf_query_merge' : 'suggest_merge',
           ucp_matches: repoMatches.length,
-          sf_refs: sfRefs.length,
+          sf_refs: sfRefsCount,
           merged_new: sfMergeNew,
           suggest_handles: suggestHandles.length,
           suggest_merged_new: suggestMergeNew,

@@ -164,4 +164,59 @@ describe('UCP + SF search + shop suggest merge (S3)', () => {
     expect(target?.product.handle).toBe('pierscionek-srebrny-z-granatem');
     expect(target?.matchingPriceRange.min.minor).toBe(34_000);
   });
+
+  it('T-S3-SUGGEST-NO-PT-1: metal+stone+budget bez productType → suggest+upgrade @340', async () => {
+    const galazki = silverGarnetRing('pierscionek-galazki-z-granatem', 32_000);
+    const weakTargetId = 'gid://shopify/Product/6836886012009';
+    const weakTarget = {
+      ...silverGarnetRing('srebrny-pierscionek-z-granatem', 28_000),
+      productId: weakTargetId,
+      handle: 'srebrny-pierscionek-z-granatem',
+    };
+    const upgraded = productFactsFromShopAjaxJson(
+      fictionalAjaxSilverGarnetRing(),
+      'epir-online-store',
+      'pierscionek-srebrny-z-granatem',
+      'https://epirbizuteria.pl',
+    )!;
+
+    const suggestSpy = vi
+      .spyOn(shopSuggest, 'fetchShopSuggestProductHandles')
+      .mockResolvedValue(['pierscionek-srebrny-z-granatem']);
+    const sfSearchSpy = vi.spyOn(storefrontLive, 'searchStorefrontProductRefsByQuery');
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [fictionalMatchFromProduct(galazki), fictionalMatchFromProduct(weakTarget)],
+        total: 2,
+        facets: {
+          total: 2,
+          byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
+    vi.spyOn(storefrontLive, 'fetchProductFactsByHandle').mockResolvedValue(upgraded);
+
+    const out = await searchGemmaCatalog(
+      {
+        SHOP_DOMAIN: 'epir-ai.myshopify.com',
+        PRIVATE_STOREFRONT_API_TOKEN: 't',
+      } as never,
+      'epir-online-store',
+      {
+        text: 'srebro granat',
+        metal: ['srebrny'],
+        stone: ['granat'],
+        priceMax: moneyFromMinor(34_000),
+      },
+      24,
+    );
+
+    expect(suggestSpy).toHaveBeenCalled();
+    expect(sfSearchSpy).not.toHaveBeenCalled();
+    const target = out.find((m) => m.product.handle === 'pierscionek-srebrny-z-granatem');
+    expect(target?.matchingPriceRange.min.minor).toBe(34_000);
+  });
 });
