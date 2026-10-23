@@ -209,6 +209,14 @@ export function transitionGemmaState(
     };
   }
 
+  if (intent.state === 'polityki_kontakt' && !intent.cart_action) {
+    return {
+      nextState: 'polityki_kontakt',
+      slots: mergedSlots,
+      allowedActions: ['kb_policies'],
+    };
+  }
+
   const cartShowIsProductBrowse =
     intent.cart_action === 'show' &&
     (intentHasSearchableProductSlots(intent.slots) || Boolean(intent.product_ref?.trim()));
