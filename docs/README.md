@@ -37,6 +37,7 @@ Ten katalog jest częścią jedynego kanonicznego pakietu dokumentacji EPIR. Ten
 - [`EPIR_STOREFRONT_DOMAIN_STRATEGY.md`](EPIR_STOREFRONT_DOMAIN_STRATEGY.md) — apex → Shopify, Hydrogen → subdomeny (kanon Shopify, bez routera)
 - [`EPIR_ADMIN_METAFIELDS_CHECKLIST.md`](EPIR_ADMIN_METAFIELDS_CHECKLIST.md) — metafieldy wspólne (motyw + Hydrogen), handle’e pod kampanie
 - [`EPIR_BLUEPRINTS_AND_EXCEPTIONS.md`](EPIR_BLUEPRINTS_AND_EXCEPTIONS.md) — Project B, automatyzacje, limity API i zasady agentowe
+- [`adr/`](adr/) — Architecture Decision Records. [`0001`](adr/0001-tae-app-proxy-customer-identity.md) tożsamość klienta TAE / App Proxy; [`0002`](adr/0002-inpost-marketplace-orders.md) Von Halsky / INPSA jako osobny worker (ShipX `workers/inpost` bez zmian).
 - `merge-gates/` — karty merge gate per zakres PR (go/no-go dla pojedynczych pakietów zmian, zgodne z kanoniczną bramką release)
 
 ### Materiały robocze (mirror 1:1 z repo; niewiążące do czasu weryfikacji i wchłonięcia)
