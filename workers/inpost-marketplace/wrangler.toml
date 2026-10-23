@@ -1,0 +1,36 @@
+# epir-inpost-marketplace — Von Halsky / INPSA (marketplace orders ingest).
+#
+# Honest deploy posture (ADR 0002):
+# - NOT listed in .github/workflows/deploy.yml (same as workers/inpost).
+# - No Cloudflare resource IDs (KV/D1/cron) until operator approves UC wiring.
+# - Default INPSA_ENV=stage; production host switch requires operator OK on prod INPSA.
+#
+# Do NOT run `wrangler deploy` or `wrangler secret put` without explicit operator approval in session.
+
+name = "epir-inpost-marketplace"
+main = "src/index.ts"
+compatibility_date = "2025-09-30"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[build]
+command = ""
+
+[vars]
+INPSA_ENV = "stage"
+
+# Secrets (names only — never commit values):
+# wrangler secret put INPSA_CLIENT_ID
+# wrangler secret put INPSA_CLIENT_SECRET
+#
+# Ops smoke routes (/ops/inpsa-*): optional reuse of existing operator secret (no new name):
+# wrangler secret put EPIR_OPERATOR_PANEL_SECRET
+#
+# Shopify Admin API for UC orders (step 2) — binding/name TBD with operator; not in ADR 0002.
+
+[observability]
+enabled = true
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
