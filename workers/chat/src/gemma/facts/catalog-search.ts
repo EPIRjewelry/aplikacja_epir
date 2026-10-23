@@ -322,8 +322,6 @@ export async function searchGemmaCatalog(
           suggestMergeNew += 1;
         }
         if (pid) haveIds.add(pid);
-        haveHandles.add(handle);
-        if (resolvedHandle) haveHandles.add(resolvedHandle);
       }
     }
 
