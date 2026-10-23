@@ -746,6 +746,73 @@ async function productNodeToFacts(
   return facts;
 }
 
+export type StorefrontProductSearchRef = {id: string; handle?: string};
+
+/**
+ * Storefront `products(query:)` — site-like ranking (complement UCP when facets are set).
+ * @see https://shopify.dev/docs/api/storefront/latest/queries/products
+ */
+export async function searchStorefrontProductRefsByQuery(
+  env: Env,
+  channel: BuyerChannelId,
+  queryText: string,
+  first: number,
+  options?: FetchStorefrontLiveOptions,
+): Promise<StorefrontProductSearchRef[]> {
+  const q = queryText.trim();
+  if (!q || !hasStorefrontCatalogToken(env, channel)) return [];
+  const limit = Math.max(1, Math.min(Math.trunc(first) || 10, 50));
+  const query = `
+    query ProductsByQueryLive($query: String!, $first: Int!) @inContext(country: PL, language: PL) {
+      products(first: $first, query: $query) {
+        nodes {
+          id
+          handle
+        }
+      }
+    }
+  `;
+  try {
+    const data = await storefrontGraphqlRetry(
+      env,
+      channel,
+      query,
+      {query: q, first: limit},
+      options,
+    );
+    const nodes = (data.products as {nodes?: Array<{id?: string; handle?: string} | null>} | null)
+      ?.nodes;
+    const out: StorefrontProductSearchRef[] = [];
+    const seen = new Set<string>();
+    for (const n of nodes ?? []) {
+      if (!n || typeof n.id !== 'string' || !n.id.includes('/Product/')) continue;
+      if (seen.has(n.id)) continue;
+      seen.add(n.id);
+      const handle = typeof n.handle === 'string' && n.handle.trim() ? n.handle.trim() : undefined;
+      out.push(handle ? {id: n.id, handle} : {id: n.id});
+    }
+    console.log(
+      JSON.stringify({
+        tag: 'facts.storefront_products_query',
+        channel,
+        query_preview: q.slice(0, 80),
+        first: limit,
+        result_count: out.length,
+      }),
+    );
+    return out;
+  } catch (err) {
+    console.warn(
+      JSON.stringify({
+        tag: 'facts.storefront_products_query_error',
+        channel,
+        reason: err instanceof Error ? err.message.slice(0, 120) : 'error',
+      }),
+    );
+    return [];
+  }
+}
+
 export async function fetchProductFactsByHandle(
   env: Env,
   channel: BuyerChannelId,

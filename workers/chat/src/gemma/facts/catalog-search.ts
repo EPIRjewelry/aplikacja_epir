@@ -7,6 +7,10 @@ import {
   getCatalogRepository,
 } from '../../facts';
 import {filterProducts} from '../../facts/filter';
+import {
+  fetchProductFactsLive,
+  searchStorefrontProductRefsByQuery,
+} from '../../facts/storefront-live';
 import {metalSlotsAreAssayScoped} from '../../facts/metal-buyer-taxonomy';
 import {
   listProductTaxonomyMaterialLabels,
@@ -219,6 +223,52 @@ export async function searchGemmaCatalog(
     });
     const {matches: repoMatches} = await repo.search(ucpFilters, limit);
     let matches = repoMatches;
+    let sfMergeNew = 0;
+
+    /** PT ∧ metal ∧ stone: doklej Storefront products(query:) — UCP ranking ≠ site suggest. */
+    const facetedSearch =
+      Boolean(metal?.length) &&
+      Boolean(stone?.length) &&
+      Boolean(productType?.length) &&
+      Boolean(text?.trim());
+    if (facetedSearch && text?.trim()) {
+      const sfRefs = await searchStorefrontProductRefsByQuery(
+        env,
+        catalogChannel,
+        text.trim(),
+        limit,
+        {clientRequest, urlChannel: channelId},
+      );
+      const have = new Set(
+        matches.map((m) => m.product.productId).filter((id): id is string => Boolean(id)),
+      );
+      const need = sfRefs.filter((r) => !have.has(r.id));
+      if (need.length) {
+        const handles: Record<string, string> = {};
+        for (const r of need) {
+          if (r.handle?.trim()) handles[r.id] = r.handle.trim();
+        }
+        const extraFacts = await fetchProductFactsLive(
+          env,
+          catalogChannel,
+          need.map((r) => r.id),
+          {clientRequest, urlChannel: channelId, productHandlesById: handles},
+        );
+        const extraMatches = filterProducts(extraFacts, {});
+        sfMergeNew = extraMatches.length;
+        matches = [...matches, ...extraMatches];
+      }
+      console.log(
+        JSON.stringify({
+          tag: 'gemma.catalog.stage',
+          stage: 'sf_query_merge',
+          ucp_matches: repoMatches.length,
+          sf_refs: sfRefs.length,
+          merged_new: sfMergeNew,
+          after_merge: matches.length,
+        }),
+      );
+    }
 
     if (excludeGiftCards) {
       matches = filterOutGiftCardMatches(matches);
@@ -252,6 +302,10 @@ export async function searchGemmaCatalog(
 
     const afterPrice = out.length;
     const result = await filterProductMatchesByZareczynyTag(env, channelId, out, clientRequest);
+    const hydratedHandles = result
+      .map((m) => m.product.handle)
+      .filter((h): h is string => Boolean(h?.trim()))
+      .slice(0, 24);
 
     console.log(
       JSON.stringify({
@@ -266,6 +320,8 @@ export async function searchGemmaCatalog(
         metal_filter_active: metalFilterApplied,
         stone_filter_active: stoneFilterApplied,
         product_type_filter_active: productTypeFilterApplied,
+        sf_merge_new: sfMergeNew,
+        hydrated_handles: hydratedHandles,
         duration_ms: Date.now() - started,
       }),
     );

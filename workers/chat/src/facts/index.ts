@@ -92,7 +92,12 @@ export async function getCatalogRepository(
 export {buildUcpSearchCatalogArgs, CATALOG_SEARCH_SERVER_LIMIT, parseUcpFilterIgnoredMessages} from './catalog-ucp-args';
 export {formatMatchBlock, formatProductsBlock, PAGE_PRODUCT_HEADER} from './format-product-block';
 export {normalizeProduct} from './normalize';
-export {fetchProductFactsByHandle, fetchProductFactsForVariantIds} from './storefront-live';
+export {
+  fetchProductFactsByHandle,
+  fetchProductFactsForVariantIds,
+  searchStorefrontProductRefsByQuery,
+} from './storefront-live';
+export type {StorefrontProductSearchRef} from './storefront-live';
 export type {
   ProductFacts,
   VariantFacts,
