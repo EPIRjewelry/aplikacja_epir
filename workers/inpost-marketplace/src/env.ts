@@ -7,6 +7,11 @@ export interface Env {
   INPSA_CLIENT_ID?: string;
   INPSA_CLIENT_SECRET?: string;
   /**
+   * Merchant organization id for INPSA REST paths (`/v1/organizations/{organizationId}/…`).
+   * Plain var — set in `[vars]` or `.dev.vars` after operator provides id from portal.
+   */
+  INPSA_ORGANIZATION_ID?: string;
+  /**
    * Gates `/ops/inpsa-*` HTTP (Bearer). Reuses existing operator secret name;
    * not required for unit tests or local dev without ops routes.
    */

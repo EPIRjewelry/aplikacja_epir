@@ -28,6 +28,7 @@ Fulfillment (ShipX shipment with `delivery.email`) is a later handoff. This work
 | `INPSA_CLIENT_ID` | secret | OAuth Client Credentials |
 | `INPSA_CLIENT_SECRET` | secret | OAuth Client Credentials |
 | `INPSA_ENV` | var | `stage` (default) or `production` after operator OK |
+| `INPSA_ORGANIZATION_ID` | var (plain) | Portal OpenAPI path param — `GET /v1/organizations/{organizationId}/orders/events` under `…/inpsa/` |
 | `EPIR_OPERATOR_PANEL_SECRET` | optional secret | Bearer for `/ops/inpsa-*` (existing operator secret name) |
 
 Shopify Admin API credentials for `epir_ai` order create are **not** defined in ADR 0002 — wire in a follow-up after operator chooses binding/secret name.
@@ -49,7 +50,7 @@ Use `.dev.vars` (gitignored) for local secrets — copy from your operator vault
 |-------|------|---------|
 | `GET /health` | none | Liveness |
 | `GET /` | none | Worker metadata |
-| `GET /ops/inpsa-smoke` | Bearer `EPIR_OPERATOR_PANEL_SECRET` | Stage CC token + `GET …/orders/events` (limit 1) |
+| `GET /ops/inpsa-smoke` | Bearer `EPIR_OPERATOR_PANEL_SECRET` | Stage CC token + `GET …/v1/organizations/{organizationId}/orders/events` (limit 1; requires `INPSA_ORGANIZATION_ID`) |
 | `POST /ops/inpsa-orders-events-poll?dryRun=1` | same | Poll events + Shopify **plan** stub (no Admin API) |
 
 Ops routes return **404** when `EPIR_OPERATOR_PANEL_SECRET` is unset (no accidental public smoke).
@@ -58,7 +59,7 @@ Ops routes return **404** when `EPIR_OPERATOR_PANEL_SECRET` is unset (no acciden
 
 1. **Done in repo:** Client Credentials client (in-memory ~5 min TTL, 30s refresh skew), INPSA API client, mocked tests, ops smoke/poll skeleton.
 2. **TODO (operator):** `wrangler secret put INPSA_CLIENT_ID` / `INPSA_CLIENT_SECRET`, first live stage smoke via `/ops/inpsa-smoke`.
-3. **TODO (UC v1):** Confirm `orders/events` path segment on [INPSA portal](https://inpsa-api-portal.inpost-group.com/), add KV/D1 idempotency, implement Shopify Admin API order create with tag/source `inpost-vh`.
+3. **TODO (UC v1):** Set `INPSA_ORGANIZATION_ID` from portal, add KV/D1 idempotency, implement Shopify Admin API order create with tag/source `inpost-vh`.
 4. **Later:** Offers sync (`api:offers:*`), cron trigger, CI deploy list entry.
 
 Portal API (shape of paths and fields): [https://inpsa-api-portal.inpost-group.com/](https://inpsa-api-portal.inpost-group.com/).

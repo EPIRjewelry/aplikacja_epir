@@ -1,5 +1,6 @@
 import type { Env } from '../env';
 import { InpsaApiClient, countOrderEvents, type InpsaOrderEventRecord } from '../inpsa-api';
+import { shopifyIdempotencyKeyForEvent } from './idempotency';
 import { planShopifyOrderFromEvent } from './shopify-stub';
 
 export interface PollOrdersEventsResult {
@@ -24,12 +25,13 @@ export async function pollOrdersEventsPipeline(
 
   const events = extractEvents(poll.body);
   const shopifyPlans = events.map((event) => planShopifyOrderFromEvent(event));
+  const idempotencyKeys = events
+    .map((event) => shopifyIdempotencyKeyForEvent(event))
+    .filter((key): key is string => key != null);
 
   if (!options.dryRun) {
-    // TODO(UC v1): persist cursor + processed idempotency keys (KV/D1), then call Shopify Admin API.
-    for (const event of events) {
-      shopifyIdempotencyKeyForEvent(event);
-    }
+    // TODO(UC v1): persist cursor + idempotencyKeys (KV/D1), then Shopify Admin API orderCreate.
+    void idempotencyKeys;
   }
 
   return {

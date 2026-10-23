@@ -18,6 +18,8 @@ command = ""
 
 [vars]
 INPSA_ENV = "stage"
+# Merchant org id from INPSA portal (OpenAPI path param) — set before live order-events poll:
+# INPSA_ORGANIZATION_ID = ""
 
 # Secrets (names only — never commit values):
 # wrangler secret put INPSA_CLIENT_ID

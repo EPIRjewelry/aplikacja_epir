@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   INPSA_OAUTH_SCOPES,
+  buildOrdersEventsRelativePath,
   joinInpsaApiUrl,
   parseInpsaEnv,
   resolveInpsaHosts,
+  resolveInpsaOrganizationId,
 } from './inpsa-config';
 
 describe('parseInpsaEnv', () => {
@@ -39,9 +41,27 @@ describe('resolveInpsaHosts', () => {
 
 describe('joinInpsaApiUrl', () => {
   it('joins base and relative path', () => {
-    expect(joinInpsaApiUrl('https://stage-api.inpost-group.com/inpsa/', 'orders/events')).toBe(
-      'https://stage-api.inpost-group.com/inpsa/orders/events',
+    expect(
+      joinInpsaApiUrl(
+        'https://stage-api.inpost-group.com/inpsa/',
+        'v1/organizations/org-1/orders/events',
+      ),
+    ).toBe('https://stage-api.inpost-group.com/inpsa/v1/organizations/org-1/orders/events');
+  });
+});
+
+describe('buildOrdersEventsRelativePath', () => {
+  it('matches portal OpenAPI organization-scoped path', () => {
+    expect(buildOrdersEventsRelativePath('merchant-org-uuid')).toBe(
+      'v1/organizations/merchant-org-uuid/orders/events',
     );
+  });
+});
+
+describe('resolveInpsaOrganizationId', () => {
+  it('requires non-empty id', () => {
+    expect(resolveInpsaOrganizationId('  org-9  ')).toBe('org-9');
+    expect(() => resolveInpsaOrganizationId(undefined)).toThrow(/INPSA_ORGANIZATION_ID/);
   });
 });
 

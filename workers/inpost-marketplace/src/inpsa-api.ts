@@ -1,9 +1,10 @@
 import type { Env } from './env';
 import {
-  INPSA_ORDERS_EVENTS_PATH,
+  buildOrdersEventsRelativePath,
   joinInpsaApiUrl,
   parseInpsaEnv,
   resolveInpsaHosts,
+  resolveInpsaOrganizationId,
 } from './inpsa-config';
 import { InpsaOAuthClient, type FetchFn } from './inpsa-oauth';
 
@@ -60,7 +61,9 @@ export class InpsaApiClient {
     body: InpsaOrdersEventsResponse | null;
   }> {
     const { accessToken } = await this.oauth.getAccessToken();
-    const url = new URL(joinInpsaApiUrl(this.apiBase(), INPSA_ORDERS_EVENTS_PATH));
+    const organizationId = resolveInpsaOrganizationId(this.env.INPSA_ORGANIZATION_ID);
+    const eventsPath = buildOrdersEventsRelativePath(organizationId);
+    const url = new URL(joinInpsaApiUrl(this.apiBase(), eventsPath));
     if (options.limit != null) url.searchParams.set('limit', String(options.limit));
     if (options.cursor) url.searchParams.set('cursor', options.cursor);
 

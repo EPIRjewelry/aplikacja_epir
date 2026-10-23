@@ -2,7 +2,8 @@ import type { InpsaOrderEventRecord } from '../inpsa-api';
 import { marketplaceOrderIdFromEvent, shopifyIdempotencyKeyForEvent } from './idempotency';
 import { INPOST_VH_ORDER_SOURCE, INPOST_VH_ORDER_TAG } from './constants';
 
-export type ShopifyOrderPlanStatus = 'ready_stub' | 'missing_marketplace_id' | 'not_implemented';
+/** `not_implemented` until Shopify Admin API is wired; no separate ready state yet. */
+export type ShopifyOrderPlanStatus = 'missing_marketplace_id' | 'not_implemented';
 
 export interface ShopifyOrderPlan {
   status: ShopifyOrderPlanStatus;

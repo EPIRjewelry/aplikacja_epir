@@ -37,10 +37,27 @@ export function resolveInpsaHosts(deployment: InpsaDeploymentEnv): InpsaHosts {
 }
 
 /**
- * Relative path after `apiBase` for order event poll (UC v1).
- * Confirm segment against INPSA portal before first live smoke.
+ * Portal OpenAPI (`gokart-api.html`): `GET /v1/organizations/{organizationId}/orders/events`
+ * (relative to `…/inpsa/` API base).
  */
-export const INPSA_ORDERS_EVENTS_PATH = 'orders/events';
+export function buildOrdersEventsRelativePath(organizationId: string): string {
+  const id = organizationId.trim();
+  if (!id) {
+    throw new Error('INPSA_ORGANIZATION_ID must be a non-empty organization id');
+  }
+  return `v1/organizations/${id}/orders/events`;
+}
+
+/** Plain var (or local `.dev.vars`) — not a long-lived secret. */
+export function resolveInpsaOrganizationId(raw: string | undefined): string {
+  const id = raw?.trim();
+  if (!id) {
+    throw new Error(
+      'INPSA_ORGANIZATION_ID is required to call order events (GET /v1/organizations/{organizationId}/orders/events per INPSA portal OpenAPI)',
+    );
+  }
+  return id;
+}
 
 export function joinInpsaApiUrl(apiBase: string, relativePath: string): string {
   const base = apiBase.endsWith('/') ? apiBase : `${apiBase}/`;

@@ -6,6 +6,7 @@ const env: Env = {
   INPSA_ENV: 'stage',
   INPSA_CLIENT_ID: 'cid',
   INPSA_CLIENT_SECRET: 'csec',
+  INPSA_ORGANIZATION_ID: 'org-merchant-1',
 };
 
 describe('InpsaApiClient', () => {
@@ -15,7 +16,7 @@ describe('InpsaApiClient', () => {
       if (url.includes('/oauth2/token')) {
         return new Response(JSON.stringify({ access_token: 'access-1', expires_in: 300 }), { status: 200 });
       }
-      if (url.includes('/inpsa/orders/events')) {
+      if (url.includes('/inpsa/v1/organizations/org-merchant-1/orders/events')) {
         expect(url).toContain('limit=5');
         return new Response(JSON.stringify({ events: [{ orderId: 'VH-1' }] }), { status: 200 });
       }
@@ -33,6 +34,14 @@ describe('InpsaApiClient', () => {
     expect(ordersCall).toBeTruthy();
     const headers = ordersCall![1]?.headers as Record<string, string>;
     expect(headers.Authorization).toBe('Bearer access-1');
+  });
+
+  it('fails clearly when INPSA_ORGANIZATION_ID is missing', async () => {
+    const client = new InpsaApiClient(
+      { INPSA_ENV: 'stage', INPSA_CLIENT_ID: 'c', INPSA_CLIENT_SECRET: 's' },
+      vi.fn(),
+    );
+    await expect(client.fetchOrdersEvents()).rejects.toThrow(/INPSA_ORGANIZATION_ID/);
   });
 
   it('runStageSmoke reports token + orders poll status', async () => {
