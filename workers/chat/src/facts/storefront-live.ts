@@ -10,6 +10,7 @@ import {
   STOREFRONT_METAFIELD_IDENTIFIERS,
   VARIANT_METAFIELD_IDENTIFIERS,
 } from './field-mapping';
+import {fetchProductFactsFromShopAjax} from './shop-product-js';
 import {normalizeProduct} from './normalize';
 import type {ProductFacts} from './types';
 
@@ -823,38 +824,58 @@ export async function fetchProductFactsByHandle(
   options?: FetchStorefrontLiveOptions,
 ): Promise<ProductFacts | null> {
   const h = handle.trim();
-  if (!h || !hasStorefrontCatalogToken(env, channel)) return null;
-  const query = `
+  if (!h) return null;
+
+  if (hasStorefrontCatalogToken(env, channel)) {
+    const query = `
     query ProductByHandleLive($handle: String!) @inContext(country: PL, language: PL) {
       product(handle: $handle) {
         ${PRODUCT_NODE_FIELDS}
       }
     }
   `;
-  try {
-    const data = await storefrontGraphqlRetry(env, channel, query, {handle: h}, options);
-    const raw = data.product as Record<string, unknown> | null;
-    if (!raw || !isRecord(raw)) {
-      console.log(
+    try {
+      const data = await storefrontGraphqlRetry(env, channel, query, {handle: h}, options);
+      const raw = data.product as Record<string, unknown> | null;
+      if (raw && isRecord(raw)) {
+        const facts = await productNodeToFacts(env, channel, raw, options);
+        if (facts) return facts;
+      }
+    } catch (err) {
+      console.warn(
         JSON.stringify({
-          tag: 'facts.product_by_handle',
+          tag: 'facts.product_by_handle_error',
           channel,
-          byHandle: false,
+          reason: err instanceof Error ? err.message : String(err),
         }),
       );
-      return null;
     }
-    return await productNodeToFacts(env, channel, raw, options);
-  } catch (err) {
-    console.warn(
+  }
+
+  const urlChannel = options?.urlChannel ?? channel;
+  const ajaxFacts = await fetchProductFactsFromShopAjax(channel, h, urlChannel);
+  if (ajaxFacts) {
+    console.log(
       JSON.stringify({
-        tag: 'facts.product_by_handle_error',
+        tag: 'facts.product_by_handle',
         channel,
-        reason: err instanceof Error ? err.message : String(err),
+        byHandle: true,
+        source: 'shop_ajax_product_js',
+        handle: h,
       }),
     );
-    return null;
+    return ajaxFacts;
   }
+
+  console.log(
+    JSON.stringify({
+      tag: 'facts.product_by_handle',
+      channel,
+      byHandle: false,
+      handle: h,
+    }),
+  );
+  return null;
 }
 
 /**

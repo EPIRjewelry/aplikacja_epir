@@ -98,6 +98,12 @@ export {
   handleFromProductPath,
 } from './shop-suggest';
 export {
+  adaptShopAjaxProductJsonForNormalize,
+  fetchProductFactsFromShopAjax,
+  fetchShopAjaxProductJson,
+  productFactsFromShopAjaxJson,
+} from './shop-product-js';
+export {
   fetchProductFactsByHandle,
   fetchProductFactsForVariantIds,
   searchStorefrontProductRefsByQuery,
