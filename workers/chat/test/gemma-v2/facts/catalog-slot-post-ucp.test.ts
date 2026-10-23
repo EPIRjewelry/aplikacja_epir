@@ -106,4 +106,56 @@ describe('Gemma post-UCP — product_type + stone exact', () => {
     expect(out[0].matchingVariants[0].variantId).toBe('v585a');
     expect(out[0].isFlat).toBe(true);
   });
+
+  it('T-GEMMA-STONE-SOFT-1: stones=[] + slot kamień → soft keep', async () => {
+    const product = {...fictionalMultiVariantProduct(), stones: []};
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [fictionalMatchFromProduct(product)],
+        total: 1,
+        facets: {
+          total: 1,
+          byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
+    const out = await searchGemmaCatalog(
+      {SHOP_DOMAIN: 'x'} as never,
+      'epir-online-store',
+      {stone: ['granat']},
+      10,
+    );
+    expect(out).toHaveLength(1);
+  });
+
+  it('T-GEMMA-STONE-EXACT-1: stones=Granat + slot szafir → drop', async () => {
+    const product = {
+      ...fictionalMultiVariantProduct(),
+      stones: ['Granat'],
+      metafields: {'shopify.gemstone-type': 'Granat'},
+    };
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [fictionalMatchFromProduct(product)],
+        total: 1,
+        facets: {
+          total: 1,
+          byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
+    const out = await searchGemmaCatalog(
+      {SHOP_DOMAIN: 'x'} as never,
+      'epir-online-store',
+      {stone: ['szafir']},
+      10,
+    );
+    expect(out).toHaveLength(0);
+  });
 });

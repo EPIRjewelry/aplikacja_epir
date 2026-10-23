@@ -14,7 +14,10 @@ import {
   variantMetalMatchesSlotTokens,
 } from '../../facts/metal-match';
 import {productFactsProductTypeMatchesSlots} from '../../facts/product-type-buyer-taxonomy';
-import {productFactsStoneMatchesSlots} from '../../facts/stone-buyer-taxonomy';
+import {
+  productFactsStoneMatchesSlots,
+  productHasStoneTaxonomyData,
+} from '../../facts/stone-buyer-taxonomy';
 import {moneyFromMinor} from '../../facts/types';
 import type {MoneyPln, ProductFacts, ProductMatch, VariantFacts} from '../../facts/types';
 import {filterProductMatchesByZareczynyTag} from './assortment';
@@ -131,7 +134,7 @@ function selectMatchesForGemmaPostUcp(
         continue;
       }
     }
-    if (stoneTokens.length) {
+    if (stoneTokens.length && productHasStoneTaxonomyData(match.product)) {
       stoneFilterApplied = true;
       if (!productFactsStoneMatchesSlots(match.product, stoneTokens)) continue;
     }

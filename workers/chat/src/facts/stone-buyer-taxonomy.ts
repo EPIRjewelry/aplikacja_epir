@@ -80,13 +80,18 @@ export function expandStoneSlotsForMatching(stoneSlots: string[]): string[] {
   return out;
 }
 
+/** Produkt ma dane kamienia (taxonomy / main_stone) — wtedy exact match; brak → soft-keep. */
+export function productHasStoneTaxonomyData(product: ProductFacts): boolean {
+  return listProductStoneTaxonomyLabels(product).length > 0;
+}
+
 export function productFactsStoneMatchesSlots(
   product: ProductFacts,
   stoneSlots: string[],
 ): boolean {
   if (!stoneSlots.length) return true;
   const labels = listProductStoneTaxonomyLabels(product);
-  if (!labels.length) return false;
+  if (!labels.length) return true;
   const expanded = expandStoneSlotsForMatching(stoneSlots);
   return expanded.some((slot) =>
     labels.some((catalogLabel) => taxonomyLabelsExactMatch(slot, catalogLabel)),
