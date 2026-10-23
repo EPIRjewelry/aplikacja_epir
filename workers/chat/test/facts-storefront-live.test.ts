@@ -267,6 +267,64 @@ describe('fetchProductFactsLive', () => {
     expect(products).toHaveLength(1);
     expect(products[0].handle).toBe('recovered');
     expect(hydrationStats.null_nodes).toBe(0);
+    expect(hydrationStats.id_fallback_ok).toBe(1);
+  });
+
+  it('recovers product via handle when nodes and product(id:) fail', async () => {
+    const productNode = {
+      id: 'gid://shopify/Product/target-ring',
+      handle: 'pierscionek-srebrny-z-granatem',
+      title: 'Pierścionek srebrny z granatem',
+      productType: 'Pierścionek',
+      onlineStoreUrl: 'https://epirbizuteria.pl/products/pierscionek-srebrny-z-granatem',
+      collections: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: []},
+      variants: {
+        pageInfo: {hasNextPage: false, endCursor: null},
+        nodes: [mkVariantNode('gid://shopify/ProductVariant/target-ring', '340.00')],
+      },
+      metafields: [],
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const body = typeof init?.body === 'string' ? init.body : '';
+      if (body.includes('ProductNodesLive')) {
+        return nodesResponse([null]);
+      }
+      if (body.includes('ProductByIdLive')) {
+        return new Response(JSON.stringify({data: {product: null}}), {status: 200});
+      }
+      if (body.includes('ProductByHandleLive')) {
+        return new Response(JSON.stringify({data: {product: productNode}}), {status: 200});
+      }
+      return nodesResponse([null]);
+    });
+    const hydrationStats = {
+      null_nodes: 0,
+      normalize_null: 0,
+      no_url: 0,
+      null_id: 0,
+      id_fallback_ok: 0,
+      handle_fallback_ok: 0,
+    };
+    const products = await fetchProductFactsLive(
+      {
+        SHOP_DOMAIN: 'example.myshopify.com',
+        SHOPIFY_STOREFRONT_TOKEN: 'public-epir',
+      } as Env,
+      'epir-online-store',
+      ['gid://shopify/Product/target-ring'],
+      {
+        hydrationStats,
+        productHandlesById: {
+          'gid://shopify/Product/target-ring': 'pierscionek-srebrny-z-granatem',
+        },
+      },
+    );
+    expect(products).toHaveLength(1);
+    expect(products[0].handle).toBe('pierscionek-srebrny-z-granatem');
+    expect(hydrationStats.null_nodes).toBe(0);
+    expect(hydrationStats.null_id).toBe(1);
+    expect(hydrationStats.id_fallback_ok).toBe(0);
+    expect(hydrationStats.handle_fallback_ok).toBe(1);
   });
 
   it('counts null_nodes when Storefront returns a null node', async () => {

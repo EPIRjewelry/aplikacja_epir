@@ -25,10 +25,12 @@ export {
   executeCatalogMcpLiveSearch,
   parseMcpErrorCode,
   parseUcpSearchProductIds,
+  parseUcpSearchProductRefs,
+  extractHandleFromUcpProduct,
   CatalogMcpLiveSearchError,
   CatalogMcpTransportEmptyError,
 } from './catalog-mcp-live';
-export type {CatalogMcpLiveSearchOptions} from './catalog-mcp-live';
+export type {CatalogMcpLiveSearchOptions, UcpSearchProductRef} from './catalog-mcp-live';
 
 export async function getCatalogRepository(
   env: Env,

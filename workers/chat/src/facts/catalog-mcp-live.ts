@@ -50,7 +50,41 @@ export function parseMcpErrorCode(mcpOut: unknown): number | undefined {
   return typeof code === 'number' ? code : undefined;
 }
 
-export function parseUcpSearchProductIds(mcpOut: unknown): string[] {
+export type UcpSearchProductRef = {
+  id: string;
+  handle?: string;
+};
+
+function handleFromProductUrl(value: string): string | undefined {
+  const m = value.match(/\/products\/([^/?#]+)/i);
+  if (!m?.[1]) return undefined;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
+  }
+}
+
+export function extractHandleFromUcpProduct(p: {
+  handle?: unknown;
+  link?: unknown;
+  url?: unknown;
+  onlineStoreUrl?: unknown;
+  online_store_url?: unknown;
+}): string | undefined {
+  if (typeof p.handle === 'string' && p.handle.trim()) return p.handle.trim();
+  for (const key of ['link', 'url', 'onlineStoreUrl', 'online_store_url'] as const) {
+    const v = p[key];
+    if (typeof v === 'string' && v.trim()) {
+      const h = handleFromProductUrl(v.trim());
+      if (h) return h;
+    }
+  }
+  return undefined;
+}
+
+/** UCP search_catalog → product refs (GID + optional handle for Storefront hydrate). */
+export function parseUcpSearchProductRefs(mcpOut: unknown): UcpSearchProductRef[] {
   const wrapped = mcpOut as {
     error?: unknown;
     result?: {content?: Array<{text?: string}>};
@@ -60,21 +94,31 @@ export function parseUcpSearchProductIds(mcpOut: unknown): string[] {
   if (!text) return [];
   try {
     const parsed = JSON.parse(text) as {
-      products?: Array<{id?: string}>;
-      catalog?: {products?: Array<{id?: string}>};
+      products?: Array<Record<string, unknown>>;
+      catalog?: {products?: Array<Record<string, unknown>>};
     };
     const products =
       (Array.isArray(parsed.products) && parsed.products) ||
       (Array.isArray(parsed.catalog?.products) && parsed.catalog.products) ||
       [];
-    const ids: string[] = [];
+    const out: UcpSearchProductRef[] = [];
+    const seen = new Set<string>();
     for (const p of products) {
-      if (typeof p?.id === 'string' && p.id.includes('/Product/')) ids.push(p.id);
+      const id = typeof p?.id === 'string' ? p.id : '';
+      if (!id.includes('/Product/') || seen.has(id)) continue;
+      seen.add(id);
+      const handle = extractHandleFromUcpProduct(p);
+      out.push(handle ? {id, handle} : {id});
     }
-    return ids;
+    return out;
   } catch {
     return [];
   }
+}
+
+/** Ids only — prefer parseUcpSearchProductRefs when handle hydrate is needed. */
+export function parseUcpSearchProductIds(mcpOut: unknown): string[] {
+  return parseUcpSearchProductRefs(mcpOut).map((r) => r.id);
 }
 
 export type CatalogMcpLiveSearchOptions = FetchStorefrontLiveOptions & {
@@ -120,7 +164,12 @@ export async function executeCatalogMcpLiveSearch(
   }
 
   const filterIgnored = parseUcpFilterIgnoredMessages(mcpOut);
-  const ids = [...new Set(parseUcpSearchProductIds(mcpOut))];
+  const refs = parseUcpSearchProductRefs(mcpOut);
+  const ids = refs.map((r) => r.id);
+  const productHandlesById: Record<string, string> = {};
+  for (const r of refs) {
+    if (r.handle?.trim()) productHandlesById[r.id] = r.handle.trim();
+  }
   const logStages = Boolean(options?.throwOnMcpError);
   const metalFilterActive = Boolean(filters.metal?.length);
   const stoneFilterActive = Boolean(filters.stone?.length);
@@ -130,6 +179,7 @@ export async function executeCatalogMcpLiveSearch(
         tag: 'gemma.catalog.stage',
         stage: 'ucp_ids',
         ucp_ids: ids.length,
+        ucp_handles: Object.keys(productHandlesById).length,
         filter_metal_active: metalFilterActive,
         filter_stone_active: stoneFilterActive,
         price_filter_active: Boolean(filters.priceMin ?? filters.priceMax),
@@ -145,10 +195,18 @@ export async function executeCatalogMcpLiveSearch(
     };
   }
 
-  const hydrationStats = {null_nodes: 0, normalize_null: 0, no_url: 0};
+  const hydrationStats = {
+    null_nodes: 0,
+    normalize_null: 0,
+    no_url: 0,
+    null_id: 0,
+    id_fallback_ok: 0,
+    handle_fallback_ok: 0,
+  };
   const facts = await fetchProductFactsLive(env, channel, ids, {
     ...options,
     hydrationStats,
+    productHandlesById,
   });
   if (logStages) {
     console.log(
@@ -161,6 +219,9 @@ export async function executeCatalogMcpLiveSearch(
         null_nodes: hydrationStats.null_nodes,
         normalize_null: hydrationStats.normalize_null,
         no_url: hydrationStats.no_url,
+        null_id: hydrationStats.null_id,
+        id_fallback_ok: hydrationStats.id_fallback_ok,
+        handle_fallback_ok: hydrationStats.handle_fallback_ok,
       }),
     );
   }

@@ -48,6 +48,10 @@ export type HydrationStats = {
   null_nodes: number;
   normalize_null: number;
   no_url: number;
+  /** nodes(ids:) null — before/without successful id or handle fallback. */
+  null_id?: number;
+  id_fallback_ok?: number;
+  handle_fallback_ok?: number;
 };
 
 export type FetchStorefrontLiveOptions = {
@@ -60,6 +64,8 @@ export type FetchStorefrontLiveOptions = {
   browseInStockAvailable?: boolean;
   /** Liczniki utraty węzłów przy hydracji (gemma.catalog.stage). */
   hydrationStats?: HydrationStats;
+  /** UCP product handles keyed by Product GID — handle hydrate after id fallback fails. */
+  productHandlesById?: Record<string, string>;
 };
 
 function resolveProductUrlContext(
@@ -550,17 +556,48 @@ export async function fetchProductFactsLive(
       const requestedId = batch[j];
       let raw = nodes[j];
       if (!raw || !isRecord(raw)) {
+        options?.hydrationStats &&
+          (options.hydrationStats.null_id = (options.hydrationStats.null_id ?? 0) + 1);
+        console.log(
+          JSON.stringify({
+            tag: 'facts.hydration.null_id',
+            channel,
+            product_id: requestedId,
+          }),
+        );
         const fallback = await fetchProductNodeById(env, channel, requestedId, options);
         if (fallback) {
           raw = fallback;
+          options?.hydrationStats &&
+            (options.hydrationStats.id_fallback_ok =
+              (options.hydrationStats.id_fallback_ok ?? 0) + 1);
           console.log(
             JSON.stringify({
-              tag: 'facts.hydration.product_id_fallback',
+              tag: 'facts.hydration.id_fallback_ok',
               channel,
               product_id: requestedId,
             }),
           );
         } else {
+          const handle = options?.productHandlesById?.[requestedId]?.trim();
+          if (handle) {
+            const byHandle = await fetchProductFactsByHandle(env, channel, handle, options);
+            if (byHandle) {
+              options?.hydrationStats &&
+                (options.hydrationStats.handle_fallback_ok =
+                  (options.hydrationStats.handle_fallback_ok ?? 0) + 1);
+              console.log(
+                JSON.stringify({
+                  tag: 'facts.hydration.handle_fallback_ok',
+                  channel,
+                  product_id: requestedId,
+                  handle,
+                }),
+              );
+              byId.set(requestedId, byHandle);
+              continue;
+            }
+          }
           options?.hydrationStats && (options.hydrationStats.null_nodes += 1);
           continue;
         }
