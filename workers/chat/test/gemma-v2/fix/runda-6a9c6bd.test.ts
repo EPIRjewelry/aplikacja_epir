@@ -862,6 +862,8 @@ describe('runda-6a9c6bd — KB (#1–3)', () => {
 
   it('T-6a9c6bd-KB-3: prompt A — policy_query NL', () => {
     expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/pełne pytanie klienta/i);
+    expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/wizyta|przymierka/i);
+    expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/polityki_kontakt/i);
   });
 
   it('T-6a9c6bd-PROMPT-CART-SHOW: literał cart_action=show tylko przy koszyku', () => {

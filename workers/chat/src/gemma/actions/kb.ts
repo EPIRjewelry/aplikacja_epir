@@ -1,22 +1,15 @@
-import {KB_POLICY_UNAVAILABLE_REPLY, searchShopPoliciesViaMcp} from '../../buyer/kb-policies';
+import {KB_POLICY_UNAVAILABLE_REPLY} from '../../buyer/kb-policies';
+import {searchKbWithQueryAttempts} from './kb-query';
 import type {GemmaActionContext, GemmaKbFacts} from './types';
 
 export async function runKbAction(ctx: GemmaActionContext): Promise<GemmaKbFacts | null> {
   const policyQuery = ctx.intent.policy_query?.trim() || '';
   const userText = ctx.userText.trim();
-  const primaryQuery = policyQuery || userText;
-  let result = await searchShopPoliciesViaMcp(ctx.env, primaryQuery, {context: userText});
-  let kbRetry = false;
-  if (
-    !result.ok &&
-    result.reason === 'empty' &&
-    policyQuery &&
-    userText &&
-    policyQuery !== userText
-  ) {
-    kbRetry = true;
-    result = await searchShopPoliciesViaMcp(ctx.env, userText, {context: userText});
-  }
+  const {result, attempts, kb_retry: kbRetry} = await searchKbWithQueryAttempts(
+    ctx.env,
+    policyQuery,
+    userText,
+  );
   if (!result.ok) {
     console.log(
       JSON.stringify({
@@ -26,6 +19,8 @@ export async function runKbAction(ctx: GemmaActionContext): Promise<GemmaKbFacts
         has_answer: false,
         sources_n: 0,
         kb_retry: kbRetry,
+        kb_attempts: attempts,
+        query_len: userText.length,
       }),
     );
     return null;
@@ -37,6 +32,8 @@ export async function runKbAction(ctx: GemmaActionContext): Promise<GemmaKbFacts
       has_answer: true,
       sources_n: result.sources.length,
       kb_retry: kbRetry,
+      kb_attempts: attempts,
+      query_len: userText.length,
     }),
   );
   return {

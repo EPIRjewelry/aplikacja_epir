@@ -60,6 +60,44 @@ function policySourceFromEntry(entry: Record<string, unknown>, fallbackTitle: st
   return { title, url };
 }
 
+/** Shopify MCP legacy / smoke shape: `{ answers: [{ topic, body }] }`. */
+function composeAnswerFromTopicBodyRows(
+  rows: unknown[],
+  topicKey: 'topic' | 'title' | 'question',
+  bodyKey: 'body' | 'answer' | 'text',
+): { answer: string; sources: PolicySource[] } {
+  const parts: string[] = [];
+  const sources: PolicySource[] = [];
+  for (const entry of rows) {
+    if (!entry || typeof entry !== 'object') continue;
+    const row = entry as Record<string, unknown>;
+    const topic =
+      typeof row[topicKey] === 'string'
+        ? (row[topicKey] as string).trim()
+        : typeof row.title === 'string'
+          ? row.title.trim()
+          : typeof row.question === 'string'
+            ? row.question.trim()
+            : '';
+    const body =
+      typeof row[bodyKey] === 'string'
+        ? (row[bodyKey] as string).trim()
+        : typeof row.body === 'string'
+          ? row.body.trim()
+          : typeof row.answer === 'string'
+            ? row.answer.trim()
+            : typeof row.text === 'string'
+              ? row.text.trim()
+              : '';
+    if (!topic && !body) continue;
+    if (topic && body) parts.push(`${topic}\n${body}`);
+    else parts.push(topic || body);
+    const src = policySourceFromEntry(row, topic || 'FAQ');
+    if (src) sources.push(src);
+  }
+  return { answer: parts.join('\n\n'), sources };
+}
+
 /** Kontrakt §8–11: policies first (binding), then faqs. */
 function composeAnswerFromPoliciesAndFaqs(parsed: Record<string, unknown>): {
   answer: string;
@@ -145,9 +183,21 @@ function extractFromRecord(parsed: Record<string, unknown>): { answer: string; s
   const composed = composeAnswerFromPoliciesAndFaqs(parsed);
   if (composed.answer) return composed;
 
-  // Legacy: sources/results without answer — treat body as unavailable for quoting
-  if (Array.isArray(parsed.sources) || Array.isArray(parsed.results)) {
-    return { answer: '', sources: normalizeSources(parsed.sources ?? parsed.results) };
+  const answers = parsed.answers;
+  if (Array.isArray(answers)) {
+    const fromAnswers = composeAnswerFromTopicBodyRows(answers, 'topic', 'body');
+    if (fromAnswers.answer) return fromAnswers;
+  }
+
+  const results = parsed.results;
+  if (Array.isArray(results)) {
+    const fromResults = composeAnswerFromTopicBodyRows(results, 'question', 'answer');
+    if (fromResults.answer) return fromResults;
+  }
+
+  // Legacy: sources only without quotable body — fail closed
+  if (Array.isArray(parsed.sources)) {
+    return { answer: '', sources: normalizeSources(parsed.sources) };
   }
 
   return { answer: '', sources: [] };
