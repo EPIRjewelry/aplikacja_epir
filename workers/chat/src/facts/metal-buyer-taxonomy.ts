@@ -1,6 +1,23 @@
-function normalizeTaxonomyLabelKey(text: string): string {
-  return text
-    .toLowerCase()
+/** Polish letters (ł, ó, …) do not decompose under NFD — fold before buyer-term map lookup. */
+const PL_DIACRITIC_FOLD: Readonly<Record<string, string>> = {
+  ą: 'a',
+  ć: 'c',
+  ę: 'e',
+  ł: 'l',
+  ń: 'n',
+  ó: 'o',
+  ś: 's',
+  ź: 'z',
+  ż: 'z',
+};
+
+export function normalizeBuyerMetalTermKey(text: string): string {
+  const lower = text.toLowerCase().trim();
+  let folded = '';
+  for (const ch of lower) {
+    folded += PL_DIACRITIC_FOLD[ch] ?? ch;
+  }
+  return folded
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
@@ -33,7 +50,11 @@ const GOLD_SOLID_LABELS: readonly string[] = [
   EPIR_ONLINE_STORE_METAL_TAXONOMY_LABELS.gold750,
 ];
 
-const SILVER_925_LABELS: readonly string[] = [EPIR_ONLINE_STORE_METAL_TAXONOMY_LABELS.silver925];
+/** Shop taxonomy + bare option label used on some variants / fixtures. */
+const SILVER_925_LABELS: readonly string[] = [
+  EPIR_ONLINE_STORE_METAL_TAXONOMY_LABELS.silver925,
+  'srebro',
+];
 
 /** Normalized buyer term → exact catalog labels (OR within set). */
 const BUYER_TERM_TO_EXACT_LABELS: Readonly<Record<string, readonly string[]>> = {
@@ -49,8 +70,8 @@ const BUYER_TERM_TO_EXACT_LABELS: Readonly<Record<string, readonly string[]>> = 
 };
 
 const KNOWN_EXACT_LABEL_KEYS = new Set<string>([
-  ...GOLD_SOLID_LABELS.map((l) => normalizeTaxonomyLabelKey(l)),
-  ...SILVER_925_LABELS.map((l) => normalizeTaxonomyLabelKey(l)),
+  ...GOLD_SOLID_LABELS.map((l) => normalizeBuyerMetalTermKey(l)),
+  ...SILVER_925_LABELS.map((l) => normalizeBuyerMetalTermKey(l)),
 ]);
 
 /** All distinct exact labels referenced in the buyer-term map (for ops / audit). */
@@ -59,7 +80,7 @@ export function listErpMetalTaxonomyLabelsInBuyerMap(): string[] {
   const out: string[] = [];
   for (const labels of Object.values(BUYER_TERM_TO_EXACT_LABELS)) {
     for (const label of labels) {
-      const k = normalizeTaxonomyLabelKey(label);
+      const k = normalizeBuyerMetalTermKey(label);
       if (seen.has(k)) continue;
       seen.add(k);
       out.push(label);
@@ -77,7 +98,7 @@ export function expandBuyerMetalSlotToExactLabels(slotValue: string): string[] {
   if (!slot) return [];
   if (isShopifyTaxonomyGid(slot)) return [slot];
 
-  const key = normalizeTaxonomyLabelKey(slot);
+  const key = normalizeBuyerMetalTermKey(slot);
   const mapped = BUYER_TERM_TO_EXACT_LABELS[key];
   if (mapped?.length) return [...mapped];
 
@@ -90,7 +111,7 @@ export function expandMetalSlotsForMatching(metalSlots: string[]): string[] {
   const seen = new Set<string>();
   for (const slot of metalSlots) {
     for (const label of expandBuyerMetalSlotToExactLabels(slot)) {
-      const dedupe = isShopifyTaxonomyGid(label) ? label : normalizeTaxonomyLabelKey(label);
+      const dedupe = isShopifyTaxonomyGid(label) ? label : normalizeBuyerMetalTermKey(label);
       if (seen.has(dedupe)) continue;
       seen.add(dedupe);
       out.push(label);

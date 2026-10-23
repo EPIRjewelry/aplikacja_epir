@@ -4,6 +4,7 @@ import {
   expandBuyerMetalSlotToExactLabels,
   expandMetalSlotsForMatching,
   listErpMetalTaxonomyLabelsInBuyerMap,
+  normalizeBuyerMetalTermKey,
 } from '../../src/facts/metal-buyer-taxonomy';
 import {
   productFactsMaterialMatchesTokens,
@@ -12,6 +13,11 @@ import {
 import {fictionalMultiVariantProduct} from '../gemma-v2/fixtures/fictional-catalog-products';
 
 describe('metal-buyer-taxonomy — colloquial → exact labels', () => {
+  it('T-METAL-BUYER-0: Polish ł/ó fold for map keys (NFD alone misses ł)', () => {
+    expect(normalizeBuyerMetalTermKey('złoto')).toBe('zloto');
+    expect(normalizeBuyerMetalTermKey('złoty')).toBe('zloty');
+  });
+
   it('T-METAL-BUYER-1: złoto → solid gold taxonomy labels, not złocone', () => {
     const labels = expandBuyerMetalSlotToExactLabels('złoto');
     expect(labels).toContain(EPIR_ONLINE_STORE_METAL_TAXONOMY_LABELS.gold585);
@@ -29,11 +35,15 @@ describe('metal-buyer-taxonomy — colloquial → exact labels', () => {
     expect(variantMetalMatchesSlotTokens('złoto 333', ['585'])).toBe(false);
   });
 
-  it('T-METAL-BUYER-3: srebrny → srebro 925', () => {
-    expect(expandBuyerMetalSlotToExactLabels('srebrny')).toEqual([
-      EPIR_ONLINE_STORE_METAL_TAXONOMY_LABELS.silver925,
-    ]);
+  it('T-METAL-BUYER-3: srebrny → srebro 925 (+ bare srebro variant label)', () => {
+    expect(expandBuyerMetalSlotToExactLabels('srebrny')).toEqual(
+      expect.arrayContaining([
+        EPIR_ONLINE_STORE_METAL_TAXONOMY_LABELS.silver925,
+        'srebro',
+      ]),
+    );
     expect(variantMetalMatchesSlotTokens('srebro 925', ['srebrny'])).toBe(true);
+    expect(variantMetalMatchesSlotTokens('srebro', ['srebro'])).toBe(true);
   });
 
   it('T-METAL-BUYER-4: exact SSOT label passthrough', () => {
