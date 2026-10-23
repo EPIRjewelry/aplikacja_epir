@@ -27,6 +27,11 @@ describe('contract A — metal SSOT (exact taxonomy labels)', () => {
     expect(variantMetalMatchesSlotTokens('gold-plated', ['gold-plated'])).toBe(true);
   });
 
+  it('T-CONTRACT-A-METAL-2b: colloquial złoto matches złoto 585 variant', () => {
+    expect(variantMetalMatchesSlotTokens('złoto 585', ['złoto'])).toBe(true);
+    expect(variantMetalMatchesSlotTokens('złoto 333', ['złoto'])).toBe(true);
+  });
+
   it('T-CONTRACT-A-METAL-2: pozłacane + slot złoto → 0 (substring would be wrong)', async () => {
     const base = fictionalMultiVariantProduct();
     const product = {

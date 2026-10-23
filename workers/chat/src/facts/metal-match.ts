@@ -1,4 +1,5 @@
 import type {ProductFacts} from './types';
+import {expandMetalSlotsForMatching} from './metal-buyer-taxonomy';
 
 /**
  * Gemma v2 post-UCP metal filter (decision A).
@@ -86,7 +87,8 @@ export function variantMetalMatchesSlotTokens(
   if (!metalSlots.length) return true;
   if (!variantMetal?.trim()) return false;
   const label = variantMetal.trim();
-  return metalSlots.some((slot) => taxonomyLabelsExactMatch(slot, label));
+  const expanded = expandMetalSlotsForMatching(metalSlots);
+  return expanded.some((slot) => taxonomyLabelsExactMatch(slot, label));
 }
 
 export function productFactsMaterialMatchesTokens(
@@ -94,7 +96,8 @@ export function productFactsMaterialMatchesTokens(
   metalSlots: string[],
 ): boolean {
   const labels = listProductTaxonomyMaterialLabels(product);
-  return metalSlots.some((slot) => labels.some((label) => taxonomyLabelsExactMatch(slot, label)));
+  const expanded = expandMetalSlotsForMatching(metalSlots);
+  return expanded.some((slot) => labels.some((catalogLabel) => taxonomyLabelsExactMatch(slot, catalogLabel)));
 }
 
 /** @deprecated use listProductTaxonomyMaterialLabels */
