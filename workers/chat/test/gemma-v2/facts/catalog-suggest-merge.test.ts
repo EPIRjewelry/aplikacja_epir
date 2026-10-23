@@ -1,11 +1,15 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {searchGemmaCatalog} from '../../../src/gemma/facts/catalog-search';
 import * as facts from '../../../src/facts';
+import * as shopProductJs from '../../../src/facts/shop-product-js';
 import * as storefrontLive from '../../../src/facts/storefront-live';
 import * as shopSuggest from '../../../src/facts/shop-suggest';
 import {moneyFromMinor} from '../../../src/facts/types';
 import {productFactsFromShopAjaxJson} from '../../../src/facts/shop-product-js';
-import {fictionalAjaxSilverGarnetRing} from '../../fixtures/ajax-silver-garnet-ring';
+import {
+  fictionalAjaxSilverGarnetRing,
+  fictionalAjaxSilverGarnetRingSizeOnly,
+} from '../../fixtures/ajax-silver-garnet-ring';
 import {
   fictionalMatchFromProduct,
   fictionalMultiVariantProduct,
@@ -30,12 +34,9 @@ function silverGarnetRing(handle: string, minor: number) {
   };
 }
 
-function mockStorefrontNullAndAjaxJs() {
+function mockAjaxJsFetch() {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = String(input);
-    if (url.includes('graphql.json')) {
-      return new Response(JSON.stringify({data: {product: null}}), {status: 200});
-    }
     if (url.endsWith('/products/pierscionek-srebrny-z-granatem.js')) {
       return new Response(JSON.stringify(fictionalAjaxSilverGarnetRing()), {
         status: 200,
@@ -49,7 +50,7 @@ function mockStorefrontNullAndAjaxJs() {
 describe('UCP + SF search + shop suggest merge (S3)', () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it('T-S3-SUGGEST-1: suggest handle + SF null + .js → hyd @340 w merge', async () => {
+  it('T-S3-SUGGEST-1: suggest handle + Ajax .js → hyd @340 w merge', async () => {
     const galazki = silverGarnetRing('pierscionek-galazki-z-granatem', 32_000);
     const kwiat = silverGarnetRing('pierscionek-kwiat-z-granatem', 32_000);
 
@@ -75,7 +76,7 @@ describe('UCP + SF search + shop suggest merge (S3)', () => {
       'pierscionek-srebrny-z-granatem',
       'pierscionek-kwiat-z-granatem',
     ]);
-    mockStorefrontNullAndAjaxJs();
+    mockAjaxJsFetch();
 
     const out = await searchGemmaCatalog(
       {
@@ -142,7 +143,7 @@ describe('UCP + SF search + shop suggest merge (S3)', () => {
     vi.spyOn(shopSuggest, 'fetchShopSuggestProductHandles').mockResolvedValue([
       'pierscionek-srebrny-z-granatem',
     ]);
-    vi.spyOn(storefrontLive, 'fetchProductFactsByHandle').mockResolvedValue(upgraded);
+    vi.spyOn(shopProductJs, 'fetchProductFactsFromShopAjax').mockResolvedValue(upgraded);
 
     const out = await searchGemmaCatalog(
       {
@@ -197,7 +198,7 @@ describe('UCP + SF search + shop suggest merge (S3)', () => {
         },
       }),
     } as never);
-    vi.spyOn(storefrontLive, 'fetchProductFactsByHandle').mockResolvedValue(upgraded);
+    vi.spyOn(shopProductJs, 'fetchProductFactsFromShopAjax').mockResolvedValue(upgraded);
 
     const out = await searchGemmaCatalog(
       {
@@ -257,9 +258,10 @@ describe('UCP + SF search + shop suggest merge (S3)', () => {
     vi.spyOn(shopSuggest, 'fetchShopSuggestProductHandles').mockResolvedValue([
       'pierscionek-srebrny-z-granatem',
     ]);
-    const byHandleSpy = vi
-      .spyOn(storefrontLive, 'fetchProductFactsByHandle')
-      .mockResolvedValue(upgraded);
+    const ajaxSpy = vi.spyOn(shopProductJs, 'fetchProductFactsFromShopAjax').mockResolvedValue(
+      upgraded,
+    );
+    const byHandleSpy = vi.spyOn(storefrontLive, 'fetchProductFactsByHandle');
 
     const out = await searchGemmaCatalog(
       {
@@ -276,13 +278,84 @@ describe('UCP + SF search + shop suggest merge (S3)', () => {
       24,
     );
 
-    expect(byHandleSpy).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.anything(),
+    expect(ajaxSpy).toHaveBeenCalledWith(
+      'epir-online-store',
       'pierscionek-srebrny-z-granatem',
-      expect.anything(),
+      'epir-online-store',
     );
+    expect(byHandleSpy).not.toHaveBeenCalled();
     expect(out).toHaveLength(1);
     expect(out[0].matchingPriceRange.min.minor).toBe(34_000);
+  });
+
+  it('T-S3-SUGGEST-AJAX-PATH-1: SF EN taxonomy w UCP → Ajax upgrade soft-keep @340 post-UCP', async () => {
+    const weakTargetId = 'gid://shopify/Product/6836886012009';
+    const weakSfTaxonomy = {
+      ...silverGarnetRing('pierscionek-srebrny-z-granatem', 32_000),
+      productId: weakTargetId,
+      stones: [],
+      metafields: {
+        'shopify.gemstone-type': 'Garnet',
+        'shopify.jewelry-material': 'Sterling silver',
+      },
+      variants: [
+        {
+          ...fictionalMultiVariantProduct().variants[0],
+          metal: null,
+          price: moneyFromMinor(32_000),
+          variantId: 'gid://shopify/ProductVariant/weak-en-taxonomy',
+        },
+      ],
+    };
+    const ajaxSoftKeep = productFactsFromShopAjaxJson(
+      fictionalAjaxSilverGarnetRingSizeOnly(),
+      'epir-online-store',
+      'pierscionek-srebrny-z-granatem',
+      'https://epirbizuteria.pl',
+    )!;
+
+    vi.spyOn(facts, 'getCatalogRepository').mockResolvedValue({
+      search: vi.fn().mockResolvedValue({
+        matches: [fictionalMatchFromProduct(weakSfTaxonomy)],
+        total: 1,
+        facets: {
+          total: 1,
+          byOrigin: {natural: 0, lab_grown: 0, cultured: 0, mixed: 0, unknown: 0},
+          byStone: {},
+          byMetal: {},
+          byProductType: {},
+        },
+      }),
+    } as never);
+    vi.spyOn(storefrontLive, 'searchStorefrontProductRefsByQuery').mockResolvedValue([]);
+    vi.spyOn(shopSuggest, 'fetchShopSuggestProductHandles').mockResolvedValue([
+      'pierscionek-srebrny-z-granatem',
+    ]);
+    const ajaxSpy = vi
+      .spyOn(shopProductJs, 'fetchProductFactsFromShopAjax')
+      .mockResolvedValue(ajaxSoftKeep);
+    const byHandleSpy = vi.spyOn(storefrontLive, 'fetchProductFactsByHandle');
+
+    const out = await searchGemmaCatalog(
+      {
+        SHOP_DOMAIN: 'epir-ai.myshopify.com',
+        PRIVATE_STOREFRONT_API_TOKEN: 't',
+      } as never,
+      'epir-online-store',
+      {
+        text: 'pierścionek srebro granat',
+        productType: ['pierścionek'],
+        metal: ['srebrny'],
+        stone: ['granat'],
+        priceMax: moneyFromMinor(40_000),
+      },
+      24,
+    );
+
+    expect(out).toHaveLength(1);
+    expect(out[0].product.handle).toBe('pierscionek-srebrny-z-granatem');
+    expect(out[0].matchingPriceRange.min.minor).toBe(34_000);
+    expect(onlyWeak).toBeDefined();
+    void outBeforeUpgrade;
   });
 });

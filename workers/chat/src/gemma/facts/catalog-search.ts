@@ -8,11 +8,11 @@ import {
 } from '../../facts';
 import {filterProducts} from '../../facts/filter';
 import {
-  fetchProductFactsByHandle,
   fetchProductFactsLive,
   hasStorefrontCatalogToken,
   searchStorefrontProductRefsByQuery,
 } from '../../facts/storefront-live';
+import {fetchProductFactsFromShopAjax} from '../../facts/shop-product-js';
 import {fetchShopSuggestProductHandles} from '../../facts/shop-suggest';
 import {metalSlotsAreAssayScoped} from '../../facts/metal-buyer-taxonomy';
 import {
@@ -297,10 +297,11 @@ export async function searchGemmaCatalog(
         meta.suggestHandlesRanked = [...suggestHandles];
       }
       for (const handle of suggestHandles) {
-        const factsByHandle = await fetchProductFactsByHandle(env, catalogChannel, handle, {
-          clientRequest,
-          urlChannel: channelId,
-        });
+        const factsByHandle = await fetchProductFactsFromShopAjax(
+          catalogChannel,
+          handle,
+          channelId,
+        );
         if (!factsByHandle) continue;
         const extra = filterProducts([factsByHandle], {});
         if (!extra.length) continue;
