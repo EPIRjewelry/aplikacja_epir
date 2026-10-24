@@ -396,6 +396,7 @@ function ZareczynyConsentAndChat({
         route={route}
         locale={analyticsConsent.language}
         consentGranted={consentGranted}
+        requireChatConsent={false}
         onCommerceAction={onCommerceAction}
       />
     </>

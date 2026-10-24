@@ -21,6 +21,7 @@ export async function composeGemmaReply(
     bodyChannel: opts?.bodyChannel,
     userText,
     analyticsConsent: opts?.analyticsConsent,
+    preferencesConsent: opts?.preferencesConsent,
     sessionIdSource: opts?.sessionIdSource,
   });
   try {

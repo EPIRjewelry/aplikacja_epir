@@ -52,12 +52,22 @@ function readLastAssistantChatSessionForPrivacy() {
   }
 }
 
+function isShopifyCustomerPrivacyApiAvailable() {
+  try {
+    return (
+      typeof window !== 'undefined' &&
+      window.Shopify &&
+      window.Shopify.customerPrivacy
+    );
+  } catch (e) {
+    return false;
+  }
+}
+
 function isShopifyAnalyticsProcessingAllowed() {
   try {
     if (
-      typeof window === 'undefined' ||
-      !window.Shopify ||
-      !window.Shopify.customerPrivacy ||
+      !isShopifyCustomerPrivacyApiAvailable() ||
       typeof window.Shopify.customerPrivacy.analyticsProcessingAllowed !== 'function'
     ) {
       return null;
@@ -66,6 +76,53 @@ function isShopifyAnalyticsProcessingAllowed() {
   } catch (e) {
     return null;
   }
+}
+
+function isShopifyPreferencesProcessingAllowed() {
+  try {
+    if (
+      !isShopifyCustomerPrivacyApiAvailable() ||
+      typeof window.Shopify.customerPrivacy.preferencesProcessingAllowed !== 'function'
+    ) {
+      return null;
+    }
+    return window.Shopify.customerPrivacy.preferencesProcessingAllowed() === true;
+  } catch (e) {
+    return null;
+  }
+}
+
+/** Jedno źródło zgody Shopify Customer Privacy API (brief: analytics + preferences). */
+function getChatCapabilities() {
+  return {
+    analytics: isShopifyAnalyticsProcessingAllowed() === true,
+    preferences: isShopifyPreferencesProcessingAllowed() === true,
+  };
+}
+
+var epirChatCapabilitiesCache = null;
+function refreshChatCapabilitiesFromPrivacyApi() {
+  epirChatCapabilitiesCache = getChatCapabilities();
+  return epirChatCapabilitiesCache;
+}
+function getChatCapabilitiesCached() {
+  if (!epirChatCapabilitiesCache) refreshChatCapabilitiesFromPrivacyApi();
+  return epirChatCapabilitiesCache;
+}
+
+function purgeLegacyChatConsentStorage() {
+  try {
+    localStorage.removeItem('epir-customer-privacy-chat');
+    var toRemove = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var key = localStorage.key(i);
+      if (key && key.indexOf('epir-consent:') === 0) toRemove.push(key);
+    }
+    for (var j = 0; j < toRemove.length; j++) localStorage.removeItem(toRemove[j]);
+  } catch (e) {}
+  try {
+    sessionStorage.removeItem('epir-chat-anonymous-id');
+  } catch (e2) {}
 }
 
 function resolveAssistantSessionIdMeta(sessionIdKey) {
@@ -173,6 +230,7 @@ function installAssistantCustomerPrivacyListeners(chatEndpoint) {
   document.addEventListener(
     'visitorConsentCollected',
     function (ev) {
+      refreshChatCapabilitiesFromPrivacyApi();
       var detail = ev && ev.detail;
       if (!detail || detail.analyticsAllowed !== false) return;
       var remembered = readLastAssistantChatSessionForPrivacy();
@@ -414,296 +472,6 @@ function buildAppProxyUrlWithCustomerContext(endpoint, section, customerIdentity
 
 function resolveLoggedInCustomerId(section) {
   return buildLoggedInCustomerIdentity(section).customerId;
-}
-
-/* ===== CONSENT GATE (App Proxy POST /apps/assistant/consent) ===== */
-var EPIR_CONSENT_ANONYMOUS_KEY = 'epir-chat-anonymous-id';
-
-function getEpirAnonymousIdForConsent() {
-  try {
-    var id = sessionStorage.getItem(EPIR_CONSENT_ANONYMOUS_KEY);
-    if (!id && typeof crypto !== 'undefined' && crypto.randomUUID) {
-      id = crypto.randomUUID();
-      sessionStorage.setItem(EPIR_CONSENT_ANONYMOUS_KEY, id);
-    }
-    return id || String(Date.now());
-  } catch (e) {
-    return String(Date.now());
-  }
-}
-
-function getConsentStorageKeyForSection(section) {
-  var id = (section && section.dataset && section.dataset.consentId) || 'epir-theme-liquid-chat-v1';
-  return 'epir-consent:' + id;
-}
-
-/** Banner chat signal from themes/.../epir-customer-privacy-consent.js */
-var EPIR_BANNER_CHAT_STORAGE_KEY = 'epir-customer-privacy-chat';
-var EPIR_BANNER_CHOICE_KEY = 'epir-customer-privacy-choice';
-var EPIR_BANNER_CONSENT_EVENT = 'epir-customer-privacy-consent';
-
-function readBannerChatGranted() {
-  try {
-    var chatFlag = localStorage.getItem(EPIR_BANNER_CHAT_STORAGE_KEY);
-    if (chatFlag === 'true') return true;
-    if (chatFlag === 'false') return false;
-    var choice = localStorage.getItem(EPIR_BANNER_CHOICE_KEY);
-    if (choice === 'accept-all' || choice === 'accept') return true;
-    if (choice === 'necessary' || choice === 'reject') return false;
-  } catch (e) {}
-  return false;
-}
-
-function showConsentLockHint(section) {
-  var statusEl =
-    section.querySelector('#assistant-status') || section.querySelector('#assistant-status-embed');
-  if (!statusEl) return;
-  statusEl.textContent =
-    'Aby otworzyć czat, zaakceptuj wszystkie pliki cookies w banerze u dołu strony (w tym rozmowę z doradcą).';
-}
-
-/**
- * Payload zgodny z workers/chat `parseConsentJsonBody` (tryb App Proxy nadpisuje storefront/channel po stronie serwera).
- * Eksponowane do ewentualnych testów integracyjnych.
- */
-function buildConsentEvent(section) {
-  var consentId = (section.dataset && section.dataset.consentId) || 'epir-theme-liquid-chat-v1';
-  var sessionId = resolveEffectiveAssistantSessionId(EPIR_ASSISTANT_SESSION_KEY) || '';
-  if (!sessionId) sessionId = getEpirAnonymousIdForConsent();
-  var shopDomain = '';
-  try {
-    shopDomain =
-      (section.dataset && section.dataset.shopDomain) ||
-      (typeof window !== 'undefined' && window.location && window.location.hostname) ||
-      '';
-  } catch (e2) {}
-  var cid = resolveLoggedInCustomerId(section) || null;
-  return {
-    consentId: consentId,
-    granted: true,
-    source: 'theme-app-extension',
-    storefrontId: (section.dataset && section.dataset.storefrontId) || 'epir-liquid',
-    channel: (section.dataset && section.dataset.channel) || 'online-store',
-    shopDomain: shopDomain,
-    route:
-      typeof window !== 'undefined' && window.location && window.location.pathname
-        ? window.location.pathname
-        : '/',
-    sessionId: sessionId,
-    anonymousId: getEpirAnonymousIdForConsent(),
-    customerId: cid,
-    timestamp: Date.now(),
-  };
-}
-
-function buildConsentFetchUrl(section, basePath) {
-  var endpoint = basePath || (section.dataset && section.dataset.consentEndpoint) || '/apps/assistant/consent';
-  return resolveLoggedInCustomerIdentityWithPreflight(section, 'consent').then(function (customerIdentity) {
-    return buildAppProxyUrlWithCustomerContext(endpoint, section, customerIdentity);
-  });
-}
-
-function submitConsentEvent(payload, section) {
-  return resolveLoggedInCustomerIdentityWithPreflight(section, 'consent').then(function (customerIdentity) {
-    var url = buildAppProxyUrlWithCustomerContext(
-      (section.dataset && section.dataset.consentEndpoint) || '/apps/assistant/consent',
-      section,
-      customerIdentity,
-    );
-    var payloadWithCustomer = payload && typeof payload === 'object'
-      ? Object.assign({}, payload, {
-          customerId: normalizeLoggedInCustomerId(payload.customerId || customerIdentity.customerId) || null,
-        })
-      : payload;
-
-    return fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json, text/plain',
-      },
-      credentials: 'include',
-      body: JSON.stringify(payloadWithCustomer),
-    });
-  });
-}
-
-function setConsentBarSaving(section, saving) {
-  var bar = section.querySelector('[data-epir-consent-bar]');
-  if (!bar) return;
-  if (saving) bar.classList.add('epir-assistant-consent-bar--saving');
-  else bar.classList.remove('epir-assistant-consent-bar--saving');
-}
-
-function setConsentGateError(section, message) {
-  var bar = section.querySelector('[data-epir-consent-bar]');
-  var el = section.querySelector('[data-epir-consent-error]');
-  if (!el) return;
-  if (message) {
-    el.textContent = message;
-    el.removeAttribute('hidden');
-    if (bar) bar.removeAttribute('hidden');
-  } else {
-    el.textContent = '';
-    el.setAttribute('hidden', '');
-    if (bar) bar.setAttribute('hidden', '');
-  }
-}
-
-function lockChatUi(section) {
-  section.classList.add('epir-assistant--consent-locked');
-  var bar = section.querySelector('[data-epir-consent-bar]');
-  if (bar) bar.classList.add('epir-assistant-consent-bar--locked');
-  var launcher = section.querySelector('#assistant-launcher') || section.querySelector('#assistant-launcher-embed');
-  if (launcher) {
-    launcher.setAttribute('disabled', 'disabled');
-    launcher.setAttribute('aria-disabled', 'true');
-  }
-  ['#assistant-input', '#assistant-input-embed', '#assistant-send-button', '#assistant-send-button-embed'].forEach(function (sel) {
-    var el = section.querySelector(sel);
-    if (el) el.setAttribute('disabled', 'disabled');
-  });
-  section.querySelectorAll('.assistant-attach-btn').forEach(function (btn) {
-    btn.setAttribute('disabled', 'disabled');
-  });
-  var fi = section.querySelector('#assistant-file-input-embed') || section.querySelector('#assistant-file-input-section');
-  if (fi) fi.setAttribute('disabled', 'disabled');
-}
-
-function unlockChatUi(section) {
-  section.classList.remove('epir-assistant--consent-locked');
-  var bar = section.querySelector('[data-epir-consent-bar]');
-  if (bar) bar.classList.remove('epir-assistant-consent-bar--locked');
-  var statusEl =
-    section.querySelector('#assistant-status') || section.querySelector('#assistant-status-embed');
-  if (statusEl) statusEl.textContent = '';
-  var launcher = section.querySelector('#assistant-launcher') || section.querySelector('#assistant-launcher-embed');
-  if (launcher) {
-    launcher.removeAttribute('disabled');
-    launcher.setAttribute('aria-disabled', 'false');
-  }
-  ['#assistant-input', '#assistant-input-embed', '#assistant-send-button', '#assistant-send-button-embed'].forEach(function (sel) {
-    var el = section.querySelector(sel);
-    if (el) el.removeAttribute('disabled');
-  });
-  section.querySelectorAll('.assistant-attach-btn').forEach(function (btn) {
-    btn.removeAttribute('disabled');
-  });
-  var fi = section.querySelector('#assistant-file-input-embed') || section.querySelector('#assistant-file-input-section');
-  if (fi) fi.removeAttribute('disabled');
-}
-
-function requestChatUnlockFromBanner(section) {
-  var storageKey = getConsentStorageKeyForSection(section);
-  var already = false;
-  try {
-    already = localStorage.getItem(storageKey) === 'true';
-  } catch (e) {}
-  if (already) {
-    setConsentGateError(section, '');
-    unlockChatUi(section);
-    return;
-  }
-  if (section.dataset.epirConsentPosting === '1') return;
-  section.dataset.epirConsentPosting = '1';
-  setConsentBarSaving(section, true);
-  setConsentGateError(section, '');
-  submitConsentEvent(buildConsentEvent(section), section)
-    .then(function (res) {
-      setConsentBarSaving(section, false);
-      section.dataset.epirConsentPosting = '0';
-      if (res.ok && res.status >= 200 && res.status < 300) {
-        try {
-          localStorage.setItem(storageKey, 'true');
-        } catch (e3) {}
-        unlockChatUi(section);
-      } else {
-        lockChatUi(section);
-        setConsentGateError(
-          section,
-          'Nie udało się zapisać zgody (' + res.status + '). Spróbuj ponownie.'
-        );
-      }
-    })
-    .catch(function (err) {
-      setConsentBarSaving(section, false);
-      section.dataset.epirConsentPosting = '0';
-      lockChatUi(section);
-      setConsentGateError(
-        section,
-        err && err.message ? err.message : 'Błąd sieci. Spróbuj ponownie.'
-      );
-    });
-}
-
-function applyBannerChatDecision(section, chatGranted) {
-  var storageKey = getConsentStorageKeyForSection(section);
-  if (chatGranted === true) {
-    requestChatUnlockFromBanner(section);
-    return;
-  }
-  try {
-    localStorage.setItem(storageKey, 'false');
-  } catch (e) {}
-  setConsentGateError(section, '');
-  lockChatUi(section);
-}
-
-function syncConsentGateFromBanner(section) {
-  if (!section) return;
-  if (readBannerChatGranted()) {
-    requestChatUnlockFromBanner(section);
-  } else {
-    lockChatUi(section);
-    showConsentLockHint(section);
-  }
-}
-
-function initConsentGateForSection(section) {
-  if (!section || section.dataset.epirConsentInit === '1') return;
-  section.dataset.epirConsentInit = '1';
-
-  syncConsentGateFromBanner(section);
-
-  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-    window.addEventListener(EPIR_BANNER_CONSENT_EVENT, function (ev) {
-      var chatGranted = !!(ev && ev.detail && ev.detail.chat === true);
-      applyBannerChatDecision(section, chatGranted);
-    });
-    window.addEventListener('storage', function (ev) {
-      if (
-        !ev ||
-        (ev.key !== EPIR_BANNER_CHAT_STORAGE_KEY && ev.key !== EPIR_BANNER_CHOICE_KEY)
-      ) {
-        return;
-      }
-      syncConsentGateFromBanner(section);
-    });
-  }
-
-  var resyncDelays = [0, 400, 1200];
-  for (var i = 0; i < resyncDelays.length; i++) {
-    (function (delayMs) {
-      setTimeout(function () {
-        syncConsentGateFromBanner(section);
-      }, delayMs);
-    })(resyncDelays[i]);
-  }
-
-  var launcher = section.querySelector('#assistant-launcher') || section.querySelector('#assistant-launcher-embed');
-  if (launcher) {
-    launcher.addEventListener(
-      'click',
-      function (ev) {
-        if (section.classList.contains('epir-assistant--consent-locked')) {
-          ev.preventDefault();
-          ev.stopPropagation();
-          showConsentLockHint(section);
-        }
-      },
-      true
-    );
-  }
 }
 
 function getPendingAttachment(form) {
@@ -1327,11 +1095,9 @@ function syncAssistantTranscriptFromBackend(section, messagesEl, sessionIdKey) {
     });
 }
 
-/** Historia tylko po akcji użytkownika (otwarty panel) i przy zgodzie „chat” z banera. */
+/** Historia po otwarciu panelu i przy istniejącym `sess_*` w tej karcie. */
 function syncAssistantHistoryIfAllowed(section) {
   if (!section || !section.classList) return;
-  if (section.classList.contains('epir-assistant--consent-locked')) return;
-  if (!readBannerChatGranted()) return;
   var messagesEl =
     section.querySelector('#assistant-messages') || section.querySelector('#assistant-messages-embed');
   if (!messagesEl) return;
@@ -1465,10 +1231,6 @@ function initAssistantUIForSection(section) {
     // Web Pixel emits 'epir:activate-chat' when analytics-worker recommends activation
     window.addEventListener('epir:activate-chat', (event) => {
       console.log('[EPIR Assistant] 🚀 Proactive chat activation triggered:', event.detail);
-      if (section.classList.contains('epir-assistant--consent-locked')) {
-        return;
-      }
-
       // Auto-open chat if closed
       const shell = section.querySelector('#assistant-panel') || section.querySelector('#assistant-panel-embed') || content;
       if (shell && shell.classList.contains('is-closed')) {
@@ -1493,13 +1255,14 @@ function initAssistantUIForSection(section) {
       }
     });
 
-    initConsentGateForSection(section);
   } catch (e) {
     console.warn('Assistant init error', e);
   }
 }
 
 function initAllAssistantSections() {
+  purgeLegacyChatConsentStorage();
+  refreshChatCapabilitiesFromPrivacyApi();
   installAssistantCustomerPrivacyListeners(EPIR_CHAT_WORKER_ENDPOINT);
   const sectionBlock = document.getElementById('epir-assistant-section');
   const sectionEmbed = document.getElementById('epir-assistant-embed');
@@ -1897,7 +1660,7 @@ async function sendMessageToWorker(
     if (sessionMeta && sessionMeta.sessionId) {
       rememberAssistantChatSessionForPrivacy(sessionMeta.sessionId, sessionMeta.sessionIdSource);
     }
-    var analyticsAllowed = isShopifyAnalyticsProcessingAllowed();
+    var privacyCaps = getChatCapabilitiesCached();
     const body = {
       storefrontId: storefrontId,
       channel: channel,
@@ -1916,9 +1679,8 @@ async function sendMessageToWorker(
     if (sessionMeta.sessionIdSource) {
       body.session_id_source = sessionMeta.sessionIdSource;
     }
-    if (analyticsAllowed !== null) {
-      body.analytics_consent = analyticsAllowed;
-    }
+    body.analytics_consent = privacyCaps.analytics;
+    body.preferences_consent = privacyCaps.preferences;
     if (productHandle) {
       body.productHandle = productHandle;
     }
@@ -2117,9 +1879,6 @@ function initAssistantSubmitHandler() {
 
 function doSendFromForm(form, input) {
   const sectionEl = form.closest('#epir-assistant-embed') || form.closest('#epir-assistant-section') || getAssistantSection();
-  if (sectionEl && sectionEl.classList.contains('epir-assistant--consent-locked')) {
-    return;
-  }
   const messagesEl = sectionEl && (sectionEl.querySelector('#assistant-messages') || sectionEl.querySelector('#assistant-messages-embed'));
   const text = (input && input.value && input.value.trim()) || '';
   const pendingAttachment = getPendingAttachment(form);

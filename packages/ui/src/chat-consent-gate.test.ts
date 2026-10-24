@@ -6,6 +6,7 @@ import {afterEach, describe, expect, it, vi} from 'vitest';
 import {
   isChatHistorySyncAllowed,
   readStoredChatSessionId,
+  resolveChatPrivacyCapabilities,
   resolveEffectiveChatSessionWithMeta,
 } from './epir-session-browser';
 
@@ -34,28 +35,42 @@ function memoryStorage(initial: Record<string, string> = {}) {
   };
 }
 
-function fakeSection(opts: {locked?: boolean} = {}) {
-  const classes = new Set<string>(opts.locked ? ['epir-assistant--consent-locked'] : []);
+function fakeSection(opts: {panelOpen?: boolean} = {}) {
   const messagesEl = {querySelectorAll: () => [], innerHTML: '', scrollTop: 0, scrollHeight: 0};
+  const panel = {classList: {contains: (c: string) => c === 'is-closed' && !opts.panelOpen}};
   return {
     dataset: {} as Record<string, string>,
-    classList: {contains: (c: string) => classes.has(c)},
-    querySelector: (sel: string) => (sel === '#assistant-messages-embed' ? messagesEl : null),
+    classList: {contains: () => false},
+    querySelector: (sel: string) => {
+      if (sel === '#assistant-messages-embed') return messagesEl;
+      if (sel === '#assistant-panel-embed') return panel;
+      return null;
+    },
   };
 }
 
 function loadRuntime(opts: {
   session?: Record<string, string>;
   local?: Record<string, string>;
+  shopifyPrivacy?: {analytics?: boolean; preferences?: boolean};
 }) {
   const session = memoryStorage(opts.session);
   const local = memoryStorage(opts.local);
   const fetchMock = vi.fn().mockResolvedValue({ok: true, json: async () => ({history: []})});
+  const privacy = opts.shopifyPrivacy ?? {};
   const sandbox: Record<string, unknown> = {
     document: {cookie: '', readyState: 'loading', addEventListener() {}},
     sessionStorage: session.storage,
     localStorage: local.storage,
-    window: {Shopify: {}, location: {hostname: 'epirbizuteria.pl', pathname: '/'}},
+    window: {
+      Shopify: {
+        customerPrivacy: {
+          analyticsProcessingAllowed: () => privacy.analytics === true,
+          preferencesProcessingAllowed: () => privacy.preferences === true,
+        },
+      },
+      location: {hostname: 'epirbizuteria.pl', pathname: '/'},
+    },
     console,
     fetch: fetchMock,
     crypto: {randomUUID: () => '00000000-0000-4000-8000-000000000001'},
@@ -78,7 +93,7 @@ function loadRuntime(opts: {
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
-describe('TAE assistant-runtime: nothing stored or sent before chat consent + user action', () => {
+describe('TAE assistant-runtime: chat bez bramki banera, zgoda Shopify', () => {
   it('debug ingest to 127.0.0.1 is gone', () => {
     const src = readFileSync(runtimePath, 'utf8');
     expect(src).not.toContain('epirAgentDebugLog');
@@ -90,56 +105,48 @@ describe('TAE assistant-runtime: nothing stored or sent before chat consent + us
     const section = fakeSection();
     expect((sandbox.readStoredAssistantSessionId as (k?: string) => string)(SESSION_KEY)).toBe('');
     expect(
-      (sandbox.getAssistantTranscriptStorageKeys as (s: unknown, k: string) => string[])(section, SESSION_KEY),
+      (sandbox.fetchAssistantTranscriptFromBackend as (s: unknown, k: string) => Promise<unknown[]>)(
+        section,
+        SESSION_KEY,
+      ),
     ).toEqual([]);
-    expect(
-      (sandbox.readAssistantTranscript as (s: unknown, k: string) => unknown[])(section, SESSION_KEY),
-    ).toEqual([]);
-    const history = await (
-      sandbox.fetchAssistantTranscriptFromBackend as (s: unknown, k: string) => Promise<unknown[]>
-    )(section, SESSION_KEY);
-    expect(history).toEqual([]);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(session.writes).toEqual([]);
   });
 
-  it('no history request without banner chat consent or when locked', async () => {
+  it('syncAssistantHistoryIfAllowed fetches history without banner chat flag', async () => {
     const stored = {[SESSION_KEY]: 'sess_existing-0001'};
-    const noConsent = loadRuntime({session: stored});
-    (noConsent.sandbox.syncAssistantHistoryIfAllowed as (s: unknown) => void)(fakeSection());
-    const locked = loadRuntime({session: stored, local: {'epir-customer-privacy-chat': 'true'}});
-    (locked.sandbox.syncAssistantHistoryIfAllowed as (s: unknown) => void)(fakeSection({locked: true}));
-    await flush();
-    expect(noConsent.fetchMock).not.toHaveBeenCalled();
-    expect(locked.fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('with chat consent and no stored sess_: no request, no mint', async () => {
-    const r = loadRuntime({local: {'epir-customer-privacy-chat': 'true'}});
-    (r.sandbox.syncAssistantHistoryIfAllowed as (s: unknown) => void)(fakeSection());
-    await flush();
-    expect(r.fetchMock).not.toHaveBeenCalled();
-    expect(r.session.writes).toEqual([]);
-  });
-
-  it('with chat consent and stored sess_: restores history for that session', async () => {
-    const r = loadRuntime({
-      session: {[SESSION_KEY]: 'sess_existing-0001'},
-      local: {'epir-customer-privacy-chat': 'true'},
-    });
-    (r.sandbox.syncAssistantHistoryIfAllowed as (s: unknown) => void)(fakeSection());
-    // preflight tożsamości: do 3 prób co 75 ms
-    await new Promise((r) => setTimeout(r, 400));
+    const r = loadRuntime({session: stored, local: {'epir-customer-privacy-chat': 'false'}});
+    (r.sandbox.syncAssistantHistoryIfAllowed as (s: unknown) => void)(fakeSection({panelOpen: true}));
+    await new Promise((resolve) => setTimeout(resolve, 400));
     expect(r.fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = r.fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url] = r.fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toContain('/apps/assistant/history');
-    expect(JSON.parse(String(init.body)).session_id).toBe('sess_existing-0001');
-    expect(r.session.bag[SESSION_KEY]).toBe('sess_existing-0001');
   });
 
-  it('send/consent path still mints sess_ (needed for chat + #176 pixel link)', () => {
+  it('getChatCapabilities: necessary-equivalent → analytics/preferences false', () => {
+    const r = loadRuntime({shopifyPrivacy: {analytics: false, preferences: false}});
+    const caps = (r.sandbox.getChatCapabilities as () => {analytics: boolean; preferences: boolean})();
+    expect(caps).toEqual({analytics: false, preferences: false});
+  });
+
+  it('purges legacy consent keys on initAllAssistantSections', () => {
+    const r = loadRuntime({
+      local: {
+        'epir-customer-privacy-chat': 'false',
+        'epir-consent:epir-theme-liquid-chat-v1': 'false',
+      },
+    });
+    (r.sandbox.purgeLegacyChatConsentStorage as () => void)();
+    expect(r.local.bag['epir-customer-privacy-chat']).toBeUndefined();
+    expect(r.local.bag['epir-consent:epir-theme-liquid-chat-v1']).toBeUndefined();
+  });
+
+  it('send path still mints sess_', () => {
     const r = loadRuntime({});
-    const meta = (r.sandbox.resolveAssistantSessionIdMeta as (k: string) => {sessionId: string})(SESSION_KEY);
+    const meta = (r.sandbox.resolveAssistantSessionIdMeta as (k: string) => {sessionId: string})(
+      SESSION_KEY,
+    );
     expect(meta.sessionId).toMatch(/^sess_/);
     expect(r.session.bag[SESSION_KEY]).toBe(meta.sessionId);
   });
@@ -165,11 +172,19 @@ describe('Hydrogen ChatWidget helpers', () => {
     expect(readStoredChatSessionId(SESSION_KEY)).toBe('sess_ok-0001');
   });
 
-  it('history sync only when open AND consent === true', () => {
+  it('history sync: open panel; Kazka still needs consentGranted', () => {
     expect(isChatHistorySyncAllowed({isOpen: false, consentGranted: true})).toBe(false);
     expect(isChatHistorySyncAllowed({isOpen: true, consentGranted: false})).toBe(false);
     expect(isChatHistorySyncAllowed({isOpen: true, consentGranted: undefined})).toBe(false);
     expect(isChatHistorySyncAllowed({isOpen: true, consentGranted: true})).toBe(true);
+    expect(
+      isChatHistorySyncAllowed({isOpen: true, consentGranted: false, requireChatConsent: false}),
+    ).toBe(true);
+  });
+
+  it('resolveChatPrivacyCapabilities defaults false without API', () => {
+    vi.stubGlobal('window', {});
+    expect(resolveChatPrivacyCapabilities()).toEqual({analytics: false, preferences: false});
   });
 
   it('send path still mints sess_', () => {

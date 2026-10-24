@@ -77,6 +77,30 @@ export function readShopifyAnalyticsProcessingAllowed(): boolean | null {
   }
 }
 
+/** Shopify Customer Privacy API — brak API = `null` (nieznane). */
+export function readShopifyPreferencesProcessingAllowed(): boolean | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const shopify = (window as {
+      Shopify?: {customerPrivacy?: {preferencesProcessingAllowed?: () => boolean}};
+    }).Shopify;
+    const fn = shopify?.customerPrivacy?.preferencesProcessingAllowed;
+    if (typeof fn !== 'function') return null;
+    return fn() === true;
+  } catch {
+    return null;
+  }
+}
+
+export function resolveChatPrivacyCapabilities(): {analytics: boolean; preferences: boolean} {
+  const analytics = readShopifyAnalyticsProcessingAllowed();
+  const preferences = readShopifyPreferencesProcessingAllowed();
+  return {
+    analytics: analytics === true,
+    preferences: preferences === true,
+  };
+}
+
 function isValidChatSessionStorageValue(value: string): boolean {
   return CHAT_SESSION_ID_RE.test(value);
 }
@@ -172,12 +196,18 @@ export function readStoredChatSessionId(
   }
 }
 
-/** Odczyt historii z serwera dopuszczalny dopiero po otwarciu panelu i przy zgodzie na czat (`true`). */
+/**
+ * Odczyt historii z serwera: panel otwarty; opcjonalnie lokalna zgoda czatu (Hydrogen Kazka).
+ * Zaręczyny: `requireChatConsent={false}` — historia bez checkboxa zgody na czat.
+ */
 export function isChatHistorySyncAllowed(input: {
   isOpen: boolean;
-  consentGranted: boolean | undefined;
+  consentGranted?: boolean;
+  requireChatConsent?: boolean;
 }): boolean {
-  return input.isOpen === true && input.consentGranted === true;
+  if (input.isOpen !== true) return false;
+  if (input.requireChatConsent === false) return true;
+  return input.consentGranted === true;
 }
 
 function mintChatSessionStorageId(sessionStorageKey: string): ResolvedChatSession {

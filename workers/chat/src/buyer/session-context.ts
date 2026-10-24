@@ -337,6 +337,7 @@ export async function ensureBuyerSessionContext(
     bodyChannel?: string;
     userText: string;
     analyticsConsent?: 0 | 1;
+    preferencesConsent?: 0 | 1;
     sessionIdSource?: 'cookie' | 'session_storage';
   },
 ): Promise<void> {
@@ -359,6 +360,7 @@ export async function ensureBuyerSessionContext(
       channel,
       sid: sid.slice(0, 8),
       hasSessionId: true,
+      preferences_consent: input.preferencesConsent ?? null,
     }),
   );
 

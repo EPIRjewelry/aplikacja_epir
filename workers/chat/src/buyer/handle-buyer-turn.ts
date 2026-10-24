@@ -8,6 +8,7 @@ import {
   FINAL_TOOL_FALLBACK_USER,
 } from './compose-buyer-turn';
 import {BuyerTurnOverloadError, BUYER_LLM_OVERLOAD_MESSAGE} from './buyer-llm-retry';
+import {resolvePreferencesConsentFromBody} from './buyer-long-term-memory';
 import {
   extractAnalyticsConsentFromBody,
   extractChannelFromBody,
@@ -161,6 +162,7 @@ export async function handleBuyerTurn(
     storefrontId: extractStorefrontIdFromBody(body),
     bodyChannel: extractChannelFromBody(body),
     analyticsConsent: extractAnalyticsConsentFromBody(body),
+    preferencesConsent: resolvePreferencesConsentFromBody(body),
     sessionIdSource: extractSessionIdSourceFromBody(body),
   };
 
