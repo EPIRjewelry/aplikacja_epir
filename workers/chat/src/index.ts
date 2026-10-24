@@ -168,7 +168,6 @@ import {handleBuyerTurn} from './buyer/handle-buyer-turn';
 import {
   handleBuyerSessionPrivacyRequest,
   handleChatSessionLinkedFromPixel,
-  resolvePreferencesConsentFromBody,
 } from './buyer/session-context';
 
 // Typy sesji i żądań
@@ -3406,7 +3405,6 @@ async function handleChat(
     path: payload.path,
     locale: payload.locale,
     market: payload.market,
-    preferencesConsent: resolvePreferencesConsentFromBody(raw),
   }, customerId, executionCtx, customerIdFromUrl, liquidIdentity, softCustomerFirstName, lockBuyerTurn ? buyerTurnId : undefined);
 }
 
@@ -3423,8 +3421,6 @@ interface StorefrontContext {
   path?: string;
   locale?: string;
   market?: string;
-  /** Z body `/chat`; brak pola = 0 (fail-closed). Bramka person_memory / Memory v2 w tej funkcji. */
-  preferencesConsent?: 0 | 1;
 }
 
 async function streamAssistantResponse(
@@ -3640,9 +3636,8 @@ async function streamAssistantResponse(
         }),
       );
 
-      const preferencesMemoryAllowed = storefrontContext?.preferencesConsent === 1;
       let crossSessionSummary: string | null = null;
-      if (!operatorMode && preferencesMemoryAllowed && memoryShopifyCustomerId && env.DB_CHATBOT) {
+      if (!operatorMode && memoryShopifyCustomerId && env.DB_CHATBOT) {
         try {
           crossSessionSummary = await loadPersonMemory(env.DB_CHATBOT, memoryShopifyCustomerId);
         } catch (e) {
@@ -3654,7 +3649,7 @@ async function streamAssistantResponse(
         `${sessionId}:person_memory:${userMessageTs}:${reason}`;
 
       const refreshPersonMemory = async (reason: 'chat_turn' | 'image_surrogate') => {
-        if (!preferencesMemoryAllowed || !memoryShopifyCustomerId || !env.DB_CHATBOT) return;
+        if (!memoryShopifyCustomerId || !env.DB_CHATBOT) return;
         const requestId = buildPersonMemoryRequestId(reason);
 
         const memoryExtractEnabled = String(env.MEMORY_EXTRACT_ENABLED ?? '').toLowerCase() === 'true';
@@ -3978,7 +3973,7 @@ async function streamAssistantResponse(
       // KB-clamp: retriever filtruje po `customerId` i `kind='fact'|'turn'`.
       let memoryRetrievalFailed = false;
       let memoryRetrieveResult: RetrieveMemoryOutput | null = null;
-      if (!operatorMode && preferencesMemoryAllowed && memoryShopifyCustomerId) {
+      if (!operatorMode && memoryShopifyCustomerId) {
         try {
           memoryRetrieveResult = await retrieveCustomerMemory(env, {
             shopifyCustomerId: memoryShopifyCustomerId,
@@ -4027,10 +4022,7 @@ async function streamAssistantResponse(
       if (recognizedMemoryLine) {
         ephemeralSections.push(recognizedMemoryLine);
       }
-      if (storefrontContext?.preferencesConsent === 0 && memoryShopifyCustomerId) {
-        ephemeralSections.push('Nie pamiętasz wcześniejszych rozmów; pytaj o potrzeby.');
-      } else if (
-        preferencesMemoryAllowed &&
+      if (
         memoryV2Enabled &&
         memoryShopifyCustomerId &&
         !crossSessionSummary &&
