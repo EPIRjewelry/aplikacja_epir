@@ -50,14 +50,16 @@ export async function runGemmaAllowedActions(ctx: GemmaActionContext): Promise<G
   if (actions.includes('kb_policies')) {
     try {
       const kb = await runKbAction(ctx);
-      if (!kb) {
-        outcome.kbFailed = true;
+      if (kb.ok) {
+        outcome.kb = kb.facts;
       } else {
-        outcome.kb = kb;
+        outcome.kbFailed = true;
+        outcome.kbMiss = kb.reason;
       }
     } catch (e) {
       console.warn('[gemma.actions] kb failed', e);
       outcome.kbFailed = true;
+      outcome.kbMiss = 'mcp_error';
     }
   }
 

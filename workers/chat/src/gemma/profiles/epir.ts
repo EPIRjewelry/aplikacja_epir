@@ -1,6 +1,6 @@
 import {EPIR_CUSTOM_ORDER_FORM_URL, resolveUrlForChannel} from '../../buyer/channel-origins';
 import type {BuyerChannelId} from '../../buyer/channel-switch';
-import {KB_POLICY_UNAVAILABLE_REPLY} from '../../buyer/kb-policies';
+import {KB_POLICY_EMPTY_REPLY, KB_POLICY_UNAVAILABLE_REPLY} from '../../buyer/kb-policies';
 import type {GemmaConversationState, GemmaSlots, FormOfAddress} from '../state/types';
 
 const CONTACT_PAGE_PATH = '/pages/kontakt';
@@ -116,6 +116,10 @@ export function epirKbUnavailableReply(): string {
   return KB_POLICY_UNAVAILABLE_REPLY;
 }
 
+export function epirKbEmptyReply(): string {
+  return KB_POLICY_EMPTY_REPLY;
+}
+
 /** `messages` z Cart MCP (fakty Shopify) wstawia kod; bez continue_url. */
 export function epirCartErrorReply(channelId: BuyerChannelId, shopMessages: string[] = []): string {
   const msgs = shopMessages.map((m) => m.trim()).filter(Boolean);
@@ -212,6 +216,7 @@ export function listEpirTemplateStrings(channelId: BuyerChannelId): string[] {
     epirCatalogCardsReply('g1: /products/fikcyjny-parity'),
     epirKbAnswerReply('Fikcyjna odpowiedź polityki.'),
     epirKbUnavailableReply(),
+    epirKbEmptyReply(),
     epirCartErrorReply(channelId),
     epirCartConsentWithProductLink(channelId, '/products/fikcyjny-parity'),
     epirCartProductQuestionReply(channelId),

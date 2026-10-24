@@ -7,7 +7,7 @@ import {
 import * as mcp from '../src/mcp_server';
 import * as sessionCart from '../src/buyer/session-cart';
 import * as sizeTable from '../src/size-table';
-import { KB_POLICY_UNAVAILABLE_REPLY } from '../src/buyer/kb-policies';
+import { KB_POLICY_EMPTY_REPLY, KB_POLICY_UNAVAILABLE_REPLY } from '../src/buyer/kb-policies';
 
 describe('executeBuyerTool', () => {
   beforeEach(() => {
@@ -317,6 +317,26 @@ describe('executeBuyerTool', () => {
       allowedVariantIds: new Set(),
     });
     expect(r.content).toBe(KB_POLICY_UNAVAILABLE_REPLY);
+    expect(r.content.toLowerCase()).toContain('nie mam dostępu');
+  });
+
+  it('returns a clarification on empty policy search, not the access denial', async () => {
+    vi.spyOn(mcp, 'callMcpToolDirect').mockResolvedValue({
+      result: { structuredContent: { answer: '', sources: [] } },
+    });
+    const r = await executeBuyerTool({
+      env: {} as import('../src/config/bindings').Env,
+      channelId: 'epir-online-store',
+      readyTools: ['search_shop_policies_and_faqs'],
+      name: 'search_shop_policies_and_faqs',
+      argsJson: JSON.stringify({ query: 'telefon?' }),
+      sessionCartId: null,
+      allowedVariantIds: new Set(),
+    });
+    expect(r.content).toBe(KB_POLICY_EMPTY_REPLY);
+    expect(r.content.toLowerCase()).not.toContain('nie mam dostępu');
+    expect(r.content).toMatch(/Pan lub Pani/);
+    expect(r.content).not.toMatch(/\d/);
   });
 
   it('passes policy answer and sources; wire only query+context', async () => {
