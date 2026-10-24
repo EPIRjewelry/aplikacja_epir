@@ -240,7 +240,7 @@ describe('E4 cart action', () => {
         cart,
         productDetail: null,
         catalogFailed: false,
-        kbFailed: false,
+        kbOutcome: 'ok',
         cartFailed: false,
       },
     });

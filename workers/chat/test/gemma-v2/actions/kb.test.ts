@@ -2,8 +2,9 @@
  * E4 KB — mutacja **M-E4-7** woła KB w propozycjach → T-E4-KB-3 FAIL
  */
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {runKbAction, kbUnavailableReply} from '../../../src/gemma/actions/kb';
+import {runKbAction} from '../../../src/gemma/actions/kb';
 import {KB_POLICY_EMPTY_REPLY, KB_POLICY_UNAVAILABLE_REPLY} from '../../../src/buyer/kb-policies';
+import {epirKbEmptyReply, epirKbUnavailableReply} from '../../../src/gemma/profiles/epir';
 import {DEFAULT_GEMMA_SESSION_STATE} from '../../../src/gemma/state/types';
 import {fictionalGemmaIntent} from '../fixtures/gemma-intent';
 
@@ -63,8 +64,9 @@ describe('E4 KB action', () => {
         outcome,
       }),
     ).toBe(KB_POLICY_EMPTY_REPLY);
-    expect(kbUnavailableReply('empty')).toBe(KB_POLICY_EMPTY_REPLY);
-    expect(kbUnavailableReply('empty').toLowerCase()).not.toContain('nie mam dostępu');
+    expect(outcome.kbOutcome).toBe('empty');
+    expect(epirKbEmptyReply()).toBe(KB_POLICY_EMPTY_REPLY);
+    expect(epirKbEmptyReply().toLowerCase()).not.toContain('nie mam dostępu');
 
     spy.mockResolvedValue({
       ok: false,
@@ -90,7 +92,8 @@ describe('E4 KB action', () => {
         outcome: failed,
       }),
     ).toBe(KB_POLICY_UNAVAILABLE_REPLY);
-    expect(kbUnavailableReply()).toBe(KB_POLICY_UNAVAILABLE_REPLY);
+    expect(failed.kbOutcome).toBe('error');
+    expect(epirKbUnavailableReply()).toBe(KB_POLICY_UNAVAILABLE_REPLY);
   });
 
   it('T-E4-KB-3: propozycje turn never calls KB; KB failure reply equals constant', async () => {

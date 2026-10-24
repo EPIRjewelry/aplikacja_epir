@@ -1,4 +1,3 @@
-import {kbPolicyMissReply} from '../../buyer/kb-policies';
 import {searchKbWithQueryAttempts, type KbQueryAttempt} from './kb-query';
 import type {GemmaActionContext, GemmaKbFacts} from './types';
 
@@ -32,12 +31,8 @@ export async function runKbAction(ctx: GemmaActionContext): Promise<KbActionResu
   const policyQuery = ctx.intent.policy_query?.trim() || '';
   const userText = ctx.userText.trim();
   const searched = await searchKbWithQueryAttempts(ctx.env, policyQuery, userText);
-  const rows =
-    searched.trace.length > 0
-      ? searched.trace
-      : [{attempt: 1, result: searched.result} satisfies KbQueryAttempt];
-  for (const row of rows) {
-    logKbAttempt(row, Math.max(searched.attempts, rows.length), searched.kb_retry, userText.length);
+  for (const row of searched.trace) {
+    logKbAttempt(row, searched.attempts, searched.kb_retry, userText.length);
   }
   if (!searched.result.ok) {
     return {ok: false, reason: searched.result.reason};
@@ -49,8 +44,4 @@ export async function runKbAction(ctx: GemmaActionContext): Promise<KbActionResu
       sources: searched.result.sources,
     },
   };
-}
-
-export function kbUnavailableReply(reason: 'empty' | 'mcp_error' = 'mcp_error'): string {
-  return kbPolicyMissReply(reason);
 }

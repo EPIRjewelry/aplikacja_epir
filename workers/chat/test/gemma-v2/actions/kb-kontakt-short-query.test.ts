@@ -29,10 +29,6 @@ const HIT = {
   contentHash: 'h-kontakt',
 };
 
-function isFullQuestion(query: string): boolean {
-  return query.includes('?') && query.trim().split(/\s+/).length >= 4;
-}
-
 async function replyFor(channelId: BuyerChannelId, userText: string, policyQuery: string) {
   const intent = fictionalGemmaIntent({policy_query: policyQuery, state: 'polityki_kontakt'});
   const outcome = await runGemmaAllowedActions({
@@ -63,21 +59,15 @@ describe('KB kontakt — krótkie frazy', () => {
 
     spy.mockResolvedValue(HIT);
     const found = await replyFor('epir-online-store', userText, policyQuery);
-    const first = String(spy.mock.calls[0]?.[1] ?? '');
-    expect(isFullQuestion(first) || spy.mock.calls.length >= 2).toBe(true);
-    expect(first).toBe(policyQuery);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]?.[1]).toBe(policyQuery);
     expect(found).toContain(KB_MARKER);
     expect(found.toLowerCase()).not.toContain('nie mam dostępu');
 
     spy.mockReset();
     spy.mockResolvedValue({ok: false, reason: 'empty'});
     const empty = await replyFor('epir-online-store', userText, policyQuery);
-    const queries = spy.mock.calls.map((call) => String(call[1] ?? ''));
-    expect(queries.length).toBeGreaterThan(0);
-    expect(queries.length).toBeLessThanOrEqual(2);
-    expect(isFullQuestion(queries[0] ?? '') || queries.length === 2).toBe(true);
-    expect(queries[0]).toBe(policyQuery);
-    if (queries.length === 2) expect(queries[1]).toBe(userText);
+    expect(spy.mock.calls.map((call) => call[1])).toEqual([policyQuery, userText]);
     expect(empty).toBe(KB_POLICY_EMPTY_REPLY);
     expect(empty.toLowerCase()).not.toContain('nie mam dostępu');
 

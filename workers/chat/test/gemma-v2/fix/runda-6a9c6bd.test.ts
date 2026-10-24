@@ -911,6 +911,7 @@ describe('runda-6a9c6bd — KB (#1–3)', () => {
         catalogCards: [],
         shown: [],
         kb: {answer: kbAnswer, sources: []},
+        kbOutcome: 'ok',
       },
       deterministicReply: 'FALLBACK_DETERMINISTIC',
     });

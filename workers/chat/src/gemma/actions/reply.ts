@@ -83,10 +83,10 @@ export function buildEpirActionReply(params: {
   }
 
   if (state === 'polityki_kontakt') {
-    if (outcome.kb) {
+    if (outcome.kbOutcome === 'ok' && outcome.kb) {
       return epirKbAnswerReply(outcome.kb.answer);
     }
-    if (outcome.kbMiss === 'empty') {
+    if (outcome.kbOutcome === 'empty') {
       return epirKbEmptyReply();
     }
     return epirKbUnavailableReply();

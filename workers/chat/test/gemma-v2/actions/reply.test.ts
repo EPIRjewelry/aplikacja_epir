@@ -31,7 +31,7 @@ describe('E4 action reply', () => {
         cart: null,
         productDetail: null,
         catalogFailed: false,
-        kbFailed: false,
+        kbOutcome: 'ok',
         cartFailed: false,
       },
     });
@@ -61,7 +61,7 @@ describe('E4 action reply', () => {
         cart: null,
         productDetail: null,
         catalogFailed: false,
-        kbFailed: false,
+        kbOutcome: 'ok',
         cartFailed: false,
       },
     });
@@ -84,7 +84,7 @@ describe('E4 action reply', () => {
         cart: {continueUrl: url, notices: []},
         productDetail: null,
         catalogFailed: false,
-        kbFailed: false,
+        kbOutcome: 'ok',
         cartFailed: false,
       },
     });
