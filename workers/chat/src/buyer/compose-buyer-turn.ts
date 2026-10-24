@@ -464,8 +464,6 @@ export type ComposeBuyerTurnOptions = {
   storefrontId?: string;
   bodyChannel?: string;
   analyticsConsent?: 0 | 1;
-  /** Brak pola w żądaniu = 0 (fail-closed) — patrz `resolvePreferencesConsentFromBody`. */
-  preferencesConsent?: 0 | 1;
   sessionIdSource?: 'cookie' | 'session_storage';
 };
 
@@ -642,7 +640,6 @@ export async function composeBuyerAssistantReply(
     bodyChannel: opts?.bodyChannel,
     userText,
     analyticsConsent: opts?.analyticsConsent,
-    preferencesConsent: opts?.preferencesConsent,
     sessionIdSource: opts?.sessionIdSource,
   });
 

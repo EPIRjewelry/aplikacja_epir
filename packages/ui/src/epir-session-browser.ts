@@ -92,16 +92,28 @@ export function readShopifyPreferencesProcessingAllowed(): boolean | null {
   }
 }
 
+export type ReadChatPrivacyConsentFieldsOptions = {
+  /**
+   * `preferences_consent` tylko dla storefrontów bez bramki czatu (np. Zaręczyny
+   * `requireChatConsent={false}`). Kazka (domyślny ChatWidget) — nie ustawiać.
+   */
+  includePreferencesConsent?: boolean;
+};
+
 /** Pola do body `/chat` — tylko gdy API zwróciło bool (jak 348fa60 dla analytics). */
-export function readChatPrivacyConsentFieldsForWorker(): {
+export function readChatPrivacyConsentFieldsForWorker(
+  options?: ReadChatPrivacyConsentFieldsOptions,
+): {
   analytics_consent?: boolean;
   preferences_consent?: boolean;
 } {
   const out: {analytics_consent?: boolean; preferences_consent?: boolean} = {};
   const analytics = readShopifyAnalyticsProcessingAllowed();
-  const preferences = readShopifyPreferencesProcessingAllowed();
   if (analytics !== null) out.analytics_consent = analytics;
-  if (preferences !== null) out.preferences_consent = preferences;
+  if (options?.includePreferencesConsent === true) {
+    const preferences = readShopifyPreferencesProcessingAllowed();
+    if (preferences !== null) out.preferences_consent = preferences;
+  }
   return out;
 }
 

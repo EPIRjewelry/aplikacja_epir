@@ -119,20 +119,6 @@ export function extractAnalyticsConsentFromBody(body: unknown): 0 | 1 | undefine
   return undefined;
 }
 
-/** `true`/`false` z klienta; brak pola = unknown. */
-export function extractPreferencesConsentFromBody(body: unknown): 0 | 1 | undefined {
-  if (!body || typeof body !== 'object') return undefined;
-  const raw = (body as {preferences_consent?: unknown}).preferences_consent;
-  if (raw === true) return 1;
-  if (raw === false) return 0;
-  return undefined;
-}
-
-/** Fail-closed dla pamięci długoterminowej: brak pola → 0. */
-export function resolvePreferencesConsentFromBody(body: unknown): 0 | 1 {
-  return extractPreferencesConsentFromBody(body) === 1 ? 1 : 0;
-}
-
 export function extractSessionIdSourceFromBody(
   body: unknown,
 ): 'cookie' | 'session_storage' | undefined {
@@ -351,7 +337,6 @@ export async function ensureBuyerSessionContext(
     bodyChannel?: string;
     userText: string;
     analyticsConsent?: 0 | 1;
-    preferencesConsent?: 0 | 1;
     sessionIdSource?: 'cookie' | 'session_storage';
   },
 ): Promise<void> {
@@ -374,7 +359,6 @@ export async function ensureBuyerSessionContext(
       channel,
       sid: sid.slice(0, 8),
       hasSessionId: true,
-      preferences_consent: input.preferencesConsent ?? null,
     }),
   );
 

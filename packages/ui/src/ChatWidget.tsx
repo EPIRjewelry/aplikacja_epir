@@ -568,7 +568,9 @@ function ChatWidgetFallback({
       if (sessionId) {
         rememberChatSessionIdForPrivacy(sessionId, sessionMeta.sessionIdSource);
       }
-      const privacyFields = readChatPrivacyConsentFieldsForWorker();
+      const privacyFields = readChatPrivacyConsentFieldsForWorker({
+        includePreferencesConsent: requireChatConsent === false,
+      });
 
       try {
         const parts: ChatRequestPart[] = [];
@@ -748,6 +750,7 @@ function ChatWidgetFallback({
       pendingImage,
       route,
       locale,
+      requireChatConsent,
       storefrontId,
       getSessionToken,
       onCommerceAction,

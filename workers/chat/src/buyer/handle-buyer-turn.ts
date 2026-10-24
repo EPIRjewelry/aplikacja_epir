@@ -13,7 +13,6 @@ import {
   extractChannelFromBody,
   extractSessionIdSourceFromBody,
   extractStorefrontIdFromBody,
-  resolvePreferencesConsentFromBody,
 } from './session-context';
 import {channelIdFromBrandLock, readChannelMode, readGemmaCoreMode} from './channel-switch';
 import {composeGemmaReply} from '../gemma';
@@ -162,7 +161,6 @@ export async function handleBuyerTurn(
     storefrontId: extractStorefrontIdFromBody(body),
     bodyChannel: extractChannelFromBody(body),
     analyticsConsent: extractAnalyticsConsentFromBody(body),
-    preferencesConsent: resolvePreferencesConsentFromBody(body),
     sessionIdSource: extractSessionIdSourceFromBody(body),
   };
 

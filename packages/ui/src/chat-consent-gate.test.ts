@@ -176,7 +176,7 @@ describe('TAE assistant-runtime: consent at send time (no cache)', () => {
 describe('Hydrogen ChatWidget helpers', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('readChatPrivacyConsentFieldsForWorker omits fields when API unknown (GK analytics semantics)', () => {
+  it('readChatPrivacyConsentFieldsForWorker: Kazka default — analytics only (348fa60)', () => {
     vi.stubGlobal('window', {});
     expect(readChatPrivacyConsentFieldsForWorker()).toEqual({});
     vi.stubGlobal('window', {
@@ -188,6 +188,22 @@ describe('Hydrogen ChatWidget helpers', () => {
       },
     });
     expect(readChatPrivacyConsentFieldsForWorker()).toEqual({
+      analytics_consent: true,
+    });
+  });
+
+  it('readChatPrivacyConsentFieldsForWorker: includePreferencesConsent adds preferences_consent', () => {
+    vi.stubGlobal('window', {
+      Shopify: {
+        customerPrivacy: {
+          analyticsProcessingAllowed: () => true,
+          preferencesProcessingAllowed: () => false,
+        },
+      },
+    });
+    expect(
+      readChatPrivacyConsentFieldsForWorker({includePreferencesConsent: true}),
+    ).toEqual({
       analytics_consent: true,
       preferences_consent: false,
     });
