@@ -77,6 +77,46 @@ export function readShopifyAnalyticsProcessingAllowed(): boolean | null {
   }
 }
 
+/** Shopify Customer Privacy API — brak API = `null` (nieznane). */
+export function readShopifyPreferencesProcessingAllowed(): boolean | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const shopify = (window as {
+      Shopify?: {customerPrivacy?: {preferencesProcessingAllowed?: () => boolean}};
+    }).Shopify;
+    const fn = shopify?.customerPrivacy?.preferencesProcessingAllowed;
+    if (typeof fn !== 'function') return null;
+    return fn() === true;
+  } catch {
+    return null;
+  }
+}
+
+export type ReadChatPrivacyConsentFieldsOptions = {
+  /**
+   * `preferences_consent` tylko dla storefrontów bez bramki czatu (np. Zaręczyny
+   * `requireChatConsent={false}`). Kazka (domyślny ChatWidget) — nie ustawiać.
+   */
+  includePreferencesConsent?: boolean;
+};
+
+/** Pola do body `/chat` — tylko gdy API zwróciło bool (jak 348fa60 dla analytics). */
+export function readChatPrivacyConsentFieldsForWorker(
+  options?: ReadChatPrivacyConsentFieldsOptions,
+): {
+  analytics_consent?: boolean;
+  preferences_consent?: boolean;
+} {
+  const out: {analytics_consent?: boolean; preferences_consent?: boolean} = {};
+  const analytics = readShopifyAnalyticsProcessingAllowed();
+  if (analytics !== null) out.analytics_consent = analytics;
+  if (options?.includePreferencesConsent === true) {
+    const preferences = readShopifyPreferencesProcessingAllowed();
+    if (preferences !== null) out.preferences_consent = preferences;
+  }
+  return out;
+}
+
 function isValidChatSessionStorageValue(value: string): boolean {
   return CHAT_SESSION_ID_RE.test(value);
 }
@@ -172,12 +212,19 @@ export function readStoredChatSessionId(
   }
 }
 
-/** Odczyt historii z serwera dopuszczalny dopiero po otwarciu panelu i przy zgodzie na czat (`true`). */
+/**
+ * Odczyt historii z serwera: panel otwarty.
+ * `requireChatConsent` domyślnie true — Kazka wymaga lokalnego `consentGranted===true`.
+ * Zaręczyny przekazują `requireChatConsent={false}` (czat bez bramki UI).
+ */
 export function isChatHistorySyncAllowed(input: {
   isOpen: boolean;
-  consentGranted: boolean | undefined;
+  consentGranted?: boolean;
+  requireChatConsent?: boolean;
 }): boolean {
-  return input.isOpen === true && input.consentGranted === true;
+  if (input.isOpen !== true) return false;
+  if (input.requireChatConsent === false) return true;
+  return input.consentGranted === true;
 }
 
 function mintChatSessionStorageId(sessionStorageKey: string): ResolvedChatSession {

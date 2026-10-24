@@ -18,7 +18,7 @@ import {
   installShopifyCustomerPrivacyChatListeners,
   rememberChatSessionIdForPrivacy,
   persistChatSessionIdFromWorker,
-  readShopifyAnalyticsProcessingAllowed,
+  readChatPrivacyConsentFieldsForWorker,
   readStoredChatSessionId,
   resolveEffectiveChatSessionWithMeta,
   isChatHistorySyncAllowed,
@@ -372,10 +372,15 @@ export type ChatWidgetProps = {
   route?: string;
   locale?: string;
   /**
-   * Consent Gate: gdy `false`, widget nie wysyła wiadomości (transport SSE bez zmian).
-   * `undefined` — bez blokady (kompatybilność wsteczna).
+   * Lokalna zgoda UI (Hydrogen): gdy `false`, widget nie wysyła wiadomości.
+   * `undefined` — bez blokady. Zaręczyny: ustaw `requireChatConsent={false}` i zostaw most analytics osobno.
    */
   consentGranted?: boolean;
+  /**
+   * Domyślnie `true`: lokalna bramka UI (Kazka — checkbox zgody na czat).
+   * `false` tylko Zaręczyny (`requireChatConsent={false}` w root.tsx).
+   */
+  requireChatConsent?: boolean;
   /**
    * Opcjonalny dostawca Shopify Session Token (JWT), gdy `window.shopify` nie istnieje
    * (np. integracja z Hydrogen Customer Account API w przyszłości).
@@ -395,6 +400,7 @@ function ChatWidgetFallback({
   route,
   locale,
   consentGranted,
+  requireChatConsent = true,
   getSessionToken,
   onCommerceAction,
   isOpen,
@@ -409,13 +415,18 @@ function ChatWidgetFallback({
   route?: string;
   locale?: string;
   consentGranted?: boolean;
+  requireChatConsent?: boolean;
   getSessionToken?: () => Promise<string | null | undefined>;
   onCommerceAction?: (action: CommerceAction) => void;
   isOpen: boolean;
   onToggle: () => void;
 }) {
   const messagingAllowed =
-    consentGranted === undefined ? true : consentGranted === true;
+    requireChatConsent === false
+      ? true
+      : consentGranted === undefined
+        ? true
+        : consentGranted === true;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -473,7 +484,7 @@ function ChatWidgetFallback({
     if (typeof window === 'undefined') return;
     if (historySyncStartedRef.current) return;
 
-    if (!isChatHistorySyncAllowed({isOpen, consentGranted})) return;
+    if (!isChatHistorySyncAllowed({isOpen, consentGranted, requireChatConsent})) return;
     // Raz na montowanie: nowa karta bez `sess_*` nie ma czego przywracać (brak żądania, brak mintu).
     historySyncStartedRef.current = true;
     const sessionId = readStoredChatSessionId(SESSION_ID_KEY);
@@ -557,7 +568,9 @@ function ChatWidgetFallback({
       if (sessionId) {
         rememberChatSessionIdForPrivacy(sessionId, sessionMeta.sessionIdSource);
       }
-      const analyticsAllowed = readShopifyAnalyticsProcessingAllowed();
+      const privacyFields = readChatPrivacyConsentFieldsForWorker({
+        includePreferencesConsent: requireChatConsent === false,
+      });
 
       try {
         const parts: ChatRequestPart[] = [];
@@ -584,7 +597,7 @@ function ChatWidgetFallback({
           ...(sessionMeta.sessionIdSource
             ? {session_id_source: sessionMeta.sessionIdSource}
             : {}),
-          ...(analyticsAllowed !== null ? {analytics_consent: analyticsAllowed} : {}),
+          ...privacyFields,
           cart_id: cartId ?? undefined,
           brand,
           locale: locale ?? (typeof document !== 'undefined' ? document.documentElement.lang : undefined) ?? 'pl',
@@ -737,6 +750,7 @@ function ChatWidgetFallback({
       pendingImage,
       route,
       locale,
+      requireChatConsent,
       storefrontId,
       getSessionToken,
       onCommerceAction,
@@ -910,6 +924,7 @@ export function ChatWidget({
   route,
   locale,
   consentGranted,
+  requireChatConsent,
   getSessionToken,
   onCommerceAction,
 }: ChatWidgetProps) {
@@ -951,6 +966,7 @@ export function ChatWidget({
       route={route}
       locale={locale}
       consentGranted={consentGranted}
+      requireChatConsent={requireChatConsent}
       getSessionToken={getSessionToken}
       onCommerceAction={onCommerceAction}
       isOpen={isOpen}

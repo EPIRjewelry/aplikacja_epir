@@ -80,8 +80,6 @@
   data-app-version="{{ app_version }}"
   data-shop-domain="{{ shop.myshopify_domain }}"
   data-logged-in-customer-id="{{ customer.id | default: '' }}"
-  data-consent-id="epir-theme-liquid-chat-v1"
-  data-consent-endpoint="/apps/assistant/consent"
   data-worker-endpoint="{{ block.settings.worker_endpoint | default: '/apps/assistant/chat' }}"
   data-storefront-id="{{ block.settings.storefront_id | default: 'epir-liquid' }}"
   data-channel="{{ block.settings.channel | default: 'online-store' }}"
@@ -124,15 +122,6 @@
   </style>
 
   <div class="assistant-container">
-    <div
-      class="epir-assistant-consent-bar epir-assistant-consent-bar--locked"
-      data-epir-consent-bar
-      aria-live="polite"
-      hidden
-    >
-      <p class="epir-assistant-consent-error" data-epir-consent-error hidden role="alert"></p>
-    </div>
-
     <div
       id="assistant-panel"
       class="assistant-panel{% unless block.settings.start_closed == false %} is-closed{% endunless %}"

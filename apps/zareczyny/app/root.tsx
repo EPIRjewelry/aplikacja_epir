@@ -20,7 +20,6 @@ import {
   CartHeader,
   CartDrawer,
   ChatWidget,
-  ConsentToggle,
   CustomerPrivacyConsentBridge,
   buildConsentPayload,
   getStoredConsent,
@@ -223,7 +222,6 @@ function ZareczynyConsentAndChat({
   route,
   shopDomain,
   analyticsConsent,
-  privacyPolicyUrl,
 }: {
   chatApiUrl: string;
   cartId?: string | null;
@@ -233,7 +231,6 @@ function ZareczynyConsentAndChat({
   channel: string;
   route?: string;
   shopDomain: string;
-  privacyPolicyUrl?: string;
   analyticsConsent: {
     checkoutDomain: string;
     storefrontAccessToken: string;
@@ -332,38 +329,11 @@ function ZareczynyConsentAndChat({
     [channel, route, shopDomain, storefrontId],
   );
 
-  const showConsentCard =
-    !consentGranted || pendingConsent || consentError !== null;
   const showRevokeOnly =
     consentGranted && !pendingConsent && consentError === null;
 
   return (
     <>
-      {showConsentCard ? (
-        <div className="fixed bottom-4 left-4 z-50 max-w-sm rounded-lg border border-gray-200 bg-white p-3 shadow-md">
-          <ConsentToggle
-            checked={consentGranted}
-            onChange={(c) => void onConsentChange(c)}
-            disabled={pendingConsent}
-            label="Zgoda na czat i pliki cookie: klikając „Zgadzam się”, akceptujesz pliki cookie i podobne technologie do działania czatu AI oraz podstawowej analityki i dopasowania treści (EPIR — pierścionki zaręczynowe)."
-          />
-          {privacyPolicyUrl ? (
-            <p className="mt-2 text-xs">
-              <a
-                href={privacyPolicyUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-800 underline hover:text-blue-900"
-              >
-                Polityka prywatności
-              </a>
-            </p>
-          ) : null}
-          {consentError ? (
-            <p className="mt-2 text-xs text-red-600">{consentError}</p>
-          ) : null}
-        </div>
-      ) : null}
       {showRevokeOnly ? (
         <div className="fixed bottom-4 left-4 z-50 rounded-md border border-gray-200 bg-white/95 px-3 py-2 shadow-sm">
           <button
@@ -396,6 +366,7 @@ function ZareczynyConsentAndChat({
         route={route}
         locale={analyticsConsent.language}
         consentGranted={consentGranted}
+        requireChatConsent={false}
         onCommerceAction={onCommerceAction}
       />
     </>
@@ -448,7 +419,6 @@ export default function App() {
         channel={data.channel}
         route={data.route}
         shopDomain={data.shopDomain}
-        privacyPolicyUrl={data.privacyPolicyUrl}
         analyticsConsent={data.analyticsConsent}
       />
     </>
@@ -465,8 +435,8 @@ export default function App() {
       <body>
         {/*
           Banner cookie Shopify (Admin → Customer Privacy): celowo wyłączony (`withPrivacyBanner: false`).
-          Iteracja 1: jedno miejsce zgody w UI — ConsentToggle przy czacie + synchronizacja przez CustomerPrivacyConsentBridge.
-          Iteracja 2: można ustawić `withPrivacyBanner: true` po decyzji (np. usunięcie duplikatu / jeden „źródłowy” komunikat).
+          Zgoda analityczna: CustomerPrivacyConsentBridge + opcjonalny baner Shopify (`withPrivacyBanner`).
+          Czat: bez osobnej bramki UI (`requireChatConsent={false}`); cofnięcie zgody — przycisk „Cofnij zgodę” gdy zapis w localStorage.
         */}
         <ShopifyProvider
           storeDomain={data.shopifyStoreDomain}
