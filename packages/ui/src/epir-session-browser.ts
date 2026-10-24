@@ -92,13 +92,17 @@ export function readShopifyPreferencesProcessingAllowed(): boolean | null {
   }
 }
 
-export function resolveChatPrivacyCapabilities(): {analytics: boolean; preferences: boolean} {
+/** Pola do body `/chat` — tylko gdy API zwróciło bool (jak 348fa60 dla analytics). */
+export function readChatPrivacyConsentFieldsForWorker(): {
+  analytics_consent?: boolean;
+  preferences_consent?: boolean;
+} {
+  const out: {analytics_consent?: boolean; preferences_consent?: boolean} = {};
   const analytics = readShopifyAnalyticsProcessingAllowed();
   const preferences = readShopifyPreferencesProcessingAllowed();
-  return {
-    analytics: analytics === true,
-    preferences: preferences === true,
-  };
+  if (analytics !== null) out.analytics_consent = analytics;
+  if (preferences !== null) out.preferences_consent = preferences;
+  return out;
 }
 
 function isValidChatSessionStorageValue(value: string): boolean {
@@ -197,8 +201,9 @@ export function readStoredChatSessionId(
 }
 
 /**
- * Odczyt historii z serwera: panel otwarty; opcjonalnie lokalna zgoda czatu (Hydrogen Kazka).
- * Zaręczyny: `requireChatConsent={false}` — historia bez checkboxa zgody na czat.
+ * Odczyt historii z serwera: panel otwarty.
+ * `requireChatConsent` domyślnie true — Kazka wymaga lokalnego `consentGranted===true`.
+ * Zaręczyny przekazują `requireChatConsent={false}` (czat bez bramki UI).
  */
 export function isChatHistorySyncAllowed(input: {
   isOpen: boolean;

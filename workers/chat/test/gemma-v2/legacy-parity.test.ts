@@ -30,6 +30,7 @@ const LEGACY_COMPOSE_OPTS = {
   storefrontId: 'online-store',
   bodyChannel: 'online-store',
   analyticsConsent: undefined,
+  preferencesConsent: 0,
   sessionIdSource: undefined,
 };
 

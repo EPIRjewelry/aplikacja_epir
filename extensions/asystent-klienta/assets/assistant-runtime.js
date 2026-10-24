@@ -92,24 +92,6 @@ function isShopifyPreferencesProcessingAllowed() {
   }
 }
 
-/** Jedno źródło zgody Shopify Customer Privacy API (brief: analytics + preferences). */
-function getChatCapabilities() {
-  return {
-    analytics: isShopifyAnalyticsProcessingAllowed() === true,
-    preferences: isShopifyPreferencesProcessingAllowed() === true,
-  };
-}
-
-var epirChatCapabilitiesCache = null;
-function refreshChatCapabilitiesFromPrivacyApi() {
-  epirChatCapabilitiesCache = getChatCapabilities();
-  return epirChatCapabilitiesCache;
-}
-function getChatCapabilitiesCached() {
-  if (!epirChatCapabilitiesCache) refreshChatCapabilitiesFromPrivacyApi();
-  return epirChatCapabilitiesCache;
-}
-
 function purgeLegacyChatConsentStorage() {
   try {
     localStorage.removeItem('epir-customer-privacy-chat');
@@ -230,7 +212,6 @@ function installAssistantCustomerPrivacyListeners(chatEndpoint) {
   document.addEventListener(
     'visitorConsentCollected',
     function (ev) {
-      refreshChatCapabilitiesFromPrivacyApi();
       var detail = ev && ev.detail;
       if (!detail || detail.analyticsAllowed !== false) return;
       var remembered = readLastAssistantChatSessionForPrivacy();
@@ -1262,7 +1243,6 @@ function initAssistantUIForSection(section) {
 
 function initAllAssistantSections() {
   purgeLegacyChatConsentStorage();
-  refreshChatCapabilitiesFromPrivacyApi();
   installAssistantCustomerPrivacyListeners(EPIR_CHAT_WORKER_ENDPOINT);
   const sectionBlock = document.getElementById('epir-assistant-section');
   const sectionEmbed = document.getElementById('epir-assistant-embed');
@@ -1660,7 +1640,8 @@ async function sendMessageToWorker(
     if (sessionMeta && sessionMeta.sessionId) {
       rememberAssistantChatSessionForPrivacy(sessionMeta.sessionId, sessionMeta.sessionIdSource);
     }
-    var privacyCaps = getChatCapabilitiesCached();
+    var analyticsAllowed = isShopifyAnalyticsProcessingAllowed();
+    var preferencesAllowed = isShopifyPreferencesProcessingAllowed();
     const body = {
       storefrontId: storefrontId,
       channel: channel,
@@ -1679,8 +1660,12 @@ async function sendMessageToWorker(
     if (sessionMeta.sessionIdSource) {
       body.session_id_source = sessionMeta.sessionIdSource;
     }
-    body.analytics_consent = privacyCaps.analytics;
-    body.preferences_consent = privacyCaps.preferences;
+    if (analyticsAllowed !== null) {
+      body.analytics_consent = analyticsAllowed;
+    }
+    if (preferencesAllowed !== null) {
+      body.preferences_consent = preferencesAllowed;
+    }
     if (productHandle) {
       body.productHandle = productHandle;
     }

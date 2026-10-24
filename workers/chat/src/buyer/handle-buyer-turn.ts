@@ -8,12 +8,12 @@ import {
   FINAL_TOOL_FALLBACK_USER,
 } from './compose-buyer-turn';
 import {BuyerTurnOverloadError, BUYER_LLM_OVERLOAD_MESSAGE} from './buyer-llm-retry';
-import {resolvePreferencesConsentFromBody} from './buyer-long-term-memory';
 import {
   extractAnalyticsConsentFromBody,
   extractChannelFromBody,
   extractSessionIdSourceFromBody,
   extractStorefrontIdFromBody,
+  resolvePreferencesConsentFromBody,
 } from './session-context';
 import {channelIdFromBrandLock, readChannelMode, readGemmaCoreMode} from './channel-switch';
 import {composeGemmaReply} from '../gemma';

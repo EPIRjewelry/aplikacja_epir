@@ -18,7 +18,7 @@ import {
   installShopifyCustomerPrivacyChatListeners,
   rememberChatSessionIdForPrivacy,
   persistChatSessionIdFromWorker,
-  resolveChatPrivacyCapabilities,
+  readChatPrivacyConsentFieldsForWorker,
   readStoredChatSessionId,
   resolveEffectiveChatSessionWithMeta,
   isChatHistorySyncAllowed,
@@ -377,8 +377,8 @@ export type ChatWidgetProps = {
    */
   consentGranted?: boolean;
   /**
-   * Domyślnie `true` (Kazka): historia i wysyłka wymagają `consentGranted===true`.
-   * `false` — czat działa od razu (Zaręczyny); zgoda Shopify preferences idzie z Customer Privacy API.
+   * Domyślnie `true`: lokalna bramka UI (Kazka — checkbox zgody na czat).
+   * `false` tylko Zaręczyny (`requireChatConsent={false}` w root.tsx).
    */
   requireChatConsent?: boolean;
   /**
@@ -568,7 +568,7 @@ function ChatWidgetFallback({
       if (sessionId) {
         rememberChatSessionIdForPrivacy(sessionId, sessionMeta.sessionIdSource);
       }
-      const privacyCaps = resolveChatPrivacyCapabilities();
+      const privacyFields = readChatPrivacyConsentFieldsForWorker();
 
       try {
         const parts: ChatRequestPart[] = [];
@@ -595,8 +595,7 @@ function ChatWidgetFallback({
           ...(sessionMeta.sessionIdSource
             ? {session_id_source: sessionMeta.sessionIdSource}
             : {}),
-          analytics_consent: privacyCaps.analytics,
-          preferences_consent: privacyCaps.preferences,
+          ...privacyFields,
           cart_id: cartId ?? undefined,
           brand,
           locale: locale ?? (typeof document !== 'undefined' ? document.documentElement.lang : undefined) ?? 'pl',
