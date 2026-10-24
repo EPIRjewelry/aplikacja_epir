@@ -1,27 +1,23 @@
 import type { Env } from './env';
 import {
+  buildOrderRelativePath,
   buildOrdersEventsRelativePath,
   joinInpsaApiUrl,
   parseInpsaEnv,
   resolveInpsaHosts,
   resolveInpsaOrganizationId,
 } from './inpsa-config';
+import type { InpsaOrder, InpsaOrderEvent, InpsaOrdersEventsResponse } from './inpsa-types';
 import { InpsaOAuthClient, type FetchFn } from './inpsa-oauth';
 
-/** Opaque event envelope — field names confirmed against portal at Shopify mapping time. */
-export type InpsaOrderEventRecord = Record<string, unknown>;
-
-export interface InpsaOrdersEventsResponse {
-  events?: InpsaOrderEventRecord[];
-  items?: InpsaOrderEventRecord[];
-  data?: InpsaOrderEventRecord[];
-  next?: string | null;
-  cursor?: string | null;
-}
+export type { InpsaOrderEvent, InpsaOrdersEventsResponse, InpsaOrder };
+/** @deprecated use InpsaOrderEvent — kept for older test imports */
+export type InpsaOrderEventRecord = InpsaOrderEvent;
 
 export interface FetchOrdersEventsOptions {
   limit?: number;
-  cursor?: string;
+  /** OpenAPI query: fetch events occurring before this event id. */
+  untilId?: string;
 }
 
 export interface InpsaSmokeResult {
@@ -60,13 +56,12 @@ export class InpsaApiClient {
     status: number;
     body: InpsaOrdersEventsResponse | null;
   }> {
-    // Fail fast on config before OAuth (clearer ops errors when org id unset).
     const organizationId = resolveInpsaOrganizationId(this.env.INPSA_ORGANIZATION_ID);
     const eventsPath = buildOrdersEventsRelativePath(organizationId);
     const { accessToken } = await this.oauth.getAccessToken();
     const url = new URL(joinInpsaApiUrl(this.apiBase(), eventsPath));
     if (options.limit != null) url.searchParams.set('limit', String(options.limit));
-    if (options.cursor) url.searchParams.set('cursor', options.cursor);
+    if (options.untilId) url.searchParams.set('untilId', options.untilId);
 
     const response = await this.fetchFn(url.toString(), {
       method: 'GET',
@@ -84,7 +79,32 @@ export class InpsaApiClient {
     return { url: url.toString(), status: response.status, body };
   }
 
-  /** Stage smoke: Client Credentials + one authenticated GET (orders events poll path). */
+  async fetchOrder(orderId: string): Promise<{
+    url: string;
+    status: number;
+    body: InpsaOrder | null;
+  }> {
+    const organizationId = resolveInpsaOrganizationId(this.env.INPSA_ORGANIZATION_ID);
+    const path = buildOrderRelativePath(organizationId, orderId);
+    const { accessToken } = await this.oauth.getAccessToken();
+    const url = joinInpsaApiUrl(this.apiBase(), path);
+
+    const response = await this.fetchFn(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+      },
+    });
+
+    let body: InpsaOrder | null = null;
+    if (response.ok) {
+      body = (await response.json()) as InpsaOrder;
+    }
+
+    return { url, status: response.status, body };
+  }
+
   async runStageSmoke(options: FetchOrdersEventsOptions = { limit: 1 }): Promise<InpsaSmokeResult> {
     const deployment = parseInpsaEnv(this.env.INPSA_ENV);
     const token = await this.oauth.getAccessToken();
@@ -103,7 +123,12 @@ export class InpsaApiClient {
   }
 }
 
+export function extractOrderEvents(body: InpsaOrdersEventsResponse | null): InpsaOrderEvent[] {
+  if (!body) return [];
+  const list = body.data ?? body.events ?? body.items ?? [];
+  return Array.isArray(list) ? list : [];
+}
+
 export function countOrderEvents(payload: InpsaOrdersEventsResponse): number {
-  const list = payload.events ?? payload.items ?? payload.data ?? [];
-  return Array.isArray(list) ? list.length : 0;
+  return extractOrderEvents(payload).length;
 }

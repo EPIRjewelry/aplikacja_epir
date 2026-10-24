@@ -39,7 +39,7 @@ async function handleOps(req: Request, env: Env): Promise<Response | null> {
     try {
       const result = await pollOrdersEventsPipeline(env, {
         limit: Number(url.searchParams.get('limit') ?? '10'),
-        cursor: url.searchParams.get('cursor') ?? undefined,
+        untilId: url.searchParams.get('untilId') ?? undefined,
         dryRun,
       });
       return opsJson({ ok: result.httpStatus >= 200 && result.httpStatus < 300, dryRun, ...result });
