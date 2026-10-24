@@ -1,9 +1,17 @@
 import type { Env } from '../config/bindings';
 import { callMcpToolDirect } from '../mcp_server';
 
-/** Kontrakt KB §0.3 — bez zgadywania treści polityki. */
+/** Kontrakt KB §0.3 — tylko błąd MCP, bez zgadywania treści polityki. */
 export const KB_POLICY_UNAVAILABLE_REPLY =
   'Nie mam dostępu do aktualnych zasad sklepu. Proszę zajrzeć do regulaminu na stronie sklepu lub skontaktować się z pracownią.';
+
+/** Pusty wynik MCP (reason empty) — doprecyzowanie, bez faktów sklepu. */
+export const KB_POLICY_EMPTY_REPLY =
+  'Nie znalazłam odpowiedzi na to pytanie. Proszę doprecyzować, o co Pan lub Pani pyta.';
+
+export function kbPolicyMissReply(reason: 'mcp_error' | 'empty'): string {
+  return reason === 'empty' ? KB_POLICY_EMPTY_REPLY : KB_POLICY_UNAVAILABLE_REPLY;
+}
 
 export type PolicySource = { title: string; url: string };
 

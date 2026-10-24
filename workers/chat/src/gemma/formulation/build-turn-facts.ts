@@ -32,7 +32,7 @@ export function shouldInvokeFormulationB(
     return outcome.productDetail !== null;
   }
   if (state === 'polityki_kontakt') {
-    return !outcome.kbFailed && outcome.kb !== null;
+    return outcome.kbOutcome === 'ok' && outcome.kb !== null;
   }
   return false;
 }

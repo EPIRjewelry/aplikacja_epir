@@ -841,7 +841,10 @@ describe('runda-6a9c6bd — KB (#1–3)', () => {
       intent: fictionalGemmaIntent({policy_query: 'zwroty'}),
     });
     expect(spy).toHaveBeenCalledTimes(2);
-    expect(out?.answer).toMatch(/Fikcyjna/);
+    expect(spy.mock.calls[0]?.[1]).toBe('zwroty');
+    expect(spy.mock.calls[1]?.[1]).toBe('Pełne pytanie klienta o zwroty?');
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.facts.answer).toMatch(/Fikcyjna/);
   });
 
   it('T-6a9c6bd-KB-2: kb_fact_dropped w walidatorze', () => {
@@ -860,8 +863,13 @@ describe('runda-6a9c6bd — KB (#1–3)', () => {
     expect(violations).toContain('kb_fact_dropped');
   });
 
-  it('T-6a9c6bd-KB-3: prompt A — policy_query NL', () => {
-    expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/pełne pytanie klienta/i);
+  it('T-6a9c6bd-KB-3: prompt A — policy_query jako pełne pytanie', () => {
+    expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/jedno pełne, samodzielne pytanie po polsku/i);
+    expect(GEMMA_INTENT_SYSTEM_PROMPT).toContain(
+      '„telefon?” → „Jaki jest numer telefonu do pracowni?”',
+    );
+    expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/nie dopisuj faktów/i);
+    expect(GEMMA_INTENT_SYSTEM_PROMPT).toContain('z uwzględnieniem historii rozmowy');
     expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/wizyta|przymierka/i);
     expect(GEMMA_INTENT_SYSTEM_PROMPT).toMatch(/polityki_kontakt/i);
   });
@@ -903,6 +911,7 @@ describe('runda-6a9c6bd — KB (#1–3)', () => {
         catalogCards: [],
         shown: [],
         kb: {answer: kbAnswer, sources: []},
+        kbOutcome: 'ok',
       },
       deterministicReply: 'FALLBACK_DETERMINISTIC',
     });

@@ -40,7 +40,8 @@ export type GemmaActionOutcome = {
   cart: GemmaCartFacts | null;
   productDetail: ProductFacts | null;
   catalogFailed: boolean;
-  kbFailed: boolean;
+  /** ok — trafienie albo brak wywołania KB; empty — doprecyzowanie; error — błąd MCP. */
+  kbOutcome: 'ok' | 'empty' | 'error';
   cartFailed: boolean;
 };
 

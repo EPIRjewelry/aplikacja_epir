@@ -9,6 +9,7 @@ import {
   epirCustomOrderFormReply,
   epirDetailsPricesReply,
   epirKbAnswerReply,
+  epirKbEmptyReply,
   epirKbUnavailableReply,
   epirThanksAckReply,
   epirCartProductQuestionReply,
@@ -82,10 +83,13 @@ export function buildEpirActionReply(params: {
   }
 
   if (state === 'polityki_kontakt') {
-    if (outcome.kbFailed || !outcome.kb) {
-      return epirKbUnavailableReply();
+    if (outcome.kbOutcome === 'ok' && outcome.kb) {
+      return epirKbAnswerReply(outcome.kb.answer);
     }
-    return epirKbAnswerReply(outcome.kb.answer);
+    if (outcome.kbOutcome === 'empty') {
+      return epirKbEmptyReply();
+    }
+    return epirKbUnavailableReply();
   }
 
   if (state === 'propozycje') {

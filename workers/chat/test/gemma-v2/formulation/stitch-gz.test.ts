@@ -60,7 +60,7 @@ describe('E5 formulation stitch GZ', () => {
         catalogFailed: false,
         productDetail: detail,
         kb: null,
-        kbFailed: false,
+        kbOutcome: 'ok',
         cart: null,
         selected: {productId: detail.productId, variantId: null},
         shown: [

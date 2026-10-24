@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { KB_POLICY_UNAVAILABLE_REPLY, searchShopPoliciesViaMcp } from '../src/buyer/kb-policies';
+import {
+  KB_POLICY_EMPTY_REPLY,
+  KB_POLICY_UNAVAILABLE_REPLY,
+  kbPolicyMissReply,
+  searchShopPoliciesViaMcp,
+} from '../src/buyer/kb-policies';
 import * as mcp from '../src/mcp_server';
 
 describe('buyer kb-policies', () => {
@@ -13,6 +18,14 @@ describe('buyer kb-policies', () => {
 
   it('exposes KB unavailable copy for callers', () => {
     expect(KB_POLICY_UNAVAILABLE_REPLY.toLowerCase()).toContain('nie mam dostępu');
+    expect(kbPolicyMissReply('mcp_error')).toBe(KB_POLICY_UNAVAILABLE_REPLY);
+  });
+
+  it('empty result copy asks to clarify without shop facts', () => {
+    expect(KB_POLICY_EMPTY_REPLY).toMatch(/Pan lub Pani/);
+    expect(KB_POLICY_EMPTY_REPLY.toLowerCase()).not.toContain('nie mam dostępu');
+    expect(KB_POLICY_EMPTY_REPLY).not.toMatch(/\d|@|ul\.|telefon/i);
+    expect(kbPolicyMissReply('empty')).toBe(KB_POLICY_EMPTY_REPLY);
   });
 
   it('parses structuredContent.answer and sources', async () => {

@@ -13,7 +13,7 @@ export async function runGemmaAllowedActions(ctx: GemmaActionContext): Promise<G
     cart: null,
     productDetail: null,
     catalogFailed: false,
-    kbFailed: false,
+    kbOutcome: 'ok',
     cartFailed: false,
   };
 
@@ -50,14 +50,15 @@ export async function runGemmaAllowedActions(ctx: GemmaActionContext): Promise<G
   if (actions.includes('kb_policies')) {
     try {
       const kb = await runKbAction(ctx);
-      if (!kb) {
-        outcome.kbFailed = true;
+      if (kb.ok) {
+        outcome.kb = kb.facts;
+        outcome.kbOutcome = 'ok';
       } else {
-        outcome.kb = kb;
+        outcome.kbOutcome = kb.reason === 'empty' ? 'empty' : 'error';
       }
     } catch (e) {
       console.warn('[gemma.actions] kb failed', e);
-      outcome.kbFailed = true;
+      outcome.kbOutcome = 'error';
     }
   }
 

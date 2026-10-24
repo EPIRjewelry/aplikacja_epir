@@ -27,7 +27,7 @@ import { getSizeTable } from '../size-table';
 import type { BuyerChannelId } from './channel-switch';
 import { buyerToolIdForName } from './buyer-tools';
 import {
-  KB_POLICY_UNAVAILABLE_REPLY,
+  kbPolicyMissReply,
   searchShopPoliciesViaMcp,
 } from './kb-policies';
 import { recordPolicyTouchIfIdentified } from './policy-audit';
@@ -355,7 +355,7 @@ export async function executeBuyerTool(
     const result = await searchShopPoliciesViaMcp(input.env, query, { context });
     if (!result.ok) {
       logBuyerToolCall(input.name, input.channelId, false);
-      return { content: KB_POLICY_UNAVAILABLE_REPLY };
+      return { content: kbPolicyMissReply(result.reason) };
     }
     await recordPolicyTouchIfIdentified(input.env, {
       shopifyCustomerId: input.shopifyCustomerId,
