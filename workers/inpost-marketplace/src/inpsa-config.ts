@@ -48,6 +48,21 @@ export function buildOrdersEventsRelativePath(organizationId: string): string {
   return `v1/organizations/${id}/orders/events`;
 }
 
+/**
+ * Portal OpenAPI: `GET /v1/organizations/{organizationId}/orders/{orderId}`
+ */
+export function buildOrderRelativePath(organizationId: string, orderId: string): string {
+  const org = organizationId.trim();
+  const oid = orderId.trim();
+  if (!org) {
+    throw new Error('INPSA_ORGANIZATION_ID must be a non-empty organization id');
+  }
+  if (!oid) {
+    throw new Error('orderId must be a non-empty marketplace order id');
+  }
+  return `v1/organizations/${org}/orders/${encodeURIComponent(oid)}`;
+}
+
 /** Plain var (or local `.dev.vars`) — not a long-lived secret. */
 export function resolveInpsaOrganizationId(raw: string | undefined): string {
   const id = raw?.trim();

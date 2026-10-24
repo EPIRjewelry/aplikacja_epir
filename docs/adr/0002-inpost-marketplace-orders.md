@@ -117,10 +117,11 @@ Nazwy są rozłączne z `INPOST_*` z `workers/inpost/src/env.ts` i `workers/inpo
 
 ## Konsekwencje
 
-- Szkielet katalogu: `workers/inpost-marketplace/README.md` wskazuje na ten ADR. Brak `package.json` i brak `wrangler.toml`, żeby root workspaces (`workers/*`) i Wrangler nie dostały celu deployu. Sąsiednie `wrangler.toml` (wzór: `workers/inpost/wrangler.toml`, `workers/store-steward/wrangler.toml`) wiążą `main`, bindingi i często identyfikatory zasobów — pusty szkielet z `main = "src/index.ts"` byłby fałszywym workerem.
-- `.github/workflows/deploy.yml` deployuje zamknięty zbiór workerów (chat, analytics, bigquery-batch, store-steward, analyst-worker, marketing-ingest, dynamic-landing-liquid, rag-worker). `workers/inpost` też nie jest na tej liście. Ten katalog nie wchodzi do workflow.
-- Gdy powstanie kod, odświeżanie tokenu liczy TTL około 5 minut. Nie kopiujemy zapasu `+1h` z `InpostApiClient` w ShipX.
-- Kanał kupującego (App Proxy, Hydrogen, `storefrontId`) zostaje bez zmian. Ingest marketplace jest serwer–serwer: INPSA → ten worker → Admin API `epir_ai`.
+- Katalog `workers/inpost-marketplace` ma `package.json`, `wrangler.toml` i kod UC v1 (poll zdarzeń → mapowanie → Shopify `orderCreate` z tagiem/źródłem `inpost-vh`). Domyślny ops poll: `dryRun=1` (bez zapisu do sklepu i bez mutacji D1). Live: `dryRun=0` tylko po zgodzie operatora.
+- Binding D1 `INPSA_ORDERS_DB` (cursor + klucze `inpsa-order:{marketplaceOrderId}`) — w `wrangler.toml` placeholder `database_id` do czasu utworzenia bazy przez operatora. Schema: `migrations/0001_inpsa_orders.sql`. Sekret Shopify: istniejąca nazwa `SHOPIFY_ADMIN_TOKEN` + var `SHOP_DOMAIN` (bez nowej nazwy sekretu).
+- `.github/workflows/deploy.yml` nadal **nie** obejmuje tego workera (jak `workers/inpost`). `wrangler deploy` / `secret put` / `d1 migrations apply` wymagają osobnej zgody.
+- Odświeżanie tokenu INPSA: TTL około 5 minut. Nie kopiujemy zapasu `+1h` z `InpostApiClient` w ShipX.
+- Kanał kupującego (App Proxy, Hydrogen, `storefrontId`) bez zmian. Ingest: INPSA → ten worker → Admin API `epir_ai`.
 
 ## Źródła w repo (lustro, bez zgadywania API)
 
