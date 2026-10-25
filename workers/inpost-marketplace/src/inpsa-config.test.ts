@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   INPSA_OAUTH_SCOPES,
+  buildOrderRelativePath,
   buildOrdersEventsRelativePath,
   joinInpsaApiUrl,
   parseInpsaEnv,
@@ -54,6 +55,14 @@ describe('buildOrdersEventsRelativePath', () => {
   it('matches portal OpenAPI organization-scoped path', () => {
     expect(buildOrdersEventsRelativePath('merchant-org-uuid')).toBe(
       'v1/organizations/merchant-org-uuid/orders/events',
+    );
+  });
+});
+
+describe('buildOrderRelativePath', () => {
+  it('matches portal OpenAPI order detail path', () => {
+    expect(buildOrderRelativePath('org-1', 'AB12345')).toBe(
+      'v1/organizations/org-1/orders/AB12345',
     );
   });
 });

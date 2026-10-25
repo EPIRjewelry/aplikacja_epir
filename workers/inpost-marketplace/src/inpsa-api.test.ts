@@ -18,16 +18,21 @@ describe('InpsaApiClient', () => {
       }
       if (url.includes('/inpsa/v1/organizations/org-merchant-1/orders/events')) {
         expect(url).toContain('limit=5');
-        return new Response(JSON.stringify({ events: [{ orderId: 'VH-1' }] }), { status: 200 });
+        expect(url).toContain('untilId=evt-9');
+        expect(url).not.toContain('cursor=');
+        return new Response(
+          JSON.stringify({ data: [{ id: 'e1', order: { id: 'VH-1' }, orderEventType: 'ACCEPTED' }] }),
+          { status: 200 },
+        );
       }
       return new Response('nope', { status: 500 });
     }) as typeof fetch;
 
     const client = new InpsaApiClient(env, fetchFn);
-    const result = await client.fetchOrdersEvents({ limit: 5 });
+    const result = await client.fetchOrdersEvents({ limit: 5, untilId: 'evt-9' });
 
     expect(result.status).toBe(200);
-    expect(result.body?.events).toHaveLength(1);
+    expect(result.body?.data).toHaveLength(1);
     const ordersCall = (fetchFn as ReturnType<typeof vi.fn>).mock.calls.find((c) =>
       String(c[0]).includes('orders/events'),
     );
@@ -42,6 +47,48 @@ describe('InpsaApiClient', () => {
       vi.fn(),
     );
     await expect(client.fetchOrdersEvents()).rejects.toThrow(/INPSA_ORGANIZATION_ID/);
+  });
+
+  it('fetchOrder hits organization-scoped order path', async () => {
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify({ access_token: 't', expires_in: 300 }), { status: 200 });
+      }
+      if (url.endsWith('/inpsa/v1/organizations/org-merchant-1/orders/AB12345')) {
+        return new Response(JSON.stringify({ id: 'AB12345', status: 'ACCEPTED' }), { status: 200 });
+      }
+      return new Response('nope', { status: 500 });
+    }) as typeof fetch;
+
+    const client = new InpsaApiClient(env, fetchFn);
+    const result = await client.fetchOrder('AB12345');
+    expect(result.status).toBe(200);
+    expect(result.body?.id).toBe('AB12345');
+  });
+
+  it('retries 429 once after Retry-After', async () => {
+    vi.useFakeTimers();
+    let hits = 0;
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify({ access_token: 't', expires_in: 300 }), { status: 200 });
+      }
+      hits += 1;
+      if (hits === 1) {
+        return new Response('slow', { status: 429, headers: { 'Retry-After': '1' } });
+      }
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    }) as typeof fetch;
+
+    const client = new InpsaApiClient(env, fetchFn);
+    const pending = client.fetchOrdersEvents({ limit: 1 });
+    await vi.advanceTimersByTimeAsync(1000);
+    const result = await pending;
+    expect(result.status).toBe(200);
+    expect(hits).toBe(2);
+    vi.useRealTimers();
   });
 
   it('runStageSmoke reports token + orders poll status', async () => {

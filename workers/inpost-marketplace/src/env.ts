@@ -16,4 +16,10 @@ export interface Env {
    * not required for unit tests or local dev without ops routes.
    */
   EPIR_OPERATOR_PANEL_SECRET?: string;
+  /** D1 — poll cursor + processed marketplace orders (placeholder id in wrangler.toml). */
+  INPSA_ORDERS_DB?: D1Database;
+  /** Shopify Admin — existing epir_ai secret name (chat convention). */
+  SHOPIFY_ADMIN_TOKEN?: string;
+  /** Shop hostname, e.g. epir-art-silver-jewellery.myshopify.com */
+  SHOP_DOMAIN?: string;
 }

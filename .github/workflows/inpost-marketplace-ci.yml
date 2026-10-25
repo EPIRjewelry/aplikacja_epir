@@ -1,0 +1,27 @@
+name: inpost-marketplace-ci
+
+on:
+  pull_request:
+    paths:
+      - 'workers/inpost-marketplace/**'
+      - '.github/workflows/inpost-marketplace-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'workers/inpost-marketplace/**'
+      - '.github/workflows/inpost-marketplace-ci.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Vitest epir-inpost-marketplace
+        run: npm run test -w epir-inpost-marketplace
