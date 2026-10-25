@@ -79,14 +79,22 @@ describe('buyer turn channel gate', () => {
     expect(((await offRes.json()) as {type: string}).type).toBe('unavailable');
     expect(spy).not.toHaveBeenCalled();
 
+    const internalTesterId = '9001002001';
     for (const mode of ['on', 'internal'] as const) {
       spy.mockClear();
       const kv = {
         async get(key: string) {
+          if (key === 'gemma:testers' && mode === 'internal') {
+            return JSON.stringify([internalTesterId]);
+          }
           return key.includes('epir-online-store') ? mode : null;
         },
       } as KVNamespace;
       const turnBody = {messages: [{role: 'user', content: 'Szukam pierścionka'}]};
+      const ingress =
+        mode === 'internal'
+          ? {appProxyVerified: true, loggedInCustomerId: internalTesterId}
+          : undefined;
       const res = await handleBuyerTurn(
         new Request('https://x/chat', {
           method: 'POST',
@@ -100,6 +108,7 @@ describe('buyer turn channel gate', () => {
         } as import('../src/config/bindings').Env,
         lock({}),
         turnBody,
+        ingress,
       );
       expect(res.status).toBe(200);
       const json = (await res.json()) as {type: string; reply?: string};

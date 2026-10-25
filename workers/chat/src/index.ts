@@ -249,6 +249,7 @@ type S2SChatAuthorizationResult =
 const EPIR_SHARED_SECRET_HEADER = 'X-EPIR-SHARED-SECRET';
 const EPIR_STOREFRONT_HEADER = 'X-EPIR-STOREFRONT-ID';
 const EPIR_CHANNEL_HEADER = 'X-EPIR-CHANNEL';
+const EPIR_LOGGED_IN_CUSTOMER_ID_HEADER = 'X-EPIR-LOGGED-IN-CUSTOMER-ID';
 
 const REPLAY_PROTECTION_SHARD_NAME = 'replay-protection:v1:global';
 const SESSION_DO_FALLBACK_SHARD_NAME = 'session:v1:fallback';
@@ -2897,7 +2898,56 @@ async function handleChat(
   );
 
   if (!isOperatorChannel(payload.channel)) {
-    return handleBuyerTurn(request, env, brandLock, raw);
+    const buyerUrl = new URL(request.url);
+    let loggedInCustomerIdForBuyer: string | null = null;
+    if (ingressOptions?.appProxyVerified === true) {
+      // ADR 0001: query po HMAC jest pierwsze. JWT (sub) tylko gdy query puste.
+      // customer_id_hint z body nie wchodzi do tego ID.
+      loggedInCustomerIdForBuyer = normalizeOptionalString(
+        buyerUrl.searchParams.get('logged_in_customer_id'),
+      );
+      if (!loggedInCustomerIdForBuyer) {
+        const bearerJwt = parseAuthorizationBearer(request);
+        if (bearerJwt) {
+          const verified = await verifyShopifySessionTokenJwt(bearerJwt, env, {
+            shopFromQuery: buyerUrl.searchParams.get('shop'),
+          });
+          if (verified.ok) {
+            const fromSub = normalizeOptionalString(verified.result.customerGid);
+            if (fromSub) {
+              loggedInCustomerIdForBuyer = fromSub;
+            } else {
+              console.warn(
+                JSON.stringify({
+                  tag: 'chat.ingress.session_token',
+                  reason: 'sub_missing_or_invalid_gid',
+                }),
+              );
+            }
+          } else {
+            console.warn(
+              JSON.stringify({
+                tag: 'chat.ingress.session_token',
+                reason: verified.reason,
+              }),
+            );
+          }
+        }
+      }
+    } else if (
+      (contextOverride?.channel === 'hydrogen-zareczyny' &&
+        contextOverride?.storefrontId === 'zareczyny') ||
+      (contextOverride?.channel === 'hydrogen-kazka' &&
+        contextOverride?.storefrontId === 'kazka')
+    ) {
+      loggedInCustomerIdForBuyer = normalizeOptionalString(
+        request.headers.get(EPIR_LOGGED_IN_CUSTOMER_ID_HEADER),
+      );
+    }
+    return handleBuyerTurn(request, env, brandLock, raw, {
+      appProxyVerified: ingressOptions?.appProxyVerified,
+      loggedInCustomerId: loggedInCustomerIdForBuyer,
+    });
   }
 
   // [TOKEN VAULT] Bez zmian

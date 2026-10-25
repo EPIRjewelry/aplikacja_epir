@@ -4,12 +4,16 @@ import {
   SessionStorage,
 } from '@remix-run/cloudflare';
 
+/** Klucz mostka sesji na `EventContext.data` (wrapper `onRequest` w `server.ts`). */
+export const EPIR_SESSION_BRIDGE_KEY = '__epirSession';
+
 /**
- * This is a custom session implementation for your Hydrogen shop.
- * Feel free to customize it to your needs, add helper methods, or
- * swap out the cookie-based implementation with something else!
+ * Sesja Hydrogen na Pages. `isPending` mówi mostkowi, że `commit()`
+ * ma dopisać `Set-Cookie` po turze Customer Account API.
  */
 export class HydrogenCloudflareSession {
+  isPending = false;
+
   constructor(
     private sessionStorage: SessionStorage,
     private session: Session,
@@ -40,18 +44,22 @@ export class HydrogenCloudflareSession {
   }
 
   flash(key: string, value: unknown) {
+    this.isPending = true;
     this.session.flash(key, value);
   }
 
   unset(key: string) {
+    this.isPending = true;
     this.session.unset(key);
   }
 
   set(key: string, value: unknown) {
+    this.isPending = true;
     this.session.set(key, value);
   }
 
   commit() {
+    this.isPending = false;
     return this.sessionStorage.commitSession(this.session);
   }
 }
