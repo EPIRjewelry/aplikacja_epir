@@ -8,7 +8,7 @@ Binding decision and sequence: [`docs/adr/0002-inpost-marketplace-orders.md`](..
 
 `workers/inpost` (`epir-inpost-proxy`) remains the ShipX pickup-points proxy (`INPOST_*`, `easypack24.net`, scope `openid api:apipoints`). This worker uses **`INPSA_*` only** — never reuse `INPOST_CLIENT_ID`, `INPOST_ENV`, or `INPOST_POINTS_CACHE`.
 
-Fulfillment (ShipX shipment with `delivery.email`) is a later handoff. This worker does not create labels or ShipX shipments.
+Fulfillment (ShipX shipment) is a later handoff. The recipient email **must** be `order.delivery.email` (hashed `@market.inpostpay.pl`, unique per order). This worker does not create labels or ShipX shipments. `delivery` is fully populated only after the parcel is manifested.
 
 ## Deploy posture (honest)
 
@@ -30,7 +30,7 @@ Fulfillment (ShipX shipment with `delivery.email`) is a later handoff. This work
 | `INPSA_ENV` | var | `stage` (default) or `production` after operator OK |
 | `INPSA_ORGANIZATION_ID` | var (plain) | Portal path param for `/v1/organizations/{organizationId}/…` |
 | `EPIR_OPERATOR_PANEL_SECRET` | optional secret | Bearer for `/ops/inpsa-*` |
-| `SHOPIFY_ADMIN_TOKEN` | secret | Admin API of app `epir_ai` (same name as chat) |
+| `SHOPIFY_ADMIN_TOKEN` | secret | Admin API of app `epir_ai`. Needs `write_orders` and `read_products` (not edited in `shopify.app.toml` here) |
 | `SHOP_DOMAIN` | var | e.g. `epir-art-silver-jewellery.myshopify.com` |
 | `INPSA_ORDERS_DB` | D1 binding | Poll cursor + idempotency (`inpsa-order:{id}`) |
 
@@ -45,7 +45,7 @@ cd workers/inpost-marketplace && npx wrangler dev
 
 Use `.dev.vars` (gitignored) for local secrets — **do not commit values**.
 
-Schema file (apply only after operator D1 create): [`migrations/0001_inpsa_orders.sql`](migrations/0001_inpsa_orders.sql).
+Schema file (apply only after operator `d1 create` and a real `database_id` — required before the first live `dryRun=0`): [`migrations/0001_inpsa_orders.sql`](migrations/0001_inpsa_orders.sql).
 
 ## HTTP surface
 
@@ -55,7 +55,8 @@ Schema file (apply only after operator D1 create): [`migrations/0001_inpsa_order
 | `GET /` | none | Worker metadata |
 | `GET /ops/inpsa-smoke` | Bearer | Stage CC + events poll (limit 1) |
 | `POST /ops/inpsa-orders-events-poll?dryRun=1` | Bearer | Poll → map → **plan** (default; no Shopify write, no D1 mutate) |
-| `POST /ops/inpsa-orders-events-poll?dryRun=0` | Bearer | Live `orderCreate` + persist idempotency (operator only) |
+| `POST /ops/inpsa-orders-events-poll?dryRun=0` | Bearer | Live `orderCreate` + persist idempotency (operator only; real D1 id first) |
+| `POST /ops/inpsa-orders-reconcile?updatedAtGte=&dryRun=1` | Bearer | List paid orders (`limit` 0–30, `offset`) and import those missing in D1 |
 
 Optional query: `untilId` (OpenAPI events pagination), `limit`.
 

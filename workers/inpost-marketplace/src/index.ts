@@ -3,7 +3,7 @@
 import type { Env } from './env';
 import { InpsaApiClient } from './inpsa-api';
 import { parseInpsaEnv } from './inpsa-config';
-import { pollOrdersEventsPipeline } from './orders/poll';
+import { pollOrdersEventsPipeline, reconcilePaidOrders } from './orders/poll';
 import { opsJson, opsNotConfigured, opsUnauthorized, verifyOperatorBearer } from './ops-auth';
 
 export type { Env } from './env';
@@ -43,6 +43,21 @@ async function handleOps(req: Request, env: Env): Promise<Response | null> {
         dryRun,
       });
       return opsJson({ ok: result.httpStatus >= 200 && result.httpStatus < 300, dryRun, ...result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return opsJson({ ok: false, error: message }, 502);
+    }
+  }
+
+  if (path === '/ops/inpsa-orders-reconcile' && req.method === 'POST') {
+    const url = new URL(req.url);
+    const updatedAtGte = url.searchParams.get('updatedAtGte')?.trim();
+    if (!updatedAtGte) return opsJson({ ok: false, error: 'updatedAtGte is required' }, 400);
+    const dryRun = url.searchParams.get('dryRun') !== '0';
+    const limit = Number(url.searchParams.get('limit') ?? '30');
+    try {
+      const result = await reconcilePaidOrders(env, { updatedAtGte, dryRun, limit });
+      return opsJson({ ok: true, ...result });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return opsJson({ ok: false, error: message }, 502);

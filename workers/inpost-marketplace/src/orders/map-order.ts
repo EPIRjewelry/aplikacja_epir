@@ -1,4 +1,4 @@
-import type { InpsaOrder, InpsaOrderEvent, InpsaOrderLine } from '../inpsa-types';
+import type { InpsaMoney, InpsaOrder, InpsaOrderEvent, InpsaOrderLine } from '../inpsa-types';
 import { INPOST_VH_ORDER_SOURCE, INPOST_VH_ORDER_TAG } from './constants';
 import {
   eventIdFromEvent,
@@ -46,28 +46,70 @@ function mapShippingAddress(order: InpsaOrder): ShopifyAddressPlan | undefined {
   };
 }
 
-function mapLine(line: InpsaOrderLine, index: number): ShopifyLineItemPlan | { error: string } {
-  const sku = line.offer?.product?.sku?.trim();
-  if (!sku) {
-    return { error: `orderLines[${index}]: missing offer.product.sku (OpenAPI)` };
+function moneyOrError(
+  money: InpsaMoney | undefined,
+  label: string,
+): { amount: number; currency: string } | { error: string } {
+  if (typeof money?.amount !== 'number' || !Number.isFinite(money.amount)) {
+    return { error: `${label}: missing amount` };
   }
-  if (typeof line.quantity !== 'number' || !Number.isFinite(line.quantity) || line.quantity <= 0) {
-    return {
-      error: `orderLines[${index}]: missing or invalid quantity (OpenAPI sample omits field — fail closed)`,
-    };
+  const currency = money.currency?.trim();
+  if (!currency) {
+    return { error: `${label}: missing currency` };
   }
-  const unit = line.offer?.finalPrice ?? line.offer?.price;
-  return {
-    sku,
-    quantity: line.quantity,
-    title: line.offer?.product?.name?.trim() || undefined,
-    unitAmount: typeof unit?.amount === 'number' ? unit.amount : undefined,
-    currency: unit?.currency?.trim() || undefined,
-  };
+  if (currency !== 'PLN') {
+    return { error: `${label}: expected currency PLN, got ${currency}` };
+  }
+  return { amount: money.amount, currency };
+}
+
+/**
+ * OpenAPI line has no quantity. Group units of the same offer (else SKU).
+ * Unit price is offer.price.amount (FAQ); finalPrice only when price is absent.
+ */
+export function groupOrderLines(
+  lines: InpsaOrderLine[],
+): { lines: ShopifyLineItemPlan[] } | { error: string; unmatched?: boolean } {
+  const groups = new Map<string, ShopifyLineItemPlan>();
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const sku = line.offer?.product?.sku?.trim();
+    if (!sku) {
+      return { error: `orderLines[${i}]: missing offer.product.sku (OpenAPI)`, unmatched: true };
+    }
+    const offerId = line.offer?.offerId?.trim();
+    const key = offerId ? `offer:${offerId}` : `sku:${sku}`;
+    const priced = line.offer?.price ?? line.offer?.finalPrice;
+    const unit = moneyOrError(priced, `orderLines[${i}].offer.price`);
+    if ('error' in unit) return unit;
+
+    const existing = groups.get(key);
+    if (!existing) {
+      groups.set(key, {
+        sku,
+        quantity: 1,
+        title: line.offer?.product?.name?.trim() || undefined,
+        unitAmount: unit.amount,
+        currency: unit.currency,
+      });
+      continue;
+    }
+    if (existing.sku !== sku) {
+      return { error: `orderLines[${i}]: offer ${offerId} grouped SKUs differ` };
+    }
+    if (existing.unitAmount !== unit.amount) {
+      return { error: `orderLines[${i}]: mixed unit price for ${key}` };
+    }
+    existing.quantity += 1;
+  }
+
+  return { lines: [...groups.values()] };
 }
 
 /**
  * Build Shopify orderCreate plan from INPSA order detail (portal fields only).
+ * Shopify create is only for PAID. ACCEPTED/CREATED are skipped here.
  */
 export function mapInpsaOrderToShopifyPlan(
   event: InpsaOrderEvent,
@@ -100,7 +142,7 @@ export function mapInpsaOrderToShopifyPlan(
     return {
       ...base,
       status: 'skipped_event_type',
-      note: `orderEventType=${orderEventType ?? 'null'} — Shopify create only for ACCEPTED|PAID`,
+      note: `orderEventType=${orderEventType ?? 'null'} — Shopify create only for PAID`,
     };
   }
 
@@ -109,6 +151,15 @@ export function mapInpsaOrderToShopifyPlan(
       ...base,
       status: 'error',
       note: 'Order detail missing or without id',
+    };
+  }
+
+  const payments = order.paymentDetails?.payments;
+  if (!Array.isArray(payments) || payments.length === 0) {
+    return {
+      ...base,
+      status: 'error',
+      note: 'PAID event but paymentDetails.payments is empty',
     };
   }
 
@@ -121,32 +172,28 @@ export function mapInpsaOrderToShopifyPlan(
     };
   }
 
-  const mappedLines: ShopifyLineItemPlan[] = [];
-  const unmatchedSkus: string[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const mapped = mapLine(lines[i], i);
-    if ('error' in mapped) {
-      if (mapped.error.includes('sku')) {
-        unmatchedSkus.push(`line-${i}`);
-        return {
-          ...base,
-          status: 'unmatched_sku',
-          unmatchedSkus,
-          note: mapped.error,
-        };
-      }
-      return {
-        ...base,
-        status: 'error',
-        note: mapped.error,
-      };
-    }
-    mappedLines.push(mapped);
+  const grouped = groupOrderLines(lines);
+  if ('error' in grouped) {
+    return {
+      ...base,
+      status: grouped.unmatched ? 'unmatched_sku' : 'error',
+      unmatchedSkus: grouped.unmatched ? [`line`] : undefined,
+      note: grouped.error,
+    };
   }
 
   const email = order.customer?.email?.trim() || order.delivery?.email?.trim() || undefined;
-  const total = order.finalPrice;
-  const shippingPrice = order.delivery?.price;
+  let shippingPrice: ShopifyOrderCreateInputPlan['shippingPrice'];
+  if (order.delivery?.price && typeof order.delivery.price.amount === 'number') {
+    const shipping = moneyOrError(order.delivery.price, 'delivery.price');
+    if ('error' in shipping) {
+      return { ...base, status: 'error', note: shipping.error };
+    }
+    shippingPrice = shipping;
+  }
+
+  const goods = grouped.lines.reduce((sum, line) => sum + (line.unitAmount ?? 0) * line.quantity, 0);
+  const transactionAmount = goods + (shippingPrice?.amount ?? 0);
 
   const orderCreateInput: ShopifyOrderCreateInputPlan = {
     email,
@@ -155,30 +202,12 @@ export function mapInpsaOrderToShopifyPlan(
     tags: [INPOST_VH_ORDER_TAG],
     sourceName: INPOST_VH_ORDER_SOURCE,
     customAttributes: [{ key: 'inpsa_marketplace_order_id', value: marketplaceOrderId }],
-    lineItems: mappedLines,
+    lineItems: grouped.lines,
     shippingAddress: mapShippingAddress(order),
-    total:
-      typeof total?.amount === 'number'
-        ? { amount: total.amount, currency: (total.currency ?? 'PLN').trim() || 'PLN' }
-        : undefined,
-    shippingPrice:
-      typeof shippingPrice?.amount === 'number'
-        ? {
-            amount: shippingPrice.amount,
-            currency: (shippingPrice.currency ?? 'PLN').trim() || 'PLN',
-          }
-        : undefined,
+    shippingPrice,
+    transactionAmount,
     financialStatus: 'PAID',
   };
-
-  if (orderCreateInput.total && orderCreateInput.total.currency !== 'PLN') {
-    return {
-      ...base,
-      status: 'error',
-      note: `Expected currency PLN, got ${orderCreateInput.total.currency}`,
-      orderCreateInput,
-    };
-  }
 
   return {
     ...base,

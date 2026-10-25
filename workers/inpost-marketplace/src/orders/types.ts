@@ -1,5 +1,11 @@
-/** Portal OrderEventType values we may act on for Shopify create (ADR: customer after ACCEPTED+paid). */
-export const SHOPIFY_CREATE_EVENT_TYPES = new Set(['ACCEPTED', 'PAID']);
+/** Shopify orderCreate only after INPSA PAID and non-empty paymentDetails.payments. */
+export const SHOPIFY_CREATE_EVENT_TYPES = new Set(['PAID']);
+
+/** Pending row older than this is looked up in Shopify before a second orderCreate. */
+export const PENDING_RETRY_MS = 15 * 60 * 1000;
+
+/** Safety cap while paging events backward with untilId. */
+export const MAX_EVENT_PAGES = 20;
 
 export type ShopifyOrderPlanStatus =
   | 'created'
@@ -47,6 +53,8 @@ export interface ShopifyOrderCreateInputPlan {
   shippingAddress?: ShopifyAddressPlan;
   total?: ShopifyMoneyPlan;
   shippingPrice?: ShopifyMoneyPlan;
+  /** Sum of unit×qty plus shipping. Sent as orderCreate transaction amountSet. */
+  transactionAmount?: number;
   financialStatus: 'PAID';
 }
 

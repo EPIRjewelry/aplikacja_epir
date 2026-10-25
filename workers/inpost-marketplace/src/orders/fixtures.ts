@@ -1,4 +1,4 @@
-import type { InpsaOrder, InpsaOrderEvent } from '../inpsa-types';
+import type { InpsaOrder, InpsaOrderEvent, InpsaOrderLine } from '../inpsa-types';
 
 /** OpenAPI-shaped event (`data[]` sample). */
 export function fixtureAcceptedEvent(
@@ -13,7 +13,33 @@ export function fixtureAcceptedEvent(
   };
 }
 
-/** OpenAPI order detail sample + quantity (fail-closed requires it). */
+export function fixturePaidEvent(overrides: Partial<InpsaOrderEvent> = {}): InpsaOrderEvent {
+  return fixtureAcceptedEvent({
+    id: 'evt-paid-1',
+    orderEventType: 'PAID',
+    occurredAt: '2025-02-15T13:46:30Z',
+    ...overrides,
+  });
+}
+
+/** One OpenAPI order line: offer only, no quantity. */
+export function fixtureOrderLine(sku = 'EPIR-RING-001', offerId = 'd8ec11ce-12ba-4fb7-be9a-249e679f4e67'): InpsaOrderLine {
+  return {
+    offer: {
+      offerId,
+      product: {
+        productId: 'prod-1',
+        name: 'Pierścionek test',
+        sku,
+        ean: '5904959447006',
+      },
+      price: { amount: 890, currency: 'PLN' },
+      finalPrice: { amount: 890, currency: 'PLN' },
+    },
+  };
+}
+
+/** OpenAPI order detail sample — line has offer only (no quantity, no lineItemId). */
 export function fixtureOrderDetail(overrides: Partial<InpsaOrder> = {}): InpsaOrder {
   return {
     id: 'AB12345',
@@ -46,25 +72,14 @@ export function fixtureOrderDetail(overrides: Partial<InpsaOrder> = {}): InpsaOr
         countryCode: 'PL',
         building: '1',
       },
-      price: { amount: 0, currency: 'PLN' },
+      price: { amount: 12, currency: 'PLN' },
     },
-    orderLines: [
-      {
-        quantity: 1,
-        offer: {
-          offerId: 'd8ec11ce-12ba-4fb7-be9a-249e679f4e67',
-          product: {
-            productId: 'prod-1',
-            name: 'Pierścionek test',
-            sku: 'EPIR-RING-001',
-            ean: '5904959447006',
-          },
-          finalPrice: { amount: 890, currency: 'PLN' },
-          price: { amount: 890, currency: 'PLN' },
-        },
-      },
-    ],
-    finalPrice: { amount: 890, currency: 'PLN' },
+    orderLines: [fixtureOrderLine()],
+    finalPrice: { amount: 902, currency: 'PLN' },
+    paymentDetails: {
+      selectedPaymentType: 'CARD',
+      payments: [{ paymentId: 'pay-1', paymentType: 'CARD', paymentDate: '2025-02-15T13:46:30Z' }],
+    },
     ...overrides,
   };
 }

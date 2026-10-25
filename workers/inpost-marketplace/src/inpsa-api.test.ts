@@ -67,6 +67,30 @@ describe('InpsaApiClient', () => {
     expect(result.body?.id).toBe('AB12345');
   });
 
+  it('retries 429 once after Retry-After', async () => {
+    vi.useFakeTimers();
+    let hits = 0;
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/oauth2/token')) {
+        return new Response(JSON.stringify({ access_token: 't', expires_in: 300 }), { status: 200 });
+      }
+      hits += 1;
+      if (hits === 1) {
+        return new Response('slow', { status: 429, headers: { 'Retry-After': '1' } });
+      }
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    }) as typeof fetch;
+
+    const client = new InpsaApiClient(env, fetchFn);
+    const pending = client.fetchOrdersEvents({ limit: 1 });
+    await vi.advanceTimersByTimeAsync(1000);
+    const result = await pending;
+    expect(result.status).toBe(200);
+    expect(hits).toBe(2);
+    vi.useRealTimers();
+  });
+
   it('runStageSmoke reports token + orders poll status', async () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

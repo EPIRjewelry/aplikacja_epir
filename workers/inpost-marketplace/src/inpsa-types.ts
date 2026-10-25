@@ -56,12 +56,24 @@ export interface InpsaOrderLineOffer {
 }
 
 /**
- * OpenAPI order line. `quantity` is required by our mapper when present;
- * Redoc order samples omit it — fail closed in map-order if missing.
+ * OpenAPI order line (`gokart-api` order sample): only `offer`.
+ * No `quantity` and no `lineItemId` (FAQ mentions `lineItemId`; schema sample does not).
+ * Each unit is a separate element — Shopify quantity is the count of lines.
  */
 export interface InpsaOrderLine {
-  quantity?: number;
   offer?: InpsaOrderLineOffer;
+}
+
+export interface InpsaPayment {
+  paymentId?: string;
+  paymentType?: string;
+  paymentDate?: string;
+}
+
+/** Paid when `payments` is non-empty (FAQ + OpenAPI `paymentDetails`). */
+export interface InpsaPaymentDetails {
+  selectedPaymentType?: string;
+  payments?: InpsaPayment[];
 }
 
 export interface InpsaOrder {
@@ -75,6 +87,12 @@ export interface InpsaOrder {
   orderLines?: InpsaOrderLine[];
   finalPrice?: InpsaMoney;
   basePrice?: InpsaMoney;
+  paymentDetails?: InpsaPaymentDetails;
+}
+
+export interface InpsaOrdersListResponse {
+  page?: { limit?: number; offset?: number; total?: number };
+  data?: InpsaOrder[];
 }
 
 export interface InpsaOrdersEventsResponse {

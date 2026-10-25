@@ -73,16 +73,17 @@ Implementacja tego przepływu **nie** wchodzi w zmianę, która dodaje ten ADR. 
    Hosty prod są zapisane wyżej i czekają na osobną zgodę operatora. Domyślne środowisko v1 to stage.
 
 2. **Zdarzenia zamówień.**  
-   Portal OpenAPI (`gokart-api.html`): `GET {baza INPSA}/v1/organizations/{organizationId}/orders/events` (`INPSA_ORGANIZATION_ID`). Sam listing zamówień nie zastępuje polla zdarzeń.  
+   Portal OpenAPI (`gokart-api.html`): `GET {baza INPSA}/v1/organizations/{organizationId}/orders/events` (`INPSA_ORGANIZATION_ID`). Zdarzenia idą od najnowszych; `untilId` zwraca tylko starsze niż podane id — kursor nie jest przekazywany jako `untilId` w pierwszym żądaniu. Sam listing zamówień nie zastępuje polla zdarzeń.  
    Konfiguracja merchanta: auto-accept po płatności. UC v1 nie dodaje osobnego kroku ręcznego accept.  
-   `customer` i `delivery.email` czytamy, gdy zamówienie jest **ACCEPTED** i opłacone.
+   Zamówienie w Shopify powstaje tylko dla zdarzenia **PAID**, gdy `paymentDetails.payments` jest niepuste. `CREATED` i `ACCEPTED` przesuwają kursor i nie zapisują klucza idempotencji.  
+   `customer.email` oraz `delivery.email` to hash `@market.inpostpay.pl` (proxy InPost), unikalny per zamówienie. Pełny obiekt `delivery` (adres nadania) jest wypełniony dopiero po nadaniu przesyłki.
 
 3. **Zamówienie Shopify.**  
    Zmapowane zamówienie powstaje przez Admin API istniejącej aplikacji `epir_ai`, ze źródłem i tagiem `inpost-vh`.  
-   Powtórzony poll tego samego zdarzenia nie tworzy drugiego zamówienia (idempotencja po identyfikatorze zamówienia marketplace — pole bierzemy z portalu przy implementacji).
+   Powtórzony poll tego samego zamówienia marketplace nie tworzy drugiego zamówienia (idempotencja `inpsa-order:{orderId}`). Token Admin potrzebuje scope `write_orders` oraz `read_products` (wyszukanie wariantu po SKU). Tego ADR nie zmienia `shopify.app.toml`.
 
 4. **Handoff ShipX.**  
-   Po zamówieniu Shopify przesyłkę tworzy istniejący tor ShipX, z adresem `delivery.email`. Wywołanie idzie do API ShipX, nie do API marketplace i nie do tego workera. `workers/inpost` w obecnym kształcie obsługuje punkty, nie etykiety; etykiety są osobnym krokiem poza v1.
+   Po zamówieniu Shopify przesyłkę tworzy istniejący tor ShipX. E-mail odbiorcy **musi** być `order.delivery.email` (hash `@market.inpostpay.pl`, unikalny per zamówienie — FAQ). Nie używać `customer.email` ani `invoice.email` jako adresu nadania. Wywołanie idzie do API ShipX, nie do API marketplace i nie do tego workera. `workers/inpost` w obecnym kształcie obsługuje punkty, nie etykiety; etykiety są osobnym krokiem poza v1. Ten ADR nie dodaje kodu ShipX.
 
 Scope’y kategorii i ofert są na kliencie OAuth, bo portal podaje ten zestaw w całości. UC v1 ich nie wywołuje.
 
@@ -118,7 +119,7 @@ Nazwy są rozłączne z `INPOST_*` z `workers/inpost/src/env.ts` i `workers/inpo
 ## Konsekwencje
 
 - Katalog `workers/inpost-marketplace` ma `package.json`, `wrangler.toml` i kod UC v1 (poll zdarzeń → mapowanie → Shopify `orderCreate` z tagiem/źródłem `inpost-vh`). Domyślny ops poll: `dryRun=1` (bez zapisu do sklepu i bez mutacji D1). Live: `dryRun=0` tylko po zgodzie operatora.
-- Binding D1 `INPSA_ORDERS_DB` (cursor + klucze `inpsa-order:{marketplaceOrderId}`) — w `wrangler.toml` placeholder `database_id` do czasu utworzenia bazy przez operatora. Schema: `migrations/0001_inpsa_orders.sql`. Sekret Shopify: istniejąca nazwa `SHOPIFY_ADMIN_TOKEN` + var `SHOP_DOMAIN` (bez nowej nazwy sekretu).
+- Binding D1 `INPSA_ORDERS_DB` (cursor `last_success_event_id` + `last_success_occurred_at`, klucz `inpsa-order:{marketplaceOrderId}`) — w `wrangler.toml` placeholder `database_id`. Prawdziwe `d1 create` i podmiana id są **twardym krokiem operatora przed pierwszym** `dryRun=0`. Schema: `migrations/0001_inpsa_orders.sql`. Sekret Shopify: istniejąca nazwa `SHOPIFY_ADMIN_TOKEN` + var `SHOP_DOMAIN`. Token musi mieć `write_orders` i `read_products` (bez zmiany scope w `shopify.app.toml` w tym kroku).
 - `.github/workflows/deploy.yml` nadal **nie** obejmuje tego workera (jak `workers/inpost`). `wrangler deploy` / `secret put` / `d1 migrations apply` wymagają osobnej zgody.
 - Odświeżanie tokenu INPSA: TTL około 5 minut. Nie kopiujemy zapasu `+1h` z `InpostApiClient` w ShipX.
 - Kanał kupującego (App Proxy, Hydrogen, `storefrontId`) bez zmian. Ingest: INPSA → ten worker → Admin API `epir_ai`.
