@@ -182,13 +182,14 @@ describe('E1b GZ S2S customer id ingress', () => {
     expect(ingress?.loggedInCustomerId).toBeNull();
   });
 
-  it('T3: S2S Kazka + customer header → header ignored', async () => {
+  it('T3: S2S Kazka + GID header matches numeric tester → ingress GID', async () => {
+    vi.spyOn(compose, 'composeBuyerAssistantReply').mockResolvedValue('kazka-ok');
     const handleSpy = vi.spyOn(buyerTurn, 'handleBuyerTurn');
     const env = makeEnv({
       GEMMA_RUNTIME_KV: makeGemmaRuntimeKv({
         channelMode: 'internal',
         channelId: 'kazka-hydrogen',
-        testers: [TEST_GID],
+        testers: ['9001002001'],
       }),
     });
 
@@ -206,6 +207,43 @@ describe('E1b GZ S2S customer id ingress', () => {
           message: 'hej',
           stream: false,
           session_id: 'sess_kazka-s2s',
+          brand: 'kazka',
+        }),
+      }),
+      env,
+      noopCtx,
+    );
+
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as {type: string}).type).toBe('message');
+    const ingress = handleSpy.mock.calls[0]?.[4];
+    expect(ingress?.loggedInCustomerId).toBe(TEST_GID);
+  });
+
+  it('T3b: hydrogen-kazka with wrong storefrontId → loggedInCustomerId null', async () => {
+    const handleSpy = vi.spyOn(buyerTurn, 'handleBuyerTurn');
+    const env = makeEnv({
+      GEMMA_RUNTIME_KV: makeGemmaRuntimeKv({
+        channelMode: 'internal',
+        channelId: 'kazka-hydrogen',
+        testers: ['9001002001'],
+      }),
+    });
+
+    const response = await worker.fetch(
+      new Request('https://asystent.epirbizuteria.pl/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-EPIR-SHARED-SECRET': 'shared-secret',
+          'X-EPIR-STOREFRONT-ID': 'online-store',
+          'X-EPIR-CHANNEL': 'hydrogen-kazka',
+          'X-EPIR-LOGGED-IN-CUSTOMER-ID': TEST_GID,
+        },
+        body: JSON.stringify({
+          message: 'hej',
+          stream: false,
+          session_id: 'sess_kazka-wrong-storefront',
           brand: 'kazka',
         }),
       }),

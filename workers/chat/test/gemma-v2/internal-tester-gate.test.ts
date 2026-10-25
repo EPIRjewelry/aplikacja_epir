@@ -125,7 +125,42 @@ describe('E1 internal tester gate (GE only)', () => {
     expect(((await res.json()) as {type: string}).type).toBe('message');
   });
 
-  it('internal + ingress: KAZKA channel blocked for all (M13)', async () => {
+  it('internal + ingress: KAZKA numeric tester → compose', async () => {
+    vi.spyOn(compose, 'composeBuyerAssistantReply').mockResolvedValue('kazka-ok');
+    const env = {
+      GEMMA_RUNTIME_KV: makeGemmaRuntimeKv({
+        channelMode: 'internal',
+        channelId: 'kazka-hydrogen',
+        testers: [FIKCYJNY_TESTER_ID],
+      }),
+    } as never;
+    const body = geBuyerBody();
+    const res = await handleBuyerTurn(postReq(body), env, kazkaBuyerBrandLock(), body, {
+      appProxyVerified: false,
+      loggedInCustomerId: FIKCYJNY_TESTER_ID,
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as {type: string}).type).toBe('message');
+  });
+
+  it('internal + ingress: KAZKA GID matches numeric tester → compose', async () => {
+    vi.spyOn(compose, 'composeBuyerAssistantReply').mockResolvedValue('kazka-gid');
+    const env = {
+      GEMMA_RUNTIME_KV: makeGemmaRuntimeKv({
+        channelMode: 'internal',
+        channelId: 'kazka-hydrogen',
+        testers: [FIKCYJNY_TESTER_ID],
+      }),
+    } as never;
+    const body = geBuyerBody();
+    const res = await handleBuyerTurn(postReq(body), env, kazkaBuyerBrandLock(), body, {
+      loggedInCustomerId: `gid://shopify/Customer/${FIKCYJNY_TESTER_ID}`,
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as {type: string}).type).toBe('message');
+  });
+
+  it('internal + ingress: KAZKA id spoza listy → unavailable', async () => {
     const composeSpy = vi.spyOn(compose, 'composeBuyerAssistantReply');
     const env = {
       GEMMA_RUNTIME_KV: makeGemmaRuntimeKv({
@@ -136,8 +171,24 @@ describe('E1 internal tester gate (GE only)', () => {
     } as never;
     const body = geBuyerBody();
     const res = await handleBuyerTurn(postReq(body), env, kazkaBuyerBrandLock(), body, {
-      appProxyVerified: true,
-      loggedInCustomerId: FIKCYJNY_TESTER_ID,
+      loggedInCustomerId: 'gid://shopify/Customer/9999999999',
+    });
+    expect(await res.json()).toEqual(BUYER_UNAVAILABLE_JSON);
+    expect(composeSpy).not.toHaveBeenCalled();
+  });
+
+  it('internal + ingress: KAZKA bez ID → unavailable', async () => {
+    const composeSpy = vi.spyOn(compose, 'composeBuyerAssistantReply');
+    const env = {
+      GEMMA_RUNTIME_KV: makeGemmaRuntimeKv({
+        channelMode: 'internal',
+        channelId: 'kazka-hydrogen',
+        testers: [FIKCYJNY_TESTER_ID],
+      }),
+    } as never;
+    const body = geBuyerBody({customer_id_hint: FIKCYJNY_TESTER_ID});
+    const res = await handleBuyerTurn(postReq(body), env, kazkaBuyerBrandLock(), body, {
+      loggedInCustomerId: null,
     });
     expect(await res.json()).toEqual(BUYER_UNAVAILABLE_JSON);
     expect(composeSpy).not.toHaveBeenCalled();

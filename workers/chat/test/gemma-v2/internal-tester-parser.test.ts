@@ -40,4 +40,20 @@ describe('E1 gemma:testers parser (M3)', () => {
     });
     expect([...ids]).toEqual(['9001002001']);
   });
+
+  it('GID and numeric collapse to numeric; junk dropped', async () => {
+    const ids = await readGemmaTesterIds({
+      GEMMA_RUNTIME_KV: kvWithTestersRaw(
+        '["gid://shopify/Customer/9001002001","9001002001","not-an-id","gid://shopify/Customer/"]',
+      ),
+    });
+    expect([...ids]).toEqual(['9001002001']);
+    expect(
+      isAllowedGemmaInternalTurn({
+        channelId: 'kazka-hydrogen',
+        loggedInCustomerId: 'gid://shopify/Customer/9001002001',
+        testerIds: ids,
+      }),
+    ).toBe(true);
+  });
 });
