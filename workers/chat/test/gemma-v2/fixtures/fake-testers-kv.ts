@@ -1,5 +1,5 @@
 import type {BuyerChannelId} from '../../../src/buyer/channel-switch';
-import {channelKvKey, coreKvKey} from '../../../src/buyer/channel-switch';
+import {channelKvKey} from '../../../src/buyer/channel-switch';
 import {GEMMA_TESTERS_KV_KEY} from '../../../src/gemma/internal-access';
 import type {BuyerTurnIngress} from '../../../src/buyer/handle-buyer-turn';
 
@@ -14,7 +14,6 @@ export function geInternalTesterIngress(
 export function makeGemmaRuntimeKv(
   options: {
     channelMode?: string;
-    coreMode?: string;
     testers?: string[];
     channelId?: BuyerChannelId;
   } = {},
@@ -23,7 +22,6 @@ export function makeGemmaRuntimeKv(
   return {
     async get(key: string) {
       if (key === channelKvKey(channelId)) return options.channelMode ?? 'on';
-      if (key === coreKvKey(channelId)) return options.coreMode ?? null;
       if (key === GEMMA_TESTERS_KV_KEY) {
         if (!options.testers) return null;
         return JSON.stringify(options.testers);
