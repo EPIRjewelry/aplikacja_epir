@@ -7,6 +7,7 @@ import type {
 import {
   clientRequestsOpenCatalog,
   hasImmediateCatalogSignal,
+  hasQualitativeBudgetSignal,
   isAmbiguousGiftLikeProfile,
   isNonCommitmentUserText,
   MAX_DISCOVER_TURNS,
@@ -116,6 +117,7 @@ function canExitDiscoverToCatalog(
   userText?: string,
 ): boolean {
   if (clientRequestsOpenCatalog(intent, userText)) return true;
+  if (hasQualitativeBudgetSignal(mergedSlots, userText)) return true;
   if (hasImmediateCatalogSignal(mergedSlots)) return true;
   if (intentHasSearchableProductSlots(mergedSlots) || intentHasSearchableProductSlots(intent.slots)) {
     return true;
@@ -219,6 +221,14 @@ export function transitionGemmaState(
       slots: mergedSlots,
       allowedActions: [],
       missingSlot,
+    };
+  }
+
+  if (hasQualitativeBudgetSignal(mergedSlots, userText)) {
+    return {
+      nextState: 'propozycje',
+      slots: mergedSlots,
+      allowedActions: ['search_catalog'],
     };
   }
 

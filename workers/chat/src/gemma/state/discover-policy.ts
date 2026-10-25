@@ -57,6 +57,7 @@ export function hasImmediateCatalogSignal(slots: GemmaSlots): boolean {
 
 /** Tylko okazja / odbiorca bez typu lub metalu — wymaga discover. */
 export function isAmbiguousGiftLikeProfile(slots: GemmaSlots): boolean {
+  if (profileMeetsSearchMinimum(slots)) return false;
   if (hasImmediateCatalogSignal(slots)) return false;
   const pt = slots.product_type?.trim() ?? '';
   const metal = slots.metal?.trim() ?? '';
@@ -65,6 +66,17 @@ export function isAmbiguousGiftLikeProfile(slots: GemmaSlots): boolean {
   const occ = slots.occasion?.trim() ?? '';
   const rec = slots.recipient?.trim() ?? '';
   return Boolean(occ || rec);
+}
+
+const QUALITATIVE_BUDGET_RE =
+  /\b(tanio|taniej|skromnie|niedrogo|budżet|do\s+\d|poniżej|powyżej|\d+\s*zł)\b/iu;
+
+/** Budżet słowny / widełki — wystarczy do search_catalog (regresja R03/R04). */
+export function hasQualitativeBudgetSignal(slots: GemmaSlots, userText?: string): boolean {
+  const b = slots.budget?.trim() ?? '';
+  if (b && QUALITATIVE_BUDGET_RE.test(b)) return true;
+  const t = userText?.trim() ?? '';
+  return t.length > 0 && QUALITATIVE_BUDGET_RE.test(t);
 }
 
 export function clientRequestsOpenCatalog(intent: GemmaIntent, userText?: string): boolean {

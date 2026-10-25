@@ -2,6 +2,7 @@ import type { Env } from '../config/bindings';
 import { callMcpToolDirect } from '../mcp_server';
 import {
   formatKbEntries,
+  kbEntryAssumesChatContext,
   type KbQaEntry,
   selectTopKbEntries,
 } from './kb-selection';
@@ -201,17 +202,14 @@ function extractFromRecord(
   query: string,
 ): { answer: string; sources: PolicySource[] } {
   if (typeof parsed.answer === 'string' && parsed.answer.trim()) {
-    const single = selectTopKbEntries(query, [
-      {question: query, answer: parsed.answer.trim()},
-    ]);
-    const answer = formatKbEntries(single.entries);
-    if (answer) {
-      return {
-        answer,
-        sources: normalizeSources(parsed.sources),
-      };
+    const ans = parsed.answer.trim();
+    if (kbEntryAssumesChatContext(ans)) {
+      return {answer: '', sources: normalizeSources(parsed.sources)};
     }
-    return {answer: '', sources: normalizeSources(parsed.sources)};
+    return {
+      answer: ans,
+      sources: normalizeSources(parsed.sources),
+    };
   }
 
   const composed = composeAnswerFromPoliciesAndFaqs(parsed, query);
@@ -269,6 +267,9 @@ function extractAnswerAndSources(
 export function refineKbAnswerForClient(query: string, rawAnswer: string): string {
   const trimmed = rawAnswer.trim();
   if (!trimmed) return '';
+  if (!trimmed.includes('\n\n') && !kbEntryAssumesChatContext(trimmed)) {
+    return trimmed;
+  }
   const blocks = trimmed.split(/\n\n+/).map((block) => {
     const lines = block.split('\n');
     if (lines.length >= 2) {
