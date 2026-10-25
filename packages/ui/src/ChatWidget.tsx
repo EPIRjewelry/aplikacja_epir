@@ -373,12 +373,11 @@ export type ChatWidgetProps = {
   locale?: string;
   /**
    * Lokalna zgoda UI (Hydrogen): gdy `false`, widget nie wysyła wiadomości.
-   * `undefined` — bez blokady. Zaręczyny: ustaw `requireChatConsent={false}` i zostaw most analytics osobno.
+   * `undefined` — bez blokady historii. Hydrogen (Kazka, Zaręczyny): zwykle pomijane przy `requireChatConsent={false}`.
    */
   consentGranted?: boolean;
   /**
-   * Domyślnie `true`: lokalna bramka UI (Kazka — checkbox zgody na czat).
-   * `false` tylko Zaręczyny (`requireChatConsent={false}` w root.tsx).
+   * Domyślnie `true` (legacy Liquid embed). Hydrogen: `false` — czat bez ConsentToggle, zgoda z banera Shopify.
    */
   requireChatConsent?: boolean;
   /**

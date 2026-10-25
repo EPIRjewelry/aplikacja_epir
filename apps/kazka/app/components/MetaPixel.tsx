@@ -5,12 +5,12 @@ import {
   trackMetaAddToCart,
   trackMetaPageView,
   trackMetaViewContent,
+  useMetaPixelConsent,
 } from '~/lib/meta-pixel';
-import {useKazkaConsent} from '~/lib/use-kazka-consent';
 
 /** SPA PageView after consent (Remix client navigations). */
 export function MetaPixelPageView() {
-  const consentGranted = useKazkaConsent();
+  const consentGranted = useMetaPixelConsent();
   const location = useLocation();
   const lastPath = useRef<string | null>(null);
 
@@ -43,7 +43,7 @@ export function MetaPixelProduct({
   priceAmount?: string | null;
   currencyCode?: string | null;
 }) {
-  const consentGranted = useKazkaConsent();
+  const consentGranted = useMetaPixelConsent();
   const fetcher = useFetcher<CartActionJson>({key: 'add-to-cart'});
   const lastViewKey = useRef<string | null>(null);
   const lastCartSync = useRef<unknown>(null);

@@ -256,7 +256,6 @@ function ZareczynyConsentAndChat({
           country={analyticsConsent.country}
           locale={analyticsConsent.language}
           sameDomainForStorefrontApi={analyticsConsent.sameDomainForStorefrontApi}
-          consentGranted={false}
           pushTrackingConsent={false}
           chatApiUrl={chatApiUrl}
         />
@@ -338,7 +337,7 @@ export default function App() {
       <body>
         {/*
           Baner cookie Shopify (`withPrivacyBanner: true`) — zgoda analityczna jak sklep Liquid (online store).
-          CustomerPrivacyConsentBridge: tylko cofnięcie sesji czatu przy odmowie analityki (bez setTrackingConsent).
+          CustomerPrivacyConsentBridge (`pushTrackingConsent={false}`): cofnięcie sesji czatu przy odmowie analityki.
           Czat Gemmy: `requireChatConsent={false}` (bez ConsentToggle).
         */}
         <ShopifyProvider

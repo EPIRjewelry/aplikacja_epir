@@ -209,7 +209,7 @@ describe('Hydrogen ChatWidget helpers', () => {
     });
   });
 
-  it('history sync: Kazka default requires consentGranted; Zaręczyny requireChatConsent=false', () => {
+  it('history sync: requireChatConsent=false (Hydrogen GK/GZ); default gates on consentGranted', () => {
     expect(isChatHistorySyncAllowed({isOpen: true, consentGranted: false})).toBe(false);
     expect(isChatHistorySyncAllowed({isOpen: true, consentGranted: true})).toBe(true);
     expect(

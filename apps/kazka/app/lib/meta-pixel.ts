@@ -1,5 +1,5 @@
-import {getStoredConsent} from '@epir/ui';
-import {KAZKA_CONSENT_STORAGE_KEY} from '~/lib/chat-widget-context';
+import {readShopifyMarketingProcessingAllowed} from '@epir/ui';
+import {useEffect, useState} from 'react';
 import {META_PIXEL_ID} from '~/lib/meta-pixel-id';
 
 export {META_PIXEL_ID};
@@ -20,8 +20,27 @@ declare global {
 
 let initialized = false;
 
+/** Meta Pixel po zgodzie marketingowej z banera Shopify Customer Privacy. */
 export function isMetaPixelConsentGranted(): boolean {
-  return getStoredConsent(KAZKA_CONSENT_STORAGE_KEY) === true;
+  return readShopifyMarketingProcessingAllowed() === true;
+}
+
+/** Reaguje na baner Shopify (`visitorConsentCollected`) i odczyt API. */
+export function useMetaPixelConsent(): boolean {
+  const [granted, setGranted] = useState(false);
+
+  useEffect(() => {
+    const sync = () => {
+      const marketing = readShopifyMarketingProcessingAllowed();
+      if (marketing === true) setGranted(true);
+      else if (marketing === false) setGranted(false);
+    };
+    sync();
+    document.addEventListener('visitorConsentCollected', sync);
+    return () => document.removeEventListener('visitorConsentCollected', sync);
+  }, []);
+
+  return granted;
 }
 
 function callFbq(...args: unknown[]): void {
@@ -32,7 +51,7 @@ function callFbq(...args: unknown[]): void {
   fbq(...args);
 }
 
-/** Load fbevents.js and init pixel once (after marketing/chat consent). */
+/** Load fbevents.js and init pixel once (after marketing consent). */
 export function ensureMetaPixelInitialized(): void {
   if (!isMetaPixelConsentGranted()) return;
   if (typeof window === 'undefined') return;

@@ -78,6 +78,21 @@ export function readShopifyAnalyticsProcessingAllowed(): boolean | null {
 }
 
 /** Shopify Customer Privacy API — brak API = `null` (nieznane). */
+export function readShopifyMarketingProcessingAllowed(): boolean | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const shopify = (window as {
+      Shopify?: {customerPrivacy?: {marketingProcessingAllowed?: () => boolean}};
+    }).Shopify;
+    const fn = shopify?.customerPrivacy?.marketingProcessingAllowed;
+    if (typeof fn !== 'function') return null;
+    return fn() === true;
+  } catch {
+    return null;
+  }
+}
+
+/** Shopify Customer Privacy API — brak API = `null` (nieznane). */
 export function readShopifyPreferencesProcessingAllowed(): boolean | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -94,8 +109,7 @@ export function readShopifyPreferencesProcessingAllowed(): boolean | null {
 
 export type ReadChatPrivacyConsentFieldsOptions = {
   /**
-   * `preferences_consent` tylko dla storefrontów bez bramki czatu (np. Zaręczyny
-   * `requireChatConsent={false}`). Kazka (domyślny ChatWidget) — nie ustawiać.
+   * `preferences_consent` gdy Hydrogen ma `requireChatConsent={false}` (Kazka, Zaręczyny).
    */
   includePreferencesConsent?: boolean;
 };

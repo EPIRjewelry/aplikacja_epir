@@ -13,16 +13,15 @@ export type CustomerPrivacyConsentBridgeProps = {
   country?: CountryCode;
   locale?: LanguageCode;
   /**
-   * Stan zgody z lokalnego UI (np. ConsentToggle na Kazce). Używany tylko gdy
-   * `pushTrackingConsent={true}` — mapowany na `setTrackingConsent`.
+   * Tylko przy `pushTrackingConsent={true}`: stan lokalnego UI mapowany na `setTrackingConsent`.
+   * Przy banerze Shopify (`pushTrackingConsent={false}`) pomijany — nie przekazuj.
    */
-  consentGranted: boolean;
+  consentGranted?: boolean;
   /**
-   * Gdy `false` (Zaręczyny + natywny baner `withPrivacyBanner: true`), Bridge **nie** woła
-   * `setTrackingConsent` — zapis zgody wyłącznie z banera Shopify. Zostaje nasłuch
-   * `visitorConsentCollected` (cofnięcie sesji czatu) oraz opcjonalny revoke przy
-   * przejściu `consentGranted` true→false z lokalnego UI.
-   * Domyślnie `true` (Kazka + ConsentToggle).
+   * `false` — Hydrogen z `withPrivacyBanner: true` (Kazka, Zaręczyny): efekt `setTrackingConsent`
+   * **nie uruchamia się** (wczesny return); zapis zgody wyłącznie z banera. Bridge nasłuchuje
+   * `visitorConsentCollected` i przy `analyticsAllowed === false` cofa sesję czatu w workerze.
+   * `true` — legacy: lokalny UI (ConsentToggle) steruje `setTrackingConsent`.
    */
   pushTrackingConsent?: boolean;
   /**
@@ -90,15 +89,13 @@ function syncChatSessionPrivacyRevoke(chatApiUrl: string, sessionStorageKey: str
   scrubInvalidChatSessionStorage(sessionStorageKey);
 }
 
-/**
- * Most między lokalnym UI zgody (Kazka) lub banerem Shopify (Zaręczyny) a sesją czatu w workerze.
- */
+/** Most banera Shopify / lokalnego UI → cofnięcie sesji czatu w workerze. */
 export function CustomerPrivacyConsentBridge({
   checkoutDomain,
   storefrontAccessToken,
   country,
   locale,
-  consentGranted,
+  consentGranted = false,
   pushTrackingConsent = true,
   sameDomainForStorefrontApi = false,
   chatApiUrl,

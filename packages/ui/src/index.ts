@@ -65,6 +65,7 @@ export {
   resolveEffectiveChatSessionId,
   resolveEffectiveChatSessionWithMeta,
   readShopifyAnalyticsProcessingAllowed,
+  readShopifyMarketingProcessingAllowed,
   readShopifyPreferencesProcessingAllowed,
   readChatPrivacyConsentFieldsForWorker,
   scrubInvalidChatSessionStorage,
