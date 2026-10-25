@@ -47,6 +47,7 @@ export function evaluateDiscoverGate(params: {
   const allowCatalog = allowSearchCatalogThisTurn({
     slots,
     userText: params.userText,
+    allUserTexts: userLines,
     discoverAssistantTurns,
     catalogAlreadyShown,
   });

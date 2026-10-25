@@ -96,12 +96,19 @@ export function pickDiscoverMissingSlot(slots: BuyerDiscoverSlots): keyof BuyerD
 
 const ENGAGEMENT_RE = /\b(zaręczyn|zareczyn|engagement|pierścionek\s+zaręczyn)/iu;
 
+export function isEngagementRingContext(
+  slots: BuyerDiscoverSlots,
+  corpus: string,
+): boolean {
+  return ENGAGEMENT_RE.test(corpus) || ENGAGEMENT_RE.test(slots.product_type ?? '');
+}
+
 export function shouldDeferPoliciesForEngagementAdvisory(
   slots: BuyerDiscoverSlots,
   userText: string,
 ): boolean {
   const corpus = userText;
-  if (!ENGAGEMENT_RE.test(corpus) && !ENGAGEMENT_RE.test(slots.product_type ?? '')) {
+  if (!isEngagementRingContext(slots, corpus)) {
     return false;
   }
   const sizeGap =
@@ -114,14 +121,66 @@ export function shouldDeferPoliciesForEngagementAdvisory(
   return buying || sizeGap;
 }
 
+function engagementSizeGapUnresolved(corpus: string): boolean {
+  if (!/\b(rozmiar|obwód|numer)\b/iu.test(corpus)) return false;
+  if (/\brozmiar\s*[:\-]?\s*\d{1,2}/iu.test(corpus)) return false;
+  if (/\bobwód\s*[:\-]?\s*\d{1,2}/iu.test(corpus)) return false;
+  return /\b(nie\s+znam|nie\s+wiem|brak)/iu.test(corpus);
+}
+
+function engagementDeadlineGapUnresolved(corpus: string): boolean {
+  if (!/\b(termin|deadline)\b/iu.test(corpus)) return false;
+  if (
+    /\b(termin|deadline)\b[^.\n]{0,48}\b(za\s+\d|do\s+\d|miesiąc|tydzień)/iu.test(corpus)
+  ) {
+    return false;
+  }
+  return /\b(nie\s+znam|nie\s+wiem|brak)/iu.test(corpus);
+}
+
+/** Doradztwo zaręczyny z brakami — katalog dopiero po budżecie + domknięciu luk rozmiar/termin. */
+export function engagementAdvisoryRequirementsMet(
+  slots: BuyerDiscoverSlots,
+  corpus: string,
+): boolean {
+  if (!slots.budget?.trim()) return false;
+  if (engagementSizeGapUnresolved(corpus)) return false;
+  if (engagementDeadlineGapUnresolved(corpus)) return false;
+  return true;
+}
+
+export function engagementAdvisoryBlocksCatalog(
+  slots: BuyerDiscoverSlots,
+  userText: string,
+  allUserTexts: string[],
+): boolean {
+  const corpus = allUserTexts.join('\n');
+  if (!isEngagementRingContext(slots, corpus)) return false;
+  if (clientRequestsOpenCatalog(userText)) return false;
+
+  const advisoryActive =
+    shouldDeferPoliciesForEngagementAdvisory(slots, userText) ||
+    shouldDeferPoliciesForEngagementAdvisory(slots, corpus) ||
+    (isEngagementRingContext(slots, corpus) &&
+      (engagementSizeGapUnresolved(corpus) || engagementDeadlineGapUnresolved(corpus)));
+
+  if (!advisoryActive) return false;
+  return !engagementAdvisoryRequirementsMet(slots, corpus);
+}
+
 export function allowSearchCatalogThisTurn(params: {
   slots: BuyerDiscoverSlots;
   userText: string;
+  allUserTexts?: string[];
   discoverAssistantTurns: number;
   catalogAlreadyShown: boolean;
 }): boolean {
   if (params.catalogAlreadyShown) return true;
   if (clientRequestsOpenCatalog(params.userText)) return true;
+  const userLines = params.allUserTexts?.length ? params.allUserTexts : [params.userText];
+  if (engagementAdvisoryBlocksCatalog(params.slots, params.userText, userLines)) {
+    return false;
+  }
   if (hasQualitativeBudgetSignal(params.slots, params.userText)) return true;
   if (hasImmediateCatalogSignal(params.slots)) return true;
   if (hasNamedProductType(params.slots) && !isAmbiguousGiftLikeProfile(params.slots)) {

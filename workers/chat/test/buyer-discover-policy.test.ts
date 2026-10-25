@@ -35,12 +35,21 @@ describe('buyer discover policy', () => {
     ).toBe(true);
   });
 
-  it('zaręczyny bez rozmiaru — blokuje polityki KB w discover gate', () => {
+  it('S-E: zaręczyny bez rozmiaru — twardy gate katalogu i KB', () => {
     const d = evaluateDiscoverGate({
       userText: 'pierścionek zaręczynowy, rozmiar nie znam, termin za miesiąc',
       history: [],
     });
     expect(d.blockShopPolicies).toBe(true);
+    expect(d.blockSearchCatalog).toBe(true);
+  });
+
+  it('zaręczyny — pokaż cokolwiek zdejmuje blokadę katalogu', () => {
+    const d = evaluateDiscoverGate({
+      userText: 'pierścionek zaręczynowy, rozmiar nie znam, pokaż cokolwiek',
+      history: [],
+    });
+    expect(d.blockSearchCatalog).toBe(false);
   });
 
   it('po 2 turach discover i 2 slotach — zezwala na katalog przy prezencie', () => {
