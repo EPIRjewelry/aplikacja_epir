@@ -21,7 +21,6 @@ import {
   CartDrawer,
   ChatWidget,
   CustomerPrivacyConsentBridge,
-  readShopifyAnalyticsProcessingAllowed,
   type CommerceAction,
   createRevalidateScheduler,
   applyStorefrontCommerceAction,
@@ -222,8 +221,6 @@ function ZareczynyConsentAndChat({
     sameDomainForStorefrontApi: boolean;
   };
 }) {
-  /** Odbicie zgody z banera Shopify Customer Privacy (nie localStorage EPIR). */
-  const [shopifyAnalyticsConsent, setShopifyAnalyticsConsent] = useState(false);
   const revalidator = useRevalidator();
   const cartFetcher = useFetcher();
   const revalidateSchedulerRef = useRef(
@@ -250,18 +247,6 @@ function ZareczynyConsentAndChat({
     [cartFetcher],
   );
 
-  useEffect(() => {
-    const syncFromShopifyPrivacy = () => {
-      const allowed = readShopifyAnalyticsProcessingAllowed();
-      if (allowed === true) setShopifyAnalyticsConsent(true);
-      else if (allowed === false) setShopifyAnalyticsConsent(false);
-    };
-    syncFromShopifyPrivacy();
-    document.addEventListener('visitorConsentCollected', syncFromShopifyPrivacy);
-    return () =>
-      document.removeEventListener('visitorConsentCollected', syncFromShopifyPrivacy);
-  }, []);
-
   return (
     <>
       {analyticsConsent.checkoutDomain ? (
@@ -271,7 +256,8 @@ function ZareczynyConsentAndChat({
           country={analyticsConsent.country}
           locale={analyticsConsent.language}
           sameDomainForStorefrontApi={analyticsConsent.sameDomainForStorefrontApi}
-          consentGranted={shopifyAnalyticsConsent}
+          consentGranted={false}
+          pushTrackingConsent={false}
           chatApiUrl={chatApiUrl}
         />
       ) : null}
@@ -352,7 +338,7 @@ export default function App() {
       <body>
         {/*
           Baner cookie Shopify (`withPrivacyBanner: true`) — zgoda analityczna jak sklep Liquid (online store).
-          CustomerPrivacyConsentBridge: sync Customer Privacy API + cofnięcie sesji czatu przy odmowie analityki.
+          CustomerPrivacyConsentBridge: tylko cofnięcie sesji czatu przy odmowie analityki (bez setTrackingConsent).
           Czat Gemmy: `requireChatConsent={false}` (bez ConsentToggle).
         */}
         <ShopifyProvider

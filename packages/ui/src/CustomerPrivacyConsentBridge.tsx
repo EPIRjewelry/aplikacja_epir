@@ -12,8 +12,19 @@ export type CustomerPrivacyConsentBridgeProps = {
   storefrontAccessToken: string;
   country?: CountryCode;
   locale?: LanguageCode;
-  /** Stan zgody powiązany z istniejącym UI (np. ConsentToggle czatu) — mapowany na zgody Shopify Customer Privacy. */
+  /**
+   * Stan zgody z lokalnego UI (np. ConsentToggle na Kazce). Używany tylko gdy
+   * `pushTrackingConsent={true}` — mapowany na `setTrackingConsent`.
+   */
   consentGranted: boolean;
+  /**
+   * Gdy `false` (Zaręczyny + natywny baner `withPrivacyBanner: true`), Bridge **nie** woła
+   * `setTrackingConsent` — zapis zgody wyłącznie z banera Shopify. Zostaje nasłuch
+   * `visitorConsentCollected` (cofnięcie sesji czatu) oraz opcjonalny revoke przy
+   * przejściu `consentGranted` true→false z lokalnego UI.
+   * Domyślnie `true` (Kazka + ConsentToggle).
+   */
+  pushTrackingConsent?: boolean;
   /**
    * Gdy macie BFF `POST /api/{version}/graphql.json` (plik `api.$version.[graphql.json]` w `app/routes`),
    * ustawcie `true`, żeby Hydrogen trafiał na tę samą origin. Gdy proxy nie istnieje — `false`,
@@ -24,6 +35,48 @@ export type CustomerPrivacyConsentBridgeProps = {
   chatApiUrl?: string;
   chatSessionStorageKey?: string;
 };
+
+type CustomerPrivacyApi = {
+  setTrackingConsent: (
+    payload: {
+      analytics: boolean;
+      marketing: boolean;
+      preferences: boolean;
+      sale_of_data: boolean;
+    },
+    callback?: (data: {error?: unknown}) => void,
+  ) => void;
+};
+
+/** Logika efektu sync — testowalna bez renderu React. */
+export function syncTrackingConsentIfEnabled(input: {
+  pushTrackingConsent: boolean;
+  customerPrivacy: CustomerPrivacyApi | null | undefined;
+  consentGranted: boolean;
+}): void {
+  if (!input.pushTrackingConsent || !input.customerPrivacy) return;
+
+  input.customerPrivacy.setTrackingConsent(
+    {
+      analytics: input.consentGranted,
+      marketing: input.consentGranted,
+      preferences: input.consentGranted,
+      sale_of_data: input.consentGranted,
+    },
+    (data) => {
+      if (!data?.error) return;
+      const isProd =
+        typeof process !== 'undefined' && process.env.NODE_ENV === 'production';
+      if (isProd) return;
+      const err = data.error;
+      // eslint-disable-next-line no-console -- diagnostyka integracji consent (tylko dev)
+      console.warn(
+        '[EPIR Customer Privacy]',
+        typeof err === 'string' ? err : JSON.stringify(err),
+      );
+    },
+  );
+}
 
 function syncChatSessionPrivacyRevoke(chatApiUrl: string, sessionStorageKey: string): void {
   const remembered = readLastChatSessionIdForPrivacy();
@@ -38,12 +91,7 @@ function syncChatSessionPrivacyRevoke(chatApiUrl: string, sessionStorageKey: str
 }
 
 /**
- * Iteracja 1: bez natywnego bannera Shopify (`withPrivacyBanner: false` jest ustawiane w wywołaniu hooka).
- * Przekazuje decyzję użytkownika z EPIR UI do `customerPrivacy.setTrackingConsent`, żeby Hydrogen Analytics / Shopify
- * mogły filtrować eventy zgodnie z Customer Privacy API.
- *
- * Uwaga produktowa: checkbox czatu i „tracking” są spięte — jeśli kiedyś rozdzielicie zgody (czat vs analityka),
- * rozdzielcie tu pola analytics/marketing/preferences osobno.
+ * Most między lokalnym UI zgody (Kazka) lub banerem Shopify (Zaręczyny) a sesją czatu w workerze.
  */
 export function CustomerPrivacyConsentBridge({
   checkoutDomain,
@@ -51,6 +99,7 @@ export function CustomerPrivacyConsentBridge({
   country,
   locale,
   consentGranted,
+  pushTrackingConsent = true,
   sameDomainForStorefrontApi = false,
   chatApiUrl,
   chatSessionStorageKey = 'epir-assistant-session',
@@ -65,34 +114,16 @@ export function CustomerPrivacyConsentBridge({
   });
 
   useEffect(() => {
-    if (!customerPrivacy) return;
+    if (!pushTrackingConsent || !customerPrivacy) return;
 
     queueMicrotask(() => {
-      if (!customerPrivacy) return;
-
-      customerPrivacy.setTrackingConsent(
-        {
-          analytics: consentGranted,
-          marketing: consentGranted,
-          preferences: consentGranted,
-          sale_of_data: consentGranted,
-        },
-        (data) => {
-          if (!data?.error) return;
-          const isProd =
-            typeof process !== 'undefined' &&
-            process.env.NODE_ENV === 'production';
-          if (isProd) return;
-          const err = data.error;
-          // eslint-disable-next-line no-console -- diagnostyka integracji consent (tylko dev)
-          console.warn(
-            '[EPIR Customer Privacy]',
-            typeof err === 'string' ? err : JSON.stringify(err),
-          );
-        },
-      );
+      syncTrackingConsentIfEnabled({
+        pushTrackingConsent,
+        customerPrivacy,
+        consentGranted,
+      });
     });
-  }, [customerPrivacy, consentGranted]);
+  }, [customerPrivacy, consentGranted, pushTrackingConsent]);
 
   useEffect(() => {
     if (!chatApiUrl) return;
@@ -107,11 +138,12 @@ export function CustomerPrivacyConsentBridge({
 
   const prevConsentGranted = useRef(consentGranted);
   useEffect(() => {
+    if (!pushTrackingConsent) return;
     if (chatApiUrl && prevConsentGranted.current && !consentGranted) {
       syncChatSessionPrivacyRevoke(chatApiUrl, chatSessionStorageKey);
     }
     prevConsentGranted.current = consentGranted;
-  }, [consentGranted, chatApiUrl, chatSessionStorageKey]);
+  }, [consentGranted, chatApiUrl, chatSessionStorageKey, pushTrackingConsent]);
 
   return null;
 }
