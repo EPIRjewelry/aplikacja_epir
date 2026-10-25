@@ -1,5 +1,5 @@
-import {getStoredConsent} from '@epir/ui';
-import {KAZKA_CONSENT_STORAGE_KEY} from '~/lib/chat-widget-context';
+import {readShopifyMarketingProcessingAllowed} from '@epir/ui';
+import {useSyncExternalStore} from 'react';
 import {META_PIXEL_ID} from '~/lib/meta-pixel-id';
 
 export {META_PIXEL_ID};
@@ -20,8 +20,44 @@ declare global {
 
 let initialized = false;
 
+const META_CONSENT_POLL_MS = 250;
+const META_CONSENT_POLL_MAX_MS = 15_000;
+
+/** Odczyt w chwili wywołania (jak K1) — `null` API = nie przyznane, bez cache „false” z mount. */
+export function getMetaPixelConsentSnapshot(): boolean {
+  return readShopifyMarketingProcessingAllowed() === true;
+}
+
+function subscribeMetaPixelConsent(onStoreChange: () => void): () => void {
+  const bump = () => onStoreChange();
+  document.addEventListener('visitorConsentCollected', bump);
+  const started = Date.now();
+  const pollId = window.setInterval(() => {
+    if (readShopifyMarketingProcessingAllowed() !== null) {
+      bump();
+    }
+    if (Date.now() - started >= META_CONSENT_POLL_MAX_MS) {
+      window.clearInterval(pollId);
+    }
+  }, META_CONSENT_POLL_MS);
+  return () => {
+    document.removeEventListener('visitorConsentCollected', bump);
+    window.clearInterval(pollId);
+  };
+}
+
+/** Meta Pixel po zgodzie marketingowej z banera Shopify Customer Privacy. */
 export function isMetaPixelConsentGranted(): boolean {
-  return getStoredConsent(KAZKA_CONSENT_STORAGE_KEY) === true;
+  return getMetaPixelConsentSnapshot();
+}
+
+/** Live read + re-render na `visitorConsentCollected` i gdy API przestaje zwracać `null`. */
+export function useMetaPixelConsent(): boolean {
+  return useSyncExternalStore(
+    subscribeMetaPixelConsent,
+    getMetaPixelConsentSnapshot,
+    () => false,
+  );
 }
 
 function callFbq(...args: unknown[]): void {
@@ -32,7 +68,7 @@ function callFbq(...args: unknown[]): void {
   fbq(...args);
 }
 
-/** Load fbevents.js and init pixel once (after marketing/chat consent). */
+/** Load fbevents.js and init pixel once (after marketing consent). */
 export function ensureMetaPixelInitialized(): void {
   if (!isMetaPixelConsentGranted()) return;
   if (typeof window === 'undefined') return;

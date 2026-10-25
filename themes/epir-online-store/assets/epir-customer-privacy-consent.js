@@ -9,7 +9,6 @@
  *   Shopify.loadFeatures([{ name: 'consent-tracking-api', version: '0.1' }], cb)
  *   customerPrivacy.setTrackingConsent(payload, cb)
  *
- * Chat unlock is signaled via localStorage + CustomEvent for the assistant gate.
  * https://shopify.dev/docs/api/customer-privacy
  */
 (function (root, factory) {
@@ -25,7 +24,6 @@
 
   var BANNER_ID = 'epir-customer-privacy-banner';
   var STORAGE_KEY = 'epir-customer-privacy-choice';
-  var CHAT_STORAGE_KEY = 'epir-customer-privacy-chat';
   var EVENT_NAME = 'epir-customer-privacy-consent';
 
   function trackingConsentPayload(partial) {
@@ -44,7 +42,6 @@
       analytics: true,
       marketing: true,
       preferences: true,
-      chat: true,
     };
   }
 
@@ -54,7 +51,6 @@
       analytics: false,
       marketing: false,
       preferences: false,
-      chat: false,
     };
   }
 
@@ -101,7 +97,9 @@
   function rememberDecision(storage, decision) {
     if (!storage || typeof storage.setItem !== 'function' || !decision) return;
     storage.setItem(STORAGE_KEY, decision.choice);
-    storage.setItem(CHAT_STORAGE_KEY, decision.chat === true ? 'true' : 'false');
+    try {
+      storage.removeItem('epir-customer-privacy-chat');
+    } catch (e) {}
   }
 
   function hideBanner(banner) {
@@ -145,7 +143,6 @@
       analytics: checked('analytics'),
       marketing: checked('marketing'),
       preferences: checked('preferences'),
-      chat: checked('chat'),
     };
   }
 
@@ -160,7 +157,6 @@
               analytics: decision.analytics === true,
               marketing: decision.marketing === true,
               preferences: decision.preferences === true,
-              chat: decision.chat === true,
             },
           }),
         );
@@ -298,7 +294,6 @@
   return {
     BANNER_ID: BANNER_ID,
     STORAGE_KEY: STORAGE_KEY,
-    CHAT_STORAGE_KEY: CHAT_STORAGE_KEY,
     EVENT_NAME: EVENT_NAME,
     trackingConsentPayload: trackingConsentPayload,
     acceptAllDecision: acceptAllDecision,

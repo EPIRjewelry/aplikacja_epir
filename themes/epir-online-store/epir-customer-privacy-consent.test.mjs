@@ -48,8 +48,7 @@ function bannerDoc() {
   const analytics = purposeInput('analytics', true);
   const marketing = purposeInput('marketing', false);
   const preferences = purposeInput('preferences', true);
-  const chat = purposeInput('chat', true);
-  const purposes = { analytics, marketing, preferences, chat };
+  const purposes = { analytics, marketing, preferences };
   const customizePanel = {
     hidden: true,
     querySelector(sel) {
@@ -221,7 +220,7 @@ test('a setTrackingConsent error keeps the banner and does not store the choice'
   assert.equal(doc.banner.hidden, false);
 });
 
-test('Zaakceptuj wszystkie click writes the three purposes, chat flag, and hides the banner', () => {
+test('Zaakceptuj wszystkie click writes the three purposes and hides the banner', () => {
   const calls = [];
   const events = [];
   const doc = bannerDoc();
@@ -244,14 +243,13 @@ test('Zaakceptuj wszystkie click writes the three purposes, chat flag, and hides
   doc.dispatch(doc.acceptAll);
   assert.deepEqual(calls, [api.trackingConsentPayload(api.acceptAllDecision())]);
   assert.equal(storage.getItem(api.STORAGE_KEY), 'accept-all');
-  assert.equal(storage.getItem(api.CHAT_STORAGE_KEY), 'true');
   assert.equal(doc.banner.hidden, true);
   assert.equal(events.length, 1);
   assert.equal(events[0].type, api.EVENT_NAME);
-  assert.equal(events[0].detail.chat, true);
+  assert.equal(events[0].detail.analytics, true);
 });
 
-test('Zaakceptuj tylko niezbędne click writes all three purposes false and blocks chat', () => {
+test('Zaakceptuj tylko niezbędne click writes all three purposes false', () => {
   const calls = [];
   const doc = bannerDoc();
   const storage = memoryStorage();
@@ -259,7 +257,6 @@ test('Zaakceptuj tylko niezbędne click writes all three purposes false and bloc
   doc.dispatch(doc.necessary);
   assert.deepEqual(calls, [api.trackingConsentPayload(api.necessaryDecision())]);
   assert.equal(storage.getItem(api.STORAGE_KEY), 'necessary');
-  assert.equal(storage.getItem(api.CHAT_STORAGE_KEY), 'false');
   assert.equal(doc.banner.hidden, true);
 });
 
@@ -288,7 +285,6 @@ test('Zapisz wybór writes selected purposes from the customize panel', () => {
     },
   ]);
   assert.equal(storage.getItem(api.STORAGE_KEY), 'custom');
-  assert.equal(storage.getItem(api.CHAT_STORAGE_KEY), 'true');
 });
 
 test('a Zaakceptuj wszystkie button outside this banner does not grant consent', () => {
@@ -364,7 +360,6 @@ test('a late accept-all callback does not overwrite a newer necessary choice', (
   pending();
   assert.deepEqual(calls, [api.trackingConsentPayload(api.necessaryDecision())]);
   assert.equal(storage.getItem(api.STORAGE_KEY), 'necessary');
-  assert.equal(storage.getItem(api.CHAT_STORAGE_KEY), 'false');
 });
 
 test('the theme renders this Polish banner and does not render the Minimog cookie bar', () => {
@@ -381,7 +376,7 @@ test('the theme renders this Polish banner and does not render the Minimog cooki
   assert.match(banner, /Analityczne \(wizyty\)/);
   assert.match(banner, /Marketingowe \(reklamy\)/);
   assert.match(banner, /Preferencje/);
-  assert.match(banner, /Rozmowa z doradcą w czacie/);
+  assert.doesNotMatch(banner, /data-epir-purpose="chat"/);
   assert.doesNotMatch(banner, /data-epir-purpose="[^"]+"[^>]*\bchecked\b/);
   assert.match(banner, /data-epir-consent="accept-all"/);
   assert.match(banner, /data-epir-consent="necessary"/);
