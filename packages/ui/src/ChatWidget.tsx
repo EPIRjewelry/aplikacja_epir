@@ -372,12 +372,13 @@ export type ChatWidgetProps = {
   route?: string;
   locale?: string;
   /**
-   * Lokalna zgoda UI (Hydrogen): gdy `false`, widget nie wysyła wiadomości.
-   * `undefined` — bez blokady historii. Hydrogen (Kazka, Zaręczyny): zwykle pomijane przy `requireChatConsent={false}`.
+   * Bramka historii/czatu w komponencie — tylko gdy `requireChatConsent !== false`.
+   * Hydrogen (Kazka, Zaręczyny) nie przekazuje; zgoda z banera Shopify.
    */
   consentGranted?: boolean;
   /**
-   * Domyślnie `true` (legacy Liquid embed). Hydrogen: `false` — czat bez ConsentToggle, zgoda z banera Shopify.
+   * Wartość domyślna w props: `true` (gdyby ktoś nie podał propa). W repo Hydrogen zawsze ustawia `false`.
+   * Sklep Liquid (`assistant-runtime.js`) nie montuje tego komponentu.
    */
   requireChatConsent?: boolean;
   /**

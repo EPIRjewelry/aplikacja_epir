@@ -35,22 +35,16 @@ export type CustomerPrivacyConsentBridgeProps = {
   chatSessionStorageKey?: string;
 };
 
-type CustomerPrivacyApi = {
-  setTrackingConsent: (
-    payload: {
-      analytics: boolean;
-      marketing: boolean;
-      preferences: boolean;
-      sale_of_data: boolean;
-    },
-    callback?: (data: {error?: unknown}) => void,
-  ) => void;
-};
+/** Zgodny z `useCustomerPrivacy().customerPrivacy` (@shopify/hydrogen). */
+export type HydrogenCustomerPrivacyForSync = Pick<
+  NonNullable<ReturnType<typeof useCustomerPrivacy>['customerPrivacy']>,
+  'setTrackingConsent'
+>;
 
 /** Logika efektu sync — testowalna bez renderu React. */
 export function syncTrackingConsentIfEnabled(input: {
   pushTrackingConsent: boolean;
-  customerPrivacy: CustomerPrivacyApi | null | undefined;
+  customerPrivacy: HydrogenCustomerPrivacyForSync | null | undefined;
   consentGranted: boolean;
 }): void {
   if (!input.pushTrackingConsent || !input.customerPrivacy) return;

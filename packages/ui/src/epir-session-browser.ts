@@ -228,8 +228,8 @@ export function readStoredChatSessionId(
 
 /**
  * Odczyt historii z serwera: panel otwarty.
- * `requireChatConsent` domyślnie true — Kazka wymaga lokalnego `consentGranted===true`.
- * Zaręczyny przekazują `requireChatConsent={false}` (czat bez bramki UI).
+ * Gdy `requireChatConsent === false` (Hydrogen Kazka i Zaręczyny) — bez bramki `consentGranted`.
+ * Gdy prop pominięty / `true` — wymaga `consentGranted === true` (kontrakt komponentu; sklep Liquid nie używa ChatWidget).
  */
 export function isChatHistorySyncAllowed(input: {
   isOpen: boolean;
