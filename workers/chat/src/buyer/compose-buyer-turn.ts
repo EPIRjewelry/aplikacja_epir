@@ -81,6 +81,7 @@ import {
   toolAsTextKeyNames,
   toolNameFromAsText,
 } from './tool-as-text';
+import {discoverContextBlock, evaluateDiscoverGate} from './discover-gate';
 
 const MAX_TOOL_ROUNDS = 3;
 export const FINAL_TOOL_FALLBACK_USER =
@@ -648,12 +649,32 @@ export async function composeBuyerAssistantReply(
   const profile = await fetchAIProfileByHandle(env, channelId, buyerIp(request));
   const profilePrompt = profile ? buildAIProfilePrompt(profile) : '';
   const readyAll = await listAvailableBuyerTools(env, channelId);
-  const availableTools = filterToolsForSession(readyAll, sessionId);
+  let availableTools = filterToolsForSession(readyAll, sessionId);
 
   const history =
     sessionId ? lastBuyerHistoryEntries(await readBuyerSessionHistory(env, sessionId)) : [];
 
+  const discoverDecision = evaluateDiscoverGate({userText, history});
+  if (discoverDecision.blockSearchCatalog) {
+    availableTools = availableTools.filter((t) => t !== 'search_catalog');
+  }
+  if (discoverDecision.blockShopPolicies) {
+    availableTools = availableTools.filter((t) => t !== 'search_shop_policies_and_faqs');
+  }
+  console.log(
+    JSON.stringify({
+      tag: 'buyer.discover',
+      block_search_catalog: discoverDecision.blockSearchCatalog,
+      block_shop_policies: discoverDecision.blockShopPolicies,
+      discover_assistant_turns: discoverDecision.discoverAssistantTurns,
+      profile_slots: discoverDecision.slots,
+    }),
+  );
+
   const contextBlocks: string[] = [];
+  if (discoverDecision.blockSearchCatalog || discoverDecision.blockShopPolicies) {
+    contextBlocks.push(discoverContextBlock(discoverDecision));
+  }
   const allowedVariantIds = new Set<string>();
   const allowedUrlSeeds: string[] = [];
   const variantOptionIndex = createVariantOptionIndex();
