@@ -3,7 +3,11 @@ import {
   type GetLoadContextFunction,
 } from '@remix-run/cloudflare-pages';
 import * as build from '@remix-run/dev/server-build';
-import {HydrogenCloudflareSession} from './src/session';
+import {
+  EPIR_SESSION_BRIDGE_KEY,
+  HydrogenCloudflareSession,
+} from './src/session';
+import {createKazkaCustomerAccount} from './app/lib/customer-account.server';
 import {getStoreFrontClient} from '@epir/utils';
 
 const getLoadContext: GetLoadContextFunction<Env> = async ({
@@ -29,11 +33,45 @@ const getLoadContext: GetLoadContextFunction<Env> = async ({
     cloudflare.env.SESSION_SECRET,
   ]);
 
-  return {storefront, session, env: cloudflare.env};
+  const data = context.cloudflare.data;
+  if (data === undefined || data === null || typeof data !== 'object') {
+    throw new Error(
+      '[kazka] EventContext.data is required for session bridge (__epirSession)',
+    );
+  }
+  (data as Record<string, unknown>)[EPIR_SESSION_BRIDGE_KEY] = session;
+
+  const waitUntil = (promise: Promise<unknown>) => {
+    cloudflare.waitUntil(promise);
+  };
+
+  const customerAccount = createKazkaCustomerAccount({
+    request,
+    session,
+    env: cloudflare.env,
+    waitUntil,
+  });
+
+  return {storefront, session, customerAccount, env: cloudflare.env};
 };
 
-export const onRequest = createPagesFunctionHandler({
+const remixOnRequest = createPagesFunctionHandler({
   build,
   getLoadContext,
   mode: process.env.NODE_ENV,
 });
+
+export const onRequest = async (context: EventContext<Env, string, unknown>) => {
+  const response = await remixOnRequest(context);
+  const data = context.data as Record<string, unknown> | undefined;
+  const session = data?.[EPIR_SESSION_BRIDGE_KEY] as
+    | HydrogenCloudflareSession
+    | undefined;
+  if (session?.isPending) {
+    const cookie = await session.commit();
+    if (cookie) {
+      response.headers.append('Set-Cookie', cookie);
+    }
+  }
+  return response;
+};

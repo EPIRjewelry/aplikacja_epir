@@ -168,10 +168,21 @@ describe('handleBuyerTurn', () => {
     vi.spyOn(channelSwitch, 'channelIdFromBrandLock').mockReturnValue('epir-online-store');
     vi.spyOn(compose, 'composeBuyerAssistantReply').mockResolvedValue('Odpowiedź testowa');
 
-    const env = {} as import('../src/config/bindings').Env;
+    const testerId = '9001002001';
+    const env = {
+      GEMMA_RUNTIME_KV: {
+        async get(key: string) {
+          if (key === 'gemma:testers') return JSON.stringify([testerId]);
+          return null;
+        },
+      },
+    } as import('../src/config/bindings').Env;
     const body = { messages: [{ role: 'user', content: 'Szukam pierścionka' }] };
 
-    const res = await handleBuyerTurn(postReq(body), env, buyerBrandLock(), body);
+    const res = await handleBuyerTurn(postReq(body), env, buyerBrandLock(), body, {
+      appProxyVerified: true,
+      loggedInCustomerId: testerId,
+    });
     const json = (await res.json()) as { type?: string; reply?: string; session_id?: string };
     expect(json.type).toBe('message');
     expect(json.reply).toBe('Odpowiedź testowa');

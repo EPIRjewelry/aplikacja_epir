@@ -1,8 +1,10 @@
 /// <reference types="@remix-run/dev" />
 /// <reference types="@remix-run/cloudflare" />
 
-import type {Storefront} from '@shopify/hydrogen';
+import type {Storefront, createCustomerAccountClient} from '@shopify/hydrogen';
 import {HydrogenCloudflareSession} from "./src/session";
+
+type KazkaCustomerAccount = ReturnType<typeof createCustomerAccountClient>;
 
 declare global {
   /**
@@ -36,6 +38,9 @@ declare global {
     EPIR_CHAT_SHARED_SECRET?: string;
     CHAT_SHARED_SECRET?: string;
     'X-EPIR-SHARED-SECRET'?: string;
+    /** Customer Account API (Hydrogen) — public client id. Bez nowej nazwy sekretu. */
+    PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID?: string;
+    SHOP_ID?: string;
   }
 }
 
@@ -46,6 +51,7 @@ declare module '@remix-run/cloudflare' {
   export interface AppLoadContext {
     session: HydrogenCloudflareSession;
     storefront: Storefront;
+    customerAccount: KazkaCustomerAccount | null;
     env: Env;
   }
 }

@@ -15,6 +15,12 @@ import {
   extractStorefrontIdFromBody,
 } from './session-context';
 import {channelIdFromBrandLock, readChannelMode} from './channel-switch';
+import {isAllowedGemmaInternalTurn, readGemmaTesterIds} from '../gemma/internal-access';
+
+export type BuyerTurnIngress = {
+  appProxyVerified?: boolean;
+  loggedInCustomerId?: string | null;
+};
 
 function buyerResponseHeaders(env: Env, request: Request): Record<string, string> {
   const requestOrigin = request.headers.get('Origin');
@@ -75,6 +81,7 @@ export async function handleBuyerTurn(
   env: Env,
   brandLock: ChatBrandLock,
   rawBody: unknown,
+  ingress?: BuyerTurnIngress,
 ): Promise<Response> {
   const channelId = channelIdFromBrandLock(brandLock);
   const mode = channelId ? await readChannelMode(env, channelId) : 'off';
@@ -100,6 +107,24 @@ export async function handleBuyerTurn(
       status: 200,
       headers: buyerResponseHeaders(env, request),
     });
+  }
+
+  if (mode === 'internal') {
+    const testerIds = await readGemmaTesterIds(env);
+    const ing = ingress ?? {};
+    if (
+      !isAllowedGemmaInternalTurn({
+        channelId,
+        appProxyVerified: ing.appProxyVerified,
+        loggedInCustomerId: ing.loggedInCustomerId,
+        testerIds,
+      })
+    ) {
+      return new Response(JSON.stringify(BUYER_UNAVAILABLE_JSON), {
+        status: 200,
+        headers: buyerResponseHeaders(env, request),
+      });
+    }
   }
 
   const body = rawBody;
