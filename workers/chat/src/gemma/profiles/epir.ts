@@ -34,7 +34,7 @@ function needsQuestionForSlot(slot: keyof GemmaSlots): string {
     case 'product_type':
       return 'Jaki rodzaj biżuterii Pana lub Panią interesuje — pierścionek, kolczyki, naszyjnik czy bransoletka?';
     case 'budget':
-      return 'Jaki orientacyjny budżet Pana lub Panią interesuje — np. do 1500 zł, 1500–3000 zł, powyżej 3000 zł?';
+      return 'Jaki orientacyjny budżet Pana lub Panią interesuje — raczej niższy, średni czy wyższy?';
     case 'metal':
       return 'Jaki metal Pana lub Panią interesuje — srebro, złoto 14K czy 18K?';
     case 'stone':

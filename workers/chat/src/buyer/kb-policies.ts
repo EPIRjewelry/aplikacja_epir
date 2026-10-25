@@ -73,7 +73,7 @@ function policyRowToEntry(row: Record<string, unknown>): KbQaEntry | null {
   const text = summary || body;
   if (!title && !text) return null;
   return {
-    question: title || 'Polityka',
+    question: title ? `${title}:` : 'Polityka:',
     answer: text || title,
     sourceTitle: title,
   };

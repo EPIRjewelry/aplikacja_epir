@@ -75,6 +75,7 @@ const QUALITATIVE_BUDGET_RE =
 export function hasQualitativeBudgetSignal(slots: GemmaSlots, userText?: string): boolean {
   const b = slots.budget?.trim() ?? '';
   if (b && QUALITATIVE_BUDGET_RE.test(b)) return true;
+  if (b && /\d/.test(b)) return true;
   const t = userText?.trim() ?? '';
   return t.length > 0 && QUALITATIVE_BUDGET_RE.test(t);
 }

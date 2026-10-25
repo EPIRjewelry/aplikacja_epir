@@ -6,6 +6,7 @@ import type {
 } from './types';
 import {
   clientRequestsOpenCatalog,
+  countProfileSlots,
   hasImmediateCatalogSignal,
   hasQualitativeBudgetSignal,
   isAmbiguousGiftLikeProfile,
@@ -261,7 +262,12 @@ export function transitionGemmaState(
   }
 
   const intentState = intent.state;
-  if (intentState === 'powitanie' && prev.state === 'powitanie' && prev.turn === 0) {
+  if (
+    intentState === 'powitanie' &&
+    prev.state === 'powitanie' &&
+    prev.turn === 0 &&
+    countProfileSlots(mergedSlots) === 0
+  ) {
     return {nextState: 'powitanie', slots: mergedSlots, allowedActions: []};
   }
 
