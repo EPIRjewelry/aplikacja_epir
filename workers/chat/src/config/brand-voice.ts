@@ -87,7 +87,7 @@ export const RESPONSE_FORMAT = {
   },
   clarification: {
     threshold_results: 5,
-    style: 'Jedno krótkie pytanie doprecyzowujące' as const,
+    style: 'Do dwóch krótkich rund pytań doprecyzowujących przed katalogiem' as const,
   },
   avoid: {
     code_blocks: true,
