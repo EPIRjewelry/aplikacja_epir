@@ -5,13 +5,20 @@ export type BuyerChannelId = 'epir-online-store' | 'kazka-hydrogen' | 'epir-zare
 
 export type ChannelMode = 'off' | 'internal' | 'on';
 
+export type GemmaCoreMode = 'legacy' | 'v2';
+
 /** @deprecated alias — używaj ChannelMode */
 export type BuyerChannelMode = ChannelMode;
 
 const VALID_MODES: ReadonlySet<ChannelMode> = new Set(['off', 'internal', 'on']);
+const VALID_CORE_MODES: ReadonlySet<GemmaCoreMode> = new Set(['legacy', 'v2']);
 
 export function channelKvKey(channelId: BuyerChannelId): string {
   return `gemma:channel:${channelId}`;
+}
+
+export function coreKvKey(channelId: BuyerChannelId): string {
+  return `gemma:core:${channelId}`;
 }
 
 /**
@@ -63,5 +70,26 @@ export async function readChannelMode(
   } catch (err) {
     console.warn('[buyer.channel_switch] KV read failed — fail-closed', err);
     return 'off';
+  }
+}
+
+function parseCoreMode(raw: string | null | undefined): GemmaCoreMode | null {
+  if (!raw) return null;
+  const v = raw.trim().toLowerCase() as GemmaCoreMode;
+  return VALID_CORE_MODES.has(v) ? v : null;
+}
+
+/** Fail-safe: brak klucza, błąd KV lub nieznana wartość → `legacy`. */
+export async function readGemmaCoreMode(
+  env: {GEMMA_RUNTIME_KV?: KVNamespace},
+  channelId: BuyerChannelId,
+): Promise<GemmaCoreMode> {
+  if (!env.GEMMA_RUNTIME_KV) return 'legacy';
+  try {
+    const raw = await env.GEMMA_RUNTIME_KV.get(coreKvKey(channelId));
+    return parseCoreMode(raw) ?? 'legacy';
+  } catch (err) {
+    console.warn('[buyer.channel_switch] core KV read failed — legacy', err);
+    return 'legacy';
   }
 }

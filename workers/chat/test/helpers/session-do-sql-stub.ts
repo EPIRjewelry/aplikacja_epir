@@ -59,6 +59,11 @@ type ProactiveActivationRow = {
   activated: number;
 };
 
+type GemmaStateRow = {
+  id: 1;
+  payload: string;
+};
+
 function clone<T>(value: T): T {
   return value === undefined ? value : JSON.parse(JSON.stringify(value));
 }
@@ -120,6 +125,7 @@ class SessionDoSqlStore {
   private replayKeys: ReplayKeyRow[] = [];
   private productViews: ProductViewRow[] = [];
   private proactiveActivations: ProactiveActivationRow[] = [];
+  private gemmaState: GemmaStateRow | null = null;
   private nextMessageId = 1;
   private nextProductViewId = 1;
   private nextProactiveActivationId = 1;
@@ -155,8 +161,26 @@ class SessionDoSqlStore {
       normalized.startsWith('create index if not exists idx_session_messages_ts') ||
       normalized.startsWith('create index if not exists idx_replay_keys_expires_at') ||
       normalized.startsWith('create index if not exists idx_product_views_ts') ||
-      normalized.startsWith('create index if not exists idx_proactive_chat_activations_ts')
+      normalized.startsWith('create index if not exists idx_proactive_chat_activations_ts') ||
+      normalized.startsWith('create table if not exists gemma_state')
     ) {
+      return new FakeSqlCursor<Record<string, unknown>>([]);
+    }
+
+    if (normalized === 'insert or ignore into gemma_state (id, payload) values (1, ?)') {
+      if (!this.gemmaState) {
+        this.gemmaState = {id: 1, payload: String(args[0] ?? '{}')};
+      }
+      return new FakeSqlCursor<Record<string, unknown>>([]);
+    }
+
+    if (normalized === 'select payload from gemma_state where id = 1') {
+      this.ensureGemmaStateRow();
+      return new FakeSqlCursor<Record<string, unknown>>([{payload: this.gemmaState!.payload}]);
+    }
+
+    if (normalized === 'insert or replace into gemma_state (id, payload) values (1, ?)') {
+      this.gemmaState = {id: 1, payload: String(args[0] ?? '{}')};
       return new FakeSqlCursor<Record<string, unknown>>([]);
     }
 
@@ -416,6 +440,10 @@ class SessionDoSqlStore {
   }
 
   inspect = {
+    getGemmaStatePayload: (): string => {
+      this.ensureGemmaStateRow();
+      return this.gemmaState!.payload;
+    },
     getSessionContext: (): SessionContextRow => clone(this.ensureSessionContext()),
     getSessionMeta: (): SessionMetaRow => clone(this.ensureSessionMeta()),
     getCustomer: (): SessionCustomerRow | null => (this.sessionCustomer ? clone(this.sessionCustomer) : null),
@@ -462,6 +490,23 @@ class SessionDoSqlStore {
         }
         return undefined;
     }
+  }
+
+  private ensureGemmaStateRow(): GemmaStateRow {
+    if (!this.gemmaState) {
+      this.gemmaState = {
+        id: 1,
+        payload: JSON.stringify({
+          state: 'powitanie',
+          slots: {},
+          shown: [],
+          selected: null,
+          form_of_address: 'unknown',
+          turn: 0,
+        }),
+      };
+    }
+    return this.gemmaState;
   }
 
   private ensureSessionContext(): SessionContextRow {

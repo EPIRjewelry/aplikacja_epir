@@ -44,10 +44,22 @@ const VARIANT_FIELDS = `
 
 type PageInfo = {hasNextPage?: boolean; endCursor?: string | null};
 
+export type HydrationStats = {
+  null_nodes: number;
+  normalize_null: number;
+  no_url: number;
+};
+
 export type FetchStorefrontLiveOptions = {
   clientRequest?: Request;
   /** Kanał rozmowy — URL produktu (np. GZ), niezależnie od migawki katalogu. */
   urlChannel?: BuyerChannelId;
+  /** Gemma v2 (D3): błąd MCP → throw z executeCatalogMcpLiveSearch. */
+  throwOnMcpError?: boolean;
+  /** Gemma v2 browse (D1) — tylko gdy woła searchGemmaCatalog. */
+  browseInStockAvailable?: boolean;
+  /** Liczniki utraty węzłów przy hydracji (gemma.catalog.stage). */
+  hydrationStats?: HydrationStats;
 };
 
 function resolveProductUrlContext(
@@ -430,8 +442,9 @@ async function loadAllCollections(
   return nodes;
 }
 
-const PRODUCT_NODE_FIELDS = `
-  id handle title vendor productType descriptionHtml onlineStoreUrl
+/** Fragment GraphQL Product — pola walidowane w storefront-product-query-contract.test.ts */
+export const STOREFRONT_PRODUCT_NODE_FIELDS = `
+  id handle title vendor productType isGiftCard descriptionHtml onlineStoreUrl
   featuredImage { url altText }
   collections(first: ${COLLECTIONS_PAGE}) {
     pageInfo { hasNextPage endCursor }
@@ -457,6 +470,8 @@ const PRODUCT_NODE_FIELDS = `
     nodes { ${VARIANT_FIELDS} }
   }
 `;
+
+const PRODUCT_NODE_FIELDS = STOREFRONT_PRODUCT_NODE_FIELDS;
 
 async function fetchProductNodesBatch(
   env: Env,
@@ -504,7 +519,10 @@ export async function fetchProductFactsLive(
     for (let j = 0; j < batch.length; j++) {
       const requestedId = batch[j];
       const raw = nodes[j];
-      if (!raw || !isRecord(raw)) continue;
+      if (!raw || !isRecord(raw)) {
+        options?.hydrationStats && (options.hydrationStats.null_nodes += 1);
+        continue;
+      }
       const productId = typeof raw.id === 'string' ? raw.id : requestedId;
 
       const adaptedRaw = {
@@ -541,12 +559,35 @@ export async function fetchProductFactsLive(
         productId,
         urlTemplate,
       );
+      const hadStoreUrl =
+        typeof raw.onlineStoreUrl === 'string' && raw.onlineStoreUrl.trim().length > 0;
+      const handleForUrl =
+        typeof raw.handle === 'string' && raw.handle.trim() ? raw.handle.trim() : '';
       const facts = normalizeProduct(merged, {
         channel: normalizeChannel,
         urlTemplate: perProductUrlTemplate,
         fetchedAt,
       });
-      if (!facts) continue;
+      if (!facts) {
+        if (options?.hydrationStats) {
+          options.hydrationStats.normalize_null += 1;
+          if (
+            normalizeChannel === 'epir-online-store' &&
+            !hadStoreUrl &&
+            !handleForUrl
+          ) {
+            options.hydrationStats.no_url += 1;
+          } else if (
+            normalizeChannel === 'epir-online-store' &&
+            !hadStoreUrl &&
+            handleForUrl &&
+            !perProductUrlTemplate
+          ) {
+            options.hydrationStats.no_url += 1;
+          }
+        }
+        continue;
+      }
       enrichFactsFromMetafields(facts, productMeta.nodes, allVariants);
       byId.set(requestedId, facts);
     }
