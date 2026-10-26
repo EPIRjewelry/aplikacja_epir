@@ -78,6 +78,15 @@ export async function handleCocreateAppProxy(
     return jsonResponse(env, request, 405, { ok: false, error: 'method_not_allowed' });
   }
 
+  // EMERGENCY: flood e-mail z briefu Kazka — zero D1/Resend/Shopify (App Proxy OS bez zmian).
+  if (storefront.storefrontId === 'kazka') {
+    return jsonResponse(env, request, 503, {
+      ok: false,
+      error: 'temporarily_disabled',
+      message: 'Formularz briefu jest chwilowo niedostępny.',
+    });
+  }
+
   if (!env.DB_CHATBOT) {
     return jsonResponse(env, request, 500, { ok: false, error: 'server_misconfigured' });
   }
