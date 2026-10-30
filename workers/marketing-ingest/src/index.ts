@@ -39,6 +39,7 @@ import { auditPmaxLandings } from './ads-pmax-landing-audit';
 import { setPmaxUrlExpansionOptOut } from './ads-pmax-url-expansion';
 import { applyAdsExcludeHome } from './ads-exclude-home';
 import { applyPmaxPageFeed } from './ads-pmax-page-feed';
+import { handleStorePicture } from './store-picture';
 
 export { MarketingAnalystAgent } from './marketing-analyst-agent';
 export { MarketingIngestS2SRpc } from './rpc';
@@ -402,6 +403,8 @@ export default {
 
     const preview = await handleMarketingPreview(req, env);
     if (preview) return preview;
+    const storePicture = await handleStorePicture(req, env);
+    if (storePicture) return storePicture;
     const pmaxOps = await handlePmaxOps(req, env);
     if (pmaxOps) return pmaxOps;
     if (req.method === 'GET' && u.pathname === '/feed/gmc_feed.csv') {

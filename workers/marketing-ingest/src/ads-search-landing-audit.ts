@@ -3,6 +3,7 @@
  */
 import type { AdsEnv } from './ads';
 import { adsSearch } from './ads-api';
+import { gaqlSegmentsDateBetween, resolveAdsDateWindow } from './ads-date-window';
 
 function pick(obj: unknown, path: string[]): unknown {
   let cur: unknown = obj;
@@ -23,11 +24,6 @@ function num(v: unknown): number {
 const SEARCH = 'Search-27.04.2026';
 const DEFAULT_DAYS = 14;
 
-function clampDays(days: number | undefined): number {
-  const n = Number.isFinite(days) ? Math.floor(days as number) : DEFAULT_DAYS;
-  return Math.min(90, Math.max(1, n));
-}
-
 function pct(part: number, total: number): number {
   if (total <= 0) return 0;
   return Math.round((part / total) * 1000) / 10;
@@ -35,9 +31,13 @@ function pct(part: number, total: number): number {
 
 export async function auditSearchLandings(
   env: AdsEnv,
-  opts?: { days?: number },
+  opts?: { days?: number; startDate?: string; endDate?: string },
 ): Promise<Record<string, unknown>> {
-  const days = clampDays(opts?.days);
+  const { startDate, endDate, days } = resolveAdsDateWindow({
+    days: opts?.days ?? DEFAULT_DAYS,
+    startDate: opts?.startDate,
+    endDate: opts?.endDate,
+  });
   const ads = await adsSearch(
     env,
     `
@@ -84,7 +84,7 @@ export async function auditSearchLandings(
       metrics.impressions
     FROM landing_page_view
     WHERE campaign.name = '${SEARCH}'
-      AND segments.date DURING LAST_${days}_DAYS
+      AND ${gaqlSegmentsDateBetween(startDate, endDate)}
       AND metrics.clicks > 0
     ORDER BY metrics.clicks DESC
     LIMIT 100
@@ -122,6 +122,8 @@ export async function auditSearchLandings(
     readOnly: true,
     campaign: SEARCH,
     days,
+    startDate,
+    endDate,
     ads: adRows,
     uniqueAdFinalUrls: uniqueAdUrls,
     sitelinks: sitelinks.ok

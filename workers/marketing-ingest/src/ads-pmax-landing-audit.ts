@@ -9,6 +9,7 @@ import {
   FREEZE_PDP_TURMALIN,
   FREEZE_SILVER_COLLECTION,
 } from './ads-freeze-apply';
+import { gaqlSegmentsDateBetween, resolveAdsDateWindow } from './ads-date-window';
 
 function pick(obj: unknown, path: string[]): unknown {
   let cur: unknown = obj;
@@ -223,21 +224,20 @@ export function matchFreezeTargets(
   });
 }
 
-function clampDays(days: number | undefined): number {
-  const n = Number.isFinite(days) ? Math.floor(days as number) : DEFAULT_DAYS;
-  return Math.min(90, Math.max(1, n));
-}
-
 function escapeGaqlLiteral(value: string): string {
   return value.replace(/'/g, "\\'");
 }
 
 export async function auditPmaxLandings(
   env: AdsEnv,
-  opts?: { campaign?: string; days?: number },
+  opts?: { campaign?: string; days?: number; startDate?: string; endDate?: string },
 ): Promise<Record<string, unknown>> {
   const campaign = (opts?.campaign ?? DEFAULT_PMAX_CAMPAIGN).trim() || DEFAULT_PMAX_CAMPAIGN;
-  const days = clampDays(opts?.days);
+  const { startDate, endDate, days } = resolveAdsDateWindow({
+    days: opts?.days ?? DEFAULT_DAYS,
+    startDate: opts?.startDate,
+    endDate: opts?.endDate,
+  });
 
   const landings = await adsSearch(
     env,
@@ -251,7 +251,7 @@ export async function auditPmaxLandings(
       metrics.cost_micros
     FROM landing_page_view
     WHERE campaign.name = '${escapeGaqlLiteral(campaign)}'
-      AND segments.date DURING LAST_${days}_DAYS
+      AND ${gaqlSegmentsDateBetween(startDate, endDate)}
       AND metrics.impressions > 0
     ORDER BY metrics.clicks DESC
     LIMIT ${PMAX_LANDING_ROW_LIMIT}
@@ -259,7 +259,7 @@ export async function auditPmaxLandings(
   );
 
   if (!landings.ok) {
-    return { ok: false, stage: 'ads', error: landings.error, campaign, days };
+    return { ok: false, stage: 'ads', error: landings.error, campaign, days, startDate, endDate };
   }
 
   const rows: PmaxLandingRow[] = landings.results.map((r) => ({
@@ -279,6 +279,8 @@ export async function auditPmaxLandings(
     fetchedAt: new Date().toISOString(),
     campaign,
     days,
+    startDate,
+    endDate,
     rowLimit: PMAX_LANDING_ROW_LIMIT,
     truncated: aggregated.truncated,
     totals: aggregated.totals,

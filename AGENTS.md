@@ -54,6 +54,7 @@ W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md
 - **Entry point:** [`.cursor/index.mdc`](.cursor/index.mdc) (`alwaysApply`) → `EPIR_AI_BIBLE.md` + `REVIEW.md`.
 - **Moduły wiedzy agentowej:** [`docs/kb/`](docs/kb/) — indeks: [`.cursor/skills/README.md`](.cursor/skills/README.md).
 - **Reguły sesji Cursor:** [`.cursor/rules/`](.cursor/rules/) — thin pointers do Biblii (globy wg pliku).
+- **Modele agenta (Cursor):** [`.cursor/rules/epir-agent-model-governance.mdc`](.cursor/rules/epir-agent-model-governance.mdc) — `alwaysApply`: zakaz trybu **fast** i jawnego parametru `model` w Task/subagentach oraz Cloud Agents bez wyraźnej zgody operatora w bieżącej sesji.
 - Folder **`agents/`** — opcjonalne **Python CLI** (read-only dla Cursor).
 - **`.github/agents/`** — definicje pod **GitHub Copilot**.
 - **`.kilo/`** — Kilo Code (izolowane od Cursor przez [`.cursorignore`](.cursorignore)).

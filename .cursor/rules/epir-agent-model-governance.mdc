@@ -1,0 +1,43 @@
+---
+description: Zakaz trybu fast i modeli zewnętrznych w Task/subagentach bez zgody operatora (Cursor)
+alwaysApply: true
+---
+
+⚠️ SSOT ROUTING: Nie parsuj własnych założeń. Twoim jedynym punktem wejścia do wiedzy jest /EPIR_AI_BIBLE.md. Sprawdź w nim, z jakich modułów domenowych masz skorzystać.
+
+# Cursor — modele agenta i subagentów (tylko po zgodzie operatora)
+
+Decyzja operatora (2026-10-27): **bez trybu „fast”** i **bez jawnego wyboru modelu zewnętrznego** w execution plane Cursora, dopóki operator nie wyrazi zgody **w bieżącej sesji**.
+
+Dotyczy: narzędzia **Task** (subagenty), **Cloud Agents**, **best-of-n-runner**, edycji definicji modelu w **`.github/agents/`**. **Nie** dotyczy modeli produkcyjnych w kodzie (`workers/chat`, Groq/OpenAI w workerach) — tam obowiązuje kanon architektury.
+
+## MUST
+
+- Subagent **Task**: **nie** podawaj parametru `model` — domyślnie ten sam model co rodzic.
+- Przed uruchomieniem subagenta z innym modelem, Cloud Agentem (`environment: cloud`) lub **best-of-n-runner**: **zatrzymaj się** i zapytaj operatora (co uruchamiasz i dlaczego).
+- Gdy operator wskaże model spoza listy dostępnej dla Task: **nie** podstawiaj innego — zgłoś brak i poproś o wybór z listy lub zmianę ustawień Cursora.
+- Przy prośbie operatora o konkretny model w sesji: użyj **wyłącznie** wskazanego slugów; jedna zgoda = jeden wątek zadania (nowy model w nowym wątku → ponowne OK).
+
+## MUST NOT
+
+- **Tryb / slug „fast”:** m.in. `composer-2.5-fast`, dowolny slug zawierający `-fast` lub `fast` jako wariant prędkości; sugerowanie operatorze włączenia „Fast” w UI Cursora bez prośby.
+- **Task z parametrem `model`** (Claude, GPT, Grok, Gemini, Composer-fast itd.) **bez** wyraźnej zgody operatora w tej sesji (np. „użyj GPT”, „subagent na Claude”, „model: …”).
+- **Cloud Agent** (`environment: cloud` w Task) bez wyraźnej prośby o agenta w chmurze / osobny worktree.
+- **best-of-n-runner** lub równoległe próby na różnych modelach bez zgody.
+- **Zmiana** pola modelu w `.github/agents/` lub innych definicjach agentów w repo bez zgody operatora.
+- Uzasadnianie fast / „tańszego” modelu „dla eksploracji” lub „oszczędności tokenów” bez pytania.
+
+## Zgoda operatora (przykłady uznawane w sesji)
+
+- Jawna nazwa modelu lub rodziny: „użyj `gpt-5.2`”, „subagent Claude Opus”, „cloud agent na tym branchu”.
+- Jawna zgoda na fast: „możesz fast”, „composer fast OK”.
+- Ogólne „rób jak chcesz z modelami” **nie** zwalnia z zakazu fast — fast wymaga osobnego słowa.
+
+## Wyjątki
+
+- **Bugbot** / **Security Review** uruchomione **wyłącznie** gdy operator wprost poprosi o Bugbot lub security review — wtedy obowiązują ich reguły systemowe; i tak **bez** `-fast` slugów, jeśli Task przyjmuje `model`.
+- **Operator Studio / Gemma w produkcji** — modele w workerach; nie mieszać z wyborem modelu Cursor IDE.
+
+## Audyt (dla agenta po fakcie)
+
+Jeśli uruchomiłeś Task z `model` lub fast przez pomyłkę: zatrzymaj dalsze delegowanie, poinformuj operatora, kontynuuj lokalnie bez subagenta albo po ponownej zgodzie.

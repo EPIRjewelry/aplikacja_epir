@@ -23,4 +23,5 @@ alwaysApply: true
 - **Brand / Liquid:** cienka reguła `.cursor/rules/epir-brand-growth.mdc` → pełny kanon w `REVIEW.md`.
 - **Hydrogen monorepo / Wrangler:** `.cursor/rules/epir-hydrogen-monorepo.mdc` → `REVIEW.md` §5, `AGENTS.md` § dev servers.
 - **Consent / pixel:** `.cursor/rules/epir-consent-tracking.mdc` → `packages/ui/src/consent.ts`, `workers/chat/src/consent.ts`.
+- **Modele Cursor / subagenty:** `.cursor/rules/epir-agent-model-governance.mdc` — bez `fast` i bez jawnego `model` w Task bez OK operatora w sesji.
 - **Google MCP:** tylko `stdio` (`epir-gworkspace`); przykład: `.cursor/mcp-gworkspace.example.json`. GAQL/Ads: `docs/kb/DATA_AND_ANALYTICS.md`.

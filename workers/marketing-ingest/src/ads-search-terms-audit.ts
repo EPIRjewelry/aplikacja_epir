@@ -4,6 +4,7 @@
 import type { AdsEnv } from './ads';
 import { adsCustomerId, adsSearch } from './ads-api';
 import { classifySearchTerm, type SearchTermBucket } from './ads-classify';
+import { gaqlSegmentsDateBetween, resolveAdsDateWindow } from './ads-date-window';
 
 export type SearchTermRow = {
   searchTerm: string;
@@ -18,6 +19,8 @@ export type SearchTermRow = {
 export type SearchTermsAudit = {
   customerId: string;
   days: number;
+  startDate: string;
+  endDate: string;
   campaignFilter: string;
   rows: SearchTermRow[];
   byBucket: Record<string, number>;
@@ -47,12 +50,14 @@ export async function auditSearchTerms(
   env: AdsEnv,
   opts?: {
     days?: number;
+    startDate?: string;
+    endDate?: string;
     campaignNameContains?: string;
     limit?: number;
     minCtr?: number;
   },
 ): Promise<SearchTermsAudit | { error: string }> {
-  const days = Math.min(Math.max(opts?.days ?? 14, 1), 90);
+  const { startDate, endDate, days } = resolveAdsDateWindow(opts);
   const campaignFilter = opts?.campaignNameContains?.trim() || 'Epir_Forest-Dark';
   const limit = Math.min(Math.max(opts?.limit ?? 200, 10), 1000);
   const minCtr = opts?.minCtr ?? 0.01;
@@ -67,7 +72,7 @@ export async function auditSearchTerms(
       metrics.impressions,
       metrics.ctr
     FROM search_term_view
-    WHERE segments.date DURING LAST_${days}_DAYS
+    WHERE ${gaqlSegmentsDateBetween(startDate, endDate)}
       AND campaign.name LIKE '%${escaped}%'
       AND metrics.impressions > 0
     ORDER BY metrics.clicks DESC
@@ -113,6 +118,8 @@ export async function auditSearchTerms(
   return {
     customerId: adsCustomerId(env),
     days,
+    startDate,
+    endDate,
     campaignFilter,
     rows,
     byBucket,

@@ -68,6 +68,6 @@ Szczegóły techniczne → moduły `docs/kb/` poniżej.
 
 ## Izolacja środowisk
 
-- **Cursor:** entry point [`.cursor/index.mdc`](.cursor/index.mdc); **nie** czytaj `.kilo/` ani `kilo.jsonc`; ignore → [`.cursorignore`](.cursorignore).
+- **Cursor:** entry point [`.cursor/index.mdc`](.cursor/index.mdc); **nie** czytaj `.kilo/` ani `kilo.jsonc`; ignore → [`.cursorignore`](.cursorignore). Subagenty Task: bez trybu **fast** i bez jawnego `model` / Cloud Agent bez zgody operatora w sesji → [`.cursor/rules/epir-agent-model-governance.mdc`](.cursor/rules/epir-agent-model-governance.mdc).
 - **Kilo Code:** `instructions` → `REVIEW.md`, `EPIR_AI_BIBLE.md` (reszta przez router KB); ignore → [`.kilocodeignore`](.kilocodeignore) (**nie** czytaj `.cursor/`).
 - **`agents/`**, **`.github/agents/`** — read-only dla Cursor bez wyraźnej prośby użytkownika.
