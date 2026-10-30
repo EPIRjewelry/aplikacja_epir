@@ -1,0 +1,22 @@
+# Web Pixel extension — NIE jest Theme App Extension.
+# OF: type = "web_pixel_extension", runtime_context = "strict"
+# uid: generuje Shopify CLI przy scaffoldzie — day 1 ręczny, bez uid (NIESPRAWDZONE przed pierwszym deploy).
+# Privacy: analytics ON, marketing OFF (piksel ≠ tag Ads).
+
+name = "web-pixel"
+type = "web_pixel_extension"
+runtime_context = "strict"
+
+[customer_privacy]
+analytics = true
+marketing = false
+preferences = false
+sale_of_data = "disabled"
+
+[settings]
+type = "object"
+
+[settings.fields.steward_url]
+name = "Steward URL"
+description = "Adres ingestu Stewarda (faza 3). Day 1: atrapa w testach."
+type = "single_line_text_field"

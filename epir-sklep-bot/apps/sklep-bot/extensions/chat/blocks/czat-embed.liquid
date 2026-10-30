@@ -1,0 +1,36 @@
+{% comment %}
+  App embed — pływający czat. target = body (OF TAE).
+  Po instalacji embed jest WYŁĄCZONY. Włącza człowiek w edytorze
+  (Ustawienia motywu → App embeds) albo deep link. Aplikacja sama nie włącza.
+  Żywego motywu EPIR day-1 nie ruszamy.
+{% endcomment %}
+<div
+  id="epir-czat-root"
+  data-epir-czat
+  data-surface="{{ block.settings.surface | escape }}"
+  data-gemma-url="{{ block.settings.gemma_url | escape }}"
+></div>
+
+{% schema %}
+{
+  "name": "EPIR Czat",
+  "target": "body",
+  "javascript": "czat.js",
+  "settings": [
+    {
+      "type": "text",
+      "id": "surface",
+      "label": "Surface",
+      "default": "epir",
+      "info": "epir | zareczyny | kazka — widget nie wybiera marki sam."
+    },
+    {
+      "type": "text",
+      "id": "gemma_url",
+      "label": "Gemma URL",
+      "default": "",
+      "info": "Adres workera Gemma. Puste = widget nie łączy się (day 1)."
+    }
+  ]
+}
+{% endschema %}

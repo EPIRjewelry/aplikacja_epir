@@ -1,0 +1,11 @@
+{
+  "name": "agents",
+  "version": "0.0.0-day1-shim",
+  "private": true,
+  "type": "module",
+  "description": "Day-1 lokalny shim API Agents SDK (Agent + routeAgentRequest). Zastąpić pakietem npm `agents` gdy egress/registry dostępne — NIE deployować shim'u.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts"
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@epir/gemma",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/smoke.node.test.mjs",
+    "test:vitest": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "types": "wrangler types",
+    "dev": "echo \"STOP: wrangler dev / deploy tylko po STOP+Pozwalam\""
+  },
+  "dependencies": {
+    "agents": "0.0.0-day1-shim"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^0.2.5",
+    "@cloudflare/workers-types": "^4.20251011.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.46.0"
+  },
+  "comments": {
+    "deps": "devDependencies wymagają registry.npmjs.org (egress). Day-1 test = node:test. Shim agents → zamienić na oficjalne npm `agents` po OK/sieci."
+  }
+}

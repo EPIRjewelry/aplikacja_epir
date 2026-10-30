@@ -1,0 +1,21 @@
+# Jedna app Shopify — TAE czat + Web Pixel.
+# Day 1: ręczny szkielet (bez `shopify app generate` / deploy).
+# application_url: NIESPRAWDZONE, czy CLI zażąda dla app z samych extensionów.
+# Gdy zażąda — wskazuje health Gemmy, nie osobny produkt admin.
+
+name = "epir-sklep-bot"
+client_id = "REPLACE_AFTER_PARTNER_APP_CREATE"
+application_url = "https://example.invalid/gemma-health"
+embedded = false
+
+[access_scopes]
+scopes = "write_pixels,read_customer_events"
+
+[auth]
+redirect_urls = [ "https://example.invalid/auth/callback" ]
+
+[webhooks]
+api_version = "2025-10"
+
+[pos]
+embedded = false

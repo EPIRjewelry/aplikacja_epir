@@ -1,0 +1,31 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "gemma",
+  "main": "src/index.ts",
+  // compatibility_date = dzień scaffoldu (2026-10-30)
+  "compatibility_date": "2026-10-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "upload_source_maps": true,
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true
+    }
+  },
+  // Binding AI — dopiero po osobnej decyzji o modelu (STOP+Pozwalam). Day 1: brak.
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "Gemma",
+        "class_name": "Gemma"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Gemma"]
+    }
+  ]
+  // placement / jurisdiction eu: NIESPRAWDZONE, czy konto wymaga. Hint weur = później.
+}

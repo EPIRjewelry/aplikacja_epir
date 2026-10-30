@@ -1,0 +1,9 @@
+{
+  "name": "@epir/sklep-bot",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Jedna app Shopify: Theme App Extension (czat) + Web Pixel extension",
+  "scripts": {
+    "build": "echo \"Day 1: brak shopify app build bez STOP+Pozwalam\""
+  }
+}

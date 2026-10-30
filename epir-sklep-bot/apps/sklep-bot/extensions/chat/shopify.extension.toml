@@ -1,0 +1,6 @@
+# Theme App Extension — czat (OF: type = "theme")
+# Nie mylić z Web Pixel (osobny folder extensions/web-pixel/).
+
+name = "chat"
+type = "theme"
+handle = "chat"

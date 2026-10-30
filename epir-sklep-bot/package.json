@@ -1,0 +1,22 @@
+{
+  "name": "epir-sklep-bot",
+  "private": true,
+  "description": "Czysty start Gemma — Shopify app (TAE czat + Web Pixel) + workers/gemma",
+  "workspaces": [
+    "apps/*",
+    "workers/*",
+    "packages/*"
+  ],
+  "overrides": {
+    "agents": "0.0.0-day1-shim"
+  },
+  "scripts": {
+    "deps": "npm install --legacy-peer-deps --no-audit --no-fund",
+    "test": "npm test -w @epir/gemma",
+    "test:gemma": "npm test -w @epir/gemma",
+    "typecheck:gemma": "npm run typecheck -w @epir/gemma"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
