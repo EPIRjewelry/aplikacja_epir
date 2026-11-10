@@ -4,7 +4,14 @@
  * "Missing ucp version" (version_unsupported) before catalog search runs.
  * The shop advertises UCP 2026-08-25. Identity stays at the root: the profile
  * schema allows additional properties, and non-protocol fields do not belong inside `ucp`.
+ * Ask (`ask_business`) is granted only when this platform profile declares the
+ * Common service and `dev.ucp.common.ask` at the same UCP version. Shape and
+ * URLs follow the published 2026-08-25 MCP binding. No business endpoint:
+ * Shopify hosts MCP; this document only advertises what the agent supports.
+ * Store facts stay in the shop knowledge base, not in this profile.
+ * @see https://shopify.dev/docs/agents/ask
  * @see https://shopify.dev/docs/agents/profiles
+ * @see https://ucp.dev/2026-08-25/specification/common/ask/mcp/
  * @see https://ucp.dev/2026-08-25/specification/overview/
  */
 
@@ -45,6 +52,14 @@ export function buildUcpAgentProfileJson(env: {
             schema: 'https://ucp.dev/2026-08-25/services/shopping/mcp.openrpc.json',
           },
         ],
+        'dev.ucp.common': [
+          {
+            version: UCP_VERSION,
+            spec: 'https://ucp.dev/2026-08-25/specification/overview',
+            transport: 'mcp',
+            schema: 'https://ucp.dev/2026-08-25/services/common/mcp.openrpc.json',
+          },
+        ],
       },
       capabilities: {
         'dev.ucp.shopping.catalog.search': capability(
@@ -67,6 +82,10 @@ export function buildUcpAgentProfileJson(env: {
         'dev.ucp.shopping.checkout': capability(
           'https://ucp.dev/2026-08-25/specification/shopping/checkout',
           'https://ucp.dev/2026-08-25/schemas/shopping/checkout.json',
+        ),
+        'dev.ucp.common.ask': capability(
+          'https://ucp.dev/2026-08-25/specification/common/ask',
+          'https://ucp.dev/2026-08-25/schemas/common/ask.json',
         ),
       },
       payment_handlers: {},

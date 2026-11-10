@@ -40,6 +40,7 @@ describe('buildUcpAgentProfileJson', () => {
       'dev.shopify.catalog',
       'dev.ucp.shopping.cart',
       'dev.ucp.shopping.checkout',
+      'dev.ucp.common.ask',
     ]) {
       expect(caps[name][0].version).toBe('2026-08-25');
     }
@@ -50,6 +51,47 @@ describe('buildUcpAgentProfileJson', () => {
     expect(caps).not.toHaveProperty('dev.shopify.catalog.global');
     expect(caps).not.toHaveProperty('dev.ucp.shopping.fulfillment');
     expect(caps).not.toHaveProperty('dev.ucp.shopping.order');
+  });
+
+  it('declares the Common MCP service and Ask at UCP 2026-08-25', () => {
+    const profile = buildUcpAgentProfileJson({
+      WORKER_ORIGIN: 'https://asystent.epirbizuteria.pl',
+      SHOP_DOMAIN: 'epir-art-silver-jewellery.myshopify.com',
+    });
+    const ucp = profile.ucp as {
+      services: Record<string, Array<Record<string, unknown>>>;
+      capabilities: Record<string, Array<Record<string, unknown>>>;
+    };
+
+    expect(ucp.services['dev.ucp.shopping']).toEqual([
+      {
+        version: '2026-08-25',
+        spec: 'https://ucp.dev/2026-08-25/specification/overview',
+        transport: 'mcp',
+        schema: 'https://ucp.dev/2026-08-25/services/shopping/mcp.openrpc.json',
+      },
+    ]);
+    expect(ucp.services['dev.ucp.common']).toEqual([
+      {
+        version: '2026-08-25',
+        spec: 'https://ucp.dev/2026-08-25/specification/overview',
+        transport: 'mcp',
+        schema: 'https://ucp.dev/2026-08-25/services/common/mcp.openrpc.json',
+      },
+    ]);
+    expect(ucp.services['dev.ucp.common'][0]).not.toHaveProperty('endpoint');
+    expect(ucp.capabilities['dev.ucp.common.ask']).toEqual([
+      {
+        version: '2026-08-25',
+        spec: 'https://ucp.dev/2026-08-25/specification/common/ask',
+        schema: 'https://ucp.dev/2026-08-25/schemas/common/ask.json',
+      },
+    ]);
+
+    const serialized = JSON.stringify(profile);
+    expect(serialized).not.toMatch(/darmow/i);
+    expect(serialized).not.toMatch(/free shipping/i);
+    expect(serialized).not.toMatch(/Traugutta/);
   });
 
   it('falls back to the assistant origin and the merchant shop domain', () => {
