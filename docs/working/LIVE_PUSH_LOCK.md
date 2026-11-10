@@ -23,7 +23,8 @@ Motyw live `#186221691212`. Te pliki na sklepie są **nowsze lub równe** repo �
 | `sections/collection-partner-bridge.liquid` | na live; most do Kazki, włączony tylko jako wpis w kolekcji złota |
 | `templates/collection.zloto.json` | na live; `partner_bridge` ma `"disabled": true` — **nie usuwaj wpisu** i nie włączaj go z powrotem |
 | `sections/epir-cocreate-3steps.liquid` + szablony `index`, `collection.zlota`, `product`, `product.nowy-szablon`, `product.pierscionek-zloto-turmali`, `page.stworz-swoj-pierscionek` | na live; sekcja współtworzenia pod opisem na PDP |
-| `sections/collection-lookbook-dynamic.liquid`, `collection-hero-dynamic.liquid`, `stone-profile-embed.liquid` | poprawione **lokalnie w git**, jeszcze nie na live; przed pushem zrób pull tego pliku i diff |
+| `sections/collection-lookbook-dynamic.liquid`, `collection-hero-dynamic.liquid` | na live od 2026-11-10 17:10 (tylko te dwa pliki, `--nodelete`); czytają `.value` |
+| `sections/stone-profile-embed.liquid` | poprawione w git, **nie** wgrane — sekcja nie jest w żadnym szablonie |
 | menu `nowe-menu-testowe` (nagłówek) | „PARTNER: KAZKA JEWELRY" usunięte świadomie, **nie przywracaj**; jest „ZAMÓWIENIA INDYWIDUALNE" → `/pages/zaprojektuj-swoj-model` |
 | `blocks/ai_gen_block_9ad009d.liquid`, `ai_gen_block_b9fed9a.liquid`, `ai_gen_block_c53c961.liquid` | usunięte lokalnie; nie wgrywaj ich z powrotem ze starego zrzutu motywu |
 
