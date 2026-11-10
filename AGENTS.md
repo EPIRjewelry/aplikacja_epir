@@ -54,7 +54,6 @@ W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md
 - **Entry point:** [`.cursor/index.mdc`](.cursor/index.mdc) (`alwaysApply`) → `EPIR_AI_BIBLE.md` + `REVIEW.md`.
 - **Moduły wiedzy agentowej:** [`docs/kb/`](docs/kb/) — indeks: [`.cursor/skills/README.md`](.cursor/skills/README.md).
 - **Reguły sesji Cursor:** [`.cursor/rules/`](.cursor/rules/) — thin pointers do Biblii (globy wg pliku).
-- **Modele agenta (Cursor):** [`.cursor/rules/epir-agent-model-governance.mdc`](.cursor/rules/epir-agent-model-governance.mdc) — `alwaysApply`: zakaz trybu **fast** i jawnego parametru `model` w Task/subagentach oraz Cloud Agents bez wyraźnej zgody operatora w bieżącej sesji.
 - Folder **`agents/`** — opcjonalne **Python CLI** (read-only dla Cursor).
 - **`.github/agents/`** — definicje pod **GitHub Copilot**.
 - **`.kilo/`** — Kilo Code (izolowane od Cursor przez [`.cursorignore`](.cursorignore)).
@@ -79,6 +78,10 @@ W razie konfliktu interpretacyjnego najpierw czytaj `EPIR_AI_ECOSYSTEM_MASTER.md
 ## Sekrety (governance)
 
 **Zakaz nowych nazw sekretów bez wyraźnej zgody operatora** — reguła Cursor: [`.cursor/rules/epir-secrets-governance.mdc`](.cursor/rules/epir-secrets-governance.mdc). Nie proponuj `wrangler secret put` ani nowych kluczy w UI/MCP bez zgody. Wewnętrznie: RPC między workerami; operator: `EPIR_OPERATOR_PANEL_SECRET`; sklep→czat: `EPIR_CHAT_SHARED_SECRET` (lub legacy `X-EPIR-SHARED-SECRET` w vault). Audyt nazw: `node scripts/debug/cf-missing-secrets.mjs`.
+
+## Publikacja na live (zamek)
+
+Motyw live i zmiany w Shopify Admin obsługuje **jedna sesja na raz** — równoległe okna Cursor / Kilo nie widzą się nawzajem i nadpisują sobie szablony. Stan: [`docs/working/LIVE_PUSH_LOCK.md`](docs/working/LIVE_PUSH_LOCK.md) — przeczytaj go przed `theme push --allow-live`, `theme publish` i edycją nawigacji / stron / metafieldów. Zamek zajęty przez inną sesję → przygotuj zmianę lokalnie i zgłoś operatorowi. Zamek zmienia **tylko operator**; zgoda z [`.cursor/rules/epir-no-live-without-approval.mdc`](.cursor/rules/epir-no-live-without-approval.mdc) obowiązuje osobno.
 
 ## Środowisko deweloperskie (Node, monorepo)
 

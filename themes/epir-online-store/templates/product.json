@@ -592,12 +592,77 @@
         "padding_bottom": 0,
         "custom_class": ""
       }
+    },
+    "epir_cocreate_3steps": {
+      "type": "epir-cocreate-3steps",
+      "blocks": {
+        "step_1": {
+          "type": "step",
+          "settings": {
+            "title": "Opisujesz",
+            "text": "Wybierasz parametry i opisujesz pomysł. Możesz dołączyć szkic lub zdjęcie.",
+            "chips": "Typ biżuterii\nMetal\nKamień\nBudżet orientacyjny\nTermin"
+          }
+        },
+        "step_2": {
+          "type": "step",
+          "settings": {
+            "title": "Projektujemy razem",
+            "text": "Przygotowujemy model w wosku lub 3D. Nic nie idzie do metalu bez Twojej akceptacji."
+          }
+        },
+        "step_3": {
+          "type": "step",
+          "settings": {
+            "title": "Z ognia na Twoją dłoń",
+            "text": "Odlew, ręczne wykończenie i metryczka pracowni."
+          }
+        },
+        "contact_krzysztof": {
+          "type": "contact",
+          "settings": {
+            "name": "Krzysztof",
+            "role": "Pracownia EPIR",
+            "quote": "Opisz mi pomysł, a odpowiem osobiście.",
+            "phone": "+48 696 553 346"
+          }
+        },
+        "contact_malgorzata": {
+          "type": "contact",
+          "settings": {
+            "name": "Małgorzata",
+            "role": "Pracownia EPIR",
+            "quote": "Opisz mi pomysł, a odpowiem osobiście.",
+            "phone": "+48 698 718 564"
+          }
+        }
+      },
+      "block_order": [
+        "step_1",
+        "step_2",
+        "step_3",
+        "contact_krzysztof",
+        "contact_malgorzata"
+      ],
+      "settings": {
+        "eyebrow": "Chcesz zmodyfikować ten model?",
+        "heading": "Od pomysłu, przez projekt, do wyrobu",
+        "heading_tag": "h2",
+        "lead": "Marzy Ci się inny kamień, inny metal albo własna forma? Zacznijmy od tego modelu – zrealizujemy ją razem.",
+        "cta_label": "Opisz swój projekt",
+        "cta_url": "shopify://pages/zaprojektuj-swoj-model",
+        "note": "Brief zbiera parametry i szkic. Odpowiadamy osobiście.",
+        "contact_heading": "Odpowiadamy osobiście",
+        "contact_intro": "Wolisz porozmawiać? Zadzwoń lub napisz na WhatsApp.",
+        "wa_message": "Dzień dobry, mam pomysł na biżuterię i chcę go omówić."
+      }
     }
   },
   "order": [
     "breadcrumb",
     "main",
     "product-details-tabs",
+    "epir_cocreate_3steps",
     "scrolling_promotion_MVNN6Q",
     "icon_box_9UtNky",
     "collapsible_tabs_JndiBV",
@@ -610,3 +675,4 @@
     "1775947665438806e7"
   ]
 }
+

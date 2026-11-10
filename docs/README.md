@@ -47,6 +47,7 @@ Te pliki **muszą** być w tym samym drzewie co NotebookLM (mirror 1:1), ale **n
 - [`working/SHOPIFY_FLOW_EPIR_STACK.md`](working/SHOPIFY_FLOW_EPIR_STACK.md) — Shopify Flow → własny stos EPIR (bez Klaviyo); webhooki analytics + proxy czatu; niewiążący.
 - [`working/KUSTOSZ_BRIEF_LATEST.md`](working/KUSTOSZ_BRIEF_LATEST.md) — ostatni brief Cursor Kustosza (ops desk); niewiążący, odnawiany przy audycie.
 - [`working/EPIR_COPY_PHILOSOPHY.md`](working/EPIR_COPY_PHILOSOPHY.md) — **język marki EPIR Art Jewellery** (5 zasad; default total: Gemma, sklep, landingu, Zaręczyny, Inspiracje); wyjątek: Kazka Jewelry. Reguła: `.cursor/rules/epir-copywriting.mdc` (`alwaysApply`).
+- [working/OD_KAMIENIA_DO_RZEZBY_KANON.md](working/OD_KAMIENIA_DO_RZEZBY_KANON.md) — kanon procesu od kamienia do rzeźby (4 etapy, teaser/Faza 2); checklist w źródle pozostaje niedokończony.
 - [`working/COCREATE_ORDER_FREEZE.md`](working/COCREATE_ORDER_FREEZE.md) — zamrożenie kolejności CoCreate (niewiążący, operacyjny).
 - [`working/PDP_APEX_FREEZE_2026-09-28.md`](working/PDP_APEX_FREEZE_2026-09-28.md) — zamrożenie PDP apex (pracownia + galeria mobile); tag `pdp-apex-2026-09-28` / motyw `#186221691212`; niewiążący, operacyjny.
 - [`working/ADS_ACCOUNT_FREEZE_2026-09-20.md`](working/ADS_ACCOUNT_FREEZE_2026-09-20.md) — zamrożenie konta Google Ads po apply planu A–C (cele Purchase-only, PMax URL, Search negatywy); niewiążący, operacyjny.
@@ -55,6 +56,7 @@ Te pliki **muszą** być w tym samym drzewie co NotebookLM (mirror 1:1), ale **n
 - [`working/LANDINGS_DEPLOY_AUDIT.md`](working/LANDINGS_DEPLOY_AUDIT.md) — procedura audytowa pre/post deploy (PMax PDP, tracking `l.`, ingest, checklist).
 - [`working/ORSKA_PAGE_DESIGN.md`](working/ORSKA_PAGE_DESIGN.md) — **formalna referencja layoutu stron Kazka** (home / kolekcja / PDP); ORSKA + Cartier + luxury PDP benchmarks; UI ciche ale zawsze widoczne i użyteczne; **czytać przed zmianą layoutu/sizingu w `apps/kazka`**.
 - [`working/FEED_AND_STORE_STRUCTURE.md`](working/FEED_AND_STORE_STRUCTURE.md) — zestawienie reguł feedu GMC (`epir-marketing-ingest`) z modelem sklepu operatora; niewiążący.
+- [`working/LIVE_PUSH_LOCK.md`](working/LIVE_PUSH_LOCK.md) — zamek na live: która sesja ma prawo do `theme push --allow-live` i zmian w Admin; stan zmienia wyłącznie operator.
 - [`Architektura AI Analityka w Ekosystemie Cloudflare i Google Ads.md`](Architektura%20AI%20Analityka%20w%20Ekosystemie%20Cloudflare%20i%20Google%20Ads.md) — synteza (np. NotebookLM / deep research): hipotezy, linki, ryzyka; nie zastępuje `EPIR_*` ani wdrożenia.
 - [`EPIR_CLOUDFLARE_AGENT_SERVICE_PLAN.md`](EPIR_CLOUDFLARE_AGENT_SERVICE_PLAN.md) — plan warstwy „agent jako usługa” (Agents SDK obok monorepo, bramki ESOG, publiczne repo); nie zastępuje kanonu ani kontraktu danych w `EPIR_*`.
 - [`EPIR_PROJECT_B_COPILOT_VISION.md`](EPIR_PROJECT_B_COPILOT_VISION.md) — wizja „copilota” Project B (dane pixel/GA4/Ads, pamięć, koszt tokenów, tło, Workspace, okno czatu); kompas do wchłonięcia w kanon po ESOG.
@@ -89,3 +91,4 @@ Moduły domenowe (nie zastępują kontraktów technicznych powyżej — uzupełn
 - [`kb/WORKERS_AND_EDGE.md`](kb/WORKERS_AND_EDGE.md) — workers, deploy, ingress, ESOG/EFA/OQAG
 
 Jeżeli jakikolwiek inny plik lub odpowiedź AI jest sprzeczna z pakietem powyżej, pakiet kanoniczny wygrywa.
+

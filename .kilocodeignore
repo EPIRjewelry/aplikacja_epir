@@ -26,6 +26,7 @@ node_modules/
 **/.mf/
 **/.preview-html/
 **/.tmp-live-audit/
+themes/_pulls/
 **/_tmp-*/
 scripts/_tmp-*
 **/dist/
@@ -181,13 +182,22 @@ themes/epir-online-store/sections/*
 !themes/epir-online-store/sections/collection-gold-realizations.liquid
 !themes/epir-online-store/sections/collection-workshop-proof.liquid
 !themes/epir-online-store/sections/collection-cocreate-teaser.liquid
+!themes/epir-online-store/sections/collection-partner-bridge.liquid
+!themes/epir-online-store/sections/epir-cocreate-3steps.liquid
+!themes/epir-online-store/sections/collection-lookbook-dynamic.liquid
+!themes/epir-online-store/sections/collection-hero-dynamic.liquid
+!themes/epir-online-store/sections/stone-profile-embed.liquid
 !themes/epir-online-store/sections/zaprojektuj-swoj-model.liquid
 !themes/epir-online-store/sections/main-product.liquid
 themes/epir-online-store/templates/*
+!themes/epir-online-store/templates/index.json
 !themes/epir-online-store/templates/collection.zloto.json
 !themes/epir-online-store/templates/collection.zlota.json
+!themes/epir-online-store/templates/page.stworz-swoj-pierscionek.json
 !themes/epir-online-store/templates/page.zaprojektuj.json
 !themes/epir-online-store/templates/product.json
+!themes/epir-online-store/templates/product.nowy-szablon.json
+!themes/epir-online-store/templates/product.pierscionek-zloto-turmali.json
 
 # --- Agent / MCP staging junk ---
 epir-marketing-ingest/.tmp*

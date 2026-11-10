@@ -1,0 +1,303 @@
+{% comment %}
+  EPIR — "Od pomysłu, przez projekt, do wyrobu".
+  Trzy kroki + karty kontaktowe. Wszystko edytowalne w edytorze motywu.
+  Główne CTA prowadzi do zamrożonego briefu /pages/zaprojektuj-swoj-model (bez pól wysyłających dane).
+{% endcomment %}
+
+{% liquid
+  assign cta_href = section.settings.cta_url | default: pages['zaprojektuj-swoj-model'].url
+  if cta_href == blank
+    assign cta_href = '/pages/zaprojektuj-swoj-model'
+  endif
+  assign heading_tag = section.settings.heading_tag | default: 'h2'
+  assign step_n = 0
+%}
+
+<section
+  id="epir-cocreate-{{ section.id }}"
+  class="epir-cc"
+  aria-labelledby="epir-cc-heading-{{ section.id }}"
+>
+  <div class="epir-cc__inner">
+    <header class="epir-cc__head">
+      {% if section.settings.eyebrow != blank %}
+        <p class="epir-cc__eyebrow">{{ section.settings.eyebrow }}</p>
+      {% endif %}
+      {% if section.settings.heading != blank %}
+        <{{ heading_tag }} id="epir-cc-heading-{{ section.id }}" class="epir-cc__heading">{{ section.settings.heading }}</{{ heading_tag }}>
+      {% endif %}
+      {% if section.settings.lead != blank %}
+        <p class="epir-cc__lead">{{ section.settings.lead }}</p>
+      {% endif %}
+    </header>
+
+    <ol class="epir-cc__steps">
+      {% for block in section.blocks %}
+        {% if block.type == 'step' %}
+          {% assign step_n = step_n | plus: 1 %}
+          <li class="epir-cc__step" {{ block.shopify_attributes }}>
+            {% if block.settings.image != blank %}
+              <div class="epir-cc__step-media">
+                {{
+                  block.settings.image
+                  | image_url: width: 900
+                  | image_tag:
+                    loading: 'lazy',
+                    widths: '360, 540, 720, 900',
+                    sizes: '(min-width: 990px) 30vw, (min-width: 768px) 45vw, 100vw',
+                    alt: block.settings.title,
+                    class: 'epir-cc__step-image'
+                }}
+              </div>
+            {% endif %}
+            <div class="epir-cc__step-body">
+              <span class="epir-cc__step-no" aria-hidden="true">0{{ step_n }}</span>
+              {% if block.settings.title != blank %}
+                <h3 class="epir-cc__step-title">{{ block.settings.title }}</h3>
+              {% endif %}
+              {% if block.settings.text != blank %}
+                <p class="epir-cc__step-text">{{ block.settings.text }}</p>
+              {% endif %}
+              {% if block.settings.chips != blank %}
+                {% assign chips = block.settings.chips | newline_to_br | split: '<br />' %}
+                <ul class="epir-cc__chips">
+                  {% for chip in chips %}
+                    {% assign chip_text = chip | strip %}
+                    {% if chip_text != blank %}
+                      <li class="epir-cc__chip">{{ chip_text }}</li>
+                    {% endif %}
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+          </li>
+        {% endif %}
+      {% endfor %}
+    </ol>
+
+    <div class="epir-cc__action">
+      {% if section.settings.cta_label != blank %}
+        <a href="{{ cta_href }}" class="epir-cc__cta">{{ section.settings.cta_label }}</a>
+      {% endif %}
+      {% if section.settings.note != blank %}
+        <p class="epir-cc__note">{{ section.settings.note }}</p>
+      {% endif %}
+    </div>
+
+    {% assign has_contacts = false %}
+    {% for block in section.blocks %}
+      {% if block.type == 'contact' %}{% assign has_contacts = true %}{% endif %}
+    {% endfor %}
+
+    {% if has_contacts %}
+      <div class="epir-cc__contact">
+        {% if section.settings.contact_heading != blank %}
+          <h3 class="epir-cc__contact-heading">{{ section.settings.contact_heading }}</h3>
+        {% endif %}
+        {% if section.settings.contact_intro != blank %}
+          <p class="epir-cc__contact-intro">{{ section.settings.contact_intro }}</p>
+        {% endif %}
+        <div class="epir-cc__people">
+          {% for block in section.blocks %}
+            {% if block.type == 'contact' %}
+              {% assign phone_raw = block.settings.phone | remove: ' ' %}
+              {% assign wa_digits = phone_raw | remove: '+' %}
+              <article class="epir-cc__person" {{ block.shopify_attributes }}>
+                <div class="epir-cc__avatar">
+                  {% if block.settings.image != blank %}
+                    {{
+                      block.settings.image
+                      | image_url: width: 240
+                      | image_tag:
+                        loading: 'lazy',
+                        widths: '120, 180, 240',
+                        sizes: '88px',
+                        alt: block.settings.name,
+                        class: 'epir-cc__avatar-image'
+                    }}
+                  {% else %}
+                    <span class="epir-cc__avatar-initial" aria-hidden="true">{{ block.settings.name | slice: 0 }}</span>
+                  {% endif %}
+                </div>
+                <div class="epir-cc__person-body">
+                  <p class="epir-cc__person-name">{{ block.settings.name }}</p>
+                  {% if block.settings.role != blank %}
+                    <p class="epir-cc__person-role">{{ block.settings.role }}</p>
+                  {% endif %}
+                  {% if block.settings.quote != blank %}
+                    <p class="epir-cc__person-quote">{{ block.settings.quote }}</p>
+                  {% endif %}
+                  {% if block.settings.phone != blank %}
+                    <div class="epir-cc__person-actions">
+                      <a class="epir-cc__btn" href="tel:{{ phone_raw }}">Zadzwoń {{ block.settings.phone }}</a>
+                      <a class="epir-cc__btn epir-cc__btn--ghost" href="https://wa.me/{{ wa_digits }}?text={{ section.settings.wa_message | url_encode }}" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+                    </div>
+                  {% endif %}
+                </div>
+              </article>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+<style>
+  .epir-cc {
+    --cc-bg: #f4efe7;
+    --cc-card: #fbf8f2;
+    --cc-ink: #222222;
+    --cc-muted: #5f5f5f;
+    --cc-line: rgba(34, 34, 34, 0.12);
+    --cc-accent: #2c684e;
+    --cc-accent-hover: #244f3d;
+    --cc-stone: #c9a227;
+    background: var(--cc-bg);
+    color: var(--cc-ink);
+    padding: 3.5rem 0;
+    border-top: 1px solid var(--cc-line);
+    border-bottom: 1px solid var(--cc-line);
+  }
+  .epir-cc__inner { width: min(1160px, calc(100% - 2rem)); margin: 0 auto; }
+  .epir-cc__head { text-align: center; max-width: 44rem; margin: 0 auto 2.25rem; }
+  .epir-cc__eyebrow {
+    margin: 0 0 0.6rem; font-size: 0.72rem; font-weight: 600;
+    letter-spacing: 0.2em; text-transform: uppercase; color: var(--cc-accent);
+  }
+  .epir-cc__heading {
+    margin: 0; font-family: "Donegal One", Georgia, serif;
+    font-size: clamp(1.7rem, 3.6vw, 2.7rem); line-height: 1.15; letter-spacing: -0.01em;
+  }
+  .epir-cc__lead {
+    margin: 0.9rem 0 0; font-size: clamp(1.05rem, 1.8vw, 1.3rem);
+    line-height: 1.5; color: var(--cc-ink);
+  }
+
+  .epir-cc__steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; }
+  .epir-cc__step {
+    background: var(--cc-card); border: 1px solid var(--cc-line);
+    border-top: 3px solid var(--cc-stone); display: flex; flex-direction: column;
+  }
+  .epir-cc__step-media { aspect-ratio: 4 / 3; overflow: hidden; background: #e8e1d5; }
+  .epir-cc__step-image { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .epir-cc__step-body { padding: 1.4rem 1.3rem 1.5rem; }
+  .epir-cc__step-no {
+    display: block; margin-bottom: 0.4rem; font-family: "Donegal One", Georgia, serif;
+    font-size: 2rem; line-height: 1; color: var(--cc-accent);
+  }
+  .epir-cc__step-title { margin: 0; font-family: "Donegal One", Georgia, serif; font-size: 1.3rem; line-height: 1.25; }
+  .epir-cc__step-text { margin: 0.6rem 0 0; font-size: 1rem; line-height: 1.6; color: var(--cc-muted); }
+  .epir-cc__chips { list-style: none; margin: 1rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .epir-cc__chip {
+    padding: 0.3rem 0.7rem; border: 1px solid rgba(44, 104, 78, 0.4);
+    border-radius: 999px; font-size: 0.85rem; color: var(--cc-accent); background: #fff;
+  }
+
+  .epir-cc__action { text-align: center; margin-top: 2rem; }
+  .epir-cc__cta {
+    display: inline-flex; align-items: center; justify-content: center; min-height: 48px;
+    padding: 0.9rem 2rem; border-radius: 999px; background: var(--cc-accent); color: #fff;
+    text-decoration: none; font-size: 0.95rem; font-weight: 600; letter-spacing: 0.03em;
+  }
+  .epir-cc__cta:hover { background: var(--cc-accent-hover); color: #fff; }
+  .epir-cc__note { margin: 0.8rem auto 0; max-width: 36rem; font-size: 0.9rem; color: var(--cc-muted); }
+
+  .epir-cc__contact { margin-top: 2.5rem; padding-top: 2rem; border-top: 1px solid var(--cc-line); }
+  .epir-cc__contact-heading {
+    margin: 0; text-align: center; font-family: "Donegal One", Georgia, serif; font-size: 1.4rem;
+  }
+  .epir-cc__contact-intro { margin: 0.5rem 0 0; text-align: center; color: var(--cc-muted); }
+  .epir-cc__people { display: grid; gap: 1rem; margin-top: 1.5rem; }
+  .epir-cc__person {
+    display: flex; gap: 1rem; align-items: flex-start; padding: 1.1rem;
+    background: var(--cc-card); border: 1px solid var(--cc-line);
+  }
+  .epir-cc__avatar {
+    flex: 0 0 88px; width: 88px; height: 88px; border-radius: 50%; overflow: hidden;
+    background: rgba(44, 104, 78, 0.1); display: flex; align-items: center; justify-content: center;
+  }
+  .epir-cc__avatar-image { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .epir-cc__avatar-initial { font-family: "Donegal One", Georgia, serif; font-size: 2rem; color: var(--cc-accent); }
+  .epir-cc__person-name { margin: 0; font-family: "Donegal One", Georgia, serif; font-size: 1.2rem; }
+  .epir-cc__person-role { margin: 0.1rem 0 0; font-size: 0.85rem; color: var(--cc-muted); }
+  .epir-cc__person-quote { margin: 0.6rem 0 0; line-height: 1.55; }
+  .epir-cc__person-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.9rem; }
+  .epir-cc__btn {
+    display: inline-flex; align-items: center; min-height: 44px; padding: 0.55rem 1.1rem;
+    border-radius: 999px; background: var(--cc-accent); color: #fff; text-decoration: none;
+    font-size: 0.9rem; font-weight: 600;
+  }
+  .epir-cc__btn:hover { background: var(--cc-accent-hover); color: #fff; }
+  .epir-cc__btn--ghost { background: transparent; color: var(--cc-accent); border: 1px solid var(--cc-accent); }
+  .epir-cc__btn--ghost:hover { background: rgba(44, 104, 78, 0.08); color: var(--cc-accent); }
+
+  @media (min-width: 768px) {
+    .epir-cc { padding: 4.5rem 0; }
+    .epir-cc__steps { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
+    .epir-cc__people { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+</style>
+
+{% schema %}
+{
+  "name": "EPIR: pomysł do wyrobu",
+  "tag": "section",
+  "class": "section-epir-cocreate-3steps",
+  "settings": [
+    { "type": "text", "id": "eyebrow", "label": "Nadtytuł", "default": "Zaprojektuj swój pierścionek" },
+    { "type": "text", "id": "heading", "label": "Nagłówek", "default": "Od pomysłu, przez projekt, do wyrobu" },
+    {
+      "type": "select", "id": "heading_tag", "label": "Poziom nagłówka",
+      "options": [ { "value": "h1", "label": "H1 (strona samodzielna)" }, { "value": "h2", "label": "H2" } ],
+      "default": "h2"
+    },
+    { "type": "text", "id": "lead", "label": "Linia pod nagłówkiem", "default": "Masz pomysł lub projekt – zrealizujmy go." },
+    { "type": "text", "id": "cta_label", "label": "Przycisk", "default": "Opisz swój projekt" },
+    { "type": "url", "id": "cta_url", "label": "Link przycisku (domyślnie: /pages/zaprojektuj-swoj-model)" },
+    { "type": "textarea", "id": "note", "label": "Notatka pod przyciskiem", "default": "Brief zbiera parametry i szkic. Odpowiadamy osobiście." },
+    { "type": "header", "content": "Kontakt" },
+    { "type": "text", "id": "contact_heading", "label": "Nagłówek kontaktu", "default": "Odpowiadamy osobiście" },
+    { "type": "text", "id": "contact_intro", "label": "Opis kontaktu", "default": "Wolisz porozmawiać? Zadzwoń lub napisz na WhatsApp." },
+    { "type": "text", "id": "wa_message", "label": "Wiadomość startowa WhatsApp", "default": "Dzień dobry, mam pomysł na biżuterię i chcę go omówić." }
+  ],
+  "blocks": [
+    {
+      "type": "step",
+      "name": "Krok",
+      "limit": 3,
+      "settings": [
+        { "type": "image_picker", "id": "image", "label": "Zdjęcie (opcjonalne)" },
+        { "type": "text", "id": "title", "label": "Tytuł", "default": "Opisujesz" },
+        { "type": "textarea", "id": "text", "label": "Opis", "default": "Wybierasz parametry i opisujesz pomysł." },
+        { "type": "textarea", "id": "chips", "label": "Znaczniki (jeden w linii)", "info": "Np. parametry briefu. Tylko wyświetlane, nic nie wysyłają." }
+      ]
+    },
+    {
+      "type": "contact",
+      "name": "Osoba kontaktowa",
+      "limit": 2,
+      "settings": [
+        { "type": "image_picker", "id": "image", "label": "Zdjęcie (bez twarzy)" },
+        { "type": "text", "id": "name", "label": "Imię", "default": "Imię" },
+        { "type": "text", "id": "role", "label": "Rola", "default": "Pracownia EPIR" },
+        { "type": "textarea", "id": "quote", "label": "Zdanie w pierwszej osobie", "default": "Opisz mi pomysł, a odpowiem osobiście." },
+        { "type": "text", "id": "phone", "label": "Telefon i WhatsApp", "info": "Format: +48 600 000 000" }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "EPIR: pomysł do wyrobu",
+      "blocks": [
+        { "type": "step", "settings": { "title": "Opisujesz", "text": "Wybierasz parametry i opisujesz pomysł. Możesz dołączyć szkic lub zdjęcie.", "chips": "Typ biżuterii\nMetal\nKamień\nBudżet orientacyjny\nTermin" } },
+        { "type": "step", "settings": { "title": "Projektujemy razem", "text": "Przygotowujemy model w wosku lub 3D. Nic nie idzie do metalu bez Twojej akceptacji." } },
+        { "type": "step", "settings": { "title": "Z ognia na Twoją dłoń", "text": "Odlew, ręczne wykończenie i metryczka pracowni." } },
+        { "type": "contact", "settings": { "name": "Krzysztof", "role": "Pracownia EPIR", "quote": "Opisz mi pomysł, a odpowiem osobiście.", "phone": "+48 696 553 346" } },
+        { "type": "contact", "settings": { "name": "Małgorzata", "role": "Pracownia EPIR", "quote": "Opisz mi pomysł, a odpowiem osobiście.", "phone": "+48 698 718 564" } }
+      ]
+    }
+  ]
+}
+{% endschema %}
+

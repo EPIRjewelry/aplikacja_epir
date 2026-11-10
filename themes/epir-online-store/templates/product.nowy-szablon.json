@@ -1,0 +1,421 @@
+/*
+ * ------------------------------------------------------------
+ * IMPORTANT: The contents of this file are auto-generated.
+ *
+ * This file may be updated by the Shopify admin theme editor
+ * or related systems. Please exercise caution as any changes
+ * made to this file may be overwritten.
+ * ------------------------------------------------------------
+ */
+{
+  "sections": {
+    "breadcrumb": {
+      "type": "breadcrumb",
+      "settings": {
+        "container": "container",
+        "text_alignment": "center",
+        "hide_current": false,
+        "hide_on_mb": false,
+        "animations": "inherit"
+      }
+    },
+    "main": {
+      "type": "main-product",
+      "blocks": {
+        "badge_ChqgGj": {
+          "type": "badge",
+          "settings": {}
+        },
+        "title": {
+          "type": "title",
+          "settings": {}
+        },
+        "price": {
+          "type": "price",
+          "settings": {
+            "show_saving": false,
+            "sale_badge_type": "percentage"
+          }
+        },
+        "inventory_status_VhWXH4": {
+          "type": "inventory_status",
+          "disabled": true,
+          "settings": {
+            "show_indicator_bar": false,
+            "normal_text": "<p>1</p>",
+            "low_text": "",
+            "outofstock_text": "",
+            "backordered_text": "<p>Backordered</p>"
+          }
+        },
+        "variant_picker": {
+          "type": "variant_picker",
+          "settings": {
+            "size_title": "Rozmiar,Size,Ring size,ring-size"
+          }
+        },
+        "text_gKXK9k": {
+          "type": "text",
+          "settings": {
+            "text": "",
+            "text_style": "body"
+          }
+        },
+        "custom_text_CddBt4": {
+          "type": "custom_text",
+          "settings": {
+            "content": ""
+          }
+        },
+        "buy_buttons": {
+          "type": "buy_buttons",
+          "settings": {
+            "show_quantity_selector": true,
+            "show_atc_button": true,
+            "show_dynamic_checkout": true,
+            "show_gift_card_recipient": true
+          }
+        },
+        "addons": {
+          "type": "addons",
+          "settings": {
+            "show_atcp": false,
+            "show_ask_a_question": false,
+            "show_social": false
+          }
+        },
+        "shipping_VBJFtx": {
+          "type": "shipping",
+          "settings": {
+            "show_delivery_times": true,
+            "deliver_text": "Przewidywana dostawa:",
+            "deliver_days": "7",
+            "date_format": "%d.%m.%Y",
+            "show_shipping_text": false,
+            "shipping_text": ""
+          }
+        },
+        "description_pdp_editorial": {
+          "type": "description",
+          "settings": {}
+        },
+        "size_guide_link_pdp": {
+          "type": "custom_liquid",
+          "settings": {
+            "custom_liquid": "{% if product.tags contains 'pierścionek' or product.tags contains 'obrączka' or product.tags contains 'obraczka' %}<style>.epir-pdp-size-guide{margin:1rem 0 0;max-width:24rem}.epir-pdp-size-guide-link{display:flex;align-items:center;justify-content:center;min-height:44px;width:100%;padding:.75rem 1rem;border:1px solid rgba(34,34,34,.25);border-radius:2px;background:transparent;color:#222;font-size:.9rem;font-weight:500;text-align:center;text-decoration:none}.epir-pdp-size-guide-link:hover{border-color:#2c684e;color:#2c684e}</style><p class=\"epir-pdp-size-guide\"><a href=\"/pages/dopasowanie-rozmiaru\" class=\"epir-pdp-size-guide-link\">Tabela rozmiarów</a></p>{% endif %}"
+          }
+        },
+        "payments_comfort_pdp": {
+          "type": "custom_liquid",
+          "settings": {
+            "custom_liquid": "{% comment %} PDP: Komfort transakcji / Tpay — pod Tabela rozmiarów {% endcomment %}\n<style>\n.epir-pdp-pay{margin:1.25rem 0 0;max-width:24rem;padding-top:1.25rem;border-top:1px solid rgba(34,34,34,.12)}\n.epir-pdp-pay__eyebrow{margin:0 0 .35rem;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:#666}\n.epir-pdp-pay__title{margin:0 0 .75rem;font-size:1.05rem;font-weight:600;color:#222;line-height:1.3}\n.epir-pdp-pay__tpay{display:block}\n.epir-pdp-pay__tpay-link{display:block;line-height:0;overflow-x:auto;-webkit-overflow-scrolling:touch}\n.epir-pdp-pay__tpay-banner{display:block;width:auto;max-width:none;height:64px;border:0}\n.epir-pdp-pay__copy{margin:.75rem 0 0;font-size:.9rem;line-height:1.55;color:#666}\n.epir-pdp-pay__copy p{margin:0}\n</style>\n<div class=\"epir-pdp-pay\">\n  <p class=\"epir-pdp-pay__eyebrow\">Komfort transakcji</p>\n  <h3 class=\"epir-pdp-pay__title\">Płatności</h3>\n  <div class=\"epir-pdp-pay__tpay\">\n    <a href=\"https://tpay.com/jak-to-dziala\" class=\"epir-pdp-pay__tpay-link\" target=\"_blank\" rel=\"noopener noreferrer\" title=\"Obsługujemy płatności internetowe przez system płatności online Tpay\">\n      <img src=\"https://tpay.com/img/banners/tpay-820x45.svg\" alt=\"Logo Tpay — BLIK, przelewy online, raty i karta\" title=\"Logo Tpay\" class=\"epir-pdp-pay__tpay-banner\" width=\"820\" height=\"45\" loading=\"lazy\">\n    </a>\n    <div class=\"epir-pdp-pay__copy rte\"><p>Płatności obsługuje Tpay — BLIK, szybkie przelewy, raty i odroczenie, karta. Bezpieczne, szyfrowane transakcje.</p></div>\n  </div>\n</div>"
+          }
+        },
+        "trust_badge_NyBMd4": {
+          "type": "trust_badge",
+          "disabled": true,
+          "settings": {
+            "trust_badges_text": "<p>Guarantee safe & secure checkout</p>",
+            "trust_badges_image_width": "60%",
+            "position": "below"
+          }
+        }
+      },
+      "block_order": [
+        "badge_ChqgGj",
+        "title",
+        "price",
+        "inventory_status_VhWXH4",
+        "variant_picker",
+        "text_gKXK9k",
+        "custom_text_CddBt4",
+        "buy_buttons",
+        "addons",
+        "shipping_VBJFtx",
+        "description_pdp_editorial",
+        "size_guide_link_pdp",
+        "payments_comfort_pdp",
+        "trust_badge_NyBMd4"
+      ],
+      "custom_css": [
+        "@media (min-width: 768px) {.m-main-product--wrapper {align-items: start; } .m-main-product--info {position: sticky; top: 6rem; align-self: start; }}",
+        ".m-product-description {margin-top: 1.75rem; padding-top: 1.5rem; border-top: 1px solid rgba(34, 34, 34, 0.12); max-width: 24rem;}",
+        ".m-product-description.rte {font-size: 0.95rem; line-height: 1.65; color: #666666;}",
+        ".m-product-description.rte p {margin: 0 0 0.85rem;}",
+        ".m-product-description.rte p:last-child {margin-bottom: 0;}"
+      ],
+      "settings": {
+        "container": "container",
+        "layout": "layout-3",
+        "show_atwl": true,
+        "enable_history_state": true,
+        "enable_variant_group_images": false,
+        "disable_selected_variant_default": true,
+        "epir_engraving": false,
+        "show_featured_media": true,
+        "show_zoom_button": true,
+        "enable_video_autoplay": true,
+        "show_nav_media_mobile": true,
+        "show_pagination_mobile": true,
+        "use_sticky_atc": true,
+        "use_sticky_atc_on_mobile": true,
+        "enable_dynamic_checkout": false,
+        "sticky_atc_wishtlist": false,
+        "sticky_atc_compare": false
+      }
+    },
+    "product-trust-split": {
+      "type": "product-trust-split",
+      "settings": {
+        "container": "container",
+        "left_eyebrow": "Droga przedmiotu",
+        "left_heading": "Opakowanie i bezpieczna wysyłka z pracowni",
+        "journey_image_url": "https://cdn.shopify.com/s/files/1/0249/9756/0425/files/ozdobne_pudelko_EPIR-u.png?v=1787330816",
+        "journey_image_alt": "Ozdobne pudełko EPIR z biżuterią",
+        "journey_copy": "<p>Zanim biżuteria trafi w Twoje dłonie, każdy obiekt opuszcza naszą wrocławską pracownię opakowany w bezpieczne pudełko sygnowane marką EPIR. Każda nadawana przez nas przesyłka jest w pełni ubezpieczona i wyrusza w podróż w regulaminowym czasie.</p><p>Na terenie Polski oferujemy dostawę kurierem oraz do Paczkomatów InPost. Swój ulubiony punkt odbioru wybierzesz wygodnie bezpośrednio w koszyku, przed przejściem do kasy. Dla zamówień od 500 zł dostawa jest całkowicie bezpłatna.</p>",
+        "padding_top": 48,
+        "padding_bottom": 48
+      }
+    },
+    "product-details-tabs": {
+      "type": "product-details-tabs",
+      "blocks": {
+        "tab_Kwq4in": {
+          "type": "tab",
+          "settings": {
+            "header": "Płatności",
+            "content": "<p><strong>Płatności w EPIR Art Jewellery: Wybierz Bezpieczeństwo i Wygodę</strong></p><p></p><ul><li><strong>Elastyczne opcje:</strong> T-pay (szybkie przelewy online, płatności ratalne i odroczone).</li><li><strong>Tradycyjne metody:</strong> Przelew na konto, płatność za pobraniem, odbiór osobisty we Wrocławiu (gotówka/karta).</li><li><strong>Bezpieczeństwo:</strong> Szyfrowane transakcje, ochrona Twoich danych.</li><li><strong>W razie problemów:</strong> Pomocna obsługa klienta, jesteśmy tu dla Ciebie.</li><li><strong>Wybierz najwygodniejszy sposób zapłaty i ciesz się nową biżuterią!</strong></li></ul>",
+            "content_page": ""
+          }
+        },
+        "tab": {
+          "type": "tab",
+          "settings": {
+            "header": "Wysyłka",
+            "content": "<p>Przy obsłudze wysyłek korzystamy z 1) Paczkomatów InPost oraz 2) systemu Envelo Poczty Polskiej, nieopaczna- na terenie Polski.</p><p>Do krajów Unii Europejskiej - przesyłka priorytetowa polecona. Tego wyboru dokonujemy w trakcie dokonywania zamówienia.</p><p>OFERUJEMY DARMOWĄ WYSYŁKE DO WSZYSTKICH LOKALIZACJI ZAMÓWIEŃ POWYŻEJ 500 ZŁ.</p><p>Wszystkie inne formy oczywiście są możliwe, w celu ich uzgodnienia prosimy o kontakt przed zakupem.</p>",
+            "content_page": ""
+          }
+        },
+        "liquid_6z9F7B": {
+          "type": "liquid",
+          "settings": {
+            "header": "Tabela rozmiarów",
+            "custom_liquid": "{% if product.tags contains 'pierścionek' or product.tags contains 'obrączka' or product.tags contains 'obraczka' %}{% assign size_table = product.metafields.custom.tabela_rozmiarow_pierscionkow.value %}{% if size_table %}{{ size_table.table_content_html }}{% endif %}{% endif %}"
+          }
+        }
+      },
+      "block_order": [
+        "tab_Kwq4in",
+        "tab",
+        "liquid_6z9F7B"
+      ],
+      "disabled": true,
+      "custom_css": [
+        ".m-tabs__header {justify-content: flex-start;}"
+      ],
+      "settings": {
+        "container": "container-narrow",
+        "color_scheme": "",
+        "default_open": true,
+        "padding_top": 12,
+        "padding_bottom": 10,
+        "custom_class": "",
+        "animations": "inherit"
+      }
+    },
+    "product-recommendations": {
+      "type": "product-recommendations",
+      "settings": {
+        "container": "w-full",
+        "color_scheme": "",
+        "remove_params": false,
+        "heading": "ZOBACZ PODOBNE PRODUKTY",
+        "heading_size": "h3",
+        "text_align": "center",
+        "limit": 8,
+        "columns": 6,
+        "column_gap": 20,
+        "enable_slider": true,
+        "use_scroll_mobile": true,
+        "padding_top": 26,
+        "padding_bottom": 24,
+        "custom_class": "",
+        "animations": "inherit"
+      }
+    },
+    "product_main_collection_gez6tm": {
+      "type": "product-main-collection",
+      "name": "Main Collection Product",
+      "settings": {
+        "heading": "KOLEKCJA:",
+        "show_count": false,
+        "desc_length": 150,
+        "button_text": "ZOBACZ CAŁĄ KOLEKCJĘ",
+        "button_style": "primary",
+        "show_image": true,
+        "image_ratio": "square",
+        "layout": "image_left",
+        "text_alignment": "left",
+        "bg_color": "#bbbbbb",
+        "text_color": "#121212",
+        "padding_top": 0,
+        "padding_bottom": 0
+      }
+    },
+    "recent-viewed-products": {
+      "type": "recent-viewed-products",
+      "settings": {
+        "container": "w-full",
+        "color_scheme": "default",
+        "heading": "OSTATNIO OGLĄDANE PRODUKTY",
+        "heading_size": "h3",
+        "text_align": "center",
+        "limit": 10,
+        "columns": 5,
+        "column_gap": 10,
+        "pcard_layout": "",
+        "pcard_image_ratio": "",
+        "show_vendor": false,
+        "hide_title": false,
+        "enable_slider": true,
+        "show_pagination": false,
+        "show_navigation": false,
+        "mobile_disable_slider": false,
+        "use_scroll_mobile": true,
+        "item_gap_mobile": 16,
+        "padding_top": 42,
+        "padding_bottom": 30,
+        "custom_class": "",
+        "animations": "inherit"
+      }
+    },
+    "gold_process": {
+      "type": "collection-gold-process",
+      "blocks": {
+        "path_wax": {
+          "type": "path",
+          "settings": {
+            "label": "Rzeźba w wosku",
+            "step_1": "Rzeźba w wosku",
+            "image_1": "shopify://shop_images/wosk_mode_rzezba_7.jpg",
+            "step_2": "Wyrób",
+            "image_2": "shopify://shop_images/Azurowy_pierscionek_Plecionka_37.jpg",
+            "step_3": "",
+            "image_3": "shopify://shop_images/wosk_mode_rzezba_20.jpg",
+            "step_4": "",
+            "image_4": "shopify://shop_images/wosk_mode_rzezba_21.jpg"
+          }
+        },
+        "path_B4zNKQ": {
+          "type": "path",
+          "disabled": true,
+          "settings": {
+            "label": "MO",
+            "step_1": "MODEL WOSKOWY",
+            "image_1": "shopify://shop_images/wosk_mode_rzezba_22.jpg",
+            "step_2": "WYRÓB ZŁOTY",
+            "step_3": "",
+            "step_4": ""
+          }
+        },
+        "path_digital": {
+          "type": "path",
+          "disabled": true,
+          "settings": {
+            "label": "Projekt cyfrowy",
+            "step_1": "Projekt 3D",
+            "step_2": "Wydruk 3D",
+            "step_3": "Odlew",
+            "step_4": "Wyrób"
+          }
+        }
+      },
+      "block_order": [
+        "path_wax",
+        "path_B4zNKQ",
+        "path_digital"
+      ],
+      "settings": {
+        "eyebrow": "Proces",
+        "heading": "Od ognia do wyrobu",
+        "intro": "Dwie drogi w tej samej pracowni we Wrocławiu — klasyczna rzeźba w wosku albo model cyfrowy i odlew. Obie kończą się ręcznym wykończeniem."
+      }
+    },
+    "epir_cocreate_3steps": {
+      "type": "epir-cocreate-3steps",
+      "blocks": {
+        "step_1": {
+          "type": "step",
+          "settings": {
+            "title": "Opisujesz",
+            "text": "Wybierasz parametry i opisujesz pomysł. Możesz dołączyć szkic lub zdjęcie.",
+            "chips": "Typ biżuterii\nMetal\nKamień\nBudżet orientacyjny\nTermin"
+          }
+        },
+        "step_2": {
+          "type": "step",
+          "settings": {
+            "title": "Projektujemy razem",
+            "text": "Przygotowujemy model w wosku lub 3D. Nic nie idzie do metalu bez Twojej akceptacji."
+          }
+        },
+        "step_3": {
+          "type": "step",
+          "settings": {
+            "title": "Z ognia na Twoją dłoń",
+            "text": "Odlew, ręczne wykończenie i metryczka pracowni."
+          }
+        },
+        "contact_krzysztof": {
+          "type": "contact",
+          "settings": {
+            "name": "Krzysztof",
+            "role": "Pracownia EPIR",
+            "quote": "Opisz mi pomysł, a odpowiem osobiście.",
+            "phone": "+48 696 553 346"
+          }
+        },
+        "contact_malgorzata": {
+          "type": "contact",
+          "settings": {
+            "name": "Małgorzata",
+            "role": "Pracownia EPIR",
+            "quote": "Opisz mi pomysł, a odpowiem osobiście.",
+            "phone": "+48 698 718 564"
+          }
+        }
+      },
+      "block_order": [
+        "step_1",
+        "step_2",
+        "step_3",
+        "contact_krzysztof",
+        "contact_malgorzata"
+      ],
+      "settings": {
+        "eyebrow": "Chcesz zmodyfikować ten model?",
+        "heading": "Od pomysłu, przez projekt, do wyrobu",
+        "heading_tag": "h2",
+        "lead": "Marzy Ci się inny kamień, inny metal albo własna forma? Zacznijmy od tego modelu – zrealizujemy ją razem.",
+        "cta_label": "Opisz swój projekt",
+        "cta_url": "shopify://pages/zaprojektuj-swoj-model",
+        "note": "Brief zbiera parametry i szkic. Odpowiadamy osobiście.",
+        "contact_heading": "Odpowiadamy osobiście",
+        "contact_intro": "Wolisz porozmawiać? Zadzwoń lub napisz na WhatsApp.",
+        "wa_message": "Dzień dobry, mam pomysł na biżuterię i chcę go omówić."
+      }
+    }
+  },
+  "order": [
+    "breadcrumb",
+    "main",
+    "product-trust-split",
+    "product-details-tabs",
+    "product-recommendations",
+    "product_main_collection_gez6tm",
+    "recent-viewed-products",
+    "gold_process",
+    "epir_cocreate_3steps"
+  ]
+}
+

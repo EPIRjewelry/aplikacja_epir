@@ -1,0 +1,22 @@
+---
+description: Jedna sesja na raz publikuje na live — sprawdź zamek przed theme push i zmianami w Admin
+alwaysApply: true
+---
+
+⚠️ SSOT ROUTING: Nie parsuj własnych założeń. Twoim jedynym punktem wejścia do wiedzy jest /EPIR_AI_BIBLE.md. Sprawdź w nim, z jakich modułów domenowych masz skorzystać.
+
+# Live ma jednego właściciela w danym momencie
+
+Decyzja operatora (2026-11-10): równoległe sesje (drugie okno Cursor, Kilo) nie widzą się nawzajem i nadpisują sobie szablony motywu. Stan zamka: [`docs/working/LIVE_PUSH_LOCK.md`](../../docs/working/LIVE_PUSH_LOCK.md).
+
+## MUST
+
+- Przeczytaj zamek **przed** `shopify theme push --allow-live`, `theme publish` oraz zmianą nawigacji / stron / metafieldów w Shopify Admin.
+- Zamek zajęty przez inną sesję → przygotuj zmianę lokalnie i zgłoś operatorowi, że live jest zajęty.
+- Push tylko `--only <konkretny plik>`; wcześniej `theme pull --only <ten sam plik> --path themes/_pulls/<data>` i diff z lokalnym.
+
+## MUST NOT
+
+- Przejmowanie, zwalnianie ani edycja zamka przez agenta — robi to wyłącznie operator.
+- Traktowanie zamka jako zgody na publikację: [`epir-no-live-without-approval.mdc`](epir-no-live-without-approval.mdc) obowiązuje osobno.
+- `theme push` całego motywu, gdy zmiana dotyczy pojedynczych plików.

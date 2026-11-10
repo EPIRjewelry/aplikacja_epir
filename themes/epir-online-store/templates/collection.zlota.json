@@ -7,11 +7,6 @@
  * made to this file may be overwritten.
  * ------------------------------------------------------------
  */
-/*
- * Alias planowy collection.zlota — ten sam lejek co collection.zloto.json.
- * Live kolekcja zlota-bizuteria używa templateSuffix "zloto".
- * Ten plik istnieje, gdyby Admin przełączył suffix na "zlota".
- */
 {
   "sections": {
     "gold_manifesto": {
@@ -56,18 +51,31 @@
       "blocks": {
         "proof_odlew": {
           "type": "proof",
-          "settings": { "label": "Odlew", "note": "Kruszec w tyglu" }
+          "settings": {
+            "label": "Odlew",
+            "note": "Kruszec w tyglu"
+          }
         },
         "proof_tekstura": {
           "type": "proof",
-          "settings": { "label": "Tekstura", "note": "Młotek i kora" }
+          "settings": {
+            "label": "Tekstura",
+            "note": "Młotek i kora"
+          }
         },
         "proof_kamien": {
           "type": "proof",
-          "settings": { "label": "Kamień", "note": "Osadzenie ręczne" }
+          "settings": {
+            "label": "Kamień",
+            "note": "Osadzenie ręczne"
+          }
         }
       },
-      "block_order": ["proof_odlew", "proof_tekstura", "proof_kamien"],
+      "block_order": [
+        "proof_odlew",
+        "proof_tekstura",
+        "proof_kamien"
+      ],
       "settings": {
         "eyebrow": "Wrocławska pracownia",
         "heading": "Ogień, młotek, kamień",
@@ -75,13 +83,67 @@
       }
     },
     "gold_cocreate": {
-      "type": "collection-cocreate-teaser",
+      "type": "epir-cocreate-3steps",
+      "blocks": {
+        "step_1": {
+          "type": "step",
+          "settings": {
+            "title": "Opisujesz",
+            "text": "Wybierasz parametry i opisujesz pomysł. Możesz dołączyć szkic lub zdjęcie.",
+            "chips": "Typ biżuterii\nMetal\nKamień\nBudżet orientacyjny\nTermin"
+          }
+        },
+        "step_2": {
+          "type": "step",
+          "settings": {
+            "title": "Projektujemy razem",
+            "text": "Przygotowujemy model w wosku lub 3D. Nic nie idzie do metalu bez Twojej akceptacji."
+          }
+        },
+        "step_3": {
+          "type": "step",
+          "settings": {
+            "title": "Z ognia na Twoją dłoń",
+            "text": "Odlew, ręczne wykończenie i metryczka pracowni."
+          }
+        },
+        "contact_krzysztof": {
+          "type": "contact",
+          "settings": {
+            "name": "Krzysztof",
+            "role": "Pracownia EPIR",
+            "quote": "Opisz mi pomysł, a odpowiem osobiście.",
+            "phone": "+48 696 553 346"
+          }
+        },
+        "contact_malgorzata": {
+          "type": "contact",
+          "settings": {
+            "name": "Małgorzata",
+            "role": "Pracownia EPIR",
+            "quote": "Opisz mi pomysł, a odpowiem osobiście.",
+            "phone": "+48 698 718 564"
+          }
+        }
+      },
+      "block_order": [
+        "step_1",
+        "step_2",
+        "step_3",
+        "contact_krzysztof",
+        "contact_malgorzata"
+      ],
       "settings": {
-        "eyebrow": "Twój pomysł. Nasz ogień.",
-        "heading": "Nie ma tego w siatce? Zaprojektujmy formę razem online.",
-        "body": "Opisz wizję albo prześlij szkic — przełożymy ją na model 3D, a po Twojej akceptacji odlejemy i wykończymy ręcznie we Wrocławiu.",
-        "cta_label": "Rozpocznij projektowanie online",
-        "cta_url": "shopify://pages/zaprojektuj-swoj-model"
+        "eyebrow": "Zaprojektuj swój pierścionek",
+        "heading": "Od pomysłu, przez projekt, do wyrobu",
+        "heading_tag": "h2",
+        "lead": "Masz pomysł lub projekt – zrealizujmy go w złocie.",
+        "cta_label": "Opisz swój projekt",
+        "cta_url": "shopify://pages/zaprojektuj-swoj-model",
+        "note": "Brief zbiera parametry i szkic. Odpowiadamy osobiście.",
+        "contact_heading": "Odpowiadamy osobiście",
+        "contact_intro": "Wolisz porozmawiać? Zadzwoń lub napisz na WhatsApp.",
+        "wa_message": "Dzień dobry, mam pomysł na biżuterię i chcę go omówić."
       }
     },
     "gold_realizations": {
@@ -96,7 +158,9 @@
           }
         }
       },
-      "block_order": ["real_tanzanit"],
+      "block_order": [
+        "real_tanzanit"
+      ],
       "settings": {
         "eyebrow": "Pracownia EPIR",
         "heading": "Najciekawsze realizacje w złocie",
@@ -115,3 +179,4 @@
     "gold_realizations"
   ]
 }
+
