@@ -30,6 +30,9 @@ describe('export cursor (ms, id)', () => {
   it('uses julianday for ISO created_at in WHERE/ORDER BY', () => {
     expect(pixelExportCursorWhereSql()).toContain('julianday');
     expect(pixelExportOrderBySql()).toContain('julianday');
+    // Forma OR, nie porównanie wierszowe — tylko OR dostaje SEARCH na idx_pixel_export_cursor.
+    expect(pixelExportCursorWhereSql()).toContain('OR');
+    expect(pixelExportCursorWhereSql()).not.toContain('> (?1, ?2)');
   });
 
   it('rowExportCursorMsId tie-breaks on id at same ms', () => {

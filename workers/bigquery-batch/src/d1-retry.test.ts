@@ -16,6 +16,13 @@ describe('isTransientD1Error', () => {
     );
     expect(isTransientD1Error(new Error('UNIQUE constraint failed'))).toBe(false);
   });
+
+  it('recognizes D1 DB overloaded', () => {
+    expect(isTransientD1Error(new Error('D1_ERROR: D1 DB is overloaded'))).toBe(true);
+    expect(isTransientD1Error(new Error('D1_ERROR: D1 DB is overloaded. Retry your request.'))).toBe(
+      true,
+    );
+  });
 });
 
 describe('withD1Retry', () => {
@@ -34,6 +41,26 @@ describe('withD1Retry', () => {
     expect(calls).toBe(2);
     expect(sleep).toHaveBeenCalledTimes(1);
     expect(sleep).toHaveBeenCalledWith(computeD1RetryDelayMs(1, 10, () => 0));
+  });
+
+  it('retries D1 overloaded then succeeds on the third attempt', async () => {
+    const sleep = vi.fn(async () => {});
+    const stats = { attempts: 0 };
+    let calls = 0;
+    const result = await withD1Retry(
+      async () => {
+        calls += 1;
+        if (calls < 3) throw new Error('D1_ERROR: D1 DB is overloaded');
+        return 'ok';
+      },
+      { step: 'pixel_export_read', sleep, random: () => 0, baseDelayMs: 10, maxAttempts: 3, stats },
+    );
+    expect(result).toBe('ok');
+    expect(calls).toBe(3);
+    expect(stats.attempts).toBe(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenNthCalledWith(1, computeD1RetryDelayMs(1, 10, () => 0));
+    expect(sleep).toHaveBeenNthCalledWith(2, computeD1RetryDelayMs(2, 10, () => 0));
   });
 
   it('does not retry non-transient errors', async () => {

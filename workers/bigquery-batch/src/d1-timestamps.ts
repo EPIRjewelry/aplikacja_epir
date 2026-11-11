@@ -39,11 +39,28 @@ export const PIXEL_CREATED_AT_MS_SQL = `(
 /** Porównanie kursora eksportu: (ms, id) leksykograficznie. */
 export const PIXEL_ID_TEXT_SQL = `CAST(id AS TEXT)`;
 
+/**
+ * Klucz kursora jako OR, nie porównanie wierszowe `(expr, id) > (?, ?)`.
+ * Indeks wyrażeniowy `idx_pixel_export_cursor` (migracja 005) daje SEARCH (`<expr>>?`)
+ * tylko przy tym kształcie — forma wierszowa schodzi do pełnego SCAN indeksu.
+ * `idx_pixel_created_at` nie obsługuje tego predykatu: `created_at` jest owinięty
+ * w CASE/julianday, więc bez 005 każde ORDER BY + COUNT backlogu skanuje całą tabelę
+ * (LIMIT nie ucina skanu, dopóki nie ma indeksu pod ORDER BY).
+ * Wyrażenia muszą zostać zgodne z `migrations/005_pixel_export_cursor_index.sql`.
+ */
 export function pixelExportCursorWhereSql(): string {
   return `(
     (${PIXEL_CREATED_AT_MS_SQL}) > ?1
     OR ((${PIXEL_CREATED_AT_MS_SQL}) = ?1 AND ${PIXEL_ID_TEXT_SQL} > ?2)
   )`;
+}
+
+export function pixelExportSelectSql(): string {
+  return `SELECT * FROM pixel_events WHERE ${pixelExportCursorWhereSql()} ORDER BY ${pixelExportOrderBySql()} LIMIT ?3`;
+}
+
+export function pixelPendingCountSql(): string {
+  return `SELECT COUNT(*) AS cnt FROM pixel_events WHERE ${pixelExportCursorWhereSql()}`;
 }
 
 export function pixelExportOrderBySql(): string {

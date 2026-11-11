@@ -14,8 +14,8 @@ describe('classifyWarehouseCatchUpBlockage', () => {
       nowMs,
     });
     expect(r.blockage).toBe('watermark_reset');
-    expect(r.catchupCapacity).toBe(30_000);
-    expect(r.simulatedPendingAfter).toBe(142_723);
+    expect(r.catchupCapacity).toBe(6_000);
+    expect(r.simulatedPendingAfter).toBe(166_723);
     expect(r.simulatedPendingAfter).toBeGreaterThan(10_000);
     expect(r.logLine).toContain('blockage=watermark_reset');
   });
@@ -49,7 +49,7 @@ describe('classifyWarehouseCatchUpBlockage', () => {
       nowMs,
     });
     expect(r.blockage).toBe('catchup_limit');
-    expect(r.simulatedPendingAfter).toBe(5_000);
+    expect(r.simulatedPendingAfter).toBe(29_000);
   });
 
   it('brak pipeline → pipeline', () => {

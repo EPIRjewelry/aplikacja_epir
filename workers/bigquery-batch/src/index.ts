@@ -10,13 +10,21 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 // ============================================================================
 
 import { getR2AnalyticsSql, getQ9ToolUsageFallbackSql, isMissingIcebergNameColumnError, VALID_QUERY_IDS } from './analytics-queries';
+import { withD1Retry } from './d1-retry';
 import { buildFlowHealthReport } from './edog-flow-health-runner';
 import { buildEdogNarrative } from './edog-reason-narrative';
 import {
   resolveOperatorReportDate,
   runOperatorDailyReport as executeOperatorDailyReport,
 } from './operator-daily-report';
-import { resolveCatchupMaxRuns } from './warehouse-batch-env';
+import {
+  resolveCatchupMaxRuns,
+  resolvePixelExportBatchPauseMs,
+  resolvePixelExportBatchSize,
+  resolvePixelExportD1BaseDelayMs,
+  resolvePixelExportD1MaxAttempts,
+  resolvePixelExportMaxRows,
+} from './warehouse-batch-env';
 import { runWarehouseExportCatchUp } from './warehouse-export-catchup';
 import {
   countPendingPixel,
@@ -68,6 +76,16 @@ interface Env {
   WAREHOUSE_PIXEL_TRIAGE_KEEP_DAYS?: string;
   /** Domyślnie 12 — max przebiegów catch-up na wywołanie (cron / trigger). */
   WAREHOUSE_CATCHUP_MAX_RUNS?: string;
+  /** Wiersze jednego odczytu D1 pixela. Domyślnie 500. */
+  WAREHOUSE_PIXEL_EXPORT_BATCH_SIZE?: string;
+  /** Wiersze pixela na jedno wywołanie eksportu. Domyślnie 500. */
+  WAREHOUSE_PIXEL_EXPORT_MAX_ROWS?: string;
+  /** Pauza między paczkami pixela (ms). Domyślnie 200. */
+  WAREHOUSE_PIXEL_EXPORT_BATCH_PAUSE_MS?: string;
+  /** Limit prób D1 na paczkę pixela (pierwsza + retry). Domyślnie 4. */
+  WAREHOUSE_PIXEL_EXPORT_D1_MAX_ATTEMPTS?: string;
+  /** Bazowe opóźnienie retry paczki pixela (ms). Domyślnie 400. */
+  WAREHOUSE_PIXEL_EXPORT_D1_BASE_DELAY_MS?: string;
 }
 
 const EDOG_KV_KEY = 'edog:latest';
@@ -137,8 +155,11 @@ async function runOperatorReportCron(env: Env): Promise<void> {
   );
 }
 
-/** Maks. wierszy na jedno wywołanie (cron / trigger) — unika przekroczenia limitu subrequestów (~25 POST ingest). */
-const MAX_ROWS_PER_RUN = 2500;
+/**
+ * Messages / order_attributions: chunk 100, sufit 2500 (~25 POST ingest).
+ * Pixel ma osobny sufit (`WAREHOUSE_PIXEL_EXPORT_MAX_ROWS`, domyślnie 500).
+ */
+const NON_PIXEL_MAX_ROWS_PER_RUN = 2500;
 
 export type WarehouseExportSummary = {
   pixelExported: number;
@@ -156,7 +177,9 @@ export type WarehouseExportSummary = {
 // ============================================================================
 
 async function persistWatermark(env: Env, wm: ExportWatermark, now: number): Promise<void> {
-  await persistExportWatermark(env.DB, wm, now);
+  await withD1Retry(() => persistExportWatermark(env.DB, wm, now), {
+    step: 'persist_export_watermark',
+  });
 }
 
 type CatchUpWithTriage = {
@@ -170,6 +193,8 @@ async function runWarehouseCatchUpWithOptionalTriage(env: Env): Promise<CatchUpW
   const catchUp = await runWarehouseExportCatchUp(() => handleScheduled(env), {
     maxRuns,
     targetPending: 1000,
+    pauseMs: resolvePixelExportBatchPauseMs(env),
+    rowsPerRun: resolvePixelExportMaxRows(env),
   });
 
   let triage: HistoricalTriageResult | null = null;
@@ -244,9 +269,14 @@ async function handleScheduled(env: Env): Promise<WarehouseExportSummary | null>
 
   const now = Date.now();
 
-  const pixelResult = await exportPixelEvents(env, wm, MAX_ROWS_PER_RUN);
-  const ordersResult = await exportOrderAttributions(env, wm, MAX_ROWS_PER_RUN);
-  const messagesResult = await exportMessages(env, wm, MAX_ROWS_PER_RUN);
+  const pixelResult = await exportPixelEvents(env, wm, resolvePixelExportMaxRows(env), {
+    batchSize: resolvePixelExportBatchSize(env),
+    pauseMs: resolvePixelExportBatchPauseMs(env),
+    maxAttempts: resolvePixelExportD1MaxAttempts(env),
+    baseDelayMs: resolvePixelExportD1BaseDelayMs(env),
+  });
+  const ordersResult = await exportOrderAttributions(env, wm, NON_PIXEL_MAX_ROWS_PER_RUN);
+  const messagesResult = await exportMessages(env, wm, NON_PIXEL_MAX_ROWS_PER_RUN);
 
   const pipelineError =
     pixelResult.pipelineError ?? ordersResult.pipelineError ?? messagesResult.pipelineError;
@@ -414,7 +444,9 @@ export class BigQueryBatchS2SRpc extends WorkerEntrypoint<Env, BigQueryS2SProps>
     Awaited<ReturnType<typeof buildFlowHealthReport>> & { narrative_markdown: string }
   > {
     requireBigQueryS2SScopes(this.ctx.props, 'bigquery.analytics_query');
-    const report = await buildFlowHealthReport(this.env, probeQ1ForEdog);
+    const report = await withD1Retry(() => buildFlowHealthReport(this.env, probeQ1ForEdog), {
+      step: 'get_flow_health',
+    });
     return { ...report, narrative_markdown: buildEdogNarrative(report).markdown };
   }
 

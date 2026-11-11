@@ -2,6 +2,8 @@
  * Klasyfikacja blokady nocnego catch-upu (dry-run / diagnostyka) — bez I/O.
  */
 
+import { DEFAULT_PIXEL_EXPORT_MAX_ROWS_PER_RUN } from './warehouse-batch-env';
+
 export type CatchUpBlockage =
   | 'none'
   | 'pipeline'
@@ -35,7 +37,7 @@ export type ClassifyCatchUpResult = {
 };
 
 const DEFAULT_MAX_RUNS = 12;
-const DEFAULT_ROWS_PER_RUN = 2500;
+const DEFAULT_ROWS_PER_RUN = DEFAULT_PIXEL_EXPORT_MAX_ROWS_PER_RUN;
 const DEFAULT_CRITICAL = 10_000;
 /** 7 dni — backlog critical przy kursorze starszym niż tydzień = rewind, nie dzienny napływ. */
 const DEFAULT_REWIND_STALE_MS = 7 * 24 * 60 * 60 * 1000;

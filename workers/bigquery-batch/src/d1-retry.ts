@@ -4,6 +4,7 @@
  * Udokumentowana lista (dopasowanie po message / name, case-insensitive):
  * - `D1_ERROR: Network connection lost`
  * - `network connection lost`
+ * - `overloaded` (`D1_ERROR: D1 DB is overloaded` i warianty)
  * - `D1_ERROR` + (`timeout` | `timed out` | `temporarily unavailable` | `internal error`)
  * - `storage caused exception` (CF transient)
  *
@@ -13,6 +14,7 @@
 
 export const D1_TRANSIENT_ERROR_PATTERNS: readonly RegExp[] = [
   /network connection lost/i,
+  /overloaded/i,
   /d1_error:.*\b(timeout|timed out|temporarily unavailable|internal error)\b/i,
   /storage caused exception/i,
 ];
@@ -27,6 +29,10 @@ export type D1RetryOptions = {
   sleep?: (ms: number) => Promise<void>;
   /** Wstrzyknięcie RNG jittera (testy) — wartość w [0, 1). */
   random?: () => number;
+  /** Gdy false — bez logów per próba (wołający zapisuje jedną linię). Domyślnie true. */
+  log?: boolean;
+  /** Ustawiane na numer bieżącej próby (1 = pierwsza). */
+  stats?: { attempts: number };
 };
 
 const DEFAULT_MAX_ATTEMPTS = 3;
@@ -66,38 +72,44 @@ export async function withD1Retry<T>(fn: () => Promise<T>, opts: D1RetryOptions)
   const baseDelayMs = opts.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;
   const sleep = opts.sleep ?? defaultSleep;
   const random = opts.random ?? Math.random;
+  const log = opts.log !== false;
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (opts.stats) opts.stats.attempts = attempt;
     try {
       return await fn();
     } catch (error) {
       lastError = error;
       const transient = isTransientD1Error(error);
       if (!transient || attempt >= maxAttempts) {
-        console.error(
-          JSON.stringify({
-            tag: 'd1_retry_exhausted',
-            step: opts.step,
-            attempt,
-            maxAttempts,
-            transient,
-            error: error instanceof Error ? error.message : String(error),
-          }),
-        );
+        if (log) {
+          console.error(
+            JSON.stringify({
+              tag: 'd1_retry_exhausted',
+              step: opts.step,
+              attempt,
+              maxAttempts,
+              transient,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        }
         throw error;
       }
       const delayMs = computeD1RetryDelayMs(attempt, baseDelayMs, random);
-      console.warn(
-        JSON.stringify({
-          tag: 'd1_retry',
-          step: opts.step,
-          attempt,
-          maxAttempts,
-          delayMs,
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
+      if (log) {
+        console.warn(
+          JSON.stringify({
+            tag: 'd1_retry',
+            step: opts.step,
+            attempt,
+            maxAttempts,
+            delayMs,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
       await sleep(delayMs);
     }
   }

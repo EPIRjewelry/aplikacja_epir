@@ -7,6 +7,7 @@ import {
   classifyWarehouseCatchUpBlockage,
   type ClassifyCatchUpResult,
 } from './warehouse-catchup-blockage';
+import { DEFAULT_PIXEL_EXPORT_MAX_ROWS_PER_RUN } from './warehouse-batch-env';
 
 export type WarehouseExportSummaryLite = {
   pixelExported: number;
@@ -20,11 +21,23 @@ export type ExportRunner = () => Promise<WarehouseExportSummaryLite | null>;
 
 export const MAX_CATCHUP_RUNS = 12;
 export const TARGET_PENDING = 1000;
-export const CATCHUP_ROWS_PER_RUN = 2500;
+export const CATCHUP_ROWS_PER_RUN = DEFAULT_PIXEL_EXPORT_MAX_ROWS_PER_RUN;
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export async function runWarehouseExportCatchUp(
   runExport: ExportRunner,
-  opts?: { maxRuns?: number; targetPending?: number },
+  opts?: {
+    maxRuns?: number;
+    targetPending?: number;
+    /** Pauza przed kolejnym przebiegiem (nie przed pierwszym). 0 = brak. */
+    pauseMs?: number;
+    sleep?: (ms: number) => Promise<void>;
+    /** Do symulacji pojemności w blockageDiag. Domyślnie paczka pixela (500). */
+    rowsPerRun?: number;
+  },
 ): Promise<{
   runs: number;
   lastPending: number;
@@ -35,12 +48,16 @@ export async function runWarehouseExportCatchUp(
 }> {
   const maxRuns = opts?.maxRuns ?? MAX_CATCHUP_RUNS;
   const target = opts?.targetPending ?? TARGET_PENDING;
+  const pauseMs = Math.max(0, opts?.pauseMs ?? 0);
+  const sleep = opts?.sleep ?? defaultSleep;
+  const rowsPerRun = opts?.rowsPerRun ?? CATCHUP_ROWS_PER_RUN;
   let runs = 0;
   let lastPending = -1;
   let pipelineError: string | undefined;
   let lastSummary: WarehouseExportSummaryLite | null = null;
 
   while (runs < maxRuns) {
+    if (runs > 0 && pauseMs > 0) await sleep(pauseMs);
     const summary = await runExport();
     runs++;
     if (!summary) {
@@ -82,7 +99,7 @@ export async function runWarehouseExportCatchUp(
           last_pixel_export_at: lastSummary?.last_pixel_export_at ?? 0,
           pipelineConfigured: pipelineError !== 'export_skipped_no_pipeline',
           maxRuns,
-          rowsPerRun: CATCHUP_ROWS_PER_RUN,
+          rowsPerRun,
         });
 
   return { runs, lastPending, pipelineError, lastSummary, blockageDiag };
