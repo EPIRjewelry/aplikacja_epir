@@ -86,6 +86,31 @@ function logBuyerToolCall(tool: string, channel: BuyerChannelId, ok: boolean): v
   console.log(JSON.stringify({ tag: 'buyer.tool_call', tool, channel, ok }));
 }
 
+function logBuyerPolicyToolCall(
+  channel: BuyerChannelId,
+  ok: boolean,
+  sessionId?: string,
+  extra?: { reason?: string; entry_count?: number },
+): void {
+  const sid = sessionId?.trim().slice(0, 8);
+  console.log(
+    JSON.stringify({
+      tag: 'buyer.tool_call',
+      tool: 'search_shop_policies_and_faqs',
+      channel,
+      ok,
+      ...(extra?.reason ? { reason: extra.reason } : {}),
+      ...(typeof extra?.entry_count === 'number' ? { entry_count: extra.entry_count } : {}),
+      ...(sid ? { sid } : {}),
+    }),
+  );
+}
+
+function policyAnswerEntryCount(answer: string): number {
+  const blocks = answer.split('\n\n').map((p) => p.trim()).filter(Boolean);
+  return blocks.length;
+}
+
 function deny(
   input: Pick<ExecuteBuyerToolInput, 'name' | 'channelId'>,
   reason: string,
@@ -354,7 +379,10 @@ export async function executeBuyerTool(
     const context = typeof args.context === 'string' ? args.context : undefined;
     const result = await searchShopPoliciesViaMcp(input.env, query, { context });
     if (!result.ok) {
-      logBuyerToolCall(input.name, input.channelId, false);
+      logBuyerPolicyToolCall(input.channelId, false, input.sessionId, {
+        reason: result.reason,
+        entry_count: 0,
+      });
       return { content: KB_POLICY_UNAVAILABLE_REPLY };
     }
     await recordPolicyTouchIfIdentified(input.env, {
@@ -363,7 +391,9 @@ export async function executeBuyerTool(
       sources: result.sources.map((s) => s.url || s.title),
       contentHash: result.contentHash,
     });
-    logBuyerToolCall(input.name, input.channelId, true);
+    logBuyerPolicyToolCall(input.channelId, true, input.sessionId, {
+      entry_count: policyAnswerEntryCount(result.answer),
+    });
     return {
       content: JSON.stringify({
         answer: result.answer,

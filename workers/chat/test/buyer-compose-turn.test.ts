@@ -538,6 +538,120 @@ describe('buyer compose turn — tools in system prompt', () => {
     expect(reply.indexOf(leadProse)).toBeLessThan(reply.indexOf('Stan koszyka'));
   });
 
+  it('(a) no tool_calls: model prose reaches client without KB tool message', async () => {
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([
+      'search_shop_policies_and_faqs',
+      'search_catalog',
+    ]);
+    vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
+    vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockResolvedValue([]);
+    vi.spyOn(sessionHistory, 'appendBuyerSessionMessage').mockResolvedValue();
+    const execSpy = vi.spyOn(executeBuyerToolMod, 'executeBuyerTool');
+    vi.spyOn(aiClient, 'streamGroqEvents').mockImplementation(
+      async () =>
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue({
+              type: 'text',
+              delta: 'Odpowiedź bez narzędzia — proszę sprawdzić regulamin.',
+            });
+            controller.close();
+          },
+        }),
+    );
+
+    const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
+    const req = new Request('https://example.com/chat', { method: 'POST' });
+    const reply = await composeBuyerAssistantReply(
+      env,
+      'epir-zareczyny',
+      'gdzie jest pracownia?',
+      req,
+      { sessionId: 'sess-no-tool-a1b2c3d4' },
+    );
+
+    expect(reply).toContain('bez narzędzia');
+    expect(execSpy).not.toHaveBeenCalled();
+  });
+
+  it('tool_as_text in round logs site round_no_tool_calls and sid', async () => {
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([
+      'search_shop_policies_and_faqs',
+    ]);
+    vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
+    vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockResolvedValue([]);
+    vi.spyOn(sessionHistory, 'appendBuyerSessionMessage').mockResolvedValue();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const toolAsText = JSON.stringify({
+      tool: 'search_shop_policies_and_faqs',
+      query: 'kontakt telefon',
+    });
+    vi.spyOn(aiClient, 'streamGroqEvents').mockImplementation(
+      async () =>
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue({ type: 'text', delta: toolAsText });
+            controller.close();
+          },
+        }),
+    );
+
+    const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
+    const req = new Request('https://example.com/chat', { method: 'POST' });
+    await composeBuyerAssistantReply(env, 'epir-online-store', 'telefon', req, {
+      sessionId: 'sess-round-site',
+    });
+
+    const blocked = logSpy.mock.calls
+      .map((c) => c[0])
+      .filter((x) => typeof x === 'string' && x.includes('buyer.tool_as_text_blocked'));
+    expect(blocked.some((line) => line.includes('"site":"round_no_tool_calls"'))).toBe(true);
+    expect(blocked.some((line) => line.includes('"sid":"sess-rou"'))).toBe(true);
+    logSpy.mockRestore();
+  });
+
+  it('finalize_scrub logs site when model returns tool-as-text as final prose', async () => {
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue(['get_size_table']);
+    vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
+    vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockResolvedValue([]);
+    vi.spyOn(sessionHistory, 'appendBuyerSessionMessage').mockResolvedValue();
+    vi.spyOn(executeBuyerToolMod, 'executeBuyerTool').mockResolvedValue({
+      content: '{"ok":true}',
+    });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const toolAsText = JSON.stringify({ tool: 'search_catalog', query: 'x' });
+    let round = 0;
+    vi.spyOn(aiClient, 'streamGroqEvents').mockImplementation(
+      async (_messages, _env, _tools, _sessionId, timingLabel) => {
+        if (timingLabel === 'buyer_tool_loop_final') {
+          return new ReadableStream({
+            start(controller) {
+              controller.enqueue({ type: 'text', delta: toolAsText });
+              controller.close();
+            },
+          });
+        }
+        if (round < 3) {
+          round += 1;
+          return toolCallOnlyStream('get_size_table', `call-${round}`);
+        }
+        return toolCallOnlyStream('get_size_table', 'call-x');
+      },
+    );
+
+    const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
+    const req = new Request('https://example.com/chat', { method: 'POST' });
+    await composeBuyerAssistantReply(env, 'epir-online-store', 'rozmiar', req, {
+      sessionId: 'sess-final-scrub',
+    });
+
+    const blocked = logSpy.mock.calls
+      .map((c) => c[0])
+      .filter((x) => typeof x === 'string' && x.includes('buyer.tool_as_text_blocked'));
+    expect(blocked.some((line) => line.includes('"site":"finalize_scrub"'))).toBe(true);
+    logSpy.mockRestore();
+  });
+
   it('buyer_tool_loop_final failed_generation outside allowlist → Polish fallback without getGroqResponse', async () => {
     vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([
       'search_catalog',
@@ -571,6 +685,56 @@ describe('buyer compose turn — tools in system prompt', () => {
 
     expect(groqSpy).not.toHaveBeenCalled();
     expect(reply).toBe(FINAL_TOOL_FALLBACK_USER);
+  });
+
+  it('buyer_tool_loop_final search_shop_policies_and_faqs outside allowlist logs final_non_recoverable_tool', async () => {
+    vi.spyOn(toolReadiness, 'listAvailableBuyerTools').mockResolvedValue([
+      'search_catalog',
+      'search_shop_policies_and_faqs',
+    ]);
+    vi.spyOn(aiProfile, 'fetchAIProfileByHandle').mockResolvedValue(null);
+    vi.spyOn(sessionHistory, 'readBuyerSessionHistory').mockResolvedValue([]);
+    vi.spyOn(sessionHistory, 'appendBuyerSessionMessage').mockResolvedValue();
+    vi.spyOn(executeBuyerToolMod, 'executeBuyerTool').mockResolvedValue({
+      content: '{"ok":true}',
+    });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(aiClient, 'streamGroqEvents').mockImplementation(
+      async (_messages, _env, _tools, _sessionId, timingLabel) => {
+        if (timingLabel === 'buyer_tool_loop_final') {
+          throw new aiClient.GroqStreamError(
+            'Tool choice is none, but model called a tool',
+            JSON.stringify({
+              name: 'search_shop_policies_and_faqs',
+              arguments: { query: 'adres pracowni' },
+            }),
+          );
+        }
+        const round = String(timingLabel ?? '').replace('buyer_tool_loop_', '');
+        return toolCallOnlyStream('search_catalog', `call-${round}`);
+      },
+    );
+    const groqSpy = vi.spyOn(aiClient, 'getGroqResponse');
+
+    const env = { SHOP_DOMAIN: 'shop.myshopify.com' } as import('../src/config/bindings').Env;
+    const req = new Request('https://example.com/chat', { method: 'POST' });
+    const reply = await composeBuyerAssistantReply(
+      env,
+      'epir-zareczyny',
+      'gdzie jesteście?',
+      req,
+      { sessionId: 'sess-kb-final-fail' },
+    );
+
+    expect(groqSpy).not.toHaveBeenCalled();
+    expect(reply).toBe(FINAL_TOOL_FALLBACK_USER);
+    const logged = logSpy.mock.calls
+      .map((c) => c[0])
+      .filter((x) => typeof x === 'string' && x.includes('buyer.final_non_recoverable_tool'));
+    expect(logged.length).toBeGreaterThan(0);
+    expect(logged[0]).toContain('search_shop_policies_and_faqs');
+    expect(logged[0]).toContain('"sid":"sess-kb-"');
+    logSpy.mockRestore();
   });
 
   it('buyer_tool_loop_final_fallback empty content → Polish static fallback', async () => {
