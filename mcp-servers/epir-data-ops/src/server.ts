@@ -4,12 +4,12 @@ import { z } from 'zod';
 import { d1Query } from './cloudflare-d1.js';
 import {
   D1_DATABASES,
-  WAREHOUSE_QUERY_IDS,
+  READONLY_WAREHOUSE_QUERY_IDS,
   flowMapExcerpt,
   resolveEnv,
   sampleColumnsFor,
   type D1DatabaseKey,
-  type WarehouseQueryId,
+  type ReadonlyWarehouseQueryId,
 } from './config.js';
 
 function textResult(body: string) {
@@ -112,21 +112,22 @@ export function createDataOpsMcpServer(): McpServer {
     },
   );
 
-  async function postWarehouseQuery(queryId: WarehouseQueryId): Promise<string> {
-    const origin = resolveEnv('EPIR_ANALYST_WORKER_ORIGIN');
-    const bearer = resolveEnv('ANALYST_HTTP_BEARER');
-    if (!origin || !bearer) {
+  async function getReadonlyOperatorStudio(pathAndQuery: string): Promise<string> {
+    const origin =
+      resolveEnv('EPIR_CHAT_WORKER_ORIGIN') ||
+      resolveEnv('WORKER_ORIGIN') ||
+      'https://asystent.epirbizuteria.pl';
+    const readKey = resolveEnv('EPIR_READONLY_ANALYTICS_KEY');
+    if (!readKey) {
       return (
-        'Ustaw EPIR_ANALYST_WORKER_ORIGIN + ANALYST_HTTP_BEARER. Alternatywa: flow_health_summary (Q1 w workerze).'
+        'Brak EPIR_READONLY_ANALYTICS_KEY. MCP epir-data-ops działa tylko na kluczu tylko do odczytu — ustaw go w env (nie używaj EPIR_OPERATOR_PANEL_SECRET).'
       );
     }
-    const res = await fetch(`${origin.replace(/\/$/, '')}/v1/warehouse/query`, {
-      method: 'POST',
+    const res = await fetch(`${origin.replace(/\/$/, '')}${pathAndQuery}`, {
       headers: {
-        Authorization: `Bearer ${bearer}`,
-        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Admin-Key': readKey,
       },
-      body: JSON.stringify({ queryId }),
     });
     const text = await res.text();
     return `HTTP ${res.status}\n${text}`;
@@ -134,20 +135,57 @@ export function createDataOpsMcpServer(): McpServer {
 
   server.tool(
     'warehouse_probe',
-    'Sonda wyłącznie Q1_CONVERSION_CHAT (analyst-worker HTTP).',
+    'Sonda wyłącznie Q1_CONVERSION_CHAT przez Operator Studio (EPIR_READONLY_ANALYTICS_KEY).',
     {},
-    async () => textResult(await postWarehouseQuery('Q1_CONVERSION_CHAT')),
+    async () =>
+      textResult(
+        await getReadonlyOperatorStudio(
+          '/internal/operator-studio/api/analytics/query?queryId=Q1_CONVERSION_CHAT',
+        ),
+      ),
   );
 
   server.tool(
     'warehouse_query',
-    'Hurtownia R2 SQL — whitelist queryId Q1–Q10 przez analyst-worker (Cursor Kustosz).',
+    'Hurtownia R2 SQL — Q1–Q10 bez Q3 (treść wiadomości) przez Operator Studio i EPIR_READONLY_ANALYTICS_KEY. Skrót Q1 albo pełne queryId.',
     {
       queryId: z.enum(
-        WAREHOUSE_QUERY_IDS as unknown as [WarehouseQueryId, ...WarehouseQueryId[]],
+        READONLY_WAREHOUSE_QUERY_IDS as unknown as [ReadonlyWarehouseQueryId, ...ReadonlyWarehouseQueryId[]],
       ),
     },
-    async ({ queryId }) => textResult(await postWarehouseQuery(queryId as WarehouseQueryId)),
+    async ({ queryId }) =>
+      textResult(
+        await getReadonlyOperatorStudio(
+          `/internal/operator-studio/api/analytics/query?queryId=${encodeURIComponent(queryId)}`,
+        ),
+      ),
+  );
+
+  server.tool(
+    'marketing_preview',
+    'Agregaty GA4 + Google Ads + GMC (bez sekretów Google) przez Operator Studio. Ten sam EPIR_READONLY_ANALYTICS_KEY.',
+    {
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('YYYY-MM-DD; domyślnie wczoraj UTC'),
+    },
+    async ({ date }) => {
+      const q = date ? `?date=${encodeURIComponent(date)}` : '';
+      return textResult(await getReadonlyOperatorStudio(`/internal/operator-studio/api/marketing-preview${q}`));
+    },
+  );
+
+  server.tool(
+    'gmc_diagnostics',
+    'Diagnostyka Google Merchant (read-only) przez Operator Studio i EPIR_READONLY_ANALYTICS_KEY.',
+    {},
+    async () => textResult(await getReadonlyOperatorStudio('/internal/operator-studio/api/gmc-diagnostics')),
+  );
+
+  server.tool(
+    'ads_account_change_audit',
+    'Read-only audyt konta Ads (cele, budżet, change_event bez e-maili) przez Operator Studio. Bez mutacji kampanii.',
+    {},
+    async () =>
+      textResult(await getReadonlyOperatorStudio('/internal/operator-studio/api/ads-account-change-audit')),
   );
 
   server.tool(

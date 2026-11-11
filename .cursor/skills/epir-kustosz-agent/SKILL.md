@@ -39,8 +39,8 @@ Zastępca właściciela EPIR + Curator + EAA w **Cursorze**.
 ## Playbook stały
 
 1. `flow_health_summary` → zapisz werdykt EDOG.
-2. Przy PASS uruchom co najmniej: **Q1, Q2, Q3, Q5, Q6, Q7, Q9** (reszta Q4/Q8/Q10 gdy potrzeba segmentacji/czasu).
-3. Rozmowy Gemmy: **Q3** (top pytania), **Q6** (engagement), **Q9** (tool usage) + `operator_report_excerpt`. Filtr mentalny: `channel != operator`.
+2. Przy PASS uruchom co najmniej: **Q1, Q2, Q5, Q6, Q7, Q9** (reszta Q4/Q8/Q10 gdy potrzeba segmentacji/czasu). **Q3** nie jest na kluczu readonly (`EPIR_READONLY_ANALYTICS_KEY`) — zwraca treść wiadomości i wymaga pełnego klucza panelu.
+3. Rozmowy Gemmy: **Q6** (engagement), **Q9** (tool usage) + `operator_report_excerpt`. Q3 tylko gdy operator świadomie da pełny klucz. Filtr mentalny: `channel != operator`.
 4. Preferencje zalogowanych (`memory_facts`) — tylko gdy osobno dostępne i potrzebne; nie zastępują Q3.
 5. Napisz **jeden** brief (max ~1 strona).
 
@@ -56,7 +56,7 @@ PASS | FAIL — 1 zdanie + warstwa (d1|batch|pipeline|r2sql)
 - …
 ## Czat vs zakup (Q1, Q6)
 - …
-## Wzorce rozmów Gemmy (Q3, Q9, digest)
+## Wzorce rozmów Gemmy (Q6, Q9, digest; Q3 tylko przy pełnym kluczu panelu)
 - 5–10 intencji z cytatem źródła (queryId / data raportu)
 ## Luki / ryzyka
 - …
@@ -70,7 +70,7 @@ PASS | FAIL — 1 zdanie + warstwa (d1|batch|pipeline|r2sql)
 
 ## Głębokość rozmów
 
-- **Domyślnie:** agregaty Q3/Q6/Q9 + digesty — bez pełnych transcriptów.
+- **Domyślnie:** agregaty Q6/Q9 + digesty — bez pełnych transcriptów. Q3 nie jest na kluczu readonly.
 - **Pełne `messages`:** tylko na wyraźną prośbę operatora, z redakcją PII, ad-hoc.
 
 ## Operator Studio

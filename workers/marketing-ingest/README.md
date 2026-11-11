@@ -128,6 +128,20 @@ npx wrangler secret put GOOGLE_ADS_LOGIN_CUSTOMER_ID     # opcjonalnie — MCC
 
 Jeśli deployujesz z innym środowiskiem Wrangler (`--env production` itd.), przy `secret put` użyj tego samego `--env …`.
 
+## 4b. Odczyt dla Analityka (bez sekretów Google)
+
+Agregaty GA4 + Ads + GMC nie wymagają wklejania client secret / refresh token do czatu. Worker trzyma je jako sekrety Cloudflare. Analityk woła **Operator Studio** nagłówkiem `X-Admin-Key: <EPIR_READONLY_ANALYTICS_KEY>` (ten sam klucz co hurtownia; nie `EPIR_OPERATOR_PANEL_SECRET`):
+
+- `GET /internal/operator-studio/api/marketing-preview?date=YYYY-MM-DD` — `buildMarketingPreviewBody`
+- `GET /internal/operator-studio/api/gmc-diagnostics`
+- `GET /internal/operator-studio/api/ads-account-change-audit` (read-only; e-mail z `change_event` jest wycinany)
+
+Te trasy idą service bindingiem `MARKETING_INGEST_RPC` (`getMarketingPreview`, `getGmcDiagnostics`, `getAdsAccountChangeAudit`). Nie wywołują mutacji kampanii.
+
+`MARKETING_OPS_PREVIEW_KEY` zostaje sekretem workera `epir-marketing-ingest` (`npx wrangler secret put MARKETING_OPS_PREVIEW_KEY` z katalogu workera). Wartości nie commituj. Cloud agent dostaje ją tylko jako sekret Cursor / user env o **tej samej nazwie**, gdy musi uderzyć bezpośrednio w `https://epir-marketing-ingest.krzysztofdzugaj.workers.dev/ops/marketing-preview` z `Authorization: Bearer`. Po wdrożeniu mostu Studio ten klucz nie jest potrzebny Analitykowi.
+
+Z VM Cursora w tym środowisku publiczny HTTPS (w tym `asystent.epirbizuteria.pl` i `*.workers.dev`) urywa się na TLS (`SSL_ERROR_SYSCALL` zaraz po ClientHello — to samo dla example.com). To limit egressu VM, nie błąd certyfikatu workera. Curl z tej VM nie potwierdzi podglądu; użyj hosta ze zwykłym egressem.
+
 ## 5. Weryfikacja
 
 1. **Health:** `GET https://<worker-host>/healthz` (lub ścieżka z custom domain po podpięciu).
