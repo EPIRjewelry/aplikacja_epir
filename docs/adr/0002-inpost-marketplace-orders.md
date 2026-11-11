@@ -73,8 +73,7 @@ Implementacja tego przepływu **nie** wchodzi w zmianę, która dodaje ten ADR. 
    Hosty prod są zapisane wyżej i czekają na osobną zgodę operatora. Domyślne środowisko v1 to stage.
 
 2. **Zdarzenia zamówień.**  
-   `GET {baza INPSA}/…/orders/events`.  
-   Ścieżka po `inpsa/` pochodzi z portalu w chwili implementacji; ten ADR jej nie dopisuje. Sam listing zamówień nie zastępuje polla zdarzeń.  
+   Portal OpenAPI (`gokart-api.html`): `GET {baza INPSA}/v1/organizations/{organizationId}/orders/events` (`INPSA_ORGANIZATION_ID`). Sam listing zamówień nie zastępuje polla zdarzeń.  
    Konfiguracja merchanta: auto-accept po płatności. UC v1 nie dodaje osobnego kroku ręcznego accept.  
    `customer` i `delivery.email` czytamy, gdy zamówienie jest **ACCEPTED** i opłacone.
 
@@ -98,6 +97,7 @@ Nazwy są rozłączne z `INPOST_*` z `workers/inpost/src/env.ts` i `workers/inpo
 | `INPSA_CLIENT_ID` | sekret (propozycja) | `client_id` Client Credentials INPSA |
 | `INPSA_CLIENT_SECRET` | sekret (propozycja) | `client_secret` Client Credentials INPSA |
 | `INPSA_ENV` | zmienna zwykła, nie sekret | `stage` (v1) albo `production` (dopiero po zgodzie operatora na prod) |
+| `INPSA_ORGANIZATION_ID` | zmienna zwykła, nie sekret (propozycja) | Id organizacji merchanta z portalu INPSA — segment ścieżki OpenAPI `GET /v1/organizations/{organizationId}/orders/events` (względem bazy `…/inpsa/`) |
 
 Świadomie pominięte:
 

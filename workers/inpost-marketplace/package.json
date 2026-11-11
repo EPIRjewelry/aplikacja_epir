@@ -1,0 +1,17 @@
+{
+  "name": "epir-inpost-marketplace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251117.0",
+    "typescript": "^5.4.0",
+    "vitest": "^3.2.4",
+    "wrangler": "4.46.0"
+  }
+}
