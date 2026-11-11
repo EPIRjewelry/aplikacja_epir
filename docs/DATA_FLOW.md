@@ -60,7 +60,7 @@ Inne webhooki w tym samym workerze, też tylko D1: `checkout_abandoned` → `cus
 
 ### D. Eksport D1 → Pipelines → Iceberg
 
-Worker `epir-bigquery-batch`, cron **`0 2 * * *` UTC** (`runWarehouseExportCatchUp`, do 12 przebiegów, cel `pending ≤ 1000`).
+Worker `epir-bigquery-batch`, cron **`0 2 * * *` UTC** (`runWarehouseExportCatchUp`, do 12 przebiegów, cel `pending ≤ 1000`). Paczka pixela domyślnie **500** wierszy (`WAREHOUSE_PIXEL_EXPORT_BATCH_SIZE` / `WAREHOUSE_PIXEL_EXPORT_MAX_ROWS`), pauza `WAREHOUSE_PIXEL_EXPORT_BATCH_PAUSE_MS` (domyślnie 200 ms) między paczkami. Pojemność jednego wywołania: 12×500, o ile D1 nie zwróci błędu.
 
 Watermark: `jewelry-analytics-db.batch_exports` — jeden wiersz `id = 1`.
 
@@ -72,10 +72,11 @@ Watermark: `jewelry-analytics-db.batch_exports` — jeden wiersz `id = 1`.
 | `last_orders_export_id` | TEXT (zamówienia / `order_attributed`) |
 | `updated_at` | czas ostatniego przebiegu |
 
-- Pixel: `WHERE (ms, id) > (watermark)` z `julianday` dla ISO `created_at`; `ORDER BY ms, id`; `mapPixelRowToPipelineRecord` (+ opcjonalnie zamówienia).
+- Pixel: predykat OR `(ms, id)` z `julianday` dla ISO `created_at`; `ORDER BY ms, id`; `mapPixelRowToPipelineRecord` (+ opcjonalnie zamówienia). Kursor `(last_pixel_export_at, last_pixel_export_id)` zapisuje się **po każdej udanej paczce** (ingest OK i upsert kursora). Nieudany odczyt D1, błąd ingestu i nieudany zapis kursora **nie** przesuwają kursora. `D1 DB is overloaded` i inne błędy przejściowe D1: retry z backoffem i jitterem (`WAREHOUSE_PIXEL_EXPORT_D1_MAX_ATTEMPTS`, domyślnie 4).
+- Indeks `idx_pixel_export_cursor` — migracja [`005_pixel_export_cursor_index.sql`](../workers/bigquery-batch/migrations/005_pixel_export_cursor_index.sql). `idx_pixel_created_at` nie obsługuje wyrażenia na `created_at`; bez 005 COUNT i SELECT backlogu skanują całą tabelę. Migrację odpala operator raz, poza cronem 02:00. Deploy workera jej nie stosuje.
 - Messages: kursor `(timestamp, id)`; błąd chunka → `pipelineError`, **bez** podbicia watermarku.
 - Brak `PIPELINE_MESSAGES_INGEST_URL` → EDOG **FAIL** (`pipeline_messages_not_configured`).
-- Błąd chunka piksela: częściowy postęp kursora, `pipelineError` w podsumowaniu.
+- Błąd paczki piksela: kursor zostaje na ostatniej **zapisanej** paczce, `pipelineError` w podsumowaniu. Następny przebieg wznawia od tego miejsca. Jedna paczka może wrócić do Iceberga drugi raz tylko gdy ingest się udał, a zapis kursora odpadł po wyczerpaniu retry.
 
 Sink (szablon w repo, nie prod ID): `workers/bigquery-batch/pipelines-schemas/pixel-pipeline-production.example.sql` → Iceberg `analytics.epir_pixel_events_raw`. Messages: 1:1 stream → `analytics.messages_raw`.
 
@@ -181,7 +182,7 @@ Sygnał D1 niesie `product_id` / `product_handle` / `storefront_id`. Sygnał hur
 7. **Q8 w raporcie** odpada przy werdykcie innym niż PASS. Raport i tak się zapisuje — wygląda na kompletny, sekcja hurtowni jest pusta z jednego zdania.
 8. **Steward TIME_FILTER** porównuje INTEGER ms albo TEXT z `datetime(cutoff)`. ISO z `toISOString()` (z `T` i `Z`) nie jest tym samym co `datetime()`. Część wierszy może nie wejść w sygnał, bez wyjątku.
 9. **Leady** (`/admin/api/leads`) i **pamięć klienta** nie są w tym łańcuchu.
-10. **Historyczny backlog pixel** — gdy `pending_pixel_events` ≥ 10 000 i kursor `last_pixel_export_at` jest wielomiesięcznie w tyle, sam catch-up (12×2500/wywołanie) nie zejdzie z progu FAIL w jednej nocy. Opcja operacyjna na workerze `epir-bigquery-batch`: `WAREHOUSE_PIXEL_HISTORY_TRIAGE_ENABLED=true` + `WAREHOUSE_PIXEL_TRIAGE_KEEP_DAYS=7` — po catch-up **forward skip** watermarka na granicę (now − 7 dni) **bez** ingestu pominiętych wierszy (audit: log `watermark_history_triage`). D1 zostaje; w Icebergu jest świadoma luka; nowsze dni idą normalnym eksportem. **Nie** resetuj watermarka przy `read_error` (`export_aborted_watermark_unread`). Ręczny `UPDATE batch_exports` kursora na `0` odtwarza cały backlog — unikać po wdrożeniu #106.
+10. **Historyczny backlog pixel** — gdy `pending_pixel_events` ≥ 10 000 i kursor `last_pixel_export_at` jest wielomiesięcznie w tyle, sam catch-up (12×500/wywołanie przy domyślnej paczce) nie zejdzie z progu FAIL w jednej nocy. Opcja operacyjna na workerze `epir-bigquery-batch`: `WAREHOUSE_PIXEL_HISTORY_TRIAGE_ENABLED=true` + `WAREHOUSE_PIXEL_TRIAGE_KEEP_DAYS=7` — po catch-up **forward skip** watermarka na granicę (now − 7 dni) **bez** ingestu pominiętych wierszy (audit: log `watermark_history_triage`). D1 zostaje; w Icebergu jest świadoma luka; nowsze dni idą normalnym eksportem. **Nie** resetuj watermarka przy `read_error` (`export_aborted_watermark_unread`). Ręczny `UPDATE batch_exports` kursora na `0` odtwarza cały backlog — unikać po wdrożeniu #106.
 
 ---
 

@@ -2,6 +2,7 @@
  * EDOG — ludzka narracja PL dla operatora (bez I/O).
  */
 import type { FlowHealthReport } from './edog-flow-health-runner';
+import { DEFAULT_PIXEL_EXPORT_MAX_ROWS_PER_RUN } from './warehouse-batch-env';
 
 export type EdogLayerId = 'capture' | 'd1' | 'batch' | 'pipeline' | 'warehouse' | 'consumers';
 
@@ -13,7 +14,7 @@ export type EdogNarrative = {
   markdown: string;
 };
 
-const MAX_PIXEL_ROWS_PER_RUN = 2500;
+const MAX_PIXEL_ROWS_PER_RUN = DEFAULT_PIXEL_EXPORT_MAX_ROWS_PER_RUN;
 
 function isoMs(ms: number | null | undefined): string {
   if (ms == null || !Number.isFinite(ms) || ms <= 0) return 'brak';

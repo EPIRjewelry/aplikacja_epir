@@ -57,6 +57,13 @@ WAREHOUSE_SQL_MESSAGES_TABLE = "messages_raw"
 WAREHOUSE_PIXEL_HISTORY_TRIAGE_ENABLED = "true"
 WAREHOUSE_PIXEL_TRIAGE_KEEP_DAYS = "7"
 # WAREHOUSE_CATCHUP_MAX_RUNS = "12"
+# Eksport pixel: mała paczka + pauza + retry, żeby D1 nie dostawał D1_ERROR overloaded.
+# Indeks odczytu: migrations/005_pixel_export_cursor_index.sql (ręcznie, poza cronem 02:00).
+WAREHOUSE_PIXEL_EXPORT_BATCH_SIZE = "500"
+WAREHOUSE_PIXEL_EXPORT_MAX_ROWS = "500"
+WAREHOUSE_PIXEL_EXPORT_BATCH_PAUSE_MS = "200"
+WAREHOUSE_PIXEL_EXPORT_D1_MAX_ATTEMPTS = "4"
+WAREHOUSE_PIXEL_EXPORT_D1_BASE_DELAY_MS = "400"
 
 # [[kv_namespaces]]
 # binding = "DATA_GUARDIAN_KV"

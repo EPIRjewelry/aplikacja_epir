@@ -36,6 +36,33 @@ describe('runWarehouseExportCatchUp', () => {
     expect(r.runs).toBe(1);
     expect(r.pipelineError).toContain('403');
   });
+
+  it('pauses between runs and not before the first', async () => {
+    const sleep = vi.fn(async () => {});
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({
+        pixelExported: 500,
+        messagesExported: 0,
+        pending_pixel_after: 5000,
+        last_pixel_export_at: 1,
+      })
+      .mockResolvedValueOnce({
+        pixelExported: 500,
+        messagesExported: 0,
+        pending_pixel_after: 100,
+        last_pixel_export_at: 2,
+      });
+    await runWarehouseExportCatchUp(run, {
+      maxRuns: 5,
+      targetPending: 1000,
+      pauseMs: 200,
+      sleep,
+    });
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(sleep).toHaveBeenCalledWith(200);
+  });
 });
 
 describe('dryRunWarehouseCatchUpClassify (29.09 live-shaped)', () => {
