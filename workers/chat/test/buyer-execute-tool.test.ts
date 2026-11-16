@@ -307,16 +307,92 @@ describe('executeBuyerTool', () => {
 
   it('returns KB unavailable on policy mcp error', async () => {
     vi.spyOn(mcp, 'callMcpToolDirect').mockResolvedValue({ error: { message: 'x' } });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const r = await executeBuyerTool({
       env: {} as import('../src/config/bindings').Env,
       channelId: 'epir-online-store',
       readyTools: ['search_shop_policies_and_faqs'],
       name: 'search_shop_policies_and_faqs',
       argsJson: JSON.stringify({ query: 'zwroty' }),
+      sessionId: 'sess-kb-mcp-err',
       sessionCartId: null,
       allowedVariantIds: new Set(),
     });
     expect(r.content).toBe(KB_POLICY_UNAVAILABLE_REPLY);
+    const toolLog = logSpy.mock.calls
+      .map((c) => c[0])
+      .find((x) => typeof x === 'string' && x.includes('"tool":"search_shop_policies_and_faqs"'));
+    expect(toolLog).toContain('"ok":false');
+    expect(toolLog).toContain('"reason":"mcp_error"');
+    expect(toolLog).toContain('"entry_count":0');
+    expect(toolLog).toContain('"sid":"sess-kb-"');
+    logSpy.mockRestore();
+  });
+
+  it('(b) KB empty array → KB_POLICY_UNAVAILABLE_REPLY and log reason empty', async () => {
+    vi.spyOn(mcp, 'callMcpToolDirect').mockResolvedValue({
+      result: {
+        content: [{ type: 'text', mimeType: 'application/json', text: '[]' }],
+      },
+    });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const r = await executeBuyerTool({
+      env: {} as import('../src/config/bindings').Env,
+      channelId: 'epir-zareczyny',
+      readyTools: ['search_shop_policies_and_faqs'],
+      name: 'search_shop_policies_and_faqs',
+      argsJson: JSON.stringify({ query: 'telefon' }),
+      sessionId: 'sess-kb-empty',
+      sessionCartId: null,
+      allowedVariantIds: new Set(),
+    });
+    expect(r.content).toBe(KB_POLICY_UNAVAILABLE_REPLY);
+    const toolLog = logSpy.mock.calls
+      .map((c) => c[0])
+      .find((x) => typeof x === 'string' && x.includes('"tool":"search_shop_policies_and_faqs"'));
+    expect(toolLog).toContain('"reason":"empty"');
+    expect(toolLog).toContain('"entry_count":0');
+    logSpy.mockRestore();
+  });
+
+  it('(c) KB off-topic hit still returns answer JSON and entry_count in log', async () => {
+    vi.spyOn(mcp, 'callMcpToolDirect').mockResolvedValue({
+      result: {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              faqs: [
+                {
+                  question: 'Czy przyjmujecie zamówienia indywidualne?',
+                  answer: 'Tak, realizujemy projekty na zamówienie.',
+                },
+              ],
+              policies: [],
+            }),
+          },
+        ],
+      },
+    });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const r = await executeBuyerTool({
+      env: {} as import('../src/config/bindings').Env,
+      channelId: 'epir-online-store',
+      readyTools: ['search_shop_policies_and_faqs'],
+      name: 'search_shop_policies_and_faqs',
+      argsJson: JSON.stringify({ query: 'showroom bez zapowiedzi telefon' }),
+      sessionId: 'sess-kb-offtopic',
+      sessionCartId: null,
+      allowedVariantIds: new Set(),
+    });
+    const body = JSON.parse(r.content);
+    expect(body.answer).toContain('zamówienia indywidualne');
+    const toolLog = logSpy.mock.calls
+      .map((c) => c[0])
+      .find((x) => typeof x === 'string' && x.includes('"tool":"search_shop_policies_and_faqs"'));
+    expect(toolLog).toContain('"ok":true');
+    expect(toolLog).toContain('"entry_count":1');
+    logSpy.mockRestore();
   });
 
   it('passes policy answer and sources; wire only query+context', async () => {
