@@ -3,6 +3,8 @@
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import type { Env } from './env';
 import { buildMarketingPreviewBody, type MarketingPreviewBody } from './ops-preview';
+import { fetchGmcDiagnostics } from './gmc';
+import { auditAdsAccountChanges } from './ads-account-change-audit';
 import { yesterdayUtcDate } from './ga4';
 import {
   applySearchAdGroupUtmSuffixes,
@@ -33,6 +35,19 @@ export class MarketingIngestS2SRpc extends WorkerEntrypoint<Env> {
     const date =
       raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : yesterdayUtcDate();
     return buildMarketingPreviewBody(this.env, date);
+  }
+
+  /** Read-only GMC diagnostics. Auth jest po stronie Operator Studio (readonly key), nie Bearer preview. */
+  async getGmcDiagnostics(): Promise<Record<string, unknown>> {
+    return fetchGmcDiagnostics(this.env) as unknown as Record<string, unknown>;
+  }
+
+  /**
+   * Read-only snapshot konta Ads (cele, kampanie, change_event).
+   * Bez mutacji. Pole `user` (e-mail) jest wycinane w Operator Studio przed odpowiedzią HTTP.
+   */
+  async getAdsAccountChangeAudit(): Promise<Record<string, unknown>> {
+    return auditAdsAccountChanges(this.env);
   }
 
   async probeAdsCampaigns(): Promise<Record<string, unknown>> {

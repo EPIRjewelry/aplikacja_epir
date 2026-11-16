@@ -93,15 +93,30 @@ describe('readonly analytics key — access matrix', () => {
 
   it('200: analytics/query for safe Q*; 403 for Q3; 400 for unknown SQL id', async () => {
     const env = baseEnv();
-    const ok = await hit(
-      '/internal/operator-studio/api/analytics/query?queryId=Q1_CONVERSION_CHAT',
-      { method: 'GET', headers: roHeaders() },
-      env,
-    );
-    expect(ok.status).toBe(200);
+    const safe = [
+      'Q1_CONVERSION_CHAT',
+      'Q2',
+      'Q4_STOREFRONT_SEGMENTATION',
+      'Q5',
+      'Q6_CHAT_ENGAGEMENT',
+      'Q7_PRODUCT_TO_PURCHASE',
+      'Q8_DAILY_EVENTS',
+      'Q9_TOOL_USAGE',
+      'q10',
+    ];
+    for (const queryId of safe) {
+      const res = await hit(
+        `/internal/operator-studio/api/analytics/query?queryId=${queryId}`,
+        { method: 'GET', headers: roHeaders() },
+        env,
+      );
+      expect(res.status, queryId).toBe(200);
+      const body = (await res.json()) as { result?: { queryId?: string } };
+      expect(body.result?.queryId, queryId).toMatch(/^Q(1|2|4|5|6|7|8|9|10)_/);
+    }
 
     const q3 = await hit(
-      '/internal/operator-studio/api/analytics/query?queryId=Q3_TOP_CHAT_QUESTIONS',
+      '/internal/operator-studio/api/analytics/query?queryId=Q3',
       { method: 'GET', headers: roHeaders() },
       env,
     );
@@ -115,6 +130,90 @@ describe('readonly analytics key — access matrix', () => {
       env,
     );
     expect(bad.status).toBe(400);
+    const badBody = (await bad.json()) as { error?: string; allowedQueryIds?: string[] };
+    expect(badBody.error).toBe('queryId_not_whitelisted');
+    expect(badBody.allowedQueryIds).toHaveLength(9);
+    expect(badBody.allowedQueryIds).not.toContain('Q3_TOP_CHAT_QUESTIONS');
+  });
+
+  it('200: full panel key may run Q3', async () => {
+    const env = baseEnv();
+    const res = await hit(
+      '/internal/operator-studio/api/analytics/query?queryId=Q3_TOP_CHAT_QUESTIONS',
+      { method: 'GET', headers: { 'X-Admin-Key': FULL } },
+      env,
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it('200: marketing preview, gmc, ads audit with readonly key; strips email', async () => {
+    const env = baseEnv({
+      MARKETING_INGEST_RPC: {
+        getMarketingPreview: async () => ({
+          date: '2026-10-01',
+          google_ads: { rowCount: 1, topCampaigns: [] },
+          google_analytics: { rowCount: 1, topRows: [] },
+          google_merchant: { skipped: false, productsWithIssues: 2 },
+        }),
+        getGmcDiagnostics: async () => ({ merchantId: '136678353', accountIssueCount: 0 }),
+        getAdsAccountChangeAudit: async () => ({
+          ok: true,
+          readOnly: true,
+          changeEventLast30Days: {
+            rows: [{ op: 'UPDATE', user: 'analyst@example.com', userEmail: 'analyst@example.com' }],
+          },
+        }),
+      },
+    });
+    const preview = await hit(
+      '/internal/operator-studio/api/marketing-preview?date=2026-10-01',
+      { method: 'GET', headers: roHeaders() },
+      env,
+    );
+    expect(preview.status).toBe(200);
+    const previewBody = (await preview.json()) as { source?: string; result?: { date?: string } };
+    expect(previewBody.source).toBe('marketing_preview');
+    expect(previewBody.result?.date).toBe('2026-10-01');
+
+    const gmc = await hit(
+      '/internal/operator-studio/api/gmc-diagnostics',
+      { method: 'GET', headers: roHeaders() },
+      env,
+    );
+    expect(gmc.status).toBe(200);
+
+    const ads = await hit(
+      '/internal/operator-studio/api/ads-account-change-audit',
+      { method: 'GET', headers: roHeaders() },
+      env,
+    );
+    expect(ads.status).toBe(200);
+    const adsText = await ads.text();
+    expect(adsText).not.toContain('analyst@example.com');
+    expect(adsText).toContain('UPDATE');
+  });
+
+  it('401 marketing-preview without key; 400 bad date; 503 when rpc missing', async () => {
+    const missing = await hit('/internal/operator-studio/api/marketing-preview', { method: 'GET' });
+    expect(missing.status).toBe(401);
+
+    const badDate = await hit(
+      '/internal/operator-studio/api/marketing-preview?date=yesterday',
+      { method: 'GET', headers: roHeaders() },
+      baseEnv({
+        MARKETING_INGEST_RPC: {
+          getMarketingPreview: async () => ({ date: '2026-10-01', google_ads: {}, google_analytics: {} }),
+        },
+      }),
+    );
+    expect(badDate.status).toBe(400);
+
+    const noRpc = await hit(
+      '/internal/operator-studio/api/gmc-diagnostics',
+      { method: 'GET', headers: roHeaders() },
+      baseEnv(),
+    );
+    expect(noRpc.status).toBe(503);
   });
 
   it('401: chat, warehouse export, profile PUT, steward/aggregate, leads, memory erase, pixel PII', async () => {
