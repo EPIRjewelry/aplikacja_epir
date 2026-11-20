@@ -127,6 +127,7 @@ import { resolveOperatorPromptAddons } from './operator/operator-prompt-addons';
 import { getOperatorSystemPrompt } from './operator/operator-system-prompt';
 import { resolveOperatorRoleIdFromHeaders, type OperatorRoleId, isOperatorRoleId } from './operator/operator-roles';
 import { exportOperatorSessionToLocalDisk } from './operator/operator-local-export';
+import { operatorStudioRpcFailureResponse } from './operator/operator-studio-rpc-error';
 import { runOperatorShopifyAdminRead } from './operator/operator-shopify-admin-tools';
 import {
   isOperatorStudioAssetPath,
@@ -4972,11 +4973,7 @@ async function handleOperatorStudioIngress(
         headers: { 'Content-Type': 'application/json', ...cors(env, request) },
       });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return new Response(JSON.stringify({ error: msg }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
-      });
+      return operatorStudioRpcFailureResponse(e, 'BIGQUERY_BATCH_RPC.getFlowHealth', cors(env, request));
     }
   }
 
@@ -5087,11 +5084,7 @@ async function handleOperatorStudioIngress(
         headers: { 'Content-Type': 'application/json', ...cors(env, request) },
       });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return new Response(JSON.stringify({ error: 'insights_read_failed', message: msg }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json', ...cors(env, request) },
-      });
+      return operatorStudioRpcFailureResponse(e, 'STORE_STEWARD_RPC.getInsights', cors(env, request));
     }
   }
 

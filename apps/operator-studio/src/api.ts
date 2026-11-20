@@ -288,7 +288,17 @@ export type FlowHealthReport = {
 
 export async function fetchFlowHealth(): Promise<FlowHealthReport> {
   const res = await fetch(`${API}/flow-health`, { headers: headers() });
-  if (!res.ok) throw new Error(`flow-health HTTP ${res.status}`);
+  if (!res.ok) {
+    let detail = `flow-health HTTP ${res.status}`;
+    try {
+      const errBody = (await res.json()) as { error?: string; message?: string };
+      if (errBody.error) detail = `${detail}: ${errBody.error}`;
+      if (errBody.message) detail = `${detail}: ${errBody.message}`;
+    } catch {
+      /* ignore non-JSON body */
+    }
+    throw new Error(detail);
+  }
   return res.json() as Promise<FlowHealthReport>;
 }
 
